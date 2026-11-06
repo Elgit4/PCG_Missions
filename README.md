@@ -15,6 +15,6 @@ This repository contains the requirements and design artefacts for ChurchConnect
 
 ## Documentation
 
-See [ChurchConnect Software Requirements Specification v1.0](docs/ChurchConnect_SRS_v1.0.docx) for the current requirements baseline.
+The ChurchConnect Software Requirements Specification v1.0 has been prepared as a Word document. It is available as a downloadable project artifact in the associated ChatGPT conversation. The DOCX has not yet been committed to this repository.
 
 The SRS is a draft for stakeholder review. Church-specific schedules, SMS provider selection, sender ID approval, and operational/legal details require confirmation before implementation.
