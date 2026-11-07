@@ -6,7 +6,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(35);
+select plan(36);
 
 -- ---------------------------------------------------------------------------
 -- Fixture identities
@@ -89,6 +89,19 @@ values (
   '11111111-1111-4111-8111-111111111111',
   'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
   'Synthetic test request; no real pastoral data.'
+);
+
+insert into public.faith_commitment_events (
+  commitment_event_id, visitor_id, recorded_by_user_id,
+  occurred_at, commitment_type, restricted_summary
+)
+values (
+  '99999999-9999-4999-8999-999999999999',
+  '22222222-2222-4222-8222-222222222222',
+  'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  now(),
+  'SYNTHETIC_TEST_COMMITMENT',
+  'Synthetic test detail; no real pastoral information.'
 );
 
 -- Member Two is the creator and automatically receives the creator grant.
@@ -182,6 +195,15 @@ select extensions.is(
      and revoked_at is null),
   1,
   'A revoked sensitive access grant can be re-issued without overwriting history'
+);
+
+select extensions.is(
+  (select count(*)::integer from public.faith_commitment_access
+   where commitment_event_id = '99999999-9999-4999-8999-999999999999'
+     and user_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+     and revoked_at is null),
+  1,
+  'Faith-commitment creator receives an active record-specific access grant'
 );
 
 -- ---------------------------------------------------------------------------
