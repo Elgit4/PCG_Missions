@@ -87,22 +87,20 @@ insert into public.prayer_requests (
 values (
   '77777777-7777-4777-8777-777777777777',
   '11111111-1111-4111-8111-111111111111',
-  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
   'Synthetic test request; no real pastoral data.'
 );
 
--- Give both members a record-specific grant, but only Member One receives
--- the PASTORAL_VIEW capability. Both conditions must pass for visibility.
+-- Member Two is the creator and automatically receives the creator grant.
+-- Member One receives a separate record-specific grant and PASTORAL_VIEW.
 insert into public.prayer_request_access (
   prayer_request_id, user_id, granted_by_user_id
 )
-values
-  ('77777777-7777-4777-8777-777777777777',
-   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
-  ('77777777-7777-4777-8777-777777777777',
-   'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+values (
+  '77777777-7777-4777-8777-777777777777',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+);
 
 -- Revocation is retained as history; a later active grant to the same user
 -- and record must be possible without overwriting the prior grant.
