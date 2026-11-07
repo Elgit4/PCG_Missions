@@ -244,7 +244,7 @@ Recommended implementation boundaries:
 
 | ID | Decision | Why it blocks a final schema |
 |---|---|---|
-| D-01 | Approve capability-by-role matrix and Admin/Pastor oversight exceptions | Determines grants, helper functions, RLS policies and test cases |
+| D-01 | Approve capability-by-role matrix and Admin/Pastor oversight exceptions; see [Role, Capability & Scope Matrix Proposal](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md) | Determines grants, helper functions, RLS policies and test cases |
 | D-02 | Confirm whether branch is a true operational boundary or one fixed configuration record | Determines branch FKs and whether branch-scoped policies are required |
 | D-03 | Confirm contact identity/duplicate policy, household handling and phone uniqueness | Determines unique constraints and merge behaviour |
 | D-04 | Decide whether a follow-up task can be assigned to both a staff member and a team | Determines task assignment nullability and check constraints |
