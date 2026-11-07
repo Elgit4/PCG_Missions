@@ -9,7 +9,7 @@
 
 This document translates the approved-product direction and proposed logical model into a PostgreSQL-oriented physical design. It defines candidate schemas, tables, keys, constraints, indexes, row-level security (RLS), migration sequencing and operational safeguards.
 
-It is not an executable migration. No database has been changed, no Supabase project has been selected or connected, and no production permissions are being granted. Names and types below are proposed conventions to validate against the final ERD and stakeholder decisions.
+It is not an executable migration. No database has been changed, no Supabase project has been selected or connected, and no production permissions are being granted. Names and types below are proposed conventions to validate against the final ERD and stakeholder decisions. The entity-by-entity crosswalk is maintained in [10 — ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md).
 
 The design targets one church instance with a configured branch context. It does not introduce multi-church network administration. It supports the six operational roles, multi-role users, public visitor content and registration, staff workflows, limited offline queues, and manual/bulk/automated SMS. It does not imply full offline operation or WhatsApp automation.
 
