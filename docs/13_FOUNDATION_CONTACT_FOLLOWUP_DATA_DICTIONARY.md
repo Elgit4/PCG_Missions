@@ -16,7 +16,7 @@ This document takes the first physical-schema slice from conceptual column lists
 
 It is a design contract for review, not SQL. Type choices, nullability, names and constraints remain proposed until the ERD and stakeholder decisions are approved. It does not create migration files, database objects, grants or RLS policies.
 
-The next data-dictionary slices should cover restricted prayer/care, events/registration/attendance, public content/calendar, SMS, reports/audit and limited offline synchronization.
+The companion slices are now documented in [14 — Restricted Pastoral, Events & Public Content Data Dictionary](14_PASTORAL_EVENTS_PUBLIC_CONTENT_DATA_DICTIONARY.md) and [15 — SMS, Reporting, Audit & Offline Data Dictionary](15_SMS_REPORTING_AUDIT_OFFLINE_DATA_DICTIONARY.md). Their findings DD-08–DD-25 must be reconciled with the parent schema and ERD.
 
 ## 2. Shared conventions
 
@@ -443,7 +443,7 @@ Use RESTRICT for parent deletion where operational history exists. If a person l
 - [x] Polymorphic scope risks called out rather than hidden.
 - [ ] Reconcile DD-01–DD-07 with ERD, logical model and physical schema proposal.
 - [ ] Approve R-01–R-12 and D-01–D-13 or record safe deferrals.
-- [ ] Complete remaining domain data-dictionary slices.
+- [x] Draft remaining domain data-dictionary slices in documents 14 and 15.
 - [ ] Generate executable SQL drafts only after schema and decision approval.
 - [ ] Validate migrations and RLS tests in disposable local PostgreSQL/Supabase.
 
