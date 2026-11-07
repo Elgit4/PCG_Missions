@@ -50,8 +50,9 @@ Sensitive pastoral records must be separated logically and protected by stricter
 ### F. Calendar and communication
 - **calendar entries** — service/event/follow-up/prayer schedule entries with team/assignment scope.
 - **announcements** — content, audience type, target reference, publication/scheduling state and author.
-- **announcement delivery records** — only for channels actually configured and supported; no assumption of automated SMS/WhatsApp.
-- **contact communication preferences** — permitted channels, consent and restrictions if collected.
+- **announcement delivery records** — channel-specific delivery metadata for configured channels.
+- **SMS campaigns, outbox/messages, templates, automation rules and delivery events** — manual, bulk and rule-triggered SMS, with consent/suppression, idempotency, provider references and auditable status history.
+- **contact communication preferences** — permitted channels, SMS consent evidence, opt-out and suppression state.
 
 ### G. Public visitor content
 - **church profile/settings** — public description, contact details, WhatsApp/social links, service areas and visitor settings.
