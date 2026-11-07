@@ -28,7 +28,8 @@ These artifacts are on the database-design feature branch and are **proposals fo
 - [Physical PostgreSQL Schema Proposal](08_CMI_PHYSICAL_DATABASE_SCHEMA_PROPOSAL.md) — proposed table inventory, constraints, indexes, RLS architecture, SMS lifecycle and migration sequence; not executable SQL.
 - [Database Design Validation Report](09_DATABASE_DESIGN_VALIDATION_REPORT.md) — cross-document consistency review, design risks, corrections and outstanding approval gates.
 - [ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md) — maps all 53 ERD entities to proposed physical tables and lists remaining reconciliation work.
-- [Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md) — consolidated approval worksheet for R-01–R-12, D-01–D-13 and authentication/SMS/offline governance decisions.\n- [RLS Policy & Security Test Plan](12_RLS_POLICY_AND_SECURITY_TEST_PLAN.md) — table/domain policy expectations, threat scenarios and positive/negative security test catalogue; not executed.
+- [Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md) — consolidated approval worksheet for R-01–R-12, D-01–D-13 and authentication/SMS/offline governance decisions.
+- [RLS Policy & Security Test Plan](12_RLS_POLICY_AND_SECURITY_TEST_PLAN.md) — table/domain policy expectations, threat scenarios and positive/negative security test catalogue; not executed.
 
 ## Audit and verification records
 
