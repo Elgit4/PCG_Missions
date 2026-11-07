@@ -215,7 +215,7 @@ Track these in [02 — Roles, Permissions & Security](02_ROLES_PERMISSIONS_AND_S
 - [02 — Roles, Permissions & Security](02_ROLES_PERMISSIONS_AND_SECURITY.md)
 - [03 — Data & Database Architecture](03_DATA_AND_DATABASE_ARCHITECTURE.md)
 - [04 — Application Architecture & UI/UX](04_APPLICATION_ARCHITECTURE_AND_UI_UX.md)
-- [05 — Implementation & Deployment Plan](05_IMPLEMENTATION_AND_DEPLOYMENT_PLAN.md)
+- [05 — Implementation & Deployment Plan](05_IMPLEMENTATION_AND_DEPLOYMENT_PLAN.md)\n- [Database Design Validation & Decision Register](09_DATABASE_DESIGN_VALIDATION_AND_DECISION_REGISTER.md)
 - [06 — Internal User Guide](CMI_FOLLOW_UP_APP_GUIDE.md)
 - [Documentation index](README.md)
 
