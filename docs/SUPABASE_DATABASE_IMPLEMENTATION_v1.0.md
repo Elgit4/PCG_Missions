@@ -102,7 +102,7 @@ The CLI starts the local Supabase services and applies the repository migrations
 supabase test db
 ```
 
-The current test file declares **35 assertions** covering, among other things:
+The current test file declares **36 assertions** covering, among other things:
 
 - exactly two roles and RLS enabled across all public application tables;
 - no anonymous table access and no client-side permission-grant writes;
