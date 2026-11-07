@@ -20,7 +20,7 @@ Organize by business capability:
 - prayer and care;
 - events, registration, transport and check-in;
 - calendar;
-- announcements and communication;
+- announcements and SMS communications;
 - sermons, daily words and visitor content;
 - reports;
 - team and settings;
@@ -33,7 +33,7 @@ Staff navigation should group by the user's work:
 - **Overview:** role-aware home, assigned work and exceptions.
 - **People:** Contacts, Follow-up, Care and Prayer (Prayer visibility remains specially restricted).
 - **Ministry operations:** Events, Check-in, Calendar and Reports.
-- **Communication & content:** Announcements, Sermons, Daily words and Visitor content.
+- **Communication & content:** Announcements, SMS (individual, campaigns, automation and delivery logs), Sermons, Daily words and Visitor content.
 - **Administration:** Team, Church settings, service areas and access controls.
 
 Render only authorized navigation entries, but enforce every route/action at the data/API layer. On mobile use a compact navigation pattern with clear active state and quick access to field capture; on desktop use a stable sidebar and content workspace. Do not expose privileged admin navigation to unauthorized users.
