@@ -31,6 +31,7 @@ CMI Follow-up supports church field capture, contacts, follow-up, prayer and car
 | 05 | [Implementation & Deployment Plan](docs/05_IMPLEMENTATION_AND_DEPLOYMENT_PLAN.md) | Delivery phases and release gates |
 | 06 | [CMI Follow-up Internal User Guide](docs/CMI_FOLLOW_UP_APP_GUIDE.md) | Staff operating guide |
 | — | [Full documentation index](docs/README.md) | Reading order and legacy artifact register |
+| — | [Repository audit report](docs/REPOSITORY_AUDIT_REPORT.md) | Consistency findings, verification limits and remaining release gates |
 
 ## Implementation status and critical warning
 
