@@ -73,12 +73,40 @@ Queued captures sync when connection returns. Provide visible pending/syncing/sy
 - Authorized users can create/update service calendar entries with service and location details.
 - Calendar scheduling respects team and assignment scope.
 
-## 9. Announcements and permitted communication
-- Create announcements for authorized church, team or event audiences.
-- Audience membership and delivery actions are permission-controlled.
-- Use contact communication actions only when permitted and respect communication preferences.
-- The product does not send automated SMS or WhatsApp messages/reminders. Do not imply that a communication link is an automated integration.
-- Verify actual configured announcement channels before showing them as available.
+## 9. Announcements and SMS communications
+
+### 9.1 Manual one-to-one SMS
+- Authorized staff can compose and send an individual SMS from a contact record or approved communication workspace.
+- Show the destination number, message preview and any available segment/cost estimate before send.
+- Respect contact scope, consent, opt-out/suppression status and configured sending limits.
+- Record the sender, recipient reference, timestamp, message status and provider reference.
+
+### 9.2 Bulk SMS campaigns
+- Authorized users can create a campaign and select recipients from permitted scopes, such as an event audience, team or eligible contact list.
+- Revalidate audience membership and consent at send time; exclude opted-out, invalid and suppressed numbers.
+- Show recipient count, message preview, segment estimate and provider cost estimate where available.
+- Require explicit final confirmation; record campaign creator, approver (if required), audience criteria, template/content version and send outcome.
+- Support queued, sending, partially sent, completed, paused and failed campaign states. Provide safe retry without duplicate delivery.
+
+### 9.3 Automated SMS
+- Support configurable, explicitly enabled triggers such as event registration confirmation, event updates/reminders and scheduled follow-up reminders.
+- Each trigger has an approved template, enable/disable control, timing rule, recipient eligibility check and audit trail.
+- Do not enable triggers by default until the church approves the wording, timing, audience and provider configuration.
+- Prevent duplicate messages using idempotency keys; retry transient provider failures with bounded backoff.
+- Allow authorized administrators to pause automation and inspect failed sends.
+
+### 9.4 Shared requirements
+- Integrate with an SMS provider from trusted server-side code; never expose provider credentials in the client.
+- Track queued, submitted, delivered, failed and undeliverable statuses separately; provider acceptance is not proof of delivery.
+- Store consent source/time and opt-out/suppression state. Process opt-outs and block future non-essential messages.
+- Keep SMS content minimal. Never include prayer request details, pastoral notes, confidential care narratives, credentials or other secrets.
+- Apply role, contact, team and event scope checks at send time. Audit manual sends, campaigns, automation changes and privileged retries.
+- Support sender identity, message segments, rate limits, provider cost visibility and Ghana-specific sender-ID/regulatory setup after verification.
+- WhatsApp links remain user-initiated; WhatsApp automation is not included.
+
+**Acceptance:** Unauthorized users cannot send or broaden audiences; opted-out contacts are excluded; campaigns require confirmation; automated triggers send only when enabled; retries do not duplicate messages; delivery outcomes and failures are visible to authorized staff.
+
+## 10. Sermons and daily words
 
 ## 10. Sermons and daily words
 - Create drafts with title, content and applicable date.
@@ -108,9 +136,9 @@ Queued captures sync when connection returns. Provide visible pending/syncing/sy
 - Event workspace supports event-specific team assignments and event roles.
 - Administrators maintain church profile, service areas, visitor-facing content and other configured settings.
 
-## 14. Explicitly held / unavailable functionality
+## 15. Explicitly held / unavailable functionality
 Do not implement or market as currently available without a separately approved change:
-- automated SMS/WhatsApp and reminders;
+- WhatsApp automation;
 - discipleship lesson paths;
 - disengagement/retention alerts;
 - territory or response maps;
@@ -120,7 +148,7 @@ Do not implement or market as currently available without a separately approved 
 - multi-church network administration;
 - full offline mode.
 
-## 15. Cross-cutting acceptance tests
+## 16. Cross-cutting acceptance tests
 1. Multi-role user sees combined authorized modules, but not records outside scope.
 2. Unauthorized direct API access is denied even if the user knows a record identifier.
 3. Prayer assignment isolation is enforced in database/API, not only UI.
@@ -128,6 +156,6 @@ Do not implement or market as currently available without a separately approved 
 5. Public visitor routes cannot retrieve staff-only or unpublished content.
 6. Offline retries do not duplicate records.
 7. Contact merge preserves history and is auditable.
-8. No automated messaging job or reminder sender is enabled.
+8. SMS manual, bulk and automated flows enforce consent, scope, opt-out, approval, idempotency and delivery tracking; WhatsApp automation is not enabled.
 9. Reports and exports apply the same authorization rules.
 10. Every workflow has loading, empty, validation, failure and success states.
