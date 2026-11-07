@@ -106,15 +106,21 @@ The calendar supports scheduling follow-up, prayer, and event tasks within the a
 
 ---
 
-## 8. Announcements and communication
+## 8. Announcements and SMS communication
 
-Announcements and permitted contact communication are role-scoped.
+Announcements and SMS actions are role-scoped. Your account may have access to one or more of these SMS functions:
 
-Create an announcement for a church, team, or event from the announcements page. The announcement is delivered to its assigned audience through available channels.
+- **Individual SMS:** compose and send a message to one permitted contact.
+- **Bulk SMS:** prepare a message for an authorized audience, review the recipient count and message, then confirm the campaign if your role permits.
+- **Automated SMS:** the system may send approved messages for enabled events such as registration confirmation, event updates/reminders or scheduled follow-up reminders.
 
-Use contact communication actions only where your role permits and respect the person's communication preferences.
+Before sending, check the recipient number and message. Respect consent and communication preferences. Contacts who have opted out or are suppressed must not receive non-essential messages. Bulk campaigns may show an estimated recipient count, message segments and cost where available.
 
-**Open:** Announcements
+Message statuses may include queued, submitted, delivered, failed or undeliverable. Submitted does not necessarily mean delivered. Report failed messages to an authorized administrator rather than repeatedly sending them.
+
+Never include prayer-request details, private pastoral notes, confidential care information, PINs or passwords in an SMS. WhatsApp links are user-initiated and are not automated WhatsApp messaging.
+
+**Open:** Announcements . SMS / Communications
 
 ---
 
@@ -188,7 +194,7 @@ A user may have more than one role; their effective permissions are combined. Ac
 
 The following items are not currently available as complete app features. Do not promise them as enabled services.
 
-Automated SMS or WhatsApp messages and reminders are not sent by the app. Staff can use the contact details and communication links available to their role.
+SMS is supported for authorized individual messages, bulk campaigns and explicitly enabled automated triggers. SMS availability depends on approved provider configuration, sender identity, consent and account permissions. WhatsApp automation is not included.
 
 Discipleship lesson paths, disengagement/retention alerts, territory coverage maps, response maps, testimonies/milestones feeds, and printed-tract inventory are future or held items.
 
