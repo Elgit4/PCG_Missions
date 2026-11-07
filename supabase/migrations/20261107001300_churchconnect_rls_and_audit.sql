@@ -375,6 +375,32 @@ create trigger faith_commitment_grant_creator_access
   after insert on public.faith_commitment_events
   for each row execute function private.grant_sensitive_record_creator_access();
 
+
+-- A Mission Member may update the current stage only with the explicit
+-- INTEGRATION_RECORD capability. Row access is independently enforced by RLS.
+create or replace function private.enforce_visitor_stage_permission()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $
+begin
+  if new.current_integration_stage_id is distinct from old.current_integration_stage_id
+     and not (select private.is_admin())
+     and not (select private.has_permission('INTEGRATION_RECORD')) then
+    raise exception 'INTEGRATION_RECORD capability is required to change visitor integration stage'
+      using errcode = '42501';
+  end if;
+  return new;
+end;
+$;
+
+revoke all on function private.enforce_visitor_stage_permission() from public, anon, authenticated;
+
+create trigger visitors_enforce_stage_permission
+  before update of current_integration_stage_id on public.visitors
+  for each row execute function private.enforce_visitor_stage_permission();
+
 -- Every integration-stage change creates its own historical event in the same
 -- transaction as the visitor update.
 create or replace function private.capture_visitor_stage_change()
