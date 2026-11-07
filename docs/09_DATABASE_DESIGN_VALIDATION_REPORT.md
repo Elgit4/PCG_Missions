@@ -96,7 +96,7 @@ Approval of R-01 to R-12 does not automatically approve D-01 to D-13. Both sets 
 11. No production grants are inferred from role labels or client-supplied metadata.
 12. No migration is applied to a hosted Supabase project without explicit project identification and user approval.
 
-The entity-by-entity mapping from the current seven-page ERD to the physical table proposal is recorded in [10 — ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md). The consolidated approval worksheet is [11 — Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md).
+The entity-by-entity mapping from the current seven-page ERD to the physical table proposal is recorded in [10 — ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md). The consolidated approval worksheet is [11 — Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md). The typed first-slice data dictionary is [13 — Foundation, Contacts & Follow-up Data Dictionary](13_FOUNDATION_CONTACT_FOLLOWUP_DATA_DICTIONARY.md); it records additional physical refinements DD-01–DD-07 that must be resolved before migrations.
 
 ## 6. Next engineering gate
 
