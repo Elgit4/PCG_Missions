@@ -1,6 +1,10 @@
-# App guide - CMI Follow-up
+ # App guide - CMI Follow-up
 
 # Church on Missions International - CMI Follow-up
+
+**Guide version:** 2.1 | **Aligned with:** CMI Follow-up Master Product Specification v2.1
+
+This guide describes the intended operating workflows. A feature is available only after it has been implemented, configured and enabled for your account; SMS additionally requires an approved provider and sender identity.
 
 *Internal guide for authorized team members*
 
@@ -108,7 +112,7 @@ The calendar supports scheduling follow-up, prayer, and event tasks within the a
 
 ## 8. Announcements and SMS communication
 
-Announcements and SMS actions are role-scoped. Your account may have access to one or more of these SMS functions:
+Authorized staff can create announcements for church, team or event audiences within their permissions. Available delivery channels depend on deployment configuration. Your account may also have access to one or more of these SMS functions:
 
 - **Individual SMS:** compose and send a message to one permitted contact.
 - **Bulk SMS:** prepare a message for an authorized audience, review the recipient count and message, then confirm the campaign if your role permits.
