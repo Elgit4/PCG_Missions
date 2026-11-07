@@ -1,8 +1,8 @@
 # ChurchConnect — Software Requirements Specification
 
 **Version:** 1.0  
-**Date:** 7 November 2026  
-**Status:** Draft for stakeholder review  
+**Date:** 6 November 2026  
+**Status:** Draft for church stakeholder review and approval  
 **System:** Single-church New Members Follow-up & Retention Management System
 
 ## Document control
@@ -252,19 +252,24 @@ Use generated primary keys, explicit foreign keys and database constraints. Norm
 
 | ID | Quality | Requirement |
 |---|---|---|
-| NFR-01 | Security | Protected records and operations require authenticated, authorized access. |
-| NFR-02 | Privacy | Collect only necessary data and provide clear notice and consent controls. |
-| NFR-03 | Performance | Common operations should respond promptly under expected load; numeric targets are confirmed during testing. |
-| NFR-04 | Availability | Application should be available during normal church operations, subject to providers/network. |
-| NFR-05 | Usability | Routine registration and follow-up require minimal training. |
-| NFR-06 | Responsiveness | Core workflows work on supported mobile and desktop sizes. |
-| NFR-07 | Maintainability | Modular code, documented interfaces, migrations and automated tests. |
-| NFR-08 | Scalability | Support stated monthly intake and reasonable growth beyond it. |
-| NFR-09 | Integrity | Constraints and transactions prevent inconsistent relationships and duplicate processing. |
-| NFR-10 | Accessibility | Target WCAG 2.2 AA practices for core workflows where practicable. |
-| NFR-11 | Recoverability | Define and periodically test backup and restoration procedures. |
-| NFR-12 | Auditability | Sensitive administrative and communication events are traceable. |
-| NFR-13 | Interoperability | Isolate SMS provider integration behind an adapter where practical. |
+| NFR-01 | Security | All protected operations shall require authentication and authorization. |
+| NFR-02 | Scope isolation | The initial database contains one church's records; record-level access remains restricted by role, assignment and capability. |
+| NFR-03 | Performance | Under normal expected usage, 95% of common page/data operations should complete within 3 seconds, excluding external SMS provider latency. |
+| NFR-04 | Performance | Visitor search and dashboard queries should use appropriate indexes and pagination as records grow. |
+| NFR-05 | Availability | Production should target 99.5% monthly availability, excluding planned maintenance and third-party provider outages; stakeholder approval is required. |
+| NFR-06 | Usability | A trained Mission Member should be able to record a routine follow-up in a few clear steps. |
+| NFR-07 | Responsiveness | Core workflows shall work at mobile widths from approximately 360 CSS pixels and on desktop screens. |
+| NFR-08 | Accessibility | Target WCAG 2.2 AA practices for contrast, keyboard access, focus visibility, labels and error identification. |
+| NFR-09 | Reliability | Task generation and scheduled SMS shall be idempotent to prevent repeated records or duplicate messages. |
+| NFR-10 | Data integrity | Critical updates shall use database constraints and transactions where related records must succeed or fail together. |
+| NFR-11 | Maintainability | Use modular components, documented business rules, version-controlled migrations and environment-specific configuration. |
+| NFR-12 | Portability | Support current mainstream Chrome, Edge, Safari and Firefox versions to the extent supported by selected libraries. |
+| NFR-13 | Recoverability | Production data shall be backed up on an approved schedule; restoration procedures shall be documented and tested. |
+| NFR-14 | Auditability | Important security and administrative actions shall be attributable to a user and timestamp. |
+| NFR-15 | Privacy | Collect only data necessary for defined church follow-up and integration purposes. |
+| NFR-16 | Scalability | Support the planning range of 20–50 new visitors monthly and growth beyond it without redesigning the core data model. |
+| NFR-17 | Interoperability | Isolate SMS integration behind a provider adapter and use documented request/response handling. |
+| NFR-18 | Cost control | Expose SMS usage and support operational limits to reduce unexpected messaging costs. |
 
 ## 11. Security, privacy and audit
 
@@ -295,21 +300,30 @@ Use generated primary keys, explicit foreign keys and database constraints. Norm
 
 ### 12.2 Initial acceptance criteria
 
-1. Administrator can create a Mission Member account and assign MISSION_MEMBER.
-2. Newly provisioned user establishes a private password before normal use.
-3. Mission Member cannot access unassigned/private visitor records by manipulating URL or API requests.
-4. Authorized user can register a visitor and review duplicate warnings.
-5. Administrator can assign a primary Mission Member and add a collaborator.
-6. Assignment changes preserve prior assignee and handover history.
-7. Attendance can be recorded against an existing profile.
-8. Mission Member can complete a task with channel, timestamp and outcome.
-9. Manual SMS requires explicit confirmation and creates a message record.
-10. Automated SMS checks consent, opt-out, workflow state and duplicate-send safeguards.
-11. Provider callbacks update message status without treating submission as delivery.
-12. Overdue tasks and failed SMS are visible to responsible users and Administrator.
-13. Administrator sees operational reports; Mission Members see only permitted task summaries.
-14. Sensitive pastoral records are inaccessible to unauthorized users.
-15. Core workflows pass mobile and desktop usability tests.
+The initial release is ready for a church pilot only when the following tests pass in a test environment using non-production sample data.
+
+| ID | Acceptance test |
+|---|---|
+| AC-01 | Administrator can create a Mission Member account, issue a temporary credential or invitation, assign permissions and deactivate the account. |
+| AC-02 | Mission Member cannot access account administration or change their own role/permissions. |
+| AC-03 | Authorized Mission Member can register a visitor and receive a duplicate warning for a likely existing profile. |
+| AC-04 | A visitor can have multiple attendance records linked to one profile. |
+| AC-05 | Administrator can manually assign a primary Mission Member and supporting collaborators. |
+| AC-06 | An unassigned visitor appears in the Administrator's queue and is included in the unassigned count. |
+| AC-07 | Assignment changes retain history and do not delete prior follow-up records. |
+| AC-08 | A configured workflow creates the expected follow-up tasks once, without duplicate task generation. |
+| AC-09 | A Mission Member can record a call or visit, select an outcome and schedule the next action. |
+| AC-10 | An authorized user can send a manual test SMS and see its submission/provider status. |
+| AC-11 | An approved automated SMS can be scheduled and sent once when its trigger and consent conditions are satisfied. |
+| AC-12 | An opted-out or suppressed contact is blocked from optional follow-up SMS, including automated sends. |
+| AC-13 | SMS delivery status is not represented as proof that the recipient read or replied to a message. |
+| AC-14 | Overdue follow-up tasks generate reminders and escalate to the Administrator according to configured rules. |
+| AC-15 | A team handover preserves notes, interaction history and attendance while updating the responsible owner. |
+| AC-16 | Lifecycle, engagement and follow-up task statuses can be viewed independently. |
+| AC-17 | Mission Member cannot access visitor records or restricted notes outside their permissions through the UI or direct backend requests. |
+| AC-18 | Administrator can generate the agreed visitor, attendance, follow-up and SMS reports. |
+| AC-19 | Key administrative and record changes create audit entries with actor and timestamp. |
+| AC-20 | The application is usable at agreed mobile and desktop test viewports without content clipping or inaccessible primary actions. |
 
 ## 13. Risks and decisions still required
 
@@ -339,6 +353,25 @@ Use generated primary keys, explicit foreign keys and database constraints. Norm
 | Source control | GitHub | Version control and documentation |
 
 The initial design uses one church dataset, not multi-tenant tables. Keep modules separate, use explicit foreign keys and preserve audit history.
+
+## 15. Items requiring stakeholder confirmation
+
+| ID | Decision required | Proposed owner | Target stage |
+|---|---|---|---|
+| TBD-01 | Official church name, branding, address and contact details. | Church Administrator / leadership | UI/UX design |
+| TBD-02 | Primary login identifier: email, username or another approved method. | Church Administrator / technical lead | Authentication design |
+| TBD-03 | SMS provider, sender ID, API capability, cost, credit and billing process. | Church Administrator | Integration design |
+| TBD-04 | First-week and first-month follow-up schedule, channels, quiet hours and approved message templates. | Church leadership / Missions Team | Workflow configuration |
+| TBD-05 | Definitions of successful contact, returning visitor, new convert and integrated member. | Church leadership / Missions Team | Requirements sign-off |
+| TBD-06 | Escalation timing for unassigned visitors, overdue tasks and repeated unsuccessful contact attempts. | Church Administrator | Workflow configuration |
+| TBD-07 | Mission Member capability grants, including registration, attendance, SMS, collaboration and access to sensitive pastoral information. | Church Administrator | Access-control design |
+| TBD-08 | Visitor-data retention, correction, archival and deletion policy. | Church leadership / privacy adviser | Before pilot |
+| TBD-09 | Privacy notice and evidence of consent for SMS and other follow-up channels, including opt-out handling. | Church leadership / privacy adviser | Before pilot |
+| TBD-10 | Official integration stages and programme-completion criteria. | Church leadership | Workflow design |
+| TBD-11 | Hosting plan, domain, backup schedule, recovery targets and administrator succession/recovery procedure. | Technical lead / Administrator | Deployment planning |
+| TBD-12 | Whether email or push notifications are needed beyond in-app alerts. | Church Administrator | MVP review |
+
+These items remain open until the named stakeholders make and record a decision. The SRS draft must not be treated as proof that any open operational or legal matter has been approved.
 
 ## Appendix A: Glossary
 
