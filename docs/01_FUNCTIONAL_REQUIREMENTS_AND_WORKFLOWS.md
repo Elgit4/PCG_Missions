@@ -1,0 +1,133 @@
+# CMI Follow-up — Functional Requirements & Workflows
+
+**Version:** 2.0 | **Status:** Consolidated functional baseline | **Parent:** [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md)
+
+This document groups requirements by the work users perform. It defines expected behaviour, not implementation status.
+
+## 1. Staff access and workspace
+- Staff sign in with administrator-issued email and PIN.
+- Staff see only modules, actions and records authorized for their effective roles and assignments.
+- A user may hold multiple roles; permissions combine without widening record scope beyond church, team, event or assignment boundaries.
+- Shared-device sign-out and PIN confidentiality are mandatory operating practices.
+
+## 2. Contacts and field capture
+- Create a contact from Contacts or an event workspace.
+- Keep mandatory fields minimal for fast field capture; allow details to be completed later.
+- Capture source, area, age range and other configured values using controlled pickers.
+- Support contact notes, assignment and chronological follow-up history.
+- Detect possible duplicates and allow authorized merging from the record actions menu.
+- A merge must preserve the surviving contact's relevant history and record the merge action for audit/recovery.
+
+**Acceptance:** A permitted worker can capture a contact on a phone, save it online or queue it offline, find it later within scope, and review its history.
+
+## 3. Offline field capture
+Offline support is intentionally narrow:
+- queued field capture form;
+- cached capture pickers;
+- previously opened event check-in data.
+
+Queued captures sync when connection returns. Provide visible pending/syncing/synced/failed states. Use stable local identifiers and idempotent server writes to prevent duplicate contacts during retry. Do not promise offline access to the full application, general contact directory, prayer records, reports or public content. Conflict resolution and local retention/security require technical approval.
+
+**Acceptance:** A queued record survives app restart and intermittent connectivity, syncs once when possible, and surfaces a recoverable error when it cannot sync.
+
+## 4. Follow-up lists and items
+- Create lists from Contacts or Follow-up.
+- Assign lists/items to permitted team members; assignees see them under their work.
+- Items may have scheduled date, priority and notes.
+- Complete items after contact has been made.
+- Keep overdue items visible until completed, cleared or reassigned by an authorized user.
+- Preserve ownership and completion history.
+
+**Acceptance:** Assignees can identify due/overdue work, record completion and see the updated status without creating duplicate records.
+
+## 5. Prayer and pastoral care
+- Create a prayer request from Prayer or a linked contact.
+- Allow an optional expiry date.
+- Assign a request to a prayer intercessor; the intercessor sees only requests assigned to them.
+- Unassigned requests are visible only to authorized review roles.
+- Authorized users can update, mark answered or remove a request.
+- Treat prayer details and care notes as sensitive pastoral data.
+
+**Acceptance:** A user without the appropriate prayer scope cannot discover or retrieve another intercessor's request through UI, API, search, export or direct record identifiers.
+
+## 6. Care workspace
+- Maintain care contacts and groups.
+- Provide summaries for people requiring attention within the user's permissions.
+- Support permitted follow-up calls and visits.
+- Record outcome and update the existing contact/care status rather than creating duplicate contacts.
+
+## 7. Events, public registration and transport
+- Authorized staff create events with date, location and capacity.
+- Registration may be enabled or disabled per event.
+- Transport reservations may optionally be enabled as part of registration.
+- Visitors register through the public event page only when registration is enabled.
+- Staff record attendance through event check-in.
+- Event workspaces support assigned follow-up, event-specific team assignments and event closeout.
+- Public event links and QR codes are shareable.
+- Event-scoped staff access must not expose unrelated event records.
+
+**Acceptance:** Registration-disabled events do not accept public registrations; registration-enabled events respect configured capacity and transport options; check-in records are associated with the correct event and attendee.
+
+## 8. Calendar
+- Display church services, events, scheduled follow-up and prayer follow-ups.
+- Authorized users can create/update service calendar entries with service and location details.
+- Calendar scheduling respects team and assignment scope.
+
+## 9. Announcements and permitted communication
+- Create announcements for authorized church, team or event audiences.
+- Audience membership and delivery actions are permission-controlled.
+- Use contact communication actions only when permitted and respect communication preferences.
+- The product does not send automated SMS or WhatsApp messages/reminders. Do not imply that a communication link is an automated integration.
+- Verify actual configured announcement channels before showing them as available.
+
+## 10. Sermons and daily words
+- Create drafts with title, content and applicable date.
+- Drafts remain private until an authorized administrator publishes them.
+- Authorized staff can publish or hide content from visitor-content administration.
+- Published items are visible on the public church site; unpublished drafts are not public.
+
+## 11. Public visitor site and digital tracts
+- Public site is separate from staff workspace and requires no staff sign-in.
+- Display configured church profile, visitor description, upcoming active events, welcome messages, published sermons/daily words, digital tracts and configured contact/social links.
+- Event pages link to registration and configured transport reservation.
+- Authorized staff manage visitor-facing profile, WhatsApp contact and social links.
+- Digital tracts are mobile-friendly public content with shareable links and QR codes.
+- Optional PDF references point to existing public HTTPS files. PDF hosting is not provided.
+
+**Acceptance:** Anonymous visitors can access only published/public content and enabled registration routes; staff drafts, contacts, prayer requests and reports remain private.
+
+## 12. Reports
+- Support daily evangelism, event evangelism and weekly ministry reports.
+- Depending on permission, users can submit, review, approve or return reports for changes.
+- Provide scoped report views and event report/closeout for attendance and operations.
+- Exports, where provided, obey the same scope as the report view.
+
+## 13. Team administration and church settings
+- Team page lists active and inactive members.
+- Authorized administrators add members, assign roles and area coverage, edit access and deactivate accounts.
+- Event workspace supports event-specific team assignments and event roles.
+- Administrators maintain church profile, service areas, visitor-facing content and other configured settings.
+
+## 14. Explicitly held / unavailable functionality
+Do not implement or market as currently available without a separately approved change:
+- automated SMS/WhatsApp and reminders;
+- discipleship lesson paths;
+- disengagement/retention alerts;
+- territory or response maps;
+- testimonies/milestones feeds;
+- printed-tract inventory;
+- seeker-facing AI, interactive gospel journey, anonymous Q&A and feedback surveys;
+- multi-church network administration;
+- full offline mode.
+
+## 15. Cross-cutting acceptance tests
+1. Multi-role user sees combined authorized modules, but not records outside scope.
+2. Unauthorized direct API access is denied even if the user knows a record identifier.
+3. Prayer assignment isolation is enforced in database/API, not only UI.
+4. Event roles are event-scoped.
+5. Public visitor routes cannot retrieve staff-only or unpublished content.
+6. Offline retries do not duplicate records.
+7. Contact merge preserves history and is auditable.
+8. No automated messaging job or reminder sender is enabled.
+9. Reports and exports apply the same authorization rules.
+10. Every workflow has loading, empty, validation, failure and success states.
