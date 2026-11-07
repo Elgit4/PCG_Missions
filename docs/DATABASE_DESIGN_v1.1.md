@@ -47,7 +47,7 @@ No physical data types are shown in the ERD. The later physical schema will use 
 
 Open the editable diagram in diagrams.net (draw.io):
 
-- [ChurchConnect Crow’s Foot ERD v1.0](database/ChurchConnect_ERD_v1.0.drawio)
+- [ChurchConnect Crow’s Foot ERD v1.0](database/ChurchConnect_ERD_v1.1.drawio)
 
 The diagram has four pages: **Identity & Access**, **Visitor & Attendance**, **Assignments & Follow-up**, and **SMS & Integration**. The textual catalogue below is the authoritative logical attribute inventory for this version.
 
