@@ -16,7 +16,7 @@ CMI Follow-up supports church field capture, contacts, follow-up, prayer and car
 - **Prayer and care:** restricted pastoral information and assigned intercessor access.
 - **Public content:** church profile, active events, welcome content, published sermons/daily words and digital tracts.
 - **Offline:** queued field captures, cached capture pickers and previously opened event check-in data only.
-- **Communications:** no automated SMS/WhatsApp messages or reminders.
+- **Communications:** manual one-to-one SMS, permission-scoped bulk SMS and configurable automated SMS; WhatsApp automation is not included.
 - **Out of scope:** multi-church network administration and the future/held capabilities listed in the master specification.
 
 ## Documentation — read in this order
@@ -38,7 +38,7 @@ This repository previously contained ChurchConnect database designs, migrations,
 
 The documents describe the intended product; they do not establish that every feature is already implemented in a running application. Verify code, hosted services and test results separately.
 
-Do not apply the old ChurchConnect migrations to a live CMI project. Do not connect this project to SkillSprint's Supabase instance. No automated messaging service, full offline application, multi-church network or future/held feature should be represented as available.
+Do not apply the old ChurchConnect migrations to a live CMI project. Do not connect this project to SkillSprint's Supabase instance. SMS remains unavailable until a provider, sender identity, consent/opt-out process and production configuration are validated. Do not represent WhatsApp automation, full offline operation, multi-church network or other future/held features as available.
 
 ## Repository governance
 
