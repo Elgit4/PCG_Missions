@@ -29,9 +29,9 @@ The models retain the approved role decision: the only application roles are **C
 | UC-01 | Sign in and manage session | Administrator / Mission Member | Account provisioned and active | Authenticated session established; temporary-password users complete required credential setup. |
 | UC-02 | Provision Mission Member account | Administrator | Administrator authenticated | Member profile created and invitation/temporary credential issued securely. |
 | UC-03 | Grant or revoke member capabilities | Administrator | Target account exists | Capability grant is recorded with actor and effective dates. |
-| UC-04 | Register a visitor | Mission Member with registration capability / Administrator | User is authenticated and has registration permission | One visitor profile created, or existing profile selected after duplicate review. |
-| UC-05 | Search and view visitor | Administrator / permitted Mission Member | User has access to the requested record | Visitor profile and allowed related history displayed. |
-| UC-06 | Record visitor attendance | Mission Member with attendance capability / Administrator | Visitor and service/activity exist | New attendance event linked to the existing visitor profile. |
+| UC-04 | Register a visitor | Mission Member with registration capability / Administrator | User is authenticated and has `VISITOR_REGISTER`; full duplicate-candidate lookup also requires `VISITOR_DIRECTORY_VIEW` | One visitor profile created, or existing profile selected after authorized duplicate review. |
+| UC-05 | Search and view visitor | Administrator / permitted Mission Member | User is Administrator, has `VISITOR_DIRECTORY_VIEW`, or has assigned/shared/temporary creator access to that specific record | Visitor profile and allowed related history displayed. |
+| UC-06 | Record visitor attendance | Mission Member with attendance capability / Administrator | User has `ATTENDANCE_RECORD` and access to the specific visitor; full-directory lookup additionally requires `VISITOR_DIRECTORY_VIEW` | New attendance event linked to the existing visitor profile. |
 | UC-07 | Assign primary follow-up owner | Administrator | Visitor requires follow-up; selected member is active | One active primary assignment is created and history recorded. |
 | UC-08 | Add or remove collaborator | Administrator | Active assignment exists | Supporting member access is granted or ended and recorded. |
 | UC-09 | Configure follow-up workflow | Administrator | Administrator authenticated | Approved workflow and ordered steps become available for new instances. |
@@ -131,21 +131,21 @@ flowchart LR
 
 ### UC-04 — Register a visitor
 
-**Primary actor:** Mission Member with `VISITOR_REGISTER` capability, or Administrator.  
+**Primary actor:** Mission Member with `VISITOR_REGISTER` capability, or Administrator. Full directory candidate search requires `VISITOR_DIRECTORY_VIEW`; the two permissions are deliberately separate.  
 **Trigger:** A first-time visitor or new convert is presented for registration after a service or activity.
 
 **Main success flow**
-1. The user opens the visitor-registration form.
+1. The user opens the visitor-registration form. The system verifies `VISITOR_REGISTER`; the Administrator is allowed by role.
 2. The system displays the required fields and the approved privacy notice/consent capture.
 3. The user records identity, phone, optional email, area, referral source, service/visit details and contact preferences.
 4. The system validates mandatory values and normalizes the Ghanaian phone number where possible.
-5. The system checks possible duplicates using available matching signals.
-6. If no likely match is found, the system creates the visitor profile and first attendance record in one controlled operation.
+5. The system checks possible duplicates using available matching signals. A Mission Member performs full candidate lookup only when `VISITOR_DIRECTORY_VIEW` is granted; `VISITOR_REGISTER` alone does not expose the visitor directory.
+6. If no likely match is found, the system creates the visitor profile and first attendance record in one controlled operation. The creator retains access to the new profile while it remains unassigned.
 7. The profile appears in the Administrator's unassigned queue when follow-up is required.
 8. The system records the creator and audit event.
 
 **Alternative / exception flows**
-- **Possible duplicate:** display matching candidates. The user reviews the candidate; if it is the same person, add a new attendance event to the existing profile. If not, continue with an authorized new profile. Do not silently merge people.
+- **Possible duplicate:** display matching candidates only to an Administrator or a member with `VISITOR_DIRECTORY_VIEW`. The user reviews the candidate; if it is the same person, add a new attendance event to the existing profile. If not, continue with an authorized new profile. Do not silently merge people. A registration-only user without directory search must refer the potential duplicate to an Administrator or a directory-authorized member.
 - **Missing contact details:** allow only where the approved registration policy permits; mark contact follow-up limitations clearly.
 - **No follow-up consent:** retain only the information permitted by the approved collection purpose and suppress optional follow-up SMS.
 - **No registration capability:** reject the write even if the form URL is known.
@@ -181,7 +181,7 @@ flowchart LR
 
 **Main success flow**
 1. Member opens the task and visitor profile.
-2. System verifies active account, assignment/collaboration scope and task permissions.
+2. System verifies active account, assignment/collaboration scope and task permissions. Full-directory lookup is a separate capability and is not implied by registration or attendance permissions.
 3. Member reviews contact preferences, consent state and previous interaction history.
 4. Member selects a permitted channel: call, personal visit or SMS.
 5. For a call or visit, the member performs the activity and records the attempt, outcome, visitor response, summary and next action.
