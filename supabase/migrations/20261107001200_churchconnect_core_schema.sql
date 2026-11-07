@@ -55,7 +55,7 @@ insert into public.permission_catalog
   (permission_code, permission_name, description, is_sensitive)
 values
   ('VISITOR_REGISTER', 'Register visitors', 'Create new visitor profiles and capture initial consent.', false),
-  ('ATTENDANCE_RECORD', 'Record attendance', 'Record an attendance event for a visitor within the member\'s permitted scope.', false),
+  ('ATTENDANCE_RECORD', 'Record attendance', 'Record an attendance event for a visitor within the assigned or explicitly granted scope.', false),
   ('VISITOR_DIRECTORY_VIEW', 'Search visitor directory', 'Search existing visitor records for explicitly authorized registration or attendance duties.', false),
   ('SMS_SEND', 'Send SMS', 'Initiate permitted manual SMS to assigned or shared visitors.', false),
   ('CONSENT_MANAGE', 'Manage contact consent', 'Capture or update channel consent evidence.', false),
