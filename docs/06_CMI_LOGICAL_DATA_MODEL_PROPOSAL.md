@@ -131,14 +131,14 @@ Announcement audience membership and channel permissions must be re-evaluated wh
 | `sms_templates` | Stable template identity | name, purpose, active |
 | `sms_template_versions` | Immutable approved content versions | sms_template_id, version_number, body, approved_by, approved_at, status |
 | `sms_campaigns` | Manual/bulk campaign metadata | branch_id, campaign_type, title, body_snapshot, audience_definition, created_by, approved_by, scheduled_at, status, estimated_recipients, estimated_segments, estimated_cost |
-| `sms_campaign_recipients` | Immutable recipient/evaluation snapshot | sms_campaign_id, contact_id (nullable), phone_snapshot, eligibility_status, exclusion_reason, evaluated_at |
+| `sms_campaign_recipients` | Immutable recipient/evaluation snapshot | sms_campaign_id, contact_id (nullable), staff_profile_id (nullable), phone_snapshot, recipient_class, eligibility_status, exclusion_reason, evaluated_at |
 | `sms_automation_rules` | Configurable trigger and recipient policy | name, trigger_type, recipient_class, timing_rule, eligibility_definition, template_version_id, enabled, configured_by |
 | `sms_automation_executions` | One idempotent trigger execution per event/recipient | automation_rule_id, trigger_event_key, recipient_key, contact_id (nullable), staff_profile_id (nullable), status, executed_at |
-| `sms_outbox_messages` | One queued provider-bound message per recipient | campaign_recipient_id (nullable), automation_execution_id (nullable), contact_id (nullable), recipient_phone_snapshot, message_body, template_version_id (nullable), idempotency_key, provider_message_id, status, segment_count, queued_at, submitted_at, delivered_at, failed_at, failure_code |
+| `sms_outbox_messages` | One queued provider-bound message per recipient | branch_id, send_mode, campaign_recipient_id (nullable), automation_execution_id (nullable), contact_id (nullable), staff_profile_id (nullable), sent_by_staff_id (nullable), recipient_phone_snapshot, message_body, template_version_id (nullable), idempotency_key, provider_message_id, status, segment_count, queued_at, submitted_at, delivered_at, failed_at, failure_code |
 | `sms_delivery_events` | Append-only provider delivery/status events | sms_outbox_message_id, provider_event_id, event_type, payload_hash, occurred_at, received_at |
 
 **SMS rules**
-- Manual individual sends may create an outbox message without a campaign. Bulk messages link to a campaign recipient. Automated messages link to an automation execution. Enforce exactly one valid origin mode for each message.
+- Manual individual sends create an outbox message without a campaign or automation execution and record `sent_by_staff_id`. Bulk messages link to a campaign recipient. Automated messages link to an automation execution. Enforce the matching `send_mode`/origin constraint; recipient identity may be a contact or staff profile according to the approved recipient class.
 - A campaign's recipient snapshot is immutable evidence of who was considered and why each recipient was included/excluded. It is not permanent send authorization.
 - Immediately before dispatch, recheck active sender permissions, current contact/team/event scope, current consent/lawful-basis policy, phone validity and suppression state.
 - `idempotency_key` is unique. Automation execution is unique on (rule, trigger event key, recipient key); provider callbacks are unique by provider/event identifier where available.
@@ -189,7 +189,7 @@ The ERD uses these principal relationship patterns:
 7. One prayer request has many assignment-history rows and access events; each active assignment points to one intercessor staff profile.
 8. One event has many registrations, attendance records, event staff assignments and closeout records; one registration may have zero or one transport reservation.
 9. One announcement has many channel delivery records; one SMS campaign has many recipient snapshots; one recipient snapshot can produce at most one outbox message.
-10. One automation rule has many executions; one execution can produce at most one outbox message; one outbox message has many delivery events.
+10. One automation rule has many executions; one execution can produce at most one outbox message; one outbox message has many delivery events. Manual messages reference the sending staff profile; bulk and automated messages retain their campaign/trigger origin.
 11. One template has many immutable versions; an automation rule references one approved version.
 12. One report has many review events; one actor may create/review many reports.
 13. One queued client operation has at most one server receipt; the client operation identifier is unique within the authenticated actor/device scope.
@@ -210,7 +210,7 @@ These are design candidates; confirm exact nullability and partial-index syntax 
 - Index prayer assignments by intercessor and active state; index prayer requests by status/expiry only within secure policy boundaries.
 - Index event registrations by event/status and public reference; enforce capacity using a transaction/locking strategy rather than a simple count query.
 - Unique event check-in idempotency key in the appropriate actor/device scope.
-- Unique SMS idempotency key; unique provider callback identifier where supported.
+- Unique SMS idempotency key; unique provider callback identifier where supported. Check that each outbox row has exactly one valid send mode: manual sender, bulk campaign recipient, or automated execution.
 - Unique automation execution on `(automation_rule_id, trigger_event_key, recipient_key)`.
 - Index outbox by status/queued time and provider message ID; index delivery events by message/time.
 - Unique template version number per template.
