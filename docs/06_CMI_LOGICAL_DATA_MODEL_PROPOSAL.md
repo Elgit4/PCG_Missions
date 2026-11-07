@@ -258,7 +258,11 @@ Recommended implementation boundaries:
 | D-12 | Confirm report payload fields and review authority | Determines typed report tables vs validated JSON payload |
 | D-13 | Confirm retention periods for contacts, pastoral records, messages, delivery events and audit | Determines deletion/anonymization and archival constraints |
 
-## 7. Validation and decision register\nThe cross-document decision crosswalk and approval status for D-01–D-13 and R-01–R-12 are maintained in [09 — Database Design Validation & Decision Register](09_DATABASE_DESIGN_VALIDATION_AND_DECISION_REGISTER.md). Do not treat a recommended default as stakeholder approval.\n\n## 8. Recommended build sequence after approval
+## 7. Validation and decision register
+
+Cross-document validation findings are recorded in [09 — Database Design Validation Report](09_DATABASE_DESIGN_VALIDATION_REPORT.md). The ERD-to-physical entity mapping is maintained in [10 — ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md), and stakeholder approvals for D-01–D-13 and R-01–R-12 are recorded in [11 — Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md). Do not treat recommended defaults as stakeholder approvals.
+
+## 8. Recommended build sequence after approval
 
 1. Freeze the role/capability/scope matrix and policy decisions D-01 through D-13.
 2. Validate this logical model with the CMI guide and stakeholders; adjust entities/attributes/cardinalities.
