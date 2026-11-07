@@ -102,6 +102,6 @@ The ERD contains 53 named entity boxes across seven pages. The mapping below rec
 - [ ] All D-01–D-13 and R-01–R-12 decisions recorded.
 - [ ] Stakeholder-approved ERD and physical data dictionary signed off.
 
-## 6. Verification limitations
+The outstanding design decisions are consolidated in [11 — Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md).\n\n## 6. Verification limitations
 
 This crosswalk was checked against the current logical model, seven diagram pages and physical schema proposal. It is a design traceability review, not an automated XML-to-schema parser or SQL validation. No database migrations or hosted Supabase changes were made.
