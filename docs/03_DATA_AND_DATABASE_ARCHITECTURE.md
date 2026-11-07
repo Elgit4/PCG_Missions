@@ -135,7 +135,7 @@ Create a new CMI ERD in functional subject areas:
 
 The ERD must be regenerated from the approved target schema and show actual FK relationships. The older ChurchConnect v1.0/v1.1 draw.io diagrams are historical references, not current CMI diagrams.
 
-## 8. Schema implementation gates
+## 8. Physical schema proposal\nThe detailed PostgreSQL table inventory, candidate columns, constraints, indexes, RLS architecture, SMS dispatch invariants, migration sequence and unresolved decision mapping are documented in [08 — Physical PostgreSQL Database Schema Proposal](08_CMI_PHYSICAL_DATABASE_SCHEMA_PROPOSAL.md). It remains a proposal and must not be treated as executable SQL or an applied Supabase schema.\n\n## 9. Schema implementation gates
 Before writing migrations:
 1. approve the role/capability/scope matrix;
 2. approve event registration and transport data requirements;
