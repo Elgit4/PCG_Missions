@@ -149,7 +149,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 begin
   if tg_table_name = 'prayer_requests' then
     insert into public.prayer_request_access (
@@ -170,7 +170,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 revoke all on function private.grant_sensitive_record_creator_access()
   from public, anon, authenticated;
