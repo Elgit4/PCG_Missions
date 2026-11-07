@@ -1,6 +1,6 @@
 # CMI Follow-up — Roles, Permissions & Security
 
-**Version:** 2.0 | **Status:** Security and authorization baseline | **Parent:** [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md)
+**Version:** 2.1 | **Status:** Security and authorization baseline | **Parent:** [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md)
 
 ## 1. Authorization principles
 - Six operational roles are defined by the CMI guide.
@@ -22,7 +22,7 @@
 | Follow-up volunteer | Conduct assigned follow-up | Assigned/own contact follow-up and reports |
 | Prayer intercessor | Handle assigned prayer requests | Private messages and prayer requests specifically assigned to them |
 
-The descriptions are role intent, not a complete grant list. Do not infer unspecified privileges.
+The descriptions are role intent, not a complete grant list. Do not infer unspecified privileges. Admin / Pastor is one combined role in this six-role baseline; splitting it into separate roles requires an approved change.
 
 ## 3. Multi-role behaviour
 - A person may have multiple active role assignments.
@@ -129,7 +129,7 @@ The PIN format, expiry, recovery verification and lockout thresholds require exp
 | Client forges role metadata | No privilege change |
 | Replayed offline capture sync | No duplicate record |
 | Staff member sends SMS outside contact/team scope | Denied and audited |
-| Bulk campaign includes opted-out recipient | Recipient excluded; send blocked if policy requires |
+| Bulk campaign includes opted-out recipient | Recipient is excluded before dispatch; no message is sent to that recipient |
 | Client attempts direct provider call or reads provider secret | Impossible / denied |
 | Forged or replayed provider delivery webhook | Rejected or idempotently ignored |
 | Automated trigger is disabled | No SMS is queued or sent |
@@ -137,12 +137,12 @@ The PIN format, expiry, recovery verification and lockout thresholds require exp
 
 ## 12. Open approval items
 - Detailed capability-by-role matrix and privileged Admin/Pastor exceptions.
-- Whether Pastor and Admin are one role label or two distinct role assignments. The supplied guide groups them as one role.
 - PIN length, expiry, reset/reissue, recovery and lockout policy.
 - Branch scoping semantics within the single configured church instance.
 - Data retention, deletion and subject-request workflow.
 - Offline queue encryption, sign-out behaviour and expiry.
 - SMS provider selection, credentials custody, sender-ID registration and Ghana regulatory/provider requirements.
-- SMS consent wording/source, opt-out keyword and suppression policy, message retention, quiet hours and allowed service-message exceptions.
+- SMS consent or other approved lawful-basis evidence, opt-out keyword and suppression policy, message retention, quiet hours and any permitted service-message exceptions.
 - Capability matrix for manual sends, bulk campaign creation/approval, automation configuration and delivery-log visibility; per-campaign caps and spend limits.
+- Recipient class and lawful basis for each automated SMS trigger, including whether follow-up reminders target staff assignees or contacts.
 - Public registration abuse prevention and consent wording.
