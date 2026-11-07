@@ -78,10 +78,20 @@ Sign-in uses email and administrator-issued PIN. Keep error messages safe and av
 ## 9. Public content lifecycle
 Staff drafts are private. Authorized publication changes make sermons, daily words and tracts public. Anonymous endpoints must filter on explicit public/published state and expose only fields intended for visitors. Event registration is available only when enabled for that event.
 
-## 10. Observability and quality
+## 10. SMS integration architecture and UX
+- Browser clients call a trusted backend endpoint/Edge Function; only server-side code holds provider credentials and communicates with the SMS gateway.
+- Use a transactional outbox and background worker/queue for bulk and automated sends. Manual sends should use the same authorization, consent, idempotency and audit pipeline.
+- Verify provider delivery webhooks, reject forged/replayed callbacks and update message status idempotently.
+- Provide Communications screens for individual compose/send, campaign audience review/confirmation, automation rules/templates, campaign progress and restricted delivery logs.
+- Show recipients, segment count, estimated cost when available, sender identity, consent exclusions and campaign state before confirmation. Include pause/cancel controls for eligible queued work.
+- Never make delivery claims from a successful API request alone; distinguish submitted from delivered/failed.
+- Keep message previews accessible and mobile friendly. Never display prayer/care details in message templates or broad logs.
+- Provider adapter must be replaceable; provider selection, sender-ID registration, throughput and Ghana compliance/pricing are deployment configuration, not hard-coded assumptions.
+
+## 11. Observability and quality
 Log operational identifiers and failure codes without PINs, secrets or pastoral narratives. Add tests for role/scope combinations, public isolation, prayer privacy, event access, sync retries, duplicate merge and publication state. Monitor sync failures, failed check-in reconciliation, registration capacity conflicts and authorization denials.
 
-## 11. Proposed implementation sequence
+## 12. Proposed implementation sequence
 1. Approve requirements, role matrix and PIN security flow.
 2. Approve information architecture and responsive prototypes.
 3. Redesign target database/ERD and RLS policies.
@@ -90,7 +100,8 @@ Log operational identifiers and failure codes without PINs, secrets or pastoral 
 6. Implement contacts, capture, duplicate merge and offline queue.
 7. Implement follow-up, prayer and care.
 8. Implement events, public registration, transport and check-in.
-9. Implement calendar, announcements and public content.
-10. Implement reports, team administration and church settings.
-11. Complete security, accessibility, responsive and recovery testing.
-12. Pilot with authorized users and synthetic/test data, then obtain production approval.
+9. Implement calendar, announcements, SMS provider adapter, consent/suppression, campaigns, automation triggers and delivery webhooks.
+10. Implement public content.
+11. Implement reports, team administration and church settings.
+12. Complete security, accessibility, responsive and recovery testing.
+13. Pilot with authorized users and synthetic/test data, then obtain production approval.
