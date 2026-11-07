@@ -18,6 +18,10 @@ This directory is organized by function. Read the documents in the order below. 
 | 05 | [Implementation & Deployment Plan](05_IMPLEMENTATION_AND_DEPLOYMENT_PLAN.md) | Phases, tests, release gates, environments and change control |
 | 06 | [CMI Follow-up Internal User Guide](CMI_FOLLOW_UP_APP_GUIDE.md) | Operational instructions for authorized team members |
 
+## Audit and verification records
+
+- [Repository Consistency & Accuracy Audit](REPOSITORY_AUDIT_REPORT.md) — v2.1 cross-document review, corrected defects, unresolved implementation gaps and verification limitations.
+
 ## Reading order
 
 1. Start with document 00.
