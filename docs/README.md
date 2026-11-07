@@ -24,7 +24,7 @@ These artifacts are on the database-design feature branch and are **proposals fo
 
 - [Logical Data Model Proposal](06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md) — entity inventory, relationships, candidate constraints, RLS design notes and decisions requiring approval.
 - [CMI Logical Crow's Foot ERD](database/CMI_Follow_Up_Logical_ERD_v0.1.drawio) — editable diagrams.net file with separate domain pages.
-- [Role, Capability & Scope Matrix Proposal](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md) — proposed capability catalogue, role grants, scope rules, sensitive-data restrictions, SMS separation of duties and authorization tests.
+- [Role, Capability & Scope Matrix Proposal](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md) — proposed capability catalogue, role grants, scope rules, sensitive-data restrictions, SMS separation of duties and authorization tests.\n- [Physical PostgreSQL Schema Proposal](08_CMI_PHYSICAL_DATABASE_SCHEMA_PROPOSAL.md) — proposed table inventory, constraints, indexes, RLS architecture, SMS lifecycle and migration sequence; not executable SQL.
 
 ## Audit and verification records
 
@@ -37,7 +37,7 @@ These artifacts are on the database-design feature branch and are **proposals fo
 3. Use document 02 before designing routes, APIs, database policies or admin tools.
 4. Use document 03 before changing the database or generating an ERD.
 5. Review the proposed logical model and ERD only after understanding documents 00–03.
-6. Use document 04 for frontend and backend implementation.
+6. Review the physical schema proposal and resolve its approval gates before creating migrations.\n7. Use document 04 for frontend and backend implementation.
 7. Use document 05 to plan and verify delivery.
 8. Use document 06 for staff operating instructions.
 
