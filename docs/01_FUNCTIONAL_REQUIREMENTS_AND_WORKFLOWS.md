@@ -75,7 +75,7 @@ Queued captures sync when connection returns. Provide visible pending/syncing/sy
 
 ## 9. Announcements and SMS communications
 
-### 9.0 Announcements
+### Announcements
 - Authorized staff can create announcements for church, team or event audiences within their permitted scope.
 - Audience membership, publication and delivery actions are permission-controlled and revalidated when the announcement is sent or published.
 - Display delivery state only for channels that are actually configured; announcement creation is not proof of delivery.
