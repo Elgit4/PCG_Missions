@@ -288,7 +288,11 @@ No migration should encode conditional grants until these decisions are approved
 
 For each R-ID, record decision (approved/rejected/changed), exact rule and exceptions, approver/date, affected capabilities/fields/scope, corresponding positive/negative test IDs and migration/policy version.
 
-## 12. Decision crosswalk\nThe R-01–R-12 decisions are cross-referenced to the broader logical-model decisions D-01–D-13, with recommended safe defaults and schema consistency findings, in [09 — Database Design Validation & Decision Register](09_DATABASE_DESIGN_VALIDATION_AND_DECISION_REGISTER.md). The two registers are distinct and neither is approved by this cross-reference.\n\n## 13. Next engineering gate
+## 12. Decision crosswalk
+
+R-01–R-12 are cross-referenced with the broader logical-model decisions D-01–D-13 in [11 — Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md). The two decision sets are distinct; neither is approved by this cross-reference. Cross-document validation findings are recorded in [09 — Database Design Validation Report](09_DATABASE_DESIGN_VALIDATION_REPORT.md).
+
+## 13. Next engineering gate
 
 After R-01 through R-12 and the matrix are approved:
 
