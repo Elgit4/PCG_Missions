@@ -142,6 +142,39 @@ create trigger faith_commitment_access_validate_grant
   for each row
   execute function private.enforce_sensitive_access_grant();
 
+-- The creator grant trigger must infer the revocable partial unique indexes by
+-- including their predicates in ON CONFLICT targets.
+create or replace function private.grant_sensitive_record_creator_access()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $
+begin
+  if tg_table_name = 'prayer_requests' then
+    insert into public.prayer_request_access (
+      prayer_request_id, user_id, granted_by_user_id
+    )
+    values (new.prayer_request_id, new.created_by_user_id, new.created_by_user_id)
+    on conflict (prayer_request_id, user_id)
+      where revoked_at is null
+      do nothing;
+  elsif tg_table_name = 'faith_commitment_events' then
+    insert into public.faith_commitment_access (
+      commitment_event_id, user_id, granted_by_user_id
+    )
+    values (new.commitment_event_id, new.recorded_by_user_id, new.recorded_by_user_id)
+    on conflict (commitment_event_id, user_id)
+      where revoked_at is null
+      do nothing;
+  end if;
+  return new;
+end;
+$;
+
+revoke all on function private.grant_sensitive_record_creator_access()
+  from public, anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- 3. Integration-stage history records both sides of a transition, including
 -- an explicit transition back to no current stage.
