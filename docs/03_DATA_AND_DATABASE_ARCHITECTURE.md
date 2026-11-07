@@ -1,6 +1,6 @@
 # CMI Follow-up — Data & Database Architecture
 
-**Version:** 2.0 | **Status:** Conceptual target model; not an applied schema | **Parent:** [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md)
+**Version:** 2.1 | **Status:** Conceptual target model; not an applied schema | **Parent:** [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md)
 
 ## 1. Purpose and migration warning
 This document defines the data domains needed by CMI Follow-up. It is a conceptual target model, not a claim that the repository's existing SQL implements it. The committed ChurchConnect migrations and ERDs were designed for an earlier two-role system and must be treated as legacy/provisional until reconciled.
@@ -51,7 +51,10 @@ Sensitive pastoral records must be separated logically and protected by stricter
 - **calendar entries** — service/event/follow-up/prayer schedule entries with team/assignment scope.
 - **announcements** — content, audience type, target reference, publication/scheduling state and author.
 - **announcement delivery records** — channel-specific delivery metadata for configured channels.
-- **SMS campaigns, outbox/messages, templates, automation rules and delivery events** — manual, bulk and rule-triggered SMS, with consent/suppression, idempotency, provider references and auditable status history.
+- **SMS campaigns** — creator, approved audience criteria, scope, approval, schedule and campaign state.
+- **SMS campaign recipients** — immutable recipient snapshot/reference, eligibility decision and exclusion reason for campaign audit.
+- **SMS outbox/messages** — one message per recipient, idempotency key, trigger/source, provider message ID, segment count and lifecycle status.
+- **SMS templates, automation rules and delivery events** — approved content/version, recipient class, trigger/timing, verified provider callbacks and append-only status history.
 - **contact communication preferences** — permitted channels, SMS consent evidence, opt-out and suppression state.
 
 ### G. Public visitor content
@@ -69,12 +72,7 @@ Sensitive pastoral records must be separated logically and protected by stricter
 - **retention/deletion requests** — governed by church-approved policy.
 
 ### SMS communication domain
-- **communication consent/preferences** — recipient, consent state, source/time, opt-out and suppression.
-- **SMS templates** — approved, versioned content and message category.
-- **SMS campaigns** — creator, scoped audience criteria, approval, schedule and campaign status.
-- **SMS outbox/messages** — one recipient per message, idempotency key, trigger, provider message ID, segment count and lifecycle status.
-- **SMS delivery events** — verified provider callbacks and append-only status history.
-- **SMS automation rules** — enabled trigger, template, timing and eligibility configuration.
+The SMS entities listed under Calendar and communication are the canonical conceptual domain. Model consent evidence and suppression separately from campaign recipient snapshots and individual outbox messages. Campaign membership must be auditable even if contact eligibility later changes; dispatch must nevertheless re-check current consent, suppression and authorization. Automation execution must be idempotent per trigger/recipient/event.
 
 Keep provider secrets server-side. Minimize stored message content and phone snapshots; restrict access and define retention. Never put prayer details or confidential care narratives in SMS.
 
@@ -130,7 +128,8 @@ Create a new CMI ERD in functional subject areas:
 3. Prayer and care with restrictive access relationships.
 4. Events, registration, transport, attendance and closeout.
 5. Calendar, announcements and public visitor content.
-6. Reports, audit and offline sync metadata.
+6. SMS consent, templates, campaigns, recipient snapshots, outbox, automation rules and delivery events.
+7. Reports, audit and offline sync metadata.
 
 The ERD must be regenerated from the approved target schema and show actual FK relationships. The older ChurchConnect v1.0/v1.1 draw.io diagrams are historical references, not current CMI diagrams.
 
