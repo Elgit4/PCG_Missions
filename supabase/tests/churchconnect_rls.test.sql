@@ -229,7 +229,7 @@ select extensions.throws_ok(
     values (
       '11111111-1111-4111-8111-111111111111',
       'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
-      (select auth.uid()),
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       'ACTIVE'
     )
   $q$,
