@@ -28,7 +28,7 @@ The expected intake of approximately **20–50 new visitors per month** is a pla
 | Use-case and activity models v1.0 | [Use cases and activities](docs/USE_CASES_AND_ACTIVITY_MODELS_v1.0.md) | Draft for design review |
 | Stakeholder decisions register | [Open decisions](docs/STAKEHOLDER_DECISIONS.md) | 12 items awaiting confirmation |
 
-The Markdown SRS is the version-controlled reference. A formatted Word copy is available in the project deliverables, but the repository's current SRS source is the Markdown file.
+The Markdown SRS is the version-controlled project source. Repository links in this README are the canonical locations for current deliverables; do not rely on untracked copies in chat.
 
 ## Modelling sequence
 
