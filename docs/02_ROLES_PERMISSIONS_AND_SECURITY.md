@@ -101,7 +101,19 @@ The PIN format, expiry, recovery verification and lockout thresholds require exp
 - Test negative access cases for every role and scope.
 - Audit privileged access, merges, exports, publication, account changes and permission changes.
 
-## 10. Security acceptance matrix
+## 10. SMS authorization and privacy
+- SMS permissions are explicit capabilities, not implicit privileges of every role. Define separate capabilities for individual send, campaign create, campaign approve/send, automation configure/pause and delivery-log access.
+- Admin/Pastor owns provider/sender configuration and church-wide oversight. Coordinator may manage church-scoped campaigns and approved automation where granted. Team leaders are limited to their teams/events. Field workers and follow-up volunteers may send individual SMS only where expressly granted. Prayer intercessors do not receive broad messaging privileges from their prayer role.
+- Evaluate role, active account, contact/team/event scope, consent and suppression status again at send time. A recipient list cached in the UI is not authorization.
+- Provider credentials and signing secrets remain server-side. Use a narrow server endpoint/Edge Function and never permit browser clients to call the provider directly.
+- Do not expose message bodies or recipient phone numbers in broad audit views. Restrict content access and mask numbers where practical.
+- SMS must never contain prayer details, pastoral notes, confidential care narratives, credentials or authentication codes. Sensitive pastoral workflows may send only neutral, non-revealing wording when explicitly approved.
+- Protect webhook callbacks with provider signature verification, replay protection and idempotent status updates. Treat callback payloads as untrusted.
+- Enforce rate limits, per-campaign caps, duplicate prevention, retry ceilings and spend controls. Record who approved and initiated each bulk send.
+- Maintain consent evidence and a suppression/opt-out ledger. Opt-out must take effect before subsequent sends; define handling for legally required service messages separately with counsel/provider.
+- Keep delivery events append-only or auditable; distinguish queued, accepted/submitted, delivered, failed and undeliverable states.
+
+## 11. Security acceptance matrix
 
 | Test | Expected result |
 |---|---|
@@ -116,13 +128,21 @@ The PIN format, expiry, recovery verification and lockout thresholds require exp
 | Multi-role user accesses a permitted module | Allowed only within scope predicates |
 | Client forges role metadata | No privilege change |
 | Replayed offline capture sync | No duplicate record |
+| Staff member sends SMS outside contact/team scope | Denied and audited |
+| Bulk campaign includes opted-out recipient | Recipient excluded; send blocked if policy requires |
+| Client attempts direct provider call or reads provider secret | Impossible / denied |
+| Forged or replayed provider delivery webhook | Rejected or idempotently ignored |
+| Automated trigger is disabled | No SMS is queued or sent |
 | Unauthorized export | Denied and audited where attempted |
 
-## 11. Open approval items
+## 12. Open approval items
 - Detailed capability-by-role matrix and privileged Admin/Pastor exceptions.
 - Whether Pastor and Admin are one role label or two distinct role assignments. The supplied guide groups them as one role.
 - PIN length, expiry, reset/reissue, recovery and lockout policy.
 - Branch scoping semantics within the single configured church instance.
 - Data retention, deletion and subject-request workflow.
 - Offline queue encryption, sign-out behaviour and expiry.
+- SMS provider selection, credentials custody, sender-ID registration and Ghana regulatory/provider requirements.
+- SMS consent wording/source, opt-out keyword and suppression policy, message retention, quiet hours and allowed service-message exceptions.
+- Capability matrix for manual sends, bulk campaign creation/approval, automation configuration and delivery-log visibility; per-campaign caps and spend limits.
 - Public registration abuse prevention and consent wording.
