@@ -180,7 +180,14 @@ The CI workflow in this repository is intentionally test-only. It does not deplo
 
 ## 8. Current verification boundary
 
-The migrations, RLS policies and pgTAP tests are committed to GitHub. They have been reviewed statically and cross-checked for the intended policy/test coverage. They have **not yet been executed against a local Docker Supabase stack or a dedicated hosted ChurchConnect database in this work session**, so the database package must still be treated as a draft until the GitHub Actions run or a local `supabase test db` run passes.
+**Local migration and pgTAP verification: PASS.** GitHub Actions run [42390055203](https://github.com/Elgit4/PCG_Missions/actions/runs/42390055203) checked out commit `2892a63a13c581c3d1f21e04bd08583e4aae9c91`, started a clean local Supabase Docker stack, successfully applied all three committed migrations, and executed the pgTAP suite:
+
+- File: `supabase/tests/churchconnect_rls.test.sql`
+- Tests: 36
+- Result: PASS (0 failed)
+- Cleanup: local Supabase stack stopped successfully
+
+This confirms the committed migrations and current pgTAP regression suite in a clean local CI database. It does **not** mean the schema is deployed to a hosted ChurchConnect project or that live user data has been migrated. No hosted ChurchConnect database has been changed. The package should next be reviewed and applied to a dedicated staging project before production deployment.
 
 Relevant Supabase documentation:
 
