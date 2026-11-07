@@ -1,70 +1,49 @@
-# PCG Missions — ChurchConnect
+# PCG Missions — CMI Follow-up
 
-ChurchConnect is a **single-church New Members Follow-up & Retention Management System** for the Missions Team. Its purpose is to make every visitor visible, every follow-up accountable and every next step clear.
+**Product:** Church on Missions International (CMI) Follow-up  
+**Repository status:** Requirements and architecture documentation consolidated to CMI Follow-up v2.0  
+**Source of truth:** [Master Product Specification](docs/00_MASTER_PRODUCT_SPECIFICATION.md)
 
-## Approved project direction
+CMI Follow-up supports church field capture, contacts, follow-up, prayer and care, events, attendance, calendar, announcements, visitor-facing content, ministry reports and team administration.
 
-- **Scope:** one church only; no multi-church tenancy or cross-church data sharing in the initial release.
-- **Platform:** mobile-first, responsive Progressive Web Application (PWA).
-- **Stack:** React + TypeScript + Vite; Tailwind CSS and shadcn/ui; Supabase Authentication, PostgreSQL, Row Level Security (RLS) and Edge Functions; Vercel is the proposed host.
-- **System roles:** exactly two — **Church Administrator** and **Mission Member**. Welcome Team, registration and other ministry duties are capabilities assigned to Mission Members, not separate roles.
-- **Registration:** staff-only by authorized personnel. Public visitor self-registration and QR self-check-in are out of scope for the initial release.
-- **Assignment:** the Administrator manually assigns one primary Mission Member; optional collaborators may support the assignment.
-- **Follow-up:** configurable tasks, phone calls, SMS, in-person visits, outcomes, reminders and escalation.
-- **SMS:** both manual and scheduled automated messages, approved templates, consent/opt-out checks, server-side credentials, delivery tracking and usage/cost reporting.
-- **Collaboration:** internal notes, supporting collaborators, controlled handovers and preserved history.
-- **Integration:** attendance history and church-defined orientation, discipleship and integration progress.
-- **Security:** RLS and trusted server-side authorization; sensitive pastoral information requires narrower access.
+## Current product baseline
 
-The expected intake of approximately **20–50 new visitors per month** is a planning estimate, not a system capacity limit.
+- **Staff access:** email and administrator-issued PIN.
+- **Roles:** Admin/Pastor, Coordinator, Team leader, Field worker, Follow-up volunteer and Prayer intercessor. Users may hold multiple roles, with effective permissions constrained by record, team, event and assignment scope.
+- **Experiences:** authenticated staff workspace plus separate public visitor site.
+- **Contacts:** online and limited queued offline field capture, duplicate merge, notes, history and follow-up assignment.
+- **Events:** event setup, public registration when enabled, optional transport reservations, check-in, event-specific assignments and closeout.
+- **Prayer and care:** restricted pastoral information and assigned intercessor access.
+- **Public content:** church profile, active events, welcome content, published sermons/daily words and digital tracts.
+- **Offline:** queued field captures, cached capture pickers and previously opened event check-in data only.
+- **Communications:** no automated SMS/WhatsApp messages or reminders.
+- **Out of scope:** multi-church network administration and the future/held capabilities listed in the master specification.
 
-## Project documentation
+## Documentation — read in this order
 
-| Deliverable | Repository file | Status |
+| Order | Document | Purpose |
 |---|---|---|
-| Software Requirements Specification v1.0 | [SRS](docs/ChurchConnect_SRS_v1.0.md) | Draft for church stakeholder review |
-| Logical database design v1.1 | [Database design](docs/DATABASE_DESIGN_v1.1.md) | Aligned with current schema package |
-| Crow’s Foot ERD v1.1 | [Editable draw.io ERD](docs/database/ChurchConnect_ERD_v1.1.drawio) | Four subject-area pages |
-| Use-case and activity models v1.0 | [Use cases and activity models](docs/USE_CASES_AND_ACTIVITY_MODELS_v1.0.md) | Draft for design review |
-| Stakeholder decisions register | [Open decisions](docs/STAKEHOLDER_DECISIONS.md) | 12 items awaiting confirmation |
-| Supabase database implementation guide | [Database implementation](docs/SUPABASE_DATABASE_IMPLEMENTATION_v1.0.md) | Setup, bootstrap and deployment instructions |
-| Implementation roadmap v1.0 | [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP_v1.0.md) | Phases, dependencies, MVP boundary and launch gates |
-| **Application architecture and UI/UX blueprint v1.0** | [Architecture and UI/UX blueprint](docs/APPLICATION_ARCHITECTURE_AND_UI_UX_BLUEPRINT_v1.0.md) | Proposed architecture, navigation, screen inventory, journeys, security boundaries and implementation sequence; pending review |
-| **CMI Follow-up internal app guide** | [CMI Follow-up app guide](docs/CMI_FOLLOW_UP_APP_GUIDE.md) | Internal guide for authorized CMI team members; separate from the ChurchConnect requirements baseline |
+| 00 | [Master Product Specification](docs/00_MASTER_PRODUCT_SPECIFICATION.md) | Authoritative scope and product requirements |
+| 01 | [Functional Requirements & Workflows](docs/01_FUNCTIONAL_REQUIREMENTS_AND_WORKFLOWS.md) | Modules and user journeys |
+| 02 | [Roles, Permissions & Security](docs/02_ROLES_PERMISSIONS_AND_SECURITY.md) | Roles, multi-role rules, access and privacy |
+| 03 | [Data & Database Architecture](docs/03_DATA_AND_DATABASE_ARCHITECTURE.md) | Target data model and schema planning |
+| 04 | [Application Architecture & UI/UX](docs/04_APPLICATION_ARCHITECTURE_AND_UI_UX.md) | Staff/public app structure and UX |
+| 05 | [Implementation & Deployment Plan](docs/05_IMPLEMENTATION_AND_DEPLOYMENT_PLAN.md) | Delivery phases and release gates |
+| 06 | [CMI Follow-up Internal User Guide](docs/CMI_FOLLOW_UP_APP_GUIDE.md) | Staff operating guide |
+| — | [Full documentation index](docs/README.md) | Reading order and legacy artifact register |
 
-> **Documentation alignment:** The CMI Follow-up guide is included as a supplied internal user guide. Its role descriptions and feature coverage differ from the two-role ChurchConnect SRS baseline; adding the guide does not approve or implement those differences in ChurchConnect.
+## Implementation status and critical warning
 
-## Database implementation package
+This repository previously contained ChurchConnect database designs, migrations, RLS policies and tests for a two-role model. Those artifacts are **legacy/provisional** and are not evidence that the current CMI requirements have been implemented. The target CMI data model, ERD, migrations and RLS test suite must be redesigned and reviewed before deployment.
 
-The current PostgreSQL/Supabase implementation is committed under the supabase/ directory:
+The documents describe the intended product; they do not establish that every feature is already implemented in a running application. Verify code, hosted services and test results separately.
 
-| File | Purpose |
-|---|---|
-| [Core schema migration](supabase/migrations/20261107001200_churchconnect_core_schema.sql) | Tables, constraints, indexes and two-role/capability seeds |
-| [RLS and audit migration](supabase/migrations/20261107001300_churchconnect_rls_and_audit.sql) | Row-level access, authorization helpers and audit/task-history triggers |
-| [Sensitive-access and history migration](supabase/migrations/20261107170000_churchconnect_sensitive_access_and_history.sql) | Restricted capability grants, revocable access history and integration-stage transitions |
-| [pgTAP tests](supabase/tests/churchconnect_rls.test.sql) | 36 schema, integrity and authorization assertions |
-| [GitHub Actions database tests](.github/workflows/churchconnect-db-tests.yml) | Starts local Supabase and runs the pgTAP suite on database changes |
+Do not apply the old ChurchConnect migrations to a live CMI project. Do not connect this project to SkillSprint's Supabase instance. No automated messaging service, full offline application, multi-church network or future/held feature should be represented as available.
 
-**Local database CI: PASS.** GitHub Actions successfully started a clean local Supabase stack, applied all three committed migrations and ran the pgTAP suite: **36 tests passed, 0 failed**. [View the successful workflow run](https://github.com/Elgit4/PCG_Missions/actions/runs/42390055203). This verifies the migrations and RLS tests in local CI only; they have not been applied to a hosted ChurchConnect project. Do not link these migrations to SkillSprint or another unrelated Supabase project.
+## Repository governance
 
-## Next project actions
-
-1. Review the [Application Architecture & UI/UX Blueprint](docs/APPLICATION_ARCHITECTURE_AND_UI_UX_BLUEPRINT_v1.0.md) alongside the SRS, database design and implementation roadmap.
-2. Resolve the login identifier/onboarding method and approve the Mission Member capability matrix.
-3. Produce mobile-first wireframes and a clickable prototype for registration, duplicate review, assignment, handover and follow-up completion.
-4. Confirm official church branding assets and visual direction before finalizing design tokens.
-5. Review and approve creation of a **dedicated ChurchConnect Supabase staging project**, after checking the quoted plan and cost. Do not use the SkillSprint project.
-6. Evaluate Ghana-capable SMS providers and pricing; do not enable live SMS until the provider, sender identity, consent and cost controls are approved.
-7. Build the first end-to-end synthetic-data slice: Administrator provisioning → Mission Member sign-in → visitor registration → assignment → task completion and interaction history.
-
-## Key safeguards
-
-- Never store plaintext passwords or expose Supabase service-role/secret or SMS provider keys in frontend code.
-- Hiding UI controls is not authorization; enforce access in RLS and trusted server-side operations.
-- VISITOR_REGISTER and ATTENDANCE_RECORD do not grant full visitor-directory search; VISITOR_DIRECTORY_VIEW is separate.
-- Sensitive pastoral access requires both an explicit capability and a record-specific grant.
-- SMS delivery is not evidence that a person read, understood or responded to a message.
-- Preserve attendance, consent, assignment, interaction, task and handover history.
-- Do not infer that a visitor is inactive or integrated solely from elapsed time.
-- Do not introduce a third system role.
+- Keep this repository as the project source of truth.
+- Update the master specification and affected functional/security/data/architecture documents when requirements change.
+- Record stakeholder approvals before implementation where the documents identify an open decision.
+- Use synthetic data for development and testing.
+- Never commit PINs, passwords, service-role keys, provider secrets or private visitor/prayer data.
