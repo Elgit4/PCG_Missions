@@ -1,0 +1,25 @@
+# Local Supabase configuration for ChurchConnect.
+# This project_id is a local CLI identifier, not a linked hosted project reference.
+project_id = "pcg-missions-churchconnect"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+[db.seed]
+enabled = false
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = true
