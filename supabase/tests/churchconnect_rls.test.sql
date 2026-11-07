@@ -6,7 +6,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(20);
+select plan(25);
 
 -- ---------------------------------------------------------------------------
 -- Fixture identities
@@ -301,6 +301,97 @@ select extensions.throws_ok(
   '42501',
   null,
   'Member without INTEGRATION_RECORD cannot change integration stage'
+);
+
+reset role;
+
+-- ---------------------------------------------------------------------------
+-- Handover: a retained open task grants narrow, temporary access to the former
+-- owner. The new owner can access the visitor but not the former owner's task.
+-- ---------------------------------------------------------------------------
+
+update public.assignments
+set assignment_status = 'ENDED',
+    ended_at = now()
+where assignment_id = '44444444-4444-4444-8444-444444444444';
+
+insert into public.assignments (
+  assignment_id, visitor_id, primary_user_id, assigned_by_user_id,
+  assignment_status, started_at, assignment_reason
+)
+values (
+  '99999999-9999-4999-8999-999999999999',
+  '11111111-1111-4111-8111-111111111111',
+  'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'ACTIVE', now(), 'Test handover; existing task intentionally retained'
+);
+
+insert into public.assignment_history (
+  visitor_id, previous_assignment_id, new_assignment_id, actor_user_id,
+  change_type, change_reason
+)
+values (
+  '11111111-1111-4111-8111-111111111111',
+  '44444444-4444-4444-8444-444444444444',
+  '99999999-9999-4999-8999-999999999999',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'HANDOVER', 'Synthetic handover test'
+);
+
+set local role authenticated;
+set local "request.jwt.claim.sub" = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+select extensions.is(
+  (select count(*)::integer from public.visitors
+   where visitor_id = '11111111-1111-4111-8111-111111111111'),
+  1,
+  'Former owner retains visitor access while an open task remains assigned to them'
+);
+
+select extensions.is(
+  (select count(*)::integer from public.follow_up_tasks
+   where task_id = '66666666-6666-4666-8666-666666666666'),
+  1,
+  'Former owner can still access the specifically retained task'
+);
+
+insert into public.follow_up_records (
+  visitor_id, task_id, assignment_id, actor_user_id,
+  channel, contact_outcome, interaction_summary
+)
+values (
+  '11111111-1111-4111-8111-111111111111',
+  '66666666-6666-4666-8666-666666666666',
+  '44444444-4444-4444-8444-444444444444',
+  (select auth.uid()),
+  'CALL', 'NO_ANSWER', 'Synthetic retained-task follow-up attempt.'
+);
+
+select extensions.is(
+  (select count(*)::integer from public.follow_up_records
+   where task_id = '66666666-6666-4666-8666-666666666666'),
+  1,
+  'Former owner can record an interaction against their retained task'
+);
+
+reset role;
+
+set local role authenticated;
+set local "request.jwt.claim.sub" = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+select extensions.is(
+  (select count(*)::integer from public.visitors
+   where visitor_id = '11111111-1111-4111-8111-111111111111'),
+  1,
+  'New primary owner can access the visitor after handover'
+);
+
+select extensions.is(
+  (select count(*)::integer from public.follow_up_tasks
+   where task_id = '66666666-6666-4666-8666-666666666666'),
+  0,
+  'New primary owner cannot access a task explicitly retained by the former owner'
 );
 
 reset role;
