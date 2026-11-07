@@ -135,7 +135,11 @@ The PIN format, expiry, recovery verification and lockout thresholds require exp
 | Automated trigger is disabled | No SMS is queued or sent |
 | Unauthorized export | Denied and audited where attempted |
 
-## 12. Open approval items
+## 12. Detailed capability matrix
+
+A proposed action-level catalogue, role grant matrix, scope vocabulary, sensitive-field restrictions, SMS separation-of-duties rules and 24 negative/positive authorization test cases are maintained in [07 — Role, Capability & Scope Matrix Proposal](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md). It is not yet approved. Resolve its R-01 through R-12 decisions before encoding conditional grants in database policies. The physical PostgreSQL design maps each unresolved decision to a schema and safe-default consequence in [08 — Physical PostgreSQL Database Schema Proposal](08_CMI_PHYSICAL_DATABASE_SCHEMA_PROPOSAL.md). The broader consistency review and remaining approval gates are in [09 — Database Design Validation Report](09_DATABASE_DESIGN_VALIDATION_REPORT.md). The planned table-by-table RLS policy expectations and negative authorization test catalogue are in [12 — RLS Policy & Security Test Plan](12_RLS_POLICY_AND_SECURITY_TEST_PLAN.md); they are not implemented or executed.
+
+## 13. Open approval items
 - Detailed capability-by-role matrix and privileged Admin/Pastor exceptions.
 - PIN length, expiry, reset/reissue, recovery and lockout policy.
 - Branch scoping semantics within the single configured church instance.
