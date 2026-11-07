@@ -20,6 +20,7 @@ The design targets one church instance with a configured branch context. It does
 | Database | Supabase-managed PostgreSQL, subject to project/version confirmation |
 | Application schema | `public` for Data API-facing tables; internal-only helpers in a non-exposed schema such as `private` |
 | IDs | `uuid`, generated with `gen_random_uuid()` |
+| Case-insensitive email | Enable PostgreSQL `citext` explicitly if used; otherwise store a normalized lowercase email and enforce a unique index |
 | Time | `timestamptz` stored in UTC; church timezone stored as an IANA name in settings |
 | Dates | `date` for calendar dates; never encode local calendar dates as UTC timestamps |
 | Money/budget | `numeric(12,2)` plus explicit currency code; avoid floating point |
@@ -49,7 +50,7 @@ The following is the proposed inventory. Exact columns and nullable rules must b
 
 | Table | Candidate columns and constraints |
 |---|---|
-| `church` | `id uuid PK`; `name text NOT NULL`; `timezone text NOT NULL`; `created_at`, `updated_at`. Enforce exactly one active church row in application governance. |
+| `church` | `id uuid PK`; `name text NOT NULL`; `timezone text NOT NULL`; `is_configured_instance boolean NOT NULL DEFAULT true CHECK (is_configured_instance)`; `created_at`, `updated_at`. Add a unique index on the constant configured-instance flag so a second church row cannot be inserted. |
 | `branch` | `id uuid PK`; `church_id FK NOT NULL`; `name text NOT NULL`; `code text`; `is_active bool NOT NULL DEFAULT true`; unique `(church_id, code)` when code is present. |
 | `church_setting` | `id uuid PK`; `church_id FK NOT NULL`; `setting_key text NOT NULL`; typed/config JSON value with strict server-side validation; unique `(church_id, setting_key)`. Never store provider secrets here. |
 
@@ -112,7 +113,7 @@ Prayer and care tables must not be joined into broad contact views or general se
 | `care_assignment` | `id uuid PK`; `care_record_id FK`; `assignee_user_id uuid FK`; `assigned_by uuid FK`; validity/revocation fields. |
 | `care_interaction` | `id uuid PK`; `care_record_id FK`; `actor_user_id FK`; `interaction_type text`; `outcome_code text`; `restricted_note text`; `occurred_at`; timestamps. |
 
-Do not create a general-purpose `pastoral_note` table accessible through contact RLS. Prayer/care oversight by Admin/Pastor must be a distinct, explicit, audited capability; Coordinator workflow metadata access must not imply request-text access. Intercessors must see only currently assigned requests. An assignment end/revocation must take effect immediately for subsequent queries.
+Do not create a general-purpose `pastoral_note` table accessible through contact RLS. Prayer/care oversight by Admin/Pastor must be a distinct, explicit, audited capability; Coordinator workflow metadata access must not imply request-text access. Intercessors must see only currently assigned requests. An assignment end/revocation must take effect immediately for subsequent queries. PostgreSQL RLS does not automatically write an audit row when a SELECT policy permits a read. Therefore, if the requirement is to audit every narrative read, do not expose direct table SELECT for those narratives through PostgREST: route reads through a narrowly scoped server-side function/Edge Function that verifies the actor, writes the access audit event transactionally, and returns only approved fields. Test that no alternate query path bypasses this audited read path.
 
 ### 3.6 Events, registration, transport and attendance
 
@@ -138,6 +139,7 @@ Capacity enforcement must be transactional (for example, row locking or a safe c
 | `announcement` | `id uuid PK`; `branch_id FK`; `title`; `body`; `audience_type text CHECK`; `audience_ref uuid NULL`; `status text CHECK`; `publish_at`; `published_at`; `created_by FK`; timestamps. |
 | `announcement_delivery` | `id uuid PK`; `announcement_id FK`; `channel text`; `recipient_ref`; `status text`; `attempted_at`; `provider_ref`; safe error code. |
 | `church_public_profile` | `id uuid PK`; `church_id FK UNIQUE`; approved public contact/social links; `welcome_content`; `updated_by FK`; timestamps. |
+| `welcome_message` | `id uuid PK`; `branch_id FK NULL` for church-wide messages; `title`; `body`; `display_order integer`; `status text CHECK`; `published_at`; `created_by FK`; timestamps. |
 | `sermon` | `id uuid PK`; `branch_id FK NULL`; `title`; `body`; `published_at`; `status text CHECK`; `public_slug text UNIQUE`; `created_by FK`. |
 | `daily_word` | `id uuid PK`; `title`; `body`; `publication_date date`; `status text CHECK`; `public_slug text UNIQUE`; `published_at`; `created_by FK`. |
 | `digital_tract` | `id uuid PK`; `title`; `body`; `public_slug text UNIQUE`; `status text CHECK`; `published_at`; `created_by FK`. |
@@ -161,9 +163,10 @@ SMS is a sensitive cost-bearing integration. Keep provider credentials in server
 | `sms_automation_execution` | `id uuid PK`; `rule_id FK`; `trigger_event_id text`; `recipient_identity text`; `idempotency_key text UNIQUE`; `status text CHECK`; `evaluated_at`; unique trigger/recipient/rule. |
 | `sms_outbox` | `id uuid PK`; `branch_id FK`; `send_mode text CHECK IN ('manual','bulk','automated')`; `contact_id FK NULL`; `recipient_phone_snapshot text`; `recipient_class text CHECK`; `manual_sender_user_id uuid FK NULL`; `campaign_id FK NULL`; `campaign_recipient_id FK NULL`; `automation_execution_id FK NULL`; `template_version_id FK NULL`; `message_body_encrypted or protected reference`; `idempotency_key text UNIQUE`; `provider_message_id text NULL`; `segment_count integer CHECK > 0 NULL`; `status text CHECK`; `queued_at`, `submitted_at NULL`, `delivered_at NULL`, `failed_at NULL`; `last_error_code text NULL`. Enforce mode-specific source/sender relationships. |
 | `sms_delivery_event` | `id uuid PK`; `outbox_id FK`; `provider_event_id text`; `provider_status text`; `received_at`; `signature_verified bool`; `safe_payload jsonb`; unique provider/event ID where available. Append-only. |
+| `sms_inbound_event` | `id uuid PK`; `provider_event_id text UNIQUE`; `from_phone_e164 text`; `to_sender_id text`; `received_at`; `keyword text NULL`; `signature_verified bool`; `processing_state text CHECK`; `suppression_id FK NULL`; minimal payload hash. Append-only. Used only if the selected provider supports inbound STOP/opt-out messages or equivalent callbacks. |
 | `sms_dispatch_attempt` | `id uuid PK`; `outbox_id FK`; `attempt_number integer`; `started_at`; `finished_at`; `result_code`; unique `(outbox_id, attempt_number)`. |
 
-The exact message-body storage approach (encrypted database column, server-side encrypted object, or short retention with restricted access) remains an explicit decision. Do not place raw message bodies, full phone snapshots or provider payloads in general audit logs. Keep a minimum required record for cost reconciliation and delivery troubleshooting.
+The exact message-body storage approach (encrypted database column, server-side encrypted object, or short retention with restricted access) remains an explicit decision. If inbound opt-out keywords are supported by the chosen provider, verify callback signatures and create suppression records idempotently before any further queued dispatch. Do not place raw message bodies, full phone snapshots or provider payloads in general audit logs. Keep a minimum required record for cost reconciliation and delivery troubleshooting.
 
 **Required dispatch invariants**
 1. Recheck active sender, capability, branch/team/event scope and recipient eligibility at dispatch time.
@@ -190,7 +193,7 @@ Offline support remains deliberately limited to queued field captures, cached pi
 
 ## 4. Constraints and indexes
 
-Implement constraints as database invariants, not only form validation.
+Implement constraints as database invariants, not only form validation. For records with both `branch_id` and a parent record reference (for example task/contact, prayer/contact, care/contact, event/registration, team/membership), use composite unique keys and composite foreign keys where necessary to guarantee that parent and child belong to the same branch. RLS checks should not be the only defence against cross-branch relational inconsistencies. For active assignments/memberships, use partial unique indexes for the active-row convention or exclusion constraints if overlapping historical validity intervals must be prohibited; a normal unique key on `(user_id, team_id)` would incorrectly prevent valid history.
 
 ### 4.1 Required constraint families
 
@@ -202,6 +205,8 @@ Implement constraints as database invariants, not only form validation.
 - Unique client idempotency keys for capture, registration, check-in, sync, automation execution and outbound messages.
 - Mode-specific SMS source constraints: manual sends require a sender; bulk sends require campaign/recipient provenance; automated sends require an automation execution.
 - Foreign keys for every business relationship; RESTRICT for important history; carefully chosen SET NULL only for optional actor references.
+- Composite branch-consistency foreign keys where parent/child branch identity must match.
+- Prevent unauthorized capability escalation through staff overrides; overrides must not grant a capability marked non-overridable or bypass a mandatory scope/sensitivity check.
 - Unique active check-in per event/attendee; unique active transport reservation per registration/option.
 - Prayer/care assignment validity and no public FK exposure to restricted narratives.
 - No direct uniqueness constraint on contact phone as a person identity key.
@@ -233,6 +238,8 @@ Validate index usefulness against real query plans after representative syntheti
 
 ## 5. RLS and authorization architecture
 
+**Field-level access note:** PostgreSQL RLS is row-level, not column-level. Enforce contact-field restrictions through column grants, carefully designed views with invoker semantics, or server-side DTO/endpoints that return only approved fields. Do not rely on the UI to hide fields.
+
 RLS is mandatory on every exposed application table. Policies must combine identity, active staff state, capability and record scope. `TO authenticated` alone is not authorization. Client-supplied role names, branch IDs, team IDs, metadata and user-editable JWT metadata must never grant access.
 
 ### 5.1 Trusted authorization inputs
@@ -257,7 +264,7 @@ Policies should be table- and action-specific. Conceptually:
 
 ### 5.3 Internal authorization helpers
 
-Candidate helper functions belong in `private` and should normally be `SECURITY INVOKER`. Functions must have fixed search paths and minimal grants. Avoid `SECURITY DEFINER`: it bypasses RLS and can become a public API if exposed. If a future implementation demonstrates a compelling need, isolate it in a non-exposed schema, check `auth.uid()` inside the function, revoke default PUBLIC execute, grant only to the intended role, review SQL search path/ownership, and test with least-privileged roles.
+Candidate helper functions belong in `private` and should normally be `SECURITY INVOKER`. Functions must have fixed search paths and minimal grants. Avoid `SECURITY DEFINER`: it bypasses RLS and can become a public API if exposed. If a future implementation demonstrates a compelling need, isolate it in a non-exposed schema, check `auth.uid()` inside the function, revoke default PUBLIC execute, grant only to the intended role, review SQL search path/ownership, and test with least-privileged roles. Confirm the helper can actually read its authorization tables under the chosen grants/RLS arrangement; do not silently change to definer rights merely to make a policy compile.
 
 Use stable helper concepts such as:
 - active staff identity;
@@ -289,14 +296,17 @@ Use pgTAP or equivalent database tests with seeded synthetic users for all six r
 
 ## 6. Authentication and staff PIN implications
 
-The product requirement says email plus administrator-issued PIN. This is not a reason to store a reusable PIN in `staff_profile` or to treat a short PIN as a Supabase password without a designed authentication flow.
+The product baseline is staff sign-in using **email plus PIN**, with the PIN treated as a private credential and never as a role or authorization claim. The database must not store plaintext PINs or duplicate credential hashes.
 
-Before implementation, decide whether the PIN is:
-1. a one-time activation/bootstrap credential followed by a private user-set password; or
-2. a reusable second factor/PIN layered onto a secure identity flow; or
-3. a custom credential flow implemented only in a trusted server environment with throttling, secure hashing, reset and recovery.
+A safe provisioning pattern is:
+1. Admin creates the staff identity and issues a one-time activation PIN/invitation.
+2. On first activation, the staff member establishes a private PIN that the administrator cannot view or recover.
+3. Subsequent sign-in uses email plus the private PIN through a server-validated authentication flow, if that is the approved product decision.
+4. PIN reset/reissue uses a verified recovery process and invalidates previous credentials/sessions as appropriate.
 
-The current requirements say administrators issue staff credentials but must not know a user's permanent secret. The recommended safe default is a one-time invitation/temporary credential and user-established private secret. If the stakeholder insists on reusable PIN login, conduct a threat model and security review before selecting Supabase Auth integration. Never store plaintext PINs, put them in user metadata, expose PIN verification endpoints without rate limits, or allow role changes through client-editable metadata.
+The exact Supabase Auth integration for reusable PIN sign-in is a security design decision, not something to improvise by passing a short PIN directly as a password. Before implementation, threat-model PIN entropy, rate limits, progressive throttling/lockout, secure hashing/verification, session issuance, recovery, device sharing and credential stuffing. A custom verifier must run only in a trusted server environment and must not expose a user-enumeration oracle. Never put PINs in user metadata, logs or browser-readable tables, and never allow role changes through client-editable metadata.
+
+If the product owner instead chooses one-time PIN activation followed by a different sign-in secret, that changes the stated email-plus-PIN login requirement and must be explicitly approved rather than silently substituted.
 
 ## 7. Mapping unresolved decisions R-01 to R-12
 
@@ -323,7 +333,7 @@ Additional gates remain: PIN format/expiry/recovery, branch scope semantics, ret
 
 No migration files should be generated from this proposal until the logical ERD, role matrix and decisions are approved.
 
-1. **Foundation:** extensions and private schema; church/branch/settings; staff profile linkage; audit primitives.
+1. **Foundation:** required extensions (including `citext` if retained), private schema; church/branch/settings; staff profile linkage; audit primitives.
 2. **Authorization:** role/capability catalogue, grants, role assignments, team/area membership and tested helper functions.
 3. **Contacts:** contacts, capture, assignments, notes, interactions, merge history and duplicate-review workflow.
 4. **Follow-up:** lists, tasks and append-only task events.
