@@ -104,8 +104,17 @@ as $$
             )
           )
       )
+      -- A former owner retains narrowly scoped visitor access while an
+      -- explicitly retained open task remains assigned to them.
+      or exists (
+        select 1
+        from public.follow_up_tasks t
+        where t.visitor_id = p_visitor_id
+          and t.assigned_user_id = (select auth.uid())
+          and t.task_status in ('PENDING', 'DUE', 'IN_PROGRESS', 'RESCHEDULED')
+      )
     );
-$$;
+$;
 
 create or replace function private.can_access_assignment(p_assignment_id uuid)
 returns boolean
@@ -136,8 +145,15 @@ as $$
             )
           )
       )
+      or exists (
+        select 1
+        from public.follow_up_tasks t
+        where t.assignment_id = p_assignment_id
+          and t.assigned_user_id = (select auth.uid())
+          and t.task_status in ('PENDING', 'DUE', 'IN_PROGRESS', 'RESCHEDULED')
+      )
     );
-$$;
+$;
 
 create or replace function private.can_view_prayer_request(p_prayer_request_id uuid)
 returns boolean
