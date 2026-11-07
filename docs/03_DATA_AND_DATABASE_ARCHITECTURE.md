@@ -144,3 +144,13 @@ Before writing migrations:
 5. approve public content publication and anonymous access;
 6. map every table to RLS tests;
 7. generate migrations from the reviewed target schema and verify from a clean local Supabase environment.
+
+
+## 9. Proposed logical model and ERD
+
+A first-pass logical data model and editable, domain-separated Crow's Foot ERD are maintained as review artifacts:
+
+- [CMI Logical Data Model Proposal](06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md)
+- [CMI Logical Crow's Foot ERD v0.1](database/CMI_Follow_Up_Logical_ERD_v0.1.drawio)
+
+These artifacts translate the conceptual domains above into proposed entities, key attributes, relationships and candidate constraints. They are not yet an approved physical schema. Resolve the decision register in the proposal, validate all sensitive-record access paths, and approve the role/capability/scope matrix before generating SQL migrations or applying any database changes.
