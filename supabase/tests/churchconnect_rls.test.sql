@@ -6,7 +6,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(28);
+select plan(29);
 
 -- ---------------------------------------------------------------------------
 -- Fixture identities
@@ -437,6 +437,13 @@ select extensions.is(
    where task_id = '66666666-6666-4666-8666-666666666666'),
   0,
   'New primary owner cannot access a task explicitly retained by the former owner'
+);
+
+select extensions.is(
+  (select count(*)::integer from public.follow_up_task_history
+   where task_id = '66666666-6666-4666-8666-666666666666'),
+  0,
+  'New primary owner cannot read history for a task retained by the former owner'
 );
 
 reset role;
