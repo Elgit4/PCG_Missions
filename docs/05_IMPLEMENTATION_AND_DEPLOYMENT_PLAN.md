@@ -1,12 +1,12 @@
 # CMI Follow-up — Implementation & Deployment Plan
 
-**Version:** 2.0 | **Status:** Proposed delivery baseline | **Parent:** [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md)
+**Version:** 2.1 | **Status:** Proposed delivery baseline | **Parent:** [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md)
 
 ## 1. Delivery rules
 - Build to the CMI master specification, not the superseded two-role ChurchConnect drafts.
 - The GitHub repository is the project source of truth.
 - Use synthetic data during development; no real visitor/prayer data before formal church authorization.
-- No automated SMS/WhatsApp, multi-church network, full offline mode or future/held modules in this release.
+- Manual, bulk and automated SMS are in scope. WhatsApp automation, multi-church network, full offline mode and other future/held modules remain out of scope.
 - Do not apply legacy ChurchConnect migrations to a CMI production database.
 - Each phase exits only after its acceptance tests and documentation are updated.
 
@@ -23,7 +23,7 @@
 | 6 | Limited offline support | Queued capture and previously opened event check-in sync reliably with retry/conflict handling |
 | 7 | Follow-up, prayer and care | Lists, tasks, overdue visibility, care outcomes and strict prayer isolation pass |
 | 8 | Events and public registration | Event setup, optional registration/transport, public registration, check-in and closeout pass |
-| 9 | Calendar and communications | Service/follow-up/prayer calendar and role-scoped announcements work; no automated SMS/WhatsApp |
+| 9 | Communications and SMS | Manual SMS, scoped bulk campaigns, approved automation triggers, consent/opt-out, queue, provider callbacks, delivery tracking and spend controls pass; WhatsApp automation remains out of scope |
 | 10 | Public visitor content | Profile, events, welcome messages, published sermons/daily words and digital tracts are public only when published |
 | 11 | Reports and administration | Daily/event/weekly reports, review states, team management and settings pass scope tests |
 | 12 | Hardening and pilot | Security, accessibility, mobile/browser, backup/restore and user-guide review complete |
@@ -32,7 +32,8 @@
 ## 3. Required verification
 - Unit tests for validation, role combination, status transitions, sync idempotency and report calculations.
 - Database tests for foreign keys, uniqueness, RLS and sensitive record isolation.
-- API/Edge Function tests for authentication, authorization, public registration, merge, publication and offline sync.
+- API/Edge Function tests for authentication, authorization, public registration, merge, publication, offline sync and SMS send/callback endpoints.
+- SMS tests for consent, opt-out, role/scope authorization, bulk confirmation, idempotency, retries, webhook signature/replay protection, delivery status, rate limits and cost caps.
 - End-to-end tests for all six roles, including users holding multiple roles.
 - Public anonymous tests for event registration and published content.
 - Mobile tests on Android Chrome and iOS Safari, plus desktop Chrome/Edge/Firefox/Safari as supported.
@@ -48,16 +49,20 @@ A release is blocked by:
 - public exposure of draft/private content;
 - registration that bypasses event enablement or capacity;
 - reports/exports wider than the user's scope;
+- SMS sent to opted-out or out-of-scope recipients, duplicate sends, exposed provider secrets, unverified delivery callbacks or uncontrolled campaign spend;
 - claims that held capabilities are already available;
 - unreviewed legacy SQL migrations being treated as the new schema.
 
 ## 5. Environments and secrets
 Use separate local, staging and production environments. A dedicated CMI Supabase project must be approved before hosted deployment; do not reuse SkillSprint or unrelated projects. Keep service-role and other privileged secrets server-side. Configure backups, access control, monitoring and documented recovery before production.
 
-## 6. Operational readiness
+## 6. SMS provider readiness
+Before enabling production SMS, select and contract an SMS provider, verify Ghana sender-ID registration and regulatory requirements with the provider/appropriate authority, confirm pricing/throughput/delivery receipts, configure server-side secrets, approve message templates and consent/opt-out wording, set campaign caps and budget alerts, and test STOP/opt-out and failed-delivery handling. Keep SMS disabled in environments without validated provider configuration. Do not assume a provider, sender ID or price.
+
+## 7. Operational readiness
 Before pilot, train role representatives, publish the internal user guide, identify an app administrator/support contact, approve privacy/retention processes, test backup restoration and define how failed offline captures are recovered. Do not use live visitor data in screenshots, issue reports or test fixtures.
 
-## 7. Change control
+## 8. Change control
 Changes to roles, public registration, communication channels, offline scope, sensitive data access or future features require:
 1. a written change request;
 2. impact assessment across requirements, UI, database, RLS, tests and user guide;
