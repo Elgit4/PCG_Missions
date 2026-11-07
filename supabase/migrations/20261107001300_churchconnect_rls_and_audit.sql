@@ -204,6 +204,39 @@ grant execute on function private.can_access_assignment(uuid) to authenticated;
 grant execute on function private.can_view_prayer_request(uuid) to authenticated;
 grant execute on function private.can_view_faith_commitment(uuid) to authenticated;
 
+
+-- Validate referenced application users on privileged assignment/configuration
+-- rows. The frontend cannot choose an arbitrary active user or third role.
+create or replace function private.enforce_profile_role_reference()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  v_user_id uuid;
+  v_required_role text;
+begin
+  v_user_id := (to_jsonb(new) ->> tg_argv[0])::uuid;
+  v_required_role := tg_argv[1];
+
+  if v_user_id is null or not exists (
+    select 1
+    from public.user_profiles up
+    where up.user_id = v_user_id
+      and up.role_code = v_required_role
+      and up.account_status = 'ACTIVE'
+  ) then
+    raise exception 'Referenced user must be an active % account', v_required_role
+      using errcode = '23514';
+  end if;
+
+  return new;
+end;
+$;
+
+revoke all on function private.enforce_profile_role_reference() from public, anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Safe audit trigger. It logs changed field names, never the values themselves.
 -- Sensitive text, phone numbers, emails, tokens and message bodies are excluded.
@@ -338,6 +371,62 @@ create trigger audit_system_settings
   after insert or update on public.system_settings
   for each row execute function private.capture_audit_event('setting_id');
 
+
+
+-- Enforce exactly the intended account type at the database boundary.
+create trigger permission_grants_target_mission_member
+  before insert or update of user_id on public.user_permission_grants
+  for each row execute function private.enforce_profile_role_reference('user_id', 'MISSION_MEMBER');
+create trigger permission_grants_actor_admin
+  before insert or update of granted_by_user_id on public.user_permission_grants
+  for each row execute function private.enforce_profile_role_reference('granted_by_user_id', 'ADMIN');
+
+create trigger assignments_primary_mission_member
+  before insert or update of primary_user_id on public.assignments
+  for each row execute function private.enforce_profile_role_reference('primary_user_id', 'MISSION_MEMBER');
+create trigger assignments_actor_admin
+  before insert or update of assigned_by_user_id on public.assignments
+  for each row execute function private.enforce_profile_role_reference('assigned_by_user_id', 'ADMIN');
+
+create trigger collaborators_target_mission_member
+  before insert or update of user_id on public.assignment_collaborators
+  for each row execute function private.enforce_profile_role_reference('user_id', 'MISSION_MEMBER');
+create trigger collaborators_actor_admin
+  before insert or update of added_by_user_id on public.assignment_collaborators
+  for each row execute function private.enforce_profile_role_reference('added_by_user_id', 'ADMIN');
+
+create trigger assignment_history_actor_admin
+  before insert or update of actor_user_id on public.assignment_history
+  for each row execute function private.enforce_profile_role_reference('actor_user_id', 'ADMIN');
+
+create trigger follow_up_task_assignee_mission_member
+  before insert or update of assigned_user_id on public.follow_up_tasks
+  for each row execute function private.enforce_profile_role_reference('assigned_user_id', 'MISSION_MEMBER');
+
+create trigger sms_templates_creator_admin
+  before insert or update of created_by_user_id on public.sms_templates
+  for each row execute function private.enforce_profile_role_reference('created_by_user_id', 'ADMIN');
+create trigger sms_templates_approver_admin
+  before insert or update of approved_by_user_id on public.sms_templates
+  for each row when (new.approved_by_user_id is not null)
+  execute function private.enforce_profile_role_reference('approved_by_user_id', 'ADMIN');
+
+create trigger workflows_creator_admin
+  before insert or update of created_by_user_id on public.follow_up_workflows
+  for each row execute function private.enforce_profile_role_reference('created_by_user_id', 'ADMIN');
+create trigger workflows_approver_admin
+  before insert or update of approved_by_user_id on public.follow_up_workflows
+  for each row when (new.approved_by_user_id is not null)
+  execute function private.enforce_profile_role_reference('approved_by_user_id', 'ADMIN');
+
+create trigger integration_programs_creator_admin
+  before insert or update of created_by_user_id on public.integration_programs
+  for each row execute function private.enforce_profile_role_reference('created_by_user_id', 'ADMIN');
+
+create trigger system_settings_editor_admin
+  before insert or update of updated_by_user_id on public.system_settings
+  for each row when (new.updated_by_user_id is not null)
+  execute function private.enforce_profile_role_reference('updated_by_user_id', 'ADMIN');
 
 -- Sensitive creators receive a record-specific grant to their own new pastoral
 -- record. Reading still requires PASTORAL_VIEW and current visitor access.
