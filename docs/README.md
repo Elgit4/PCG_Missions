@@ -31,6 +31,8 @@ These artifacts are on the database-design feature branch and are **proposals fo
 - [Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md) — consolidated approval worksheet for R-01–R-12, D-01–D-13 and authentication/SMS/offline governance decisions.
 - [RLS Policy & Security Test Plan](12_RLS_POLICY_AND_SECURITY_TEST_PLAN.md) — table/domain policy expectations, threat scenarios and positive/negative security test catalogue; not executed.
 - [Foundation, Contacts & Follow-up Data Dictionary](13_FOUNDATION_CONTACT_FOLLOWUP_DATA_DICTIONARY.md) — typed column definitions, nullability, keys, branch-consistent foreign keys and unresolved physical-design refinements for the first schema slice.
+- [Restricted Pastoral, Events & Public Content Data Dictionary](14_PASTORAL_EVENTS_PUBLIC_CONTENT_DATA_DICTIONARY.md) — typed definitions for prayer/care, event registration, transport, attendance, announcements and public content.
+- [SMS, Reporting, Audit & Offline Data Dictionary](15_SMS_REPORTING_AUDIT_OFFLINE_DATA_DICTIONARY.md) — typed definitions for SMS consent/suppression, campaigns, automation, outbox, callbacks, reports, audit and limited sync receipts.
 
 ## Audit and verification records
 
