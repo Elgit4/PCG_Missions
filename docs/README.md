@@ -18,6 +18,13 @@ This directory is organized by function. Read the documents in the order below. 
 | 05 | [Implementation & Deployment Plan](05_IMPLEMENTATION_AND_DEPLOYMENT_PLAN.md) | Phases, tests, release gates, environments and change control |
 | 06 | [CMI Follow-up Internal User Guide](CMI_FOLLOW_UP_APP_GUIDE.md) | Operational instructions for authorized team members |
 
+## Proposed database design artifacts
+
+These artifacts are on the database-design feature branch and are **proposals for review**, not approved production schema:
+
+- [Logical Data Model Proposal](06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md) — entity inventory, relationships, candidate constraints, RLS design notes and decisions requiring approval.
+- [CMI Logical Crow's Foot ERD](database/CMI_Follow_Up_Logical_ERD_v0.1.drawio) — editable diagrams.net file with separate domain pages.
+
 ## Audit and verification records
 
 - [Repository Consistency & Accuracy Audit](REPOSITORY_AUDIT_REPORT.md) — v2.1 cross-document review, corrected defects, unresolved implementation gaps and verification limitations.
@@ -28,9 +35,10 @@ This directory is organized by function. Read the documents in the order below. 
 2. Use document 01 to understand module behaviour.
 3. Use document 02 before designing routes, APIs, database policies or admin tools.
 4. Use document 03 before changing the database or generating an ERD.
-5. Use document 04 for frontend and backend implementation.
-6. Use document 05 to plan and verify delivery.
-7. Use document 06 for staff operating instructions.
+5. Review the proposed logical model and ERD only after understanding documents 00–03.
+6. Use document 04 for frontend and backend implementation.
+7. Use document 05 to plan and verify delivery.
+8. Use document 06 for staff operating instructions.
 
 ## Legacy / superseded artifacts
 
