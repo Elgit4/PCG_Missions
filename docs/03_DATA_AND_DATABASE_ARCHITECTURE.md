@@ -71,9 +71,6 @@ Sensitive pastoral records must be separated logically and protected by stricter
 - **audit events** — actor, action, target, timestamp and minimal safe metadata.
 - **retention/deletion requests** — governed by church-approved policy.
 
-### SMS communication domain
-The SMS entities listed under Calendar and communication are the canonical conceptual domain. Model consent evidence and suppression separately from campaign recipient snapshots and individual outbox messages. Campaign membership must be auditable even if contact eligibility later changes; dispatch must nevertheless re-check current consent, suppression and authorization. Automation execution must be idempotent per trigger/recipient/event.
-
 Keep provider secrets server-side. Minimize stored message content and phone snapshots; restrict access and define retention. Never put prayer details or confidential care narratives in SMS.
 
 ## 3. Relationships and integrity rules
@@ -86,6 +83,11 @@ Keep provider secrets server-side. Minimize stored message content and phone sna
 - Public content is visible anonymously only when explicitly published and public.
 - Transport reservation exists only in relation to an event registration and enabled event transport option.
 - Merging contacts must preserve or re-link related records transactionally and record a reversible/auditable merge event where feasible.
+- An SMS campaign has many recipient snapshots and resulting outbox messages; the recipient snapshot records the campaign's evaluated audience and exclusion decision.
+- Each SMS outbox message has a unique idempotency key and at most one provider message reference; manual sends may have no campaign, while bulk/automated sends link to their campaign or automation execution.
+- An SMS automation rule references an approved template version; each trigger execution is idempotent per trigger event and recipient.
+- A message may have many delivery events; verified provider callbacks are deduplicated and append status history without treating submission as delivery.
+- Dispatch rechecks current consent, opt-out/suppression, account permissions and record scope even when an earlier campaign recipient snapshot exists.
 
 ## 4. Data constraints
 - Use stable UUID identifiers for primary entities.
