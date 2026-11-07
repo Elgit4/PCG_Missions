@@ -338,6 +338,76 @@ create trigger audit_system_settings
   after insert or update on public.system_settings
   for each row execute function private.capture_audit_event('setting_id');
 
+
+-- Sensitive creators receive a record-specific grant to their own new pastoral
+-- record. Reading still requires PASTORAL_VIEW and current visitor access.
+create or replace function private.grant_sensitive_record_creator_access()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $
+begin
+  if tg_table_name = 'prayer_requests' then
+    insert into public.prayer_request_access (
+      prayer_request_id, user_id, granted_by_user_id
+    )
+    values (new.prayer_request_id, new.created_by_user_id, new.created_by_user_id)
+    on conflict (prayer_request_id, user_id) do nothing;
+  elsif tg_table_name = 'faith_commitment_events' then
+    insert into public.faith_commitment_access (
+      commitment_event_id, user_id, granted_by_user_id
+    )
+    values (new.commitment_event_id, new.recorded_by_user_id, new.recorded_by_user_id)
+    on conflict (commitment_event_id, user_id) do nothing;
+  end if;
+  return new;
+end;
+$;
+
+revoke all on function private.grant_sensitive_record_creator_access() from public, anon, authenticated;
+
+create trigger prayer_requests_grant_creator_access
+  after insert on public.prayer_requests
+  for each row execute function private.grant_sensitive_record_creator_access();
+
+create trigger faith_commitment_grant_creator_access
+  after insert on public.faith_commitment_events
+  for each row execute function private.grant_sensitive_record_creator_access();
+
+-- Every integration-stage change creates its own historical event in the same
+-- transaction as the visitor update.
+create or replace function private.capture_visitor_stage_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $
+begin
+  if new.current_integration_stage_id is distinct from old.current_integration_stage_id then
+    if (select auth.uid()) is null then
+      raise exception 'A signed-in actor is required for stage changes'
+        using errcode = '42501';
+    end if;
+
+    insert into public.visitor_stage_history (
+      visitor_id, integration_stage_id, changed_by_user_id, changed_at
+    )
+    values (
+      new.visitor_id, new.current_integration_stage_id, (select auth.uid()), now()
+    );
+  end if;
+  return new;
+end;
+$;
+
+revoke all on function private.capture_visitor_stage_change() from public, anon, authenticated;
+
+create trigger visitors_capture_stage_history
+  after update of current_integration_stage_id on public.visitors
+  for each row execute function private.capture_visitor_stage_change();
+
+
 -- ---------------------------------------------------------------------------
 -- RLS and table privileges: no anonymous browser access.
 -- ---------------------------------------------------------------------------
@@ -379,7 +449,7 @@ create policy permission_catalog_read_active_users
 create policy user_profiles_read_team_directory
   on public.user_profiles for select to authenticated
   using (
-    (select private.current_user_is_active())
+    (select private.current_user_is_provisioned())
     and (account_status = 'ACTIVE' or (select private.is_admin()) or user_id = (select auth.uid()))
   );
 
@@ -427,10 +497,31 @@ create policy user_permission_grants_read_self_or_admin
   );
 
 -- Visitor identity and attendance
+
+-- Service types are visible to active team members; only administrators configure them.
+grant select, insert, update on public.service_types to authenticated;
+
+create policy service_types_read_active_or_admin
+  on public.service_types for select to authenticated
+  using (
+    (select private.is_admin())
+    or (select private.current_user_is_active())
+  );
+
+create policy service_types_insert_admin_only
+  on public.service_types for insert to authenticated
+  with check ((select private.is_admin()));
+
+create policy service_types_update_admin_only
+  on public.service_types for update to authenticated
+  using ((select private.is_admin()))
+  with check ((select private.is_admin()));
+
 grant select, insert on public.visitors to authenticated;
 grant update (
   full_name, normalized_phone, email_address, residential_area,
-  referral_source, follow_up_required, updated_by_user_id
+  referral_source, follow_up_required, updated_by_user_id,
+  current_integration_stage_id
 ) on public.visitors to authenticated;
 
 create policy visitors_read_permitted_scope
@@ -540,6 +631,7 @@ create policy faith_commitment_access_read_self_or_admin
   );
 
 grant select, insert on public.prayer_requests to authenticated;
+grant update (request_status, closed_at) on public.prayer_requests to authenticated;
 grant select on public.prayer_request_access to authenticated;
 
 create policy prayer_requests_read_explicit_grant
@@ -552,6 +644,17 @@ create policy prayer_requests_insert_sensitive_permission
     created_by_user_id = (select auth.uid())
     and (select private.has_permission('PASTORAL_RECORD'))
     and (select private.can_access_visitor(visitor_id))
+  );
+
+create policy prayer_requests_update_restricted_handler
+  on public.prayer_requests for update to authenticated
+  using ((select private.is_admin()) or (select private.can_view_prayer_request(prayer_request_id)))
+  with check (
+    (select private.is_admin())
+    or (
+      (select private.can_view_prayer_request(prayer_request_id))
+      and (select private.has_permission('PASTORAL_RECORD'))
+    )
   );
 
 create policy prayer_request_access_read_self_or_admin
@@ -643,7 +746,7 @@ create policy follow_up_workflow_steps_read_active_or_admin
     or exists (
       select 1
       from public.follow_up_workflows wf
-      where wf.workflow_id = workflow_id
+      where wf.workflow_id = public.follow_up_workflow_steps.workflow_id
         and wf.workflow_status = 'ACTIVE'
         and (select private.current_user_is_active())
     )
@@ -734,7 +837,7 @@ create policy follow_up_task_history_read_permitted_scope
     or exists (
       select 1
       from public.follow_up_tasks t
-      where t.task_id = task_id
+      where t.task_id = public.follow_up_task_history.task_id
         and (select private.can_access_visitor(t.visitor_id))
     )
   );
@@ -843,14 +946,14 @@ create policy sms_delivery_events_read_permitted_scope
     or exists (
       select 1
       from public.sms_messages sm
-      where sm.sms_message_id = sms_message_id
+      where sm.sms_message_id = public.sms_delivery_events.sms_message_id
         and (select private.can_access_visitor(sm.visitor_id))
     )
   );
 
 -- Integration, programmes and in-app notifications
 grant select, insert, update on public.integration_stages to authenticated;
-grant select, insert on public.visitor_stage_history to authenticated;
+grant select on public.visitor_stage_history to authenticated;
 grant select, insert, update on public.integration_programs to authenticated;
 grant select, insert, update on public.program_enrolments to authenticated;
 grant select, insert on public.program_attendance to authenticated;
@@ -879,19 +982,6 @@ create policy visitor_stage_history_read_permitted_scope
   using (
     (select private.is_admin())
     or (select private.can_access_visitor(visitor_id))
-  );
-
-create policy visitor_stage_history_insert_authorized
-  on public.visitor_stage_history for insert to authenticated
-  with check (
-    changed_by_user_id = (select auth.uid())
-    and (
-      (select private.is_admin())
-      or (
-        (select private.has_permission('INTEGRATION_RECORD'))
-        and (select private.can_access_visitor(visitor_id))
-      )
-    )
   );
 
 create policy integration_programs_read_active_or_admin
@@ -945,7 +1035,7 @@ create policy program_attendance_read_permitted_scope
     or exists (
       select 1
       from public.program_enrolments pe
-      where pe.enrolment_id = enrolment_id
+      where pe.enrolment_id = public.program_attendance.enrolment_id
         and (select private.can_access_visitor(pe.visitor_id))
     )
   );
