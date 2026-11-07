@@ -2,7 +2,7 @@
 
 **Product:** Church on Missions International (CMI) Follow-up  
 **Repository:** `Elgit4/PCG_Missions`  
-**Specification version:** 2.0  
+**Specification version:** 2.1  
 **Baseline date:** 7 November 2026  
 **Status:** Consolidated requirements baseline for stakeholder validation  
 **Supersedes:** The conflicting ChurchConnect two-role, staff-only registration and automated-SMS assumptions in earlier drafts.
@@ -21,7 +21,7 @@ The application supports one configured church instance and its branch context. 
 
 The supplied **CMI Follow-up App Guide** is the functional source for this baseline. This master specification organizes those requirements into an implementation-ready product definition. Supporting documents add detail but must not contradict it.
 
-Where earlier ChurchConnect documents conflict with this baseline, this specification takes precedence. Earlier two-role-only assumptions, staff-only registration, manual-only event intake, mandatory primary-assignee assumptions, automated SMS workflows and broad integration-programme requirements are not part of this baseline unless explicitly re-approved through change control.
+Where earlier ChurchConnect documents conflict with this baseline, this specification takes precedence. Earlier two-role-only assumptions, staff-only registration, manual-only event intake, mandatory primary-assignee assumptions, the previous exclusion of SMS is superseded by this approved change: manual, bulk and rule-triggered SMS are now in scope.
 
 A guide description is a target capability description, not proof that a feature is implemented. The implementation status of each capability must be verified independently.
 
@@ -39,6 +39,7 @@ A guide description is a target capability description, not proof that a feature
 - Events, public registration when enabled, optional capacity, transport reservations, check-in, event assignments and closeout.
 - Church/event calendar and scheduling for follow-up and prayer activities.
 - Role-scoped announcements and permitted contact communication.
+- SMS communications: staff-composed individual messages, permission-scoped bulk campaigns and configurable automated SMS triggers, with consent controls, delivery tracking and audit.
 - Sermon and daily-word drafting, administration publishing and public display.
 - Public church visitor site, profile, active events, welcome messages, digital tracts, social links and contact links.
 - Daily evangelism, event evangelism and weekly ministry reports, including review/approval/return where authorized.
@@ -46,7 +47,7 @@ A guide description is a target capability description, not proof that a feature
 - Church profile, service areas and visitor-content settings.
 
 ### Explicitly not included as complete services
-- Automated SMS, WhatsApp messages or automated reminders.
+- WhatsApp automation (unless separately approved); SMS is included in manual, bulk and automated forms.
 - Discipleship lesson paths.
 - Disengagement or retention alerts.
 - Territory coverage maps or response maps.
@@ -97,7 +98,7 @@ The exact PIN lifecycle (length, expiry, reset/reissue and recovery verification
 | Care | Care directory/groups, summaries, calls/visits and status updates |
 | Events | Event setup, public registration, transport reservations, check-in, assignments and closeout |
 | Calendar | Services, events, follow-up and prayer scheduling |
-| Announcements | Church/team/event announcements and permitted audience delivery |
+| Announcements & SMS | Announcements plus manual one-to-one SMS, bulk SMS campaigns and configurable automated SMS workflows |
 | Sermons & daily words | Draft, administer, publish/hide and public display |
 | Public visitor site | Church profile, active events, registration, welcome content, tracts and contact/social links |
 | Reports | Daily, event and weekly ministry reporting, review and scoped reporting |
@@ -129,11 +130,27 @@ Authorized staff maintain church profile and visitor-facing information. Sermons
 ### 7.7 Reporting and team administration
 Staff submit daily evangelism, event evangelism and weekly ministry reports. Authorized reviewers may review, approve or return reports. Team administrators manage active/inactive members, roles, area coverage, access and event-specific assignments.
 
-## 8. Communications policy
+## 8. Communications and SMS policy
 
-The app does **not** send automated SMS or WhatsApp messages or reminders. Contact communication is performed only through permitted staff actions and available contact details/links. Respect each person's communication preferences and applicable consent. Do not describe a WhatsApp link or phone action as automated messaging.
+SMS is an approved product capability in three modes:
+1. **Manual SMS:** an authorized staff member composes and sends an individual message from a permitted contact record.
+2. **Bulk SMS:** an authorized user selects an allowed audience (for example, a team, event registrants or contacts within their scope), reviews recipient count and message, and explicitly confirms the campaign.
+3. **Automated SMS:** approved system events can enqueue configured messages, such as event registration confirmation, event updates/reminders, or follow-up task reminders. Each trigger must be explicitly enabled, configurable and auditable; no unapproved trigger may send.
 
-Announcements are created for an authorized church, team or event audience and delivered through channels actually configured and supported by the application. The exact delivery channels must be verified before they are described as active.
+SMS requirements:
+- Use a server-side SMS provider integration; provider credentials must never reach the browser.
+- Maintain a normalized phone number, consent/source/timestamp and communication preference where applicable. Provide suppression/opt-out handling and prevent sends to opted-out or invalid recipients.
+- Use approved templates, sender identity and message-length/segment estimates; show expected recipient count and estimated cost where provider data permits before bulk confirmation.
+- Store message intent, sender/trigger, template/version, recipient reference, provider message ID, queued/sent/delivered/failed/undeliverable status, timestamps and failure code. Do not treat provider acceptance as delivery.
+- Use an outbox/queue, idempotency keys, bounded retries and rate limits to avoid duplicate sends. Failed messages must be visible to authorized operators.
+- Enforce role, team, event and contact scope at send time, not just when selecting recipients.
+- Never include prayer-request details, confidential pastoral notes, sensitive care narratives, PINs or other secrets in SMS. Use neutral wording for sensitive workflows.
+- Bulk campaigns require a final review/confirmation step and audit record. Restrict campaign creation, audience selection and sending separately if the capability matrix requires it.
+- Automated messages must be opt-in/configurable by trigger and template, respect quiet-hour policy if configured, and be cancellable/pausable by authorized administrators.
+- Record and respect applicable consent, opt-out and Ghanaian telecommunications/provider requirements. Provider, sender-ID registration, pricing, throughput and regulatory setup must be validated before production.
+- SMS is not WhatsApp. WhatsApp links remain user-initiated and are not represented as automated messaging.
+
+Announcements may be delivered through in-app and SMS channels only where configured and authorized. Verify actual provider configuration before describing SMS as live.
 
 ## 9. Privacy, safety and data governance
 
@@ -173,7 +190,7 @@ The product is not ready for release until:
 8. Draft/publication boundaries for sermons, daily words and tracts are enforced.
 9. Reports and exports respect authorization scope.
 10. Public pages do not expose staff-only records or private content.
-11. Automated SMS/WhatsApp and all listed future/held features are absent or clearly disabled.
+11. Manual, bulk and automated SMS pass consent, scope, queue, delivery-status, opt-out, cost-control and security tests; WhatsApp automation and all other listed future/held features remain absent or clearly disabled.
 12. User guide, release notes and support procedures match the deployed application.
 
 ## 12. Decisions requiring confirmation
@@ -185,7 +202,7 @@ The guide establishes the functional direction but does not define every technic
 - event registration fields, capacity behaviour, cancellation and transport rules;
 - contact consent wording and retention/deletion policy;
 - offline queue conflict resolution and device-local data protection;
-- announcement delivery channels and audience rules;
+- SMS provider, sender ID/registration, pricing, throughput, consent/opt-out wording, approved templates, automation triggers, quiet hours and campaign permissions;
 - report review/approval authority and report retention;
 - public-content moderation and publication authority;
 - hosting, backups, monitoring and incident response.
