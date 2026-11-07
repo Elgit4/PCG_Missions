@@ -137,7 +137,7 @@ The PIN format, expiry, recovery verification and lockout thresholds require exp
 
 ## 12. Detailed capability matrix
 
-A proposed action-level catalogue, role grant matrix, scope vocabulary, sensitive-field restrictions, SMS separation-of-duties rules and 24 negative/positive authorization test cases are maintained in [07 — Role, Capability & Scope Matrix Proposal](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md). It is not yet approved. Resolve its R-01 through R-12 decisions before encoding conditional grants in database policies.
+A proposed action-level catalogue, role grant matrix, scope vocabulary, sensitive-field restrictions, SMS separation-of-duties rules and 24 negative/positive authorization test cases are maintained in [07 — Role, Capability & Scope Matrix Proposal](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md). It is not yet approved. Resolve its R-01 through R-12 decisions before encoding conditional grants in database policies. The physical PostgreSQL design maps each unresolved decision to a schema and safe-default consequence in [08 — Physical PostgreSQL Database Schema Proposal](08_CMI_PHYSICAL_DATABASE_SCHEMA_PROPOSAL.md).
 
 ## 13. Open approval items
 - Detailed capability-by-role matrix and privileged Admin/Pastor exceptions.
