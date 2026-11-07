@@ -1,6 +1,6 @@
 # CMI Follow-up — Functional Requirements & Workflows
 
-**Version:** 2.0 | **Status:** Consolidated functional baseline | **Parent:** [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md)
+**Version:** 2.1 | **Status:** Consolidated functional baseline | **Parent:** [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md)
 
 This document groups requirements by the work users perform. It defines expected behaviour, not implementation status.
 
@@ -75,6 +75,12 @@ Queued captures sync when connection returns. Provide visible pending/syncing/sy
 
 ## 9. Announcements and SMS communications
 
+### 9.0 Announcements
+- Authorized staff can create announcements for church, team or event audiences within their permitted scope.
+- Audience membership, publication and delivery actions are permission-controlled and revalidated when the announcement is sent or published.
+- Display delivery state only for channels that are actually configured; announcement creation is not proof of delivery.
+- Contact communication actions must respect the recipient's preferences and the sender's access scope.
+
 ### 9.1 Manual one-to-one SMS
 - Authorized staff can compose and send an individual SMS from a contact record or approved communication workspace.
 - Show the destination number, message preview and any available segment/cost estimate before send.
@@ -86,10 +92,11 @@ Queued captures sync when connection returns. Provide visible pending/syncing/sy
 - Revalidate audience membership and consent at send time; exclude opted-out, invalid and suppressed numbers.
 - Show recipient count, message preview, segment estimate and provider cost estimate where available.
 - Require explicit final confirmation; record campaign creator, approver (if required), audience criteria, template/content version and send outcome.
-- Support queued, sending, partially sent, completed, paused and failed campaign states. Provide safe retry without duplicate delivery.
+- Support queued, scheduled, sending, partially sent, completed, paused, cancelled and failed campaign states. Provide safe retry without duplicate delivery.
 
 ### 9.3 Automated SMS
 - Support configurable, explicitly enabled triggers such as event registration confirmation, event updates/reminders and scheduled follow-up reminders.
+- Every automation rule must declare its recipient class (visitor/contact/staff assignee), trigger source, eligibility conditions and timing. A follow-up reminder must identify whether it targets the assigned staff member or the contact; do not infer the recipient.
 - Each trigger has an approved template, enable/disable control, timing rule, recipient eligibility check and audit trail.
 - Do not enable triggers by default until the church approves the wording, timing, audience and provider configuration.
 - Prevent duplicate messages using idempotency keys; retry transient provider failures with bounded backoff.
@@ -105,8 +112,6 @@ Queued captures sync when connection returns. Provide visible pending/syncing/sy
 - WhatsApp links remain user-initiated; WhatsApp automation is not included.
 
 **Acceptance:** Unauthorized users cannot send or broaden audiences; opted-out contacts are excluded; campaigns require confirmation; automated triggers send only when enabled; retries do not duplicate messages; delivery outcomes and failures are visible to authorized staff.
-
-## 10. Sermons and daily words
 
 ## 10. Sermons and daily words
 - Create drafts with title, content and applicable date.
@@ -136,7 +141,7 @@ Queued captures sync when connection returns. Provide visible pending/syncing/sy
 - Event workspace supports event-specific team assignments and event roles.
 - Administrators maintain church profile, service areas, visitor-facing content and other configured settings.
 
-## 15. Explicitly held / unavailable functionality
+## 14. Explicitly held / unavailable functionality
 Do not implement or market as currently available without a separately approved change:
 - WhatsApp automation;
 - discipleship lesson paths;
@@ -148,7 +153,7 @@ Do not implement or market as currently available without a separately approved 
 - multi-church network administration;
 - full offline mode.
 
-## 16. Cross-cutting acceptance tests
+## 15. Cross-cutting acceptance tests
 1. Multi-role user sees combined authorized modules, but not records outside scope.
 2. Unauthorized direct API access is denied even if the user knows a record identifier.
 3. Prayer assignment isolation is enforced in database/API, not only UI.
