@@ -6,7 +6,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(25);
+select plan(28);
 
 -- ---------------------------------------------------------------------------
 -- Fixture identities
@@ -115,6 +115,14 @@ values
   ('88888888-8888-4888-8888-888888888882',
    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
    'INTEGRATION_RECORD',
+   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'ACTIVE'),
+  ('88888888-8888-4888-8888-888888888883',
+   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+   'VISITOR_REGISTER',
+   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'ACTIVE'),
+  ('88888888-8888-4888-8888-888888888884',
+   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+   'ATTENDANCE_RECORD',
    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'ACTIVE');
 
 -- ---------------------------------------------------------------------------
@@ -159,7 +167,7 @@ set local "request.jwt.claim.sub" = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 select extensions.is(
   (select count(*)::integer from public.visitors),
   1,
-  'Mission Member One sees exactly the visitor assigned to them'
+  'Registration and attendance capabilities do not grant directory-wide visitor visibility'
 );
 
 select extensions.is(
@@ -169,10 +177,35 @@ select extensions.is(
   'Mission Member One cannot see another member’s visitor'
 );
 
+select extensions.throws_ok(
+  $q$
+    insert into public.visitor_visits (
+      visitor_id, service_type_id, recorded_by_user_id, visit_date
+    )
+    values (
+      '22222222-2222-4222-8222-222222222222',
+      '33333333-3333-4333-8333-333333333333',
+      (select auth.uid()),
+      date '2026-11-07'
+    )
+  $q$,
+  '42501',
+  null,
+  'Attendance capability alone cannot record attendance for an unrelated visitor'
+);
+
 select extensions.is(
   (select count(*)::integer from public.follow_up_tasks),
   1,
   'Mission Member One can see their assigned follow-up task'
+);
+
+select extensions.is(
+  (select count(*)::integer from public.follow_up_task_history
+   where task_id = '66666666-6666-4666-8666-666666666666'
+     and change_type = 'CREATED'),
+  1,
+  'Task creation is captured in append-only follow-up task history'
 );
 
 select extensions.is(
@@ -202,6 +235,18 @@ select extensions.is_empty(
      returning visitor_id
   $q$,
   'Mission Member cannot update a visitor outside their assignment'
+);
+
+update public.follow_up_tasks
+set due_at = due_at + interval '1 day',
+    task_status = 'RESCHEDULED'
+where task_id = '66666666-6666-4666-8666-666666666666';
+
+select extensions.is(
+  (select count(*)::integer from public.follow_up_task_history
+   where task_id = '66666666-6666-4666-8666-666666666666'),
+  2,
+  'Task rescheduling appends a second task-history event'
 );
 
 insert into public.team_notes (
