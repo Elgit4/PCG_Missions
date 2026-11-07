@@ -135,7 +135,11 @@ The PIN format, expiry, recovery verification and lockout thresholds require exp
 | Automated trigger is disabled | No SMS is queued or sent |
 | Unauthorized export | Denied and audited where attempted |
 
-## 12. Open approval items
+## 12. Detailed capability matrix
+
+A proposed action-level catalogue, role grant matrix, scope vocabulary, sensitive-field restrictions, SMS separation-of-duties rules and 24 negative/positive authorization test cases are maintained in [07 — Role, Capability & Scope Matrix Proposal](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md). It is not yet approved. Resolve its R-01 through R-12 decisions before encoding conditional grants in database policies.
+
+## 13. Open approval items
 - Detailed capability-by-role matrix and privileged Admin/Pastor exceptions.
 - PIN length, expiry, reset/reissue, recovery and lockout policy.
 - Branch scoping semantics within the single configured church instance.
