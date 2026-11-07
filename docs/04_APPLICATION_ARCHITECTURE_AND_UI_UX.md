@@ -1,6 +1,6 @@
 # CMI Follow-up — Application Architecture & UI/UX
 
-**Version:** 2.0 | **Status:** Target architecture for implementation planning | **Parent:** [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md)
+**Version:** 2.1 | **Status:** Target architecture for implementation planning | **Parent:** [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md)
 
 ## 1. Product surfaces
 1. **Staff PWA:** authenticated workspace for contacts, follow-up, prayer, care, events, calendar, announcements, content administration, reports, team and church settings.
