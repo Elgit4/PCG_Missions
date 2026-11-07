@@ -96,7 +96,7 @@ Approval of R-01 to R-12 does not automatically approve D-01 to D-13. Both sets 
 11. No production grants are inferred from role labels or client-supplied metadata.
 12. No migration is applied to a hosted Supabase project without explicit project identification and user approval.
 
-## 6. Next engineering gate
+The entity-by-entity mapping from the current seven-page ERD to the physical table proposal is recorded in [10 — ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md).\n\n## 6. Next engineering gate
 
 Before executable migrations:
 1. Record approvals for R-01 through R-12 and D-01 through D-13.
