@@ -15,7 +15,7 @@ This register tracks decisions that must be confirmed by church stakeholders bef
 | TBD-04 | First-week and first-month follow-up schedule, channels, quiet hours and approved message templates. | Church leadership / Missions Team | Workflow configuration | Open |
 | TBD-05 | Definitions of successful contact, returning visitor, new convert and integrated member. | Church leadership / Missions Team | Requirements sign-off | Open |
 | TBD-06 | Escalation timing for unassigned visitors, overdue tasks and repeated unsuccessful contact attempts. | Church Administrator | Workflow configuration | Open |
-| TBD-07 | Mission Member capability grants: who may register visitors, record attendance, send SMS, collaborate and view restricted pastoral information. | Church Administrator | Access-control design | Open |
+| TBD-07 | Mission Member capability grants: who may register visitors, record attendance, search the full visitor directory, send SMS, collaborate and view restricted pastoral information. | Church Administrator | Access-control design | Open |
 | TBD-08 | Visitor-data retention, correction, archival and deletion policy. | Church leadership / privacy adviser | Before pilot | Open |
 | TBD-09 | Privacy notice and evidence of consent for SMS and other follow-up channels, including opt-out handling. | Church leadership / privacy adviser | Before pilot | Open |
 | TBD-10 | Official integration stages and programme-completion criteria. | Church leadership | Workflow design | Open |
