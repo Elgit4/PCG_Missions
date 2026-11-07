@@ -55,7 +55,8 @@ insert into public.permission_catalog
   (permission_code, permission_name, description, is_sensitive)
 values
   ('VISITOR_REGISTER', 'Register visitors', 'Create new visitor profiles and capture initial consent.', false),
-  ('ATTENDANCE_RECORD', 'Record attendance', 'Record a visitor attendance event.', false),
+  ('ATTENDANCE_RECORD', 'Record attendance', 'Record an attendance event for a visitor within the member\'s permitted scope.', false),
+  ('VISITOR_DIRECTORY_VIEW', 'Search visitor directory', 'Search existing visitor records for explicitly authorized registration or attendance duties.', false),
   ('SMS_SEND', 'Send SMS', 'Initiate permitted manual SMS to assigned or shared visitors.', false),
   ('CONSENT_MANAGE', 'Manage contact consent', 'Capture or update channel consent evidence.', false),
   ('INTEGRATION_RECORD', 'Record integration activity', 'Record approved stage and programme activity.', false),
@@ -251,13 +252,19 @@ create unique index assignment_collaborators_one_active_idx
 create table public.assignment_history (
   assignment_history_id uuid primary key default gen_random_uuid(),
   visitor_id uuid not null references public.visitors(visitor_id) on delete restrict,
-  previous_assignment_id uuid references public.assignments(assignment_id) on delete restrict,
-  new_assignment_id uuid not null references public.assignments(assignment_id) on delete restrict,
+  previous_assignment_id uuid,
+  new_assignment_id uuid not null,
   actor_user_id uuid not null references public.user_profiles(user_id) on delete restrict,
   change_type text not null
     check (change_type in ('INITIAL_ASSIGNMENT', 'HANDOVER', 'REASSIGNMENT', 'CLOSURE')),
   change_reason text,
-  changed_at timestamptz not null default now()
+  changed_at timestamptz not null default now(),
+  constraint assignment_history_previous_visitor_fk
+    foreign key (previous_assignment_id, visitor_id)
+    references public.assignments(assignment_id, visitor_id) on delete restrict,
+  constraint assignment_history_new_visitor_fk
+    foreign key (new_assignment_id, visitor_id)
+    references public.assignments(assignment_id, visitor_id) on delete restrict
 );
 
 create table public.sms_templates (
@@ -326,7 +333,8 @@ create table public.visitor_workflow_instances (
   started_by_user_id uuid not null references public.user_profiles(user_id) on delete restrict,
   constraint workflow_instance_assignment_visitor_fk
     foreign key (assignment_id, visitor_id)
-    references public.assignments(assignment_id, visitor_id) on delete restrict
+    references public.assignments(assignment_id, visitor_id) on delete restrict,
+  constraint workflow_instance_id_visitor_unique unique (workflow_instance_id, visitor_id)
 );
 
 create unique index visitor_workflow_one_active_instance_idx
@@ -337,7 +345,7 @@ create table public.follow_up_tasks (
   task_id uuid primary key default gen_random_uuid(),
   visitor_id uuid not null references public.visitors(visitor_id) on delete restrict,
   assignment_id uuid not null,
-  workflow_instance_id uuid references public.visitor_workflow_instances(workflow_instance_id) on delete restrict,
+  workflow_instance_id uuid,
   workflow_step_id uuid references public.follow_up_workflow_steps(workflow_step_id) on delete restrict,
   assigned_user_id uuid not null references public.user_profiles(user_id) on delete restrict,
   created_by_user_id uuid not null references public.user_profiles(user_id) on delete restrict,
@@ -356,6 +364,9 @@ create table public.follow_up_tasks (
   constraint task_assignment_visitor_fk
     foreign key (assignment_id, visitor_id)
     references public.assignments(assignment_id, visitor_id) on delete restrict,
+  constraint task_workflow_instance_visitor_fk
+    foreign key (workflow_instance_id, visitor_id)
+    references public.visitor_workflow_instances(workflow_instance_id, visitor_id) on delete restrict,
   constraint task_id_visitor_unique unique (task_id, visitor_id),
   constraint task_workflow_step_requires_instance check (workflow_step_id is null or workflow_instance_id is not null),
   constraint task_completion_consistent check (
@@ -407,7 +418,8 @@ create table public.follow_up_records (
     references public.assignments(assignment_id, visitor_id) on delete restrict,
   constraint record_task_visitor_fk
     foreign key (task_id, visitor_id)
-    references public.follow_up_tasks(task_id, visitor_id) on delete restrict
+    references public.follow_up_tasks(task_id, visitor_id) on delete restrict,
+  constraint follow_up_record_id_visitor_unique unique (follow_up_record_id, visitor_id)
 );
 
 create table public.team_notes (
@@ -434,8 +446,8 @@ create table public.sms_messages (
   sms_message_id uuid primary key default gen_random_uuid(),
   visitor_id uuid not null references public.visitors(visitor_id) on delete restrict,
   sms_template_id uuid references public.sms_templates(sms_template_id) on delete restrict,
-  task_id uuid references public.follow_up_tasks(task_id) on delete restrict,
-  follow_up_record_id uuid references public.follow_up_records(follow_up_record_id) on delete restrict,
+  task_id uuid,
+  follow_up_record_id uuid,
   initiated_by_user_id uuid references public.user_profiles(user_id) on delete restrict,
   provider_name text not null,
   send_mode text not null check (send_mode in ('MANUAL', 'AUTOMATED')),
@@ -453,7 +465,13 @@ create table public.sms_messages (
   failure_code text,
   failure_message text,
   created_at timestamptz not null default now(),
-  constraint sms_cost_nonnegative check (estimated_cost is null or estimated_cost >= 0)
+  constraint sms_cost_nonnegative check (estimated_cost is null or estimated_cost >= 0),
+  constraint sms_message_task_visitor_fk
+    foreign key (task_id, visitor_id)
+    references public.follow_up_tasks(task_id, visitor_id) on delete restrict,
+  constraint sms_message_record_visitor_fk
+    foreign key (follow_up_record_id, visitor_id)
+    references public.follow_up_records(follow_up_record_id, visitor_id) on delete restrict
 );
 
 create unique index sms_messages_provider_message_id_idx
