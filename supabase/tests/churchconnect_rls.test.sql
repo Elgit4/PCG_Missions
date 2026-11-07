@@ -6,7 +6,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(29);
+select plan(34);
 
 -- ---------------------------------------------------------------------------
 -- Fixture identities
@@ -104,6 +104,22 @@ values
    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
 
+-- Revocation is retained as history; a later active grant to the same user
+-- and record must be possible without overwriting the prior grant.
+update public.prayer_request_access
+set revoked_at = now()
+where prayer_request_id = '77777777-7777-4777-8777-777777777777'
+  and user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+insert into public.prayer_request_access (
+  prayer_request_id, user_id, granted_by_user_id
+)
+values (
+  '77777777-7777-4777-8777-777777777777',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+);
+
 insert into public.user_permission_grants (
   grant_id, user_id, permission_code, granted_by_user_id, grant_status
 )
@@ -123,6 +139,10 @@ values
   ('88888888-8888-4888-8888-888888888884',
    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
    'ATTENDANCE_RECORD',
+   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'ACTIVE'),
+  ('88888888-8888-4888-8888-888888888885',
+   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+   'PASTORAL_VIEW',
    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'ACTIVE');
 
 -- ---------------------------------------------------------------------------
@@ -155,6 +175,15 @@ select extensions.ok(
 select extensions.ok(
   not pg_catalog.has_table_privilege('authenticated', 'public.user_permission_grants', 'insert'),
   'Authenticated clients cannot write permission grants directly'
+);
+
+select extensions.is(
+  (select count(*)::integer from public.prayer_request_access
+   where prayer_request_id = '77777777-7777-4777-8777-777777777777'
+     and user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+     and revoked_at is null),
+  1,
+  'A revoked sensitive access grant can be re-issued without overwriting history'
 );
 
 -- ---------------------------------------------------------------------------
@@ -315,6 +344,20 @@ select extensions.is(
   'Integration-stage update creates an auditable history event'
 );
 
+update public.visitors
+set current_integration_stage_id = null,
+    updated_by_user_id = (select auth.uid())
+where visitor_id = '11111111-1111-4111-8111-111111111111';
+
+select extensions.is(
+  (select count(*)::integer from public.visitor_stage_history
+   where visitor_id = '11111111-1111-4111-8111-111111111111'
+     and previous_integration_stage_id = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+     and integration_stage_id is null),
+  1,
+  'Clearing an integration stage records the previous stage and the null destination'
+);
+
 reset role;
 
 -- ---------------------------------------------------------------------------
@@ -459,6 +502,49 @@ select extensions.is(
   (select count(*)::integer from public.visitors),
   2,
   'Administrator can view all visitor profiles'
+);
+
+select extensions.is(
+  (select count(*)::integer from public.prayer_requests),
+  0,
+  'Administrator cannot read sensitive pastoral data without a record-specific grant'
+);
+
+reset role;
+
+select extensions.throws_ok(
+  $q$
+    insert into public.user_permission_grants (
+      user_id, permission_code, granted_by_user_id, grant_status
+    )
+    values (
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'REPORT_EXPORT',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      'ACTIVE'
+    )
+  $q$,
+  '23514',
+  null,
+  'Administrator cannot receive a non-sensitive Mission Member capability'
+);
+
+insert into public.prayer_request_access (
+  prayer_request_id, user_id, granted_by_user_id
+)
+values (
+  '77777777-7777-4777-8777-777777777777',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+);
+
+set local role authenticated;
+set local "request.jwt.claim.sub" = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+select extensions.is(
+  (select count(*)::integer from public.prayer_requests),
+  1,
+  'Administrator with PASTORAL_VIEW and a record-specific grant can read restricted pastoral data'
 );
 
 reset role;
