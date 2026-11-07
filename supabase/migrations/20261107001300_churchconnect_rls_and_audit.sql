@@ -130,7 +130,7 @@ as $$
           )
       )
     );
-$;
+$$;
 
 create or replace function private.can_access_assignment(p_assignment_id uuid)
 returns boolean
@@ -169,7 +169,7 @@ as $$
           and t.task_status in ('PENDING', 'DUE', 'IN_PROGRESS', 'RESCHEDULED')
       )
     );
-$;
+$$;
 
 create or replace function private.can_view_prayer_request(p_prayer_request_id uuid)
 returns boolean
@@ -244,7 +244,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   v_user_id uuid;
   v_required_role text;
@@ -265,7 +265,7 @@ begin
 
   return new;
 end;
-$;
+$$;
 
 revoke all on function private.enforce_profile_role_reference() from public, anon, authenticated;
 
@@ -411,7 +411,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   v_change_type text;
 begin
@@ -458,7 +458,7 @@ begin
 
   return new;
 end;
-$;
+$$;
 
 revoke all on function private.capture_follow_up_task_history() from public, anon, authenticated;
 
@@ -531,7 +531,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 begin
   if tg_table_name = 'prayer_requests' then
     insert into public.prayer_request_access (
@@ -548,7 +548,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 revoke all on function private.grant_sensitive_record_creator_access() from public, anon, authenticated;
 
@@ -568,7 +568,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 begin
   if new.current_integration_stage_id is distinct from old.current_integration_stage_id
      and not (select private.is_admin())
@@ -578,7 +578,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 revoke all on function private.enforce_visitor_stage_permission() from public, anon, authenticated;
 
@@ -593,7 +593,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 begin
   if new.current_integration_stage_id is distinct from old.current_integration_stage_id then
     if (select auth.uid()) is null then
@@ -610,7 +610,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 revoke all on function private.capture_visitor_stage_change() from public, anon, authenticated;
 
