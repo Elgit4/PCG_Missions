@@ -258,7 +258,7 @@ Recommended implementation boundaries:
 | D-12 | Confirm report payload fields and review authority | Determines typed report tables vs validated JSON payload |
 | D-13 | Confirm retention periods for contacts, pastoral records, messages, delivery events and audit | Determines deletion/anonymization and archival constraints |
 
-## 7. Recommended build sequence after approval
+## 7. Validation and decision register\nThe cross-document decision crosswalk and approval status for D-01–D-13 and R-01–R-12 are maintained in [09 — Database Design Validation & Decision Register](09_DATABASE_DESIGN_VALIDATION_AND_DECISION_REGISTER.md). Do not treat a recommended default as stakeholder approval.\n\n## 8. Recommended build sequence after approval
 
 1. Freeze the role/capability/scope matrix and policy decisions D-01 through D-13.
 2. Validate this logical model with the CMI guide and stakeholders; adjust entities/attributes/cardinalities.
@@ -269,6 +269,6 @@ Recommended implementation boundaries:
 7. Build SMS provider sandbox pipeline only after D-09 through D-11 are approved.
 8. Verify clean local reset, migrations, tests and staging before considering production deployment.
 
-## 8. Explicit non-goals
+## 9. Explicit non-goals
 
 This model does not add multi-church tenancy, WhatsApp automation, full offline operation, AI features, discipleship paths, retention/disengagement alerts, maps, testimonies/milestones or PDF hosting. It does not store credentials or provider secrets.
