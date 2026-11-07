@@ -84,8 +84,9 @@ The system exposes only these two roles. Welcome Team, Missions Leader and other
 - Administrator has full administrative access.
 - Mission Members access assigned or explicitly shared visitor records only.
 - Mission Members cannot create accounts, assign roles, change global settings or browse all visitors by default.
-- Registration and attendance permissions can be granted explicitly.
-- Prayer requests and pastoral-care notes require stricter access than ordinary follow-up notes.
+- Registration and attendance permissions can be granted explicitly. These duties do not automatically grant full visitor-directory search.
+- A separate `VISITOR_DIRECTORY_VIEW` capability is required when a Mission Member must search all visitor profiles for registration or attendance duties.
+- Prayer requests and pastoral-care notes require stricter access than ordinary follow-up notes; even an Administrator requires the relevant sensitive capability and record-specific grant.
 - UI hiding is not authorization: access must be enforced by database policies and trusted server-side checks.
 
 ## 4. Assumptions and constraints
@@ -364,7 +365,7 @@ The initial design uses one church dataset, not multi-tenant tables. Keep module
 | TBD-04 | First-week and first-month follow-up schedule, channels, quiet hours and approved message templates. | Church leadership / Missions Team | Workflow configuration |
 | TBD-05 | Definitions of successful contact, returning visitor, new convert and integrated member. | Church leadership / Missions Team | Requirements sign-off |
 | TBD-06 | Escalation timing for unassigned visitors, overdue tasks and repeated unsuccessful contact attempts. | Church Administrator | Workflow configuration |
-| TBD-07 | Mission Member capability grants, including registration, attendance, SMS, collaboration and access to sensitive pastoral information. | Church Administrator | Access-control design |
+| TBD-07 | Mission Member capability grants, including registration, attendance, full visitor-directory search, SMS, collaboration and access to sensitive pastoral information. | Church Administrator | Access-control design |
 | TBD-08 | Visitor-data retention, correction, archival and deletion policy. | Church leadership / privacy adviser | Before pilot |
 | TBD-09 | Privacy notice and evidence of consent for SMS and other follow-up channels, including opt-out handling. | Church leadership / privacy adviser | Before pilot |
 | TBD-10 | Official integration stages and programme-completion criteria. | Church leadership | Workflow design |
