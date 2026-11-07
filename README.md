@@ -30,6 +30,9 @@ The expected intake of approximately **20–50 new visitors per month** is a pla
 | Supabase database implementation guide | [Database implementation](docs/SUPABASE_DATABASE_IMPLEMENTATION_v1.0.md) | Setup, bootstrap and deployment instructions |
 | Implementation roadmap v1.0 | [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP_v1.0.md) | Phases, dependencies, MVP boundary and launch gates |
 | **Application architecture and UI/UX blueprint v1.0** | [Architecture and UI/UX blueprint](docs/APPLICATION_ARCHITECTURE_AND_UI_UX_BLUEPRINT_v1.0.md) | Proposed architecture, navigation, screen inventory, journeys, security boundaries and implementation sequence; pending review |
+| **CMI Follow-up internal app guide** | [CMI Follow-up app guide](docs/CMI_FOLLOW_UP_APP_GUIDE.md) | Internal guide for authorized CMI team members; separate from the ChurchConnect requirements baseline |
+
+> **Documentation alignment:** The CMI Follow-up guide is included as a supplied internal user guide. Its role descriptions and feature coverage differ from the two-role ChurchConnect SRS baseline; adding the guide does not approve or implement those differences in ChurchConnect.
 
 ## Database implementation package
 
