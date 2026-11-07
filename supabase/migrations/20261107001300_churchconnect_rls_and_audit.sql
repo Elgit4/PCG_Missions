@@ -1054,7 +1054,10 @@ create policy follow_up_task_history_read_permitted_scope
       select 1
       from public.follow_up_tasks t
       where t.task_id = public.follow_up_task_history.task_id
-        and (select private.can_access_visitor(t.visitor_id))
+        and (
+          t.assigned_user_id = (select auth.uid())
+          or (select private.can_access_assignment(t.assignment_id))
+        )
     )
   );
 
