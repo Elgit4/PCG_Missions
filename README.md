@@ -19,7 +19,7 @@ CMI Follow-up supports church field capture, contacts, follow-up, prayer and car
 - **Communications:** manual one-to-one SMS, permission-scoped bulk SMS and configurable automated SMS; WhatsApp automation is not included.
 - **Out of scope:** multi-church network administration and the future/held capabilities listed in the master specification.
 
-## Documentation — read in this order
+## Proposed database design (review branch)\n\nThe current database-design proposal is available on the `design/cmi-logical-data-model` branch: [Logical Data Model](docs/06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md) and [editable Crow's Foot ERD](docs/database/CMI_Follow_Up_Logical_ERD_v0.1.drawio). These are review artifacts, not approved migrations or a production schema.\n\n## Documentation — read in this order
 
 | Order | Document | Purpose |
 |---|---|---|
