@@ -113,6 +113,22 @@ as $$
           and t.assigned_user_id = (select auth.uid())
           and t.task_status in ('PENDING', 'DUE', 'IN_PROGRESS', 'RESCHEDULED')
       )
+      -- The person who registered a visitor retains access while that profile
+      -- remains unassigned. Registration capability never grants directory-wide
+      -- read access.
+      or exists (
+        select 1
+        from public.visitors v
+        where v.visitor_id = p_visitor_id
+          and v.created_by_user_id = (select auth.uid())
+          and not exists (
+            select 1
+            from public.assignments a2
+            where a2.visitor_id = v.visitor_id
+              and a2.assignment_status = 'ACTIVE'
+              and a2.ended_at is null
+          )
+      )
     );
 $;
 
@@ -386,6 +402,70 @@ create trigger audit_program_attendance
 create trigger audit_system_settings
   after insert or update on public.system_settings
   for each row execute function private.capture_audit_event('setting_id');
+
+
+-- Follow-up task history is an append-only operational event stream. It records
+-- creation, rescheduling, status changes, cancellation and reassignment.
+create or replace function private.capture_follow_up_task_history()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $
+declare
+  v_change_type text;
+begin
+  if tg_op = 'INSERT' then
+    insert into public.follow_up_task_history (
+      task_id, actor_user_id, change_type,
+      old_assigned_user_id, new_assigned_user_id,
+      old_due_at, new_due_at, old_status, new_status, change_reason
+    )
+    values (
+      new.task_id, (select auth.uid()), 'CREATED',
+      null, new.assigned_user_id,
+      null, new.due_at, null, new.task_status, new.cancellation_reason
+    );
+    return new;
+  end if;
+
+  if old.assigned_user_id is distinct from new.assigned_user_id then
+    v_change_type := 'REASSIGNED';
+  elsif new.task_status = 'CANCELLED'
+        and old.task_status is distinct from new.task_status then
+    v_change_type := 'CANCELLED';
+  elsif old.due_at is distinct from new.due_at
+        or (new.task_status = 'RESCHEDULED'
+            and old.task_status is distinct from new.task_status) then
+    v_change_type := 'RESCHEDULED';
+  elsif old.task_status is distinct from new.task_status then
+    v_change_type := 'STATUS_CHANGED';
+  else
+    return new;
+  end if;
+
+  insert into public.follow_up_task_history (
+    task_id, actor_user_id, change_type,
+    old_assigned_user_id, new_assigned_user_id,
+    old_due_at, new_due_at, old_status, new_status, change_reason
+  )
+  values (
+    new.task_id, (select auth.uid()), v_change_type,
+    old.assigned_user_id, new.assigned_user_id,
+    old.due_at, new.due_at, old.task_status, new.task_status,
+    case when new.task_status = 'CANCELLED' then new.cancellation_reason else null end
+  );
+
+  return new;
+end;
+$;
+
+revoke all on function private.capture_follow_up_task_history() from public, anon, authenticated;
+
+create trigger follow_up_task_history_capture
+  after insert or update of assigned_user_id, due_at, task_status
+  on public.follow_up_tasks
+  for each row execute function private.capture_follow_up_task_history();
 
 
 
@@ -662,8 +742,7 @@ create policy visitors_read_permitted_scope
     and (
       (select private.is_admin())
       or (select private.can_access_visitor(visitor_id))
-      or (select private.has_permission('VISITOR_REGISTER'))
-      or (select private.has_permission('ATTENDANCE_RECORD'))
+      or (select private.has_permission('VISITOR_DIRECTORY_VIEW'))
     )
   );
 
@@ -699,7 +778,7 @@ create policy visitor_visits_read_permitted_scope
   using (
     (select private.is_admin())
     or (select private.can_access_visitor(visitor_id))
-    or (select private.has_permission('ATTENDANCE_RECORD'))
+    or (select private.has_permission('VISITOR_DIRECTORY_VIEW'))
   );
 
 create policy visitor_visits_insert_authorized
@@ -708,7 +787,13 @@ create policy visitor_visits_insert_authorized
     recorded_by_user_id = (select auth.uid())
     and (
       (select private.is_admin())
-      or (select private.has_permission('ATTENDANCE_RECORD'))
+      or (
+        (select private.has_permission('ATTENDANCE_RECORD'))
+        and (
+          (select private.can_access_visitor(visitor_id))
+          or (select private.has_permission('VISITOR_DIRECTORY_VIEW'))
+        )
+      )
     )
   );
 
@@ -729,11 +814,11 @@ create policy visitor_consents_insert_authorized
     and (
       (select private.is_admin())
       or (
-        (select private.has_permission('CONSENT_MANAGE'))
-        and (select private.can_access_visitor(visitor_id))
-      )
-      or (
-        (select private.has_permission('VISITOR_REGISTER'))
+        (select private.can_access_visitor(visitor_id))
+        and (
+          (select private.has_permission('CONSENT_MANAGE'))
+          or (select private.has_permission('VISITOR_REGISTER'))
+        )
       )
     )
   );
@@ -1182,7 +1267,7 @@ create policy program_attendance_insert_authorized
         and exists (
           select 1
           from public.program_enrolments pe
-          where pe.enrolment_id = enrolment_id
+          where pe.enrolment_id = public.program_attendance.enrolment_id
             and (select private.can_access_visitor(pe.visitor_id))
         )
       )
