@@ -41,7 +41,7 @@ The current PostgreSQL/Supabase implementation is committed under `supabase/`:
 | [pgTAP tests](supabase/tests/churchconnect_rls.test.sql) | 36 schema, integrity and authorization assertions |
 | [GitHub Actions database tests](.github/workflows/churchconnect-db-tests.yml) | Starts local Supabase and runs the pgTAP suite on database changes |
 
-**Database verification is not yet confirmed.** The package is committed, but the migrations have not been applied to a hosted ChurchConnect project. Check the GitHub Actions workflow run for the first automated migration/test result. Do not link these migrations to SkillSprint or another unrelated Supabase project.
+**Local database CI: PASS.** GitHub Actions successfully started a clean local Supabase stack, applied all three committed migrations and ran the pgTAP suite: **36 tests passed, 0 failed**. [View the successful workflow run](https://github.com/Elgit4/PCG_Missions/actions/runs/42390055203). This verifies the migrations and RLS tests in local CI only; they have not been applied to a hosted ChurchConnect project. Do not link these migrations to SkillSprint or another unrelated Supabase project.
 
 ## Next project deliverables
 
