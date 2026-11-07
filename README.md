@@ -38,7 +38,7 @@ The current PostgreSQL/Supabase implementation is committed under `supabase/`:
 | [Core schema migration](supabase/migrations/20261107001200_churchconnect_core_schema.sql) | Tables, constraints, indexes and two-role/capability seeds |
 | [RLS and audit migration](supabase/migrations/20261107001300_churchconnect_rls_and_audit.sql) | Row-level access, authorization helpers and audit/task-history triggers |
 | [Sensitive-access and history migration](supabase/migrations/20261107170000_churchconnect_sensitive_access_and_history.sql) | Restricted capability grants, revocable access history and integration-stage transitions |
-| [pgTAP tests](supabase/tests/churchconnect_rls.test.sql) | 35 schema, integrity and authorization assertions |
+| [pgTAP tests](supabase/tests/churchconnect_rls.test.sql) | 36 schema, integrity and authorization assertions |
 | [GitHub Actions database tests](.github/workflows/churchconnect-db-tests.yml) | Starts local Supabase and runs the pgTAP suite on database changes |
 
 **Database verification is not yet confirmed.** The package is committed, but the migrations have not been applied to a hosted ChurchConnect project. Check the GitHub Actions workflow run for the first automated migration/test result. Do not link these migrations to SkillSprint or another unrelated Supabase project.
