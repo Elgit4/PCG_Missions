@@ -6,7 +6,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(34);
+select plan(35);
 
 -- ---------------------------------------------------------------------------
 -- Fixture identities
@@ -387,6 +387,27 @@ select extensions.throws_ok(
   '42501',
   null,
   'Member without INTEGRATION_RECORD cannot change integration stage'
+);
+
+reset role;
+
+insert into public.user_permission_grants (
+  user_id, permission_code, granted_by_user_id, grant_status
+)
+values (
+  'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  'VISITOR_DIRECTORY_VIEW',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  'ACTIVE'
+);
+
+set local role authenticated;
+set local "request.jwt.claim.sub" = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+select extensions.is(
+  (select count(*)::integer from public.visitors),
+  2,
+  'Explicit VISITOR_DIRECTORY_VIEW grant enables full visitor-directory search'
 );
 
 reset role;
