@@ -5,7 +5,7 @@
 **Specification version:** 2.1  
 **Baseline date:** 7 November 2026  
 **Status:** Consolidated requirements baseline for stakeholder validation  
-**Supersedes:** The conflicting ChurchConnect two-role, staff-only registration and automated-SMS assumptions in earlier drafts.
+**Supersedes:** Conflicting ChurchConnect-era role, registration, assignment and messaging assumptions. SMS requirements for CMI are defined exclusively by this specification.
 
 ## 1. Product definition
 
@@ -21,7 +21,7 @@ The application supports one configured church instance and its branch context. 
 
 The supplied **CMI Follow-up App Guide** is the functional source for this baseline. This master specification organizes those requirements into an implementation-ready product definition. Supporting documents add detail but must not contradict it.
 
-Where earlier ChurchConnect documents conflict with this baseline, this specification takes precedence. Earlier two-role-only assumptions, staff-only registration, manual-only event intake, mandatory primary-assignee assumptions, the previous exclusion of SMS is superseded by this approved change: manual, bulk and rule-triggered SMS are now in scope.
+Where earlier ChurchConnect documents conflict with this baseline, this specification takes precedence. The earlier two-role model, staff-only registration, manual-only event intake and mandatory primary-assignee assumptions are superseded. This CMI baseline explicitly includes manual, bulk and rule-triggered SMS; legacy SMS descriptions do not define the current implementation.
 
 A guide description is a target capability description, not proof that a feature is implemented. The implementation status of each capability must be verified independently.
 
@@ -139,14 +139,14 @@ SMS is an approved product capability in three modes:
 
 SMS requirements:
 - Use a server-side SMS provider integration; provider credentials must never reach the browser.
-- Maintain a normalized phone number, consent/source/timestamp and communication preference where applicable. Provide suppression/opt-out handling and prevent sends to opted-out or invalid recipients.
+- Maintain a normalized phone number, communication preference and evidence of consent or other church-approved lawful basis where applicable. Record the source and timestamp. Enforce suppression/opt-out and never send non-essential messages to opted-out or invalid recipients.
 - Use approved templates, sender identity and message-length/segment estimates; show expected recipient count and estimated cost where provider data permits before bulk confirmation.
-- Store message intent, sender/trigger, template/version, recipient reference, provider message ID, queued/sent/delivered/failed/undeliverable status, timestamps and failure code. Do not treat provider acceptance as delivery.
+- Store message intent, sender/trigger, template/version, recipient reference, provider message ID, queued/submitted/delivered/failed/undeliverable status, timestamps and failure code. Do not treat provider acceptance as delivery.
 - Use an outbox/queue, idempotency keys, bounded retries and rate limits to avoid duplicate sends. Failed messages must be visible to authorized operators.
 - Enforce role, team, event and contact scope at send time, not just when selecting recipients.
 - Never include prayer-request details, confidential pastoral notes, sensitive care narratives, PINs or other secrets in SMS. Use neutral wording for sensitive workflows.
 - Bulk campaigns require a final review/confirmation step and audit record. Restrict campaign creation, audience selection and sending separately if the capability matrix requires it.
-- Automated messages must be opt-in/configurable by trigger and template, respect quiet-hour policy if configured, and be cancellable/pausable by authorized administrators.
+- Automated messages must be opt-in/configurable by trigger and template, respect an approved quiet-hours policy; do not enable automated sending until that policy is configured, and be cancellable/pausable by authorized administrators.
 - Record and respect applicable consent, opt-out and Ghanaian telecommunications/provider requirements. Provider, sender-ID registration, pricing, throughput and regulatory setup must be validated before production.
 - SMS is not WhatsApp. WhatsApp links remain user-initiated and are not represented as automated messaging.
 
