@@ -221,4 +221,4 @@ Track these in [02 — Roles, Permissions & Security](02_ROLES_PERMISSIONS_AND_S
 
 ## 14. Implementation truth statement
 
-This specification describes the target product. Existing ChurchConnect SQL migrations, tests and ERD artifacts were designed for an earlier two-role model and must be treated as **legacy/provisional**, not as proof that this CMI model is implemented. They must be reconciled through a reviewed schema redesign and new migrations before deployment. Do not apply old migrations to a live project on the assumption that they implement this specification.
+This specification describes the target product. The retained ChurchConnect ERD artifacts, and any associated legacy SQL migrations or tests, belong to an earlier two-role model and must be treated as **legacy/provisional**, not as proof that this CMI model is implemented. They must be reconciled through a reviewed schema redesign and new migrations before deployment. Do not apply old migrations to a live project on the assumption that they implement this specification.
