@@ -1,7 +1,7 @@
 # PCG Missions — CMI Follow-up
 
 **Product:** Church on Missions International (CMI) Follow-up  
-**Repository status:** Requirements and architecture documentation consolidated to CMI Follow-up v2.0  
+**Repository status:** Requirements and architecture documentation consolidated to CMI Follow-up v2.1  
 **Source of truth:** [Master Product Specification](docs/00_MASTER_PRODUCT_SPECIFICATION.md)
 
 CMI Follow-up supports church field capture, contacts, follow-up, prayer and care, events, attendance, calendar, announcements, visitor-facing content, ministry reports and team administration.
