@@ -52,6 +52,6 @@ The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role sche
 - Staff sign in with administrator-issued email and PIN.
 - Public visitor pages are separate from staff pages.
 - Offline support is limited to queued field capture, cached pickers and previously opened event check-in data.
-- Automated SMS/WhatsApp messaging and reminders are not available.
+- Manual, bulk and automated SMS are in scope; WhatsApp automation is not included. SMS must remain disabled until provider, sender-ID, consent/opt-out and budget controls are configured and tested.
 - Multi-church administration and the listed future/held features are out of scope.
 - A documented capability is not proof that the feature has shipped. Verify implementation separately.
