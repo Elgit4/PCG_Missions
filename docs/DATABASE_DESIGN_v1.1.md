@@ -2,7 +2,7 @@
 
 **Version:** 1.1  
 **Date:** 7 November 2026  
-**Status:** Physical-schema-aligned logical design; draft for technical and stakeholder review  
+**Status:** Physical-schema and migration-aligned logical design; draft for technical and stakeholder review  
 **Repository:** `Elgit4/PCG_Missions`
 
 ## 1. Design objectives
@@ -47,7 +47,8 @@ No physical data types are shown in the ERD. The later physical schema will use 
 
 Open the editable diagram in diagrams.net (draw.io):
 
-- [ChurchConnect Crow’s Foot ERD v1.0](database/ChurchConnect_ERD_v1.1.drawio)
+- [ChurchConnect Crow’s Foot ERD v1.1](database/ChurchConnect_ERD_v1.1.drawio)
+- [Supabase database implementation guide](SUPABASE_DATABASE_IMPLEMENTATION_v1.0.md)
 
 The diagram has four pages: **Identity & Access**, **Visitor & Attendance**, **Assignments & Follow-up**, and **SMS & Integration**. The textual catalogue below is the authoritative logical attribute inventory for this version.
 
@@ -84,9 +85,11 @@ Team directory identity data is separated from private contact details. Active t
 - `description`
 - `is_sensitive`
 
+The seeded capability catalogue includes `VISITOR_REGISTER`, `ATTENDANCE_RECORD`, `VISITOR_DIRECTORY_VIEW`, `SMS_SEND`, `CONSENT_MANAGE`, `INTEGRATION_RECORD`, `PASTORAL_VIEW`, `PASTORAL_RECORD` and `REPORT_EXPORT`. Directory-wide visitor search is a separate capability; registration or attendance permission does not imply directory-wide read access.
+
 #### `user_permission_grants`
 - ◆ `grant_id`
-- ◇ `user_id` — active Mission Member receiving the capability
+- ◇ `user_id` — active Mission Member, or an Administrator receiving a designated sensitive capability
 - ◇ `permission_code`
 - ◇ `granted_by_user_id` — active Administrator who granted it
 - `grant_status`
@@ -94,7 +97,7 @@ Team directory identity data is separated from private contact details. Active t
 - `revoked_at`
 - `grant_reason`
 
-**Access rules:** each application profile has exactly one role. A role can be assigned to many user profiles. Permission grants are explicit, attributable and revocable. The database must prevent Mission Members from granting permissions to themselves or others. An account's deactivation must immediately block normal access without deleting historical records.
+**Access rules:** each application profile has exactly one role. A role can be assigned to many user profiles. Permission grants are explicit, attributable and revocable. Mission Members may receive approved capabilities; Administrators may receive only designated sensitive capabilities such as `PASTORAL_VIEW` or `PASTORAL_RECORD`. Only an active Administrator may grant or revoke capabilities. An account's deactivation must immediately block normal access without deleting historical records.
 
 ### 4.2 Visitor and attendance domain
 
@@ -168,7 +171,7 @@ Consent rows are historical events. Current eligibility is determined from the a
 - `granted_at`
 - `revoked_at`
 
-Each faith-commitment event requires a record-specific grant plus the `PASTORAL_VIEW` capability and visitor access. The creator receives a record-specific grant automatically; an Administrator grants access to additional users through a trusted server-side operation.
+Each faith-commitment event requires a record-specific active grant plus the `PASTORAL_VIEW` capability and visitor access. The creator receives a record-specific grant automatically; an Administrator grants access to additional users through a trusted server-side operation. Revocation is retained, and a later re-grant creates a new active grant.
 
 #### `prayer_requests` (restricted)
 - ◆ `prayer_request_id`
@@ -188,7 +191,7 @@ Each faith-commitment event requires a record-specific grant plus the `PASTORAL_
 - `granted_at`
 - `revoked_at`
 
-Access to a prayer request is explicit and record-specific. RLS must also verify that the account is active and has the necessary sensitive-record capability.
+Access to a prayer request is explicit and record-specific. RLS must also verify that the account is active and has the necessary sensitive-record capability. A revoked grant remains in history; a partial unique index permits only one active grant for a user/request pair while allowing a later re-grant.
 
 ### 4.3 Assignment and follow-up domain
 
@@ -298,7 +301,7 @@ Task statuses describe the planned work only: pending, due, in progress, complet
 - `change_reason`
 - `changed_at`
 
-This event history preserves rescheduling, status changes, cancellations, handovers and task transfers without overwriting earlier values.
+A database trigger appends events for task creation, rescheduling, status changes, cancellation and reassignment. This history is append-only for normal application users and does not overwrite earlier values.
 
 #### `follow_up_records`
 - ◆ `follow_up_record_id`
@@ -391,12 +394,13 @@ Delivery events are append-only. Webhook handling must validate provider authent
 #### `visitor_stage_history`
 - ◆ `stage_history_id`
 - ◇ `visitor_id`
-- ◇ `integration_stage_id`
+- ◇ `previous_integration_stage_id` — nullable
+- ◇ `integration_stage_id` — nullable when the current stage is cleared
 - ◇ `changed_by_user_id`
 - `changed_at`
 - `change_reason`
 
-The current stage is referenced from the visitor profile. History rows preserve each change and must be added transactionally with the current-stage update.
+The current stage is referenced from the visitor profile. History rows preserve both sides of each transition, including a transition to no current stage, and are added transactionally with the visitor update.
 
 #### `integration_programs`
 - ◆ `program_id`
@@ -505,13 +509,13 @@ These constraints must be implemented in the physical PostgreSQL schema, not lef
 
 1. **Exactly two roles:** seed only `ADMIN` and `MISSION_MEMBER`; enforce unique role codes and reject arbitrary role creation through normal app access.
 2. **One active primary assignment:** add a partial unique index on `assignments(visitor_id)` for rows with active status and no end date.
-3. **Active Mission Member references:** database triggers validate that primary assignees, collaborators and task assignees are active `MISSION_MEMBER` profiles; assignment/grant actors must be active Administrators.
+3. **Role references:** database triggers validate that primary assignees, collaborators and task assignees are active `MISSION_MEMBER` profiles; assignment/grant actors must be active Administrators. An Administrator may be the target of a sensitive capability grant only.
 4. **Collaborator uniqueness:** prevent duplicate active collaborator rows for the same assignment and user.
 5. **Workflow step uniqueness:** `(workflow_id, step_order)` must be unique.
 6. **Idempotent generation:** set unique idempotency keys for generated tasks and automated messages; retry logic must reuse the same key.
 7. **Consent enforcement:** sending optional SMS must check the latest applicable consent and all opt-out/suppression states immediately before provider submission.
 8. **Message integrity:** provider message IDs and idempotency keys must be unique when present; webhook callback identifiers must not be processed twice.
-9. **Append-only history:** assignment history, SMS delivery events and audit records must not be silently overwritten by regular users.
+9. **Append-only history:** assignment history, follow-up task history, SMS delivery events and audit records must not be silently overwritten by regular users.
 10. **Visit duplication:** warn on probable duplicate visitor/service/date attendance; allow authorized correction after review rather than assuming a person can attend only once per date.
 11. **Programme attendance:** prevent accidental duplicate attendance for the same enrolment/session while retaining legitimate multiple sessions.
 12. **Status separation:** never reuse a visitor lifecycle field to store task, SMS or integration status.
@@ -522,8 +526,9 @@ RLS policies must be designed and tested table by table. Suggested access model:
 
 - **Administrator:** broad operational access. Access to particularly sensitive pastoral records should still require the designated sensitive-record capability, rather than assuming every administrator needs to read every private narrative.
 - **Mission Member:** visitor records where the member is the active primary assignee or a collaborator on the active assignment. A former owner retains only narrow visitor/task access while an explicitly retained open task remains assigned to them; that access ends when the task is completed or cancelled.
-- **Registration duty:** a Mission Member with the `VISITOR_REGISTER` capability may create visitor records. This does not automatically grant access to every visitor record.
-- **Attendance duty:** a Mission Member with the `ATTENDANCE_RECORD` capability may record the attendance they are authorized to manage.
+- **Registration duty:** a Mission Member with the `VISITOR_REGISTER` capability may create visitor records. This does not automatically grant access to every visitor record. An unassigned visitor remains visible to its creator until the Administrator assigns it.
+- **Attendance duty:** a Mission Member with the `ATTENDANCE_RECORD` capability may record attendance only for visitors they can access. If a member must search the full directory for welcome/attendance duties, the Administrator must separately grant `VISITOR_DIRECTORY_VIEW`.
+- **Administrator pastoral access:** an Administrator must also receive the designated sensitive capability and a record-specific grant before viewing a prayer request or faith-commitment event.
 - **SMS sending:** a Mission Member may send only to an assigned/shared visitor where a valid consent and suppression check passes. The operation runs through a trusted server-side function.
 - **Prayer requests:** access requires a specific row in `prayer_request_access` and the `PASTORAL_VIEW` capability. The creator receives an initial record grant; additional access is Administrator-controlled.
 - **Sensitive commitment events:** access requires `faith_commitment_access`, `PASTORAL_VIEW` and visitor access; do not expose details in notification previews or ordinary reports.
@@ -581,6 +586,10 @@ All steps that establish ownership and workflow generation should execute in a t
 7. Restricted pastoral records, notifications, audit logs and reporting views.
 8. RLS policies, security tests, indexes and backup/restore verification.
 
-## 10. Decisions to carry forward
+## 10. Implementation and verification
+
+The current implementation sequence, local CLI commands, first-Administrator bootstrap and hosted-deployment safeguards are documented in [SUPABASE_DATABASE_IMPLEMENTATION_v1.0.md](SUPABASE_DATABASE_IMPLEMENTATION_v1.0.md). The repository includes three ordered Supabase migrations and a 34-assertion pgTAP suite. The migrations and tests remain draft until a local Supabase run or GitHub Actions database-test workflow passes.
+
+## 11. Decisions to carry forward
 
 The schema can be designed now, but production values for workflow cadence, task escalation, SMS gateway, retention and integration-stage criteria remain stakeholder decisions. Track them in [STAKEHOLDER_DECISIONS.md](STAKEHOLDER_DECISIONS.md); do not hard-code assumed values into the database.
