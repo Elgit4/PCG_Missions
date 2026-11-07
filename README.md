@@ -34,7 +34,7 @@ CMI Follow-up supports church field capture, contacts, follow-up, prayer and car
 
 ## Implementation status and critical warning
 
-This repository previously contained ChurchConnect database designs, migrations, RLS policies and tests for a two-role model. Those artifacts are **legacy/provisional** and are not evidence that the current CMI requirements have been implemented. The target CMI data model, ERD, migrations and RLS test suite must be redesigned and reviewed before deployment.
+The retained ChurchConnect ERDs and historical materials describe an earlier two-role database model. Any associated legacy migrations, RLS policies or tests are **legacy/provisional** and are not evidence that the current CMI requirements have been implemented. The target CMI data model, ERD, migrations and RLS test suite must be redesigned and reviewed before deployment.
 
 The documents describe the intended product; they do not establish that every feature is already implemented in a running application. Verify code, hosted services and test results separately.
 
