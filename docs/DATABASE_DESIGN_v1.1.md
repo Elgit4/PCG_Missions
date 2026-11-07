@@ -171,7 +171,7 @@ Consent rows are historical events. Current eligibility is determined from the a
 - `granted_at`
 - `revoked_at`
 
-Each faith-commitment event requires a record-specific active grant plus the `PASTORAL_VIEW` capability and visitor access. The creator receives a record-specific grant automatically; an Administrator grants access to additional users through a trusted server-side operation. Revocation is retained, and a later re-grant creates a new active grant.
+Each faith-commitment event requires a record-specific active grant plus the `PASTORAL_VIEW` capability and visitor access. The creator receives a record-specific grant automatically; an Administrator grants access to additional users through a trusted server-side operation. Revocation is retained, and a later re-grant creates a new active grant. A partial unique index permits only one active grant per event/user pair.
 
 #### `prayer_requests` (restricted)
 - ◆ `prayer_request_id`
@@ -226,7 +226,7 @@ A visitor can have many historical assignment rows, but no more than one active 
 - `change_reason`
 - `changed_at`
 
-Assignment rows preserve the time-bounded ownership. History rows explain the transition and who authorized it.
+Assignment rows preserve the time-bounded ownership. Composite foreign keys bind both the previous and new assignment references to the same visitor. History rows explain the transition and who authorized it.
 
 #### `follow_up_workflows`
 - ◆ `workflow_id`
@@ -301,7 +301,7 @@ Task statuses describe the planned work only: pending, due, in progress, complet
 - `change_reason`
 - `changed_at`
 
-A database trigger appends events for task creation, rescheduling, status changes, cancellation and reassignment. This history is append-only for normal application users and does not overwrite earlier values.
+A database trigger appends events for task creation, rescheduling, status changes, cancellation and reassignment. `actor_user_id` may be null for a system-generated event. This history is append-only for normal application users and does not overwrite earlier values.
 
 #### `follow_up_records`
 - ◆ `follow_up_record_id`
@@ -519,6 +519,8 @@ These constraints must be implemented in the physical PostgreSQL schema, not lef
 10. **Visit duplication:** warn on probable duplicate visitor/service/date attendance; allow authorized correction after review rather than assuming a person can attend only once per date.
 11. **Programme attendance:** prevent accidental duplicate attendance for the same enrolment/session while retaining legitimate multiple sessions.
 12. **Status separation:** never reuse a visitor lifecycle field to store task, SMS or integration status.
+13. **Same-visitor links:** composite foreign keys prevent workflow instances, tasks, contact records and SMS links from accidentally referencing a different visitor's parent record.
+14. **Regrantable pastoral access:** partial unique indexes enforce one active prayer-request or faith-commitment grant per user/record pair while allowing revoked grants to remain as history and later be re-issued.
 
 ## 7. Authorization and RLS design notes
 
