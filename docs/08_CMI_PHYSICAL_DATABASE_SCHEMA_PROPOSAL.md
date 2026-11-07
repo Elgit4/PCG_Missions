@@ -347,7 +347,11 @@ No migration files should be generated from this proposal until the logical ERD,
 
 Each migration must be reviewed, versioned, reproducible in a clean local database and accompanied by tests. Use synthetic data. Run Supabase security advisors and test both authenticated and anonymous access. Do not apply schema changes to a hosted project without explicit project identification and user approval.
 
-## 9. Cross-document validation\nUse [09 — Database Design Validation & Decision Register](09_DATABASE_DESIGN_VALIDATION_AND_DECISION_REGISTER.md) as the governing review worksheet for D-01–D-13, R-01–R-12, naming reconciliation, branch-consistency constraints, prayer read auditing, SMS recipient identity and implementation gates. This proposal must be updated to match approved decisions before executable migrations are generated.\n\n## 10. Review checklist and approval record
+## 9. Cross-document validation
+
+Use [09 — Database Design Validation Report](09_DATABASE_DESIGN_VALIDATION_REPORT.md) for identified design risks and their dispositions, [10 — ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md) for the entity mapping and unresolved reconciliation items, and [11 — Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md) for D-01–D-13 and R-01–R-12 approvals. This proposal must match approved decisions before executable migrations are generated.
+
+## 10. Review checklist and approval record
 
 Before implementation sign-off, reviewers must approve:
 - [ ] Logical ERD and relationship cardinalities.
