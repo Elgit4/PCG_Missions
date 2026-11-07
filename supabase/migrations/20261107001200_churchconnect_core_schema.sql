@@ -174,9 +174,20 @@ create table public.faith_commitment_events (
   created_at timestamptz not null default now()
 );
 
+create table public.faith_commitment_access (
+  commitment_access_id uuid primary key default gen_random_uuid(),
+  commitment_event_id uuid not null references public.faith_commitment_events(commitment_event_id) on delete restrict,
+  user_id uuid not null references public.user_profiles(user_id) on delete restrict,
+  granted_by_user_id uuid not null references public.user_profiles(user_id) on delete restrict,
+  granted_at timestamptz not null default now(),
+  revoked_at timestamptz,
+  constraint faith_commitment_access_user_event_unique unique (commitment_event_id, user_id)
+);
+
 create table public.prayer_requests (
   prayer_request_id uuid primary key default gen_random_uuid(),
   visitor_id uuid not null references public.visitors(visitor_id) on delete restrict,
+  created_by_user_id uuid not null references public.user_profiles(user_id) on delete restrict,
   request_text text not null,
   request_status text not null default 'OPEN'
     check (request_status in ('OPEN', 'IN_PROGRESS', 'REFERRED', 'CLOSED')),
@@ -570,6 +581,12 @@ create index faith_commitment_events_visitor_idx
   on public.faith_commitment_events(visitor_id, occurred_at desc);
 create index prayer_requests_visitor_status_idx
   on public.prayer_requests(visitor_id, request_status);
+create index faith_commitment_access_user_idx
+  on public.faith_commitment_access(user_id, commitment_event_id)
+  where revoked_at is null;
+create index faith_commitment_access_event_idx
+  on public.faith_commitment_access(commitment_event_id)
+  where revoked_at is null;
 create index prayer_request_access_user_idx
   on public.prayer_request_access(user_id, prayer_request_id)
   where revoked_at is null;
