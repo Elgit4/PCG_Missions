@@ -9,7 +9,7 @@ ChurchConnect is a **single-church New Members Follow-up & Retention Management 
 - **Stack:** React + TypeScript + Vite; Tailwind CSS and shadcn/ui; Supabase Authentication, PostgreSQL, Row Level Security (RLS) and Edge Functions; Vercel is the proposed host.
 - **System roles:** exactly two — **Church Administrator** and **Mission Member**. Welcome Team, registration and other ministry duties are capabilities assigned to Mission Members, not separate roles.
 - **Registration:** staff-only by authorized personnel. Public visitor self-registration and QR self-check-in are out of scope for the initial release.
-- **Assignment:** the Administrator manually assigns one primary Mission Member; optional collaborators may support that assignment.
+- **Assignment:** the Administrator manually assigns one primary Mission Member; optional collaborators may support the assignment.
 - **Follow-up:** configurable tasks, phone calls, SMS, in-person visits, outcomes, reminders and escalation.
 - **SMS:** both manual and scheduled automated messages, approved templates, consent/opt-out checks, server-side credentials, delivery tracking and usage/cost reporting.
 - **Collaboration:** internal notes, supporting collaborators, controlled handovers and preserved history.
@@ -29,10 +29,11 @@ The expected intake of approximately **20–50 new visitors per month** is a pla
 | Stakeholder decisions register | [Open decisions](docs/STAKEHOLDER_DECISIONS.md) | 12 items awaiting confirmation |
 | Supabase database implementation guide | [Database implementation](docs/SUPABASE_DATABASE_IMPLEMENTATION_v1.0.md) | Setup, bootstrap and deployment instructions |
 | Implementation roadmap v1.0 | [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP_v1.0.md) | Phases, dependencies, MVP boundary and launch gates |
+| **Application architecture and UI/UX blueprint v1.0** | [Architecture and UI/UX blueprint](docs/APPLICATION_ARCHITECTURE_AND_UI_UX_BLUEPRINT_v1.0.md) | Proposed architecture, navigation, screen inventory, journeys, security boundaries and implementation sequence; pending review |
 
 ## Database implementation package
 
-The current PostgreSQL/Supabase implementation is committed under `supabase/`:
+The current PostgreSQL/Supabase implementation is committed under the supabase/ directory:
 
 | File | Purpose |
 |---|---|
@@ -44,19 +45,21 @@ The current PostgreSQL/Supabase implementation is committed under `supabase/`:
 
 **Local database CI: PASS.** GitHub Actions successfully started a clean local Supabase stack, applied all three committed migrations and ran the pgTAP suite: **36 tests passed, 0 failed**. [View the successful workflow run](https://github.com/Elgit4/PCG_Missions/actions/runs/42390055203). This verifies the migrations and RLS tests in local CI only; they have not been applied to a hosted ChurchConnect project. Do not link these migrations to SkillSprint or another unrelated Supabase project.
 
-## Next project deliverables
+## Next project actions
 
-1. Review the database CI result and resolve any failed migration or test.
-2. Create a dedicated ChurchConnect Supabase project and apply the migrations to a clean staging environment.
-3. Implement trusted server-side operations for account provisioning, assignments/handovers, workflow scheduling, notifications and SMS.
-4. Build application screens and wire them to the tested schema and RLS.
-5. Run end-to-end role/access tests and a pilot using synthetic data before entering live visitor information.
+1. Review the [Application Architecture & UI/UX Blueprint](docs/APPLICATION_ARCHITECTURE_AND_UI_UX_BLUEPRINT_v1.0.md) alongside the SRS, database design and implementation roadmap.
+2. Resolve the login identifier/onboarding method and approve the Mission Member capability matrix.
+3. Produce mobile-first wireframes and a clickable prototype for registration, duplicate review, assignment, handover and follow-up completion.
+4. Confirm official church branding assets and visual direction before finalizing design tokens.
+5. Review and approve creation of a **dedicated ChurchConnect Supabase staging project**, after checking the quoted plan and cost. Do not use the SkillSprint project.
+6. Evaluate Ghana-capable SMS providers and pricing; do not enable live SMS until the provider, sender identity, consent and cost controls are approved.
+7. Build the first end-to-end synthetic-data slice: Administrator provisioning → Mission Member sign-in → visitor registration → assignment → task completion and interaction history.
 
 ## Key safeguards
 
 - Never store plaintext passwords or expose Supabase service-role/secret or SMS provider keys in frontend code.
 - Hiding UI controls is not authorization; enforce access in RLS and trusted server-side operations.
-- `VISITOR_REGISTER` and `ATTENDANCE_RECORD` do not grant full visitor-directory search; `VISITOR_DIRECTORY_VIEW` is separate.
+- VISITOR_REGISTER and ATTENDANCE_RECORD do not grant full visitor-directory search; VISITOR_DIRECTORY_VIEW is separate.
 - Sensitive pastoral access requires both an explicit capability and a record-specific grant.
 - SMS delivery is not evidence that a person read, understood or responded to a message.
 - Preserve attendance, consent, assignment, interaction, task and handover history.
