@@ -67,6 +67,16 @@ Sensitive pastoral records must be separated logically and protected by stricter
 - **audit events** — actor, action, target, timestamp and minimal safe metadata.
 - **retention/deletion requests** — governed by church-approved policy.
 
+### SMS communication domain
+- **communication consent/preferences** — recipient, consent state, source/time, opt-out and suppression.
+- **SMS templates** — approved, versioned content and message category.
+- **SMS campaigns** — creator, scoped audience criteria, approval, schedule and campaign status.
+- **SMS outbox/messages** — one recipient per message, idempotency key, trigger, provider message ID, segment count and lifecycle status.
+- **SMS delivery events** — verified provider callbacks and append-only status history.
+- **SMS automation rules** — enabled trigger, template, timing and eligibility configuration.
+
+Keep provider secrets server-side. Minimize stored message content and phone snapshots; restrict access and define retention. Never put prayer details or confidential care narratives in SMS.
+
 ## 3. Relationships and integrity rules
 - A contact can have many capture records, interactions, attendance records, tasks, notes and merge-history references.
 - A contact may participate in many events through registrations/attendance.
