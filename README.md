@@ -28,6 +28,7 @@ The expected intake of approximately **20–50 new visitors per month** is a pla
 | Use-case and activity models v1.0 | [Use cases and activity models](docs/USE_CASES_AND_ACTIVITY_MODELS_v1.0.md) | Draft for design review |
 | Stakeholder decisions register | [Open decisions](docs/STAKEHOLDER_DECISIONS.md) | 12 items awaiting confirmation |
 | Supabase database implementation guide | [Database implementation](docs/SUPABASE_DATABASE_IMPLEMENTATION_v1.0.md) | Setup, bootstrap and deployment instructions |
+| Implementation roadmap v1.0 | [Implementation roadmap](docs/IMPLEMENTATION_ROADMAP_v1.0.md) | Phases, dependencies, MVP boundary and launch gates |
 
 ## Database implementation package
 
