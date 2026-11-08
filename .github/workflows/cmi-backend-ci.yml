@@ -27,6 +27,14 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Test public-content request validation
+        run: deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
+
       - name: Install pinned Supabase CLI
         uses: supabase/setup-cli@v3
         with:
