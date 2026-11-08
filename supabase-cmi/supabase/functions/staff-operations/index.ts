@@ -21,6 +21,19 @@ const CONTACT_COLUMNS =
 
 type ScopeMode = "branch" | "team" | "assigned" | "self" | "event" | "explicit_share" | "oversight";
 
+type ContactRow = Record<string, unknown> & { id: string };
+
+function redactContactIdentity<T extends ContactRow>(row: T, canRead: boolean): T {
+  if (canRead) return row;
+  return {
+    ...row,
+    phone_e164: null,
+    phone_display: null,
+    email_normalized: null,
+    identity_redacted: true,
+  } as T;
+}
+
 function newRequestId(): string {
   return crypto.randomUUID();
 }
@@ -276,6 +289,8 @@ Deno.serve(async (request: Request) => {
         return fail("FORBIDDEN", "You do not have permission to read contacts in this branch.", 403, origin, id);
       }
       const ids = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, scopes);
+      const identityScopes = await resolveScopes(auth.service, auth.profileId, branchId, "contact.identity.read.scoped");
+      const identityIds = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, identityScopes);
       if (ids !== null && ids.length === 0) {
         return response({ data: [], page: { limit: params.limit, offset: params.offset }, request_id: id }, 200, origin, id);
       }
@@ -295,7 +310,9 @@ Deno.serve(async (request: Request) => {
       const { data, error, count } = await query;
       if (error) throw new Error("CONTACT_LIST_FAILED");
       return response({
-        data: data ?? [],
+        data: (data ?? []).map((row: ContactRow) =>
+          redactContactIdentity(row, identityIds === null || identityIds.includes(row.id))
+        ),
         page: { limit: params.limit, offset: params.offset, total: count ?? 0 },
         request_id: id,
       }, 200, origin, id);
@@ -308,6 +325,8 @@ Deno.serve(async (request: Request) => {
       if (scopes.length === 0) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
       const ids = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, scopes);
       if (ids !== null && !ids.includes(last)) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      const identityScopes = await resolveScopes(auth.service, auth.profileId, branchId, "contact.identity.read.scoped");
+      const identityIds = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, identityScopes);
 
       const { data, error } = await auth.service
         .from("contact")
@@ -318,7 +337,7 @@ Deno.serve(async (request: Request) => {
         .maybeSingle();
       if (error) throw new Error("CONTACT_DETAIL_FAILED");
       if (!data) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
-      return response({ data, request_id: id }, 200, origin, id);
+      return response({ data: redactContactIdentity(data as ContactRow, identityIds === null || identityIds.includes(last)), request_id: id }, 200, origin, id);
     }
 
     if (request.method === "POST" && last === "contacts") {
@@ -346,6 +365,35 @@ Deno.serve(async (request: Request) => {
         return fail("FORBIDDEN", "You cannot capture contacts in this branch.", 403, origin, id);
       }
 
+      if (
+        input.team_id === null &&
+        scopes.includes("team") &&
+        !scopes.includes("branch") &&
+        !scopes.includes("assigned")
+      ) {
+        return fail("TEAM_REQUIRED", "Choose one of your active teams for this contact.", 422, origin, id);
+      }
+      if (
+        input.phone_e164 !== null || input.phone_display !== null ||
+        input.email_normalized !== null
+      ) {
+        const identityCaptureScopes = await resolveScopes(
+          auth.service,
+          auth.profileId,
+          input.branch_id,
+          "contact.identity.capture",
+        );
+        if (identityCaptureScopes.length === 0) {
+          return fail(
+            "IDENTITY_CAPTURE_NOT_APPROVED",
+            "Phone and email capture are not enabled for this account.",
+            403,
+            origin,
+            id,
+          );
+        }
+      }
+
       const { data, error } = await auth.service.rpc("cmi_create_contact", {
         p_actor_auth_user_id: auth.actorId,
         p_branch_id: input.branch_id,
@@ -359,6 +407,7 @@ Deno.serve(async (request: Request) => {
         p_age_range: input.age_range,
         p_preferred_language: input.preferred_language,
         p_service_area_id: input.service_area_id,
+        p_team_id: input.team_id,
         p_source_metadata: input.source_metadata,
       });
       if (error) {
@@ -368,8 +417,24 @@ Deno.serve(async (request: Request) => {
         throw new Error("CONTACT_CREATE_FAILED");
       }
       const result = data as { contact?: unknown; replayed?: boolean } | null;
+      const identityReadScopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        input.branch_id,
+        "contact.identity.read.scoped",
+      );
+      const identityReadIds = await visibleContactIds(
+        auth.service,
+        input.branch_id,
+        auth.actorId,
+        auth.profileId,
+        identityReadScopes,
+      );
+      const resultContact = result?.contact && typeof result.contact === "object"
+        ? redactContactIdentity(result.contact as ContactRow, identityReadIds === null || identityReadIds.includes(String((result.contact as Record<string, unknown>).id)))
+        : null;
       return response({
-        data: result?.contact ?? null,
+        data: resultContact,
         replayed: result?.replayed ?? false,
         request_id: id,
       }, result?.replayed ? 200 : 201, origin, id);
@@ -386,6 +451,27 @@ Deno.serve(async (request: Request) => {
       }
       const parsed = parseContactPatch(raw);
       if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      if (
+        "phone_e164" in parsed.value ||
+        "phone_display" in parsed.value ||
+        "email_normalized" in parsed.value
+      ) {
+        const identityUpdateScopes = await resolveScopes(
+          auth.service,
+          auth.profileId,
+          branchId,
+          "contact.identity.update.scoped",
+        );
+        if (identityUpdateScopes.length === 0) {
+          return fail(
+            "IDENTITY_UPDATE_NOT_APPROVED",
+            "Phone and email updates are not enabled for this account.",
+            403,
+            origin,
+            id,
+          );
+        }
+      }
 
       const scopes = await resolveScopes(auth.service, auth.profileId, branchId, "contact.update.scoped");
       if (scopes.length === 0) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
@@ -402,7 +488,12 @@ Deno.serve(async (request: Request) => {
         .maybeSingle();
       if (error) throw new Error("CONTACT_UPDATE_FAILED");
       if (!data) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
-      return response({ data, request_id: id }, 200, origin, id);
+      const identityReadScopes = await resolveScopes(auth.service, auth.profileId, branchId, "contact.identity.read.scoped");
+      const identityReadIds = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, identityReadScopes);
+      return response({
+        data: redactContactIdentity(data as ContactRow, identityReadIds === null || identityReadIds.includes(last)),
+        request_id: id,
+      }, 200, origin, id);
     }
 
     return fail("NOT_FOUND", "The requested staff operation does not exist.", 404, origin, id);
