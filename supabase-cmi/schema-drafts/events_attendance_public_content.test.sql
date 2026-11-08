@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(46);
+select plan(53);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -129,7 +129,9 @@ insert into public.contact(id,branch_id,first_name,created_by) values
  ('41000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
   'Synthetic Attendee','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'),
  ('41000000-0000-4000-8000-000000000002','21000000-0000-4000-8000-000000000002',
-  'Synthetic Other-Branch Attendee','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+  'Synthetic Other-Branch Attendee','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'),
+ ('41000000-0000-4000-8000-000000000003','21000000-0000-4000-8000-000000000001',
+  'Synthetic Same-Branch Alternate','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
 
 insert into public.event(id,branch_id,title,starts_at,ends_at,created_by,status,visibility,registration_state)
 values
@@ -224,6 +226,51 @@ select extensions.throws_ok(
  '41000000-0000-4000-8000-000000000001','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
  'staff','61000000-0000-4000-8000-000000000005')$q$,
  '23505',null,'event check-in request idempotency key cannot be reused');
+
+-- The same canonical contact may be paired with its registration, but a different
+-- contact from the same branch must not be smuggled alongside that registration.
+insert into public.event_registration(
+ id,event_id,branch_id,contact_id,attendee_name_snapshot,registration_source,client_request_id
+) values (
+ '71000000-0000-4000-8000-000000000003','51000000-0000-4000-8000-000000000001',
+ '21000000-0000-4000-8000-000000000001','41000000-0000-4000-8000-000000000001',
+ 'Paired Identity Attendee','staff','61000000-0000-4000-8000-000000000010'
+);
+select extensions.lives_ok(
+ $q$insert into public.event_checkin(event_id,branch_id,registration_id,contact_id,recorded_by,source,client_request_id)
+ values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+ '71000000-0000-4000-8000-000000000003','41000000-0000-4000-8000-000000000001',
+ 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','staff','61000000-0000-4000-8000-000000000011')$q$,
+ 'matching registration and contact identities are accepted');
+select extensions.throws_ok(
+ $q$insert into public.event_checkin(event_id,branch_id,registration_id,contact_id,recorded_by,source,client_request_id)
+ values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+ '71000000-0000-4000-8000-000000000003','41000000-0000-4000-8000-000000000003',
+ 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','staff','61000000-0000-4000-8000-000000000012')$q$,
+ '23514',null,'registration cannot be paired with a different same-branch contact');
+select extensions.throws_ok(
+ $q$update public.event_checkin set contact_id='41000000-0000-4000-8000-000000000003'
+ where client_request_id='61000000-0000-4000-8000-000000000011'$q$,
+ '23514',null,'registration/contact identity consistency also applies to updates');
+
+insert into public.event_closeout(id,event_id,branch_id,submitted_by,status)
+values ('91000000-0000-4000-8000-000000000001',
+ '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+ 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','submitted');
+select extensions.lives_ok(
+ $q$insert into public.event_closeout_event(closeout_id,actor_user_id,action)
+ values ('91000000-0000-4000-8000-000000000001',
+ 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','submitted')$q$,
+ 'closeout history accepts append-only inserts');
+select extensions.throws_ok(
+ $q$update public.event_closeout_event set details='{"edited":true}'::jsonb$q$,
+ '55000',null,'closeout history rejects updates');
+select extensions.throws_ok(
+ $q$delete from public.event_closeout_event$q$,
+ '55000',null,'closeout history rejects deletes');
+select extensions.throws_ok(
+ $q$truncate table public.event_closeout_event$q$,
+ '55000',null,'closeout history rejects truncation');
 
 insert into public.announcement(id,branch_id,title,body,created_by)
 values ('81000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',

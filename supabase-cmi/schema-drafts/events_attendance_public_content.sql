@@ -197,6 +197,61 @@ create table public.event_closeout_event (
   created_at timestamptz not null default now()
 );
 
+-- A check-in that carries both references must identify the same canonical contact.
+create or replace function public.enforce_event_checkin_identity_consistency()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $function$
+declare
+  linked_contact_id uuid;
+begin
+  if new.registration_id is not null and new.contact_id is not null then
+    select r.contact_id
+      into linked_contact_id
+      from public.event_registration r
+     where r.id = new.registration_id
+       and r.event_id = new.event_id
+       and r.branch_id = new.branch_id;
+
+    if linked_contact_id is distinct from new.contact_id then
+      raise exception 'check-in contact must match the registration contact'
+        using errcode = '23514';
+    end if;
+  end if;
+  return new;
+end;
+$function$;
+
+create trigger event_checkin_identity_consistency_trg
+before insert or update of registration_id, contact_id, event_id, branch_id
+on public.event_checkin
+for each row
+execute function public.enforce_event_checkin_identity_consistency();
+
+-- Closeout history is append-only; protect against UPDATE, DELETE and TRUNCATE.
+create or replace function public.prevent_event_closeout_event_mutation()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $function$
+begin
+  raise exception 'event closeout history is append-only'
+    using errcode = '55000';
+end;
+$function$;
+
+create trigger event_closeout_event_no_mutation_trg
+before update or delete on public.event_closeout_event
+for each row
+execute function public.prevent_event_closeout_event_mutation();
+
+create trigger event_closeout_event_no_truncate_trg
+before truncate on public.event_closeout_event
+for each statement
+execute function public.prevent_event_closeout_event_mutation();
+
+
 -- Typed calendar scope: branch, team, event, or an individual's own entry.
 create table public.calendar_entry (
   id uuid primary key default gen_random_uuid(),
