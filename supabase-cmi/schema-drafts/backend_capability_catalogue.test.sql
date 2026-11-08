@@ -24,7 +24,7 @@ select has_function(
 select ok(
   not has_function_privilege(
     'anon',
-    'public.cmi_create_contact(uuid,uuid,uuid,text,text,text,text,text,text,text,text,uuid,jsonb)',
+    'public.cmi_create_contact(uuid,uuid,uuid,text,text,text,text,text,text,text,text,uuid,uuid,jsonb)',
     'EXECUTE'
   ),
   'Anonymous role cannot execute contact capture'
