@@ -19,7 +19,7 @@ CMI Follow-up supports church field capture, contacts, follow-up, prayer and car
 - **Communications:** manual one-to-one SMS, permission-scoped bulk SMS and configurable automated SMS; WhatsApp automation is not included.
 - **Out of scope:** multi-church network administration and the future/held capabilities listed in the master specification.
 
-## Proposed database design (review branch)
+## Backend implementation (feature branch)\n\nThe CMI-only backend workspace is being built separately from the historical ChurchConnect SQL under [supabase-cmi/](supabase-cmi/). See the [backend implementation status](supabase-cmi/IMPLEMENTATION_STATUS.md) and [schema reconciliation crosswalk](docs/16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md). The first identity/authorization foundation migration is committed for review but has not been executed. Do not run the legacy top-level `supabase/` migrations for CMI.\n\n## Proposed database design (review branch)
 
 The current database-design proposal is available on the `design/cmi-logical-data-model` branch:
 
