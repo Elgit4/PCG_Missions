@@ -67,3 +67,14 @@ Supabase CLI v3 is local-first. Keep CI on the isolated `supabase-cmi/` workspac
 
 
 The event registration and public-profile E.164 constraints were corrected to match the single-plus international format. Three pgTAP cases cover valid +233 phone values, missing international plus and an invalid literal backslash prefix. The latest head, including schema restoration and qualified pgTAP calls, passed in [run 42439672140](https://github.com/Elgit4/PCG_Missions/actions/runs/42439672140): 104 database assertions total.
+
+
+## Event integrity hardening — 2026-11-08
+
+Draft PR #7 adds database-level protections for two event invariants:
+- A check-in containing both registration and contact references must match the canonical contact linked to that registration in the same event and branch. The guard applies to inserts and relevant updates.
+- Closeout history is append-only; UPDATE, DELETE and TRUNCATE are rejected while inserts remain available for a future authorized transaction path.
+
+The event-domain pgTAP suite now has **53 assertions**. The full isolated CMI workflow passed **111 database assertions across four suites**, plus Deno type-check and public-content request-validation tests, on PR #7 head `9280c8891bf1b3e78f40435dc4538f689f8d2df5` in [CI run 42441068594](https://github.com/Elgit4/PCG_Missions/actions/runs/42441068594).
+
+PR #7 remains a draft. These changes are not merged to the base branch and are not active in any hosted database. Stakeholder approval, including D-13 retention governance, remains required before production use.
