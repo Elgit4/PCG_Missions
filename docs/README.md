@@ -80,3 +80,8 @@ The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role sche
 - Manual, bulk and automated SMS are in scope; WhatsApp automation is not included. SMS must remain disabled until provider, sender-ID, consent/opt-out and budget controls are configured and tested.
 - Multi-church administration and the listed future/held features are out of scope.
 - A documented capability is not proof that the feature has shipped. Verify implementation separately.
+
+
+## Event transaction implementation contract
+
+- [Event Transaction API Contract](17_EVENT_TRANSACTION_API_CONTRACT.md) — proposed server-side request/transaction semantics, capacity serialization, idempotency, transport reservation, check-in, closeout, security boundaries and test cases. This is an engineering contract only; event write endpoints remain blocked until D-05, D-06, D-13 and applicable role/scope decisions are approved.
