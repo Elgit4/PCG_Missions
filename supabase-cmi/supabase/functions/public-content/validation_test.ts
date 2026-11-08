@@ -2,7 +2,7 @@ import {
   assertEquals,
   assert,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { parsePublicContentRequest } from "./validation.ts";
+import { parsePublicContentRequest, PUBLIC_RESOURCES } from "./validation.ts";
 
 Deno.test("accepts a published sermons collection with bounded pagination", () => {
   const result = parsePublicContentRequest(
@@ -66,5 +66,29 @@ Deno.test("church profile does not accept collection parameters", () => {
   assertEquals(
     parsePublicContentRequest(new URL("https://example.test/?resource=church-profile&limit=10")),
     { ok: false, error: "Unsupported query parameter." },
+  );
+});
+
+Deno.test("public projections use fixed published-only resource mappings", () => {
+  assertEquals(PUBLIC_RESOURCES.sermons.filters, [{ column: "status", value: "published" }]);
+  assertEquals(PUBLIC_RESOURCES.announcements.filters, [
+    { column: "status", value: "published" },
+    { column: "is_public", value: true },
+  ]);
+  assertEquals(PUBLIC_RESOURCES.events.filters, [
+    { column: "status", value: "published" },
+    { column: "visibility", value: "public" },
+  ]);
+  assertEquals("capacity" in PUBLIC_RESOURCES.events.columns, false);
+  assertEquals(PUBLIC_RESOURCES["welcome-messages"].globalOnly, true);
+});
+
+Deno.test("public projections never map private operational domains", () => {
+  const mappedTables = Object.values(PUBLIC_RESOURCES).map((resource) => resource.table);
+  assertEquals(
+    mappedTables.some((table) =>
+      ["contact", "staff_profile", "prayer_request", "care_record", "sms_outbox"].includes(table)
+    ),
+    false,
   );
 });
