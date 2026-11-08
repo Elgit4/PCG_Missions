@@ -4,6 +4,20 @@
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
 **Status:** PRs #3–#8 are merged into `main`. The dedicated CMI workspace has passed 129 pgTAP assertions across four isolated local suites; the public-content and idempotency Deno checks also passed on PR #8's exact head. The public-content function and event transaction helpers remain source code, not deployed production endpoints. The latest exact-head validation is [PR #8 run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750) for head `c80a29a46a8a693449d66b209c84e2ba6894209a`. The merge commit is [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8).
 
+## New staff API implementation in review branch
+
+The `feat/cmi-staff-session-api` branch adds an initial API layer for frontend integration:
+
+- `staff-session` validates a Supabase Auth token, requires an active staff profile and returns current active branch assignments, roles and exact approved capabilities.
+- `staff-operations` provides scoped contact list/detail, atomic contact capture and ordinary-field update routes.
+- Capability definitions are populated from the proposed action catalogue, but no `role_capability` rows are seeded. Until R-01–R-12 and D-01 are approved, staff sessions return no business capabilities and business operations remain denied.
+- Contact phone/email capture, read and update are separately capability-gated to preserve field-level privacy.
+- Contact creation is one database transaction: validate the actor, branch and capability; enforce the request idempotency key; write the contact and capture provenance; and create the required self/team assignment.
+- Both staff Edge Functions require JWT verification at the Supabase gateway and independently validate the bearer token with Supabase Auth.
+- The CI workflow type-checks/tests the staff functions and applies the capability/contact transaction draft to the isolated local CMI database for pgTAP validation.
+
+The matching API contract is [document 19](../docs/19_CMI_STAFF_API_CONTRACT.md). These changes are source-only in a review branch and have not been deployed or applied to a hosted database.
+
 ## Implemented and validated
 
 - Dedicated Supabase CLI project with a distinct local project ID and non-conflicting ports.
