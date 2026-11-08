@@ -237,3 +237,19 @@ This contract is accepted for implementation only when:
 - no hosted database or production function is changed without separate explicit approval.
 
 **Current outcome:** contract documented; implementation remains blocked by pending stakeholder decisions and schema corrections.
+
+
+## 12. Schema remediation progress (2026-11-08)
+
+A follow-on draft PR, [PR #7 — event check-in identity and closeout history](https://github.com/Elgit4/PCG_Missions/pull/7), adds the two database guards called out in Sections 6.3 and 7.3:
+
+- A check-in carrying both `registration_id` and `contact_id` must reference the same canonical contact linked to that registration in the same event and branch. The trigger applies on insert and relevant updates.
+- `event_closeout_event` is protected against UPDATE, DELETE and TRUNCATE; append-only inserts remain possible for a future authorized transaction path.
+
+These changes are in a separate draft PR and remain subject to its current CI run and review. They are not yet part of the base branch and must not be treated as approved or production-active.
+
+The following schema/API gates remain unresolved:
+- Idempotency requires a stored normalized request digest and replay receipt; a unique request key alone cannot safely distinguish same-payload retries from changed-payload reuse.
+- `consent_record_id` still needs an approved consent-evidence relation and retention model before it can prove consent.
+- The rule for multiple active transport options per registration remains pending D-06.
+- Public registration, capacity, cancellation, waitlist, walk-in, transport and check-in policies remain blocked by D-05/D-06 and applicable role/scope approvals.
