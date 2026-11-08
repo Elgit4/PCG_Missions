@@ -434,7 +434,7 @@ No PDF binary storage is introduced. Existing public HTTPS PDFs may be linked th
 | ID | Finding | Required decision/action |
 |---|---|---|
 | DD-08 | Prayer request creator may be public or staff; public intake workflow is not yet defined. | Define permitted capture channel and server-side identity/audit behaviour before migration. |
-| DD-09 | Per-read prayer/care audit requires mediated reads; ordinary RLS SELECT would bypass audit insertion. | Approve audited-read endpoint design and ensure no direct REST/table path remains. |
+| DD-09 | Per-read prayer/care audit requires mediated reads; ordinary RLS SELECT would bypass audit insertion. | Use separate append-only `prayer_access_audit` and `care_access_audit` relations; deny direct REST/table reads and implement trusted transactional audited-read endpoints. |
 | DD-10 | Event walk-in check-in identity and duplicate prevention need a canonical idempotency rule. | Decide whether name-only walk-in check-in is allowed and how duplicate detection works. |
 | DD-11 | Event registration snapshots and linked contact fields depend on D-05 and retention decision D-13. | Approve exact fields, retention and canonical contact linking workflow. |
 | DD-12 | Waitlist state appears as a possible event status but D-06 safe default says no waitlist until approved. | Remove waitlist_only until explicitly approved or record D-06 decision. |
@@ -447,9 +447,10 @@ No PDF binary storage is introduced. Existing public HTTPS PDFs may be linked th
 
 - [x] Typed field proposal created for restricted prayer/care, event, registration, transport, attendance, closeout and public content.
 - [x] RLS and sensitive narrative audit requirements restated at the data level.
+- [x] Dedicated care access-audit companion table added; prayer-specific audit rows are not overloaded for care records.
 - [x] Branch-consistent relationship requirements identified.
 - [x] Polymorphic FK and duplicate-delivery-state risks called out.
-- [ ] Reconcile DD-08–DD-16 with ERD and physical schema.
+- [ ] Reconcile DD-08–DD-16 with ERD and physical schema, including the new care-access audit entity.
 - [ ] Complete SMS/report/audit/offline data dictionary.
 - [ ] Stakeholder approval of R-01–R-12 and D-01–D-13.
 - [ ] Generate migrations only after schema sign-off.
