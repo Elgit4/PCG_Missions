@@ -78,3 +78,12 @@ Draft PR #7 adds database-level protections for two event invariants:
 The event-domain pgTAP suite now has **53 assertions**. The full isolated CMI workflow passed **111 database assertions across four suites**, plus Deno type-check and public-content request-validation tests, on PR #7 head `9280c8891bf1b3e78f40435dc4538f689f8d2df5` in [CI run 42441068594](https://github.com/Elgit4/PCG_Missions/actions/runs/42441068594).
 
 PR #7 remains a draft. These changes are not merged to the base branch and are not active in any hosted database. Stakeholder approval, including D-13 retention governance, remains required before production use.
+
+
+## Event idempotency ledger — 2026-11-08
+
+Draft PR #8 adds a private `event_idempotency_receipt` table to the event schema. The ledger scopes keys by event, branch, operation, caller class and (for staff) server-resolved actor. A PostgreSQL 15+ `UNIQUE NULLS NOT DISTINCT` constraint also serializes public keys whose actor ID is NULL.
+
+Each receipt stores a 32-byte versioned HMAC-SHA-256 request digest, an allowlisted operation/resource pairing, a resource reference and a successful response status. It stores no raw request body or attendee PII. The server must canonicalize the normalized request, compute the HMAC with a server-only key, compare the digest on replay, return the original receipt for a matching retry and return 409 for a changed payload. HMAC key retirement and receipt cleanup remain blocked on D-13 retention approval.
+
+The event pgTAP suite is expanded to **70 assertions**. This PR is draft and pending its own CI run. It adds no endpoint, function grant, role policy or hosted database change.
