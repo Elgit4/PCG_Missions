@@ -17,13 +17,15 @@
 - Initial pgTAP structural and deny-by-default test file.
 - Contacts/follow-up domain SQL draft covering nine tables, integrity constraints, indexes, idempotent capture metadata, and conservative assignment rules.
 - Matching pgTAP draft covering table presence, RLS, closed Data API grants, shared-phone handling, branch consistency, capture idempotency and assignment constraints.
+- Restricted-pastoral SQL draft with prayer requests, intercessor assignments, care groups/records/assignments/interactions, and dedicated append-only prayer/care access-audit ledgers.
+- Matching 20-assertion pgTAP draft covering RLS denial, no direct policies, assignment constraints, branch isolation, oversight reasons and immutable audit rows.
 
 ## Deliberately not implemented yet
 
 - Staff email + PIN credential activation/exchange/reset endpoints. The credential lifecycle and Supabase Auth integration require approval.
 - Role capability grants and role/record scope policies. R-01–R-12 and D-01 remain pending.
 - Promoted/executable contacts, capture, assignment, notes, merge and follow-up migrations (current SQL remains a draft under `schema-drafts/` until CLI migration generation and local validation are available).
-- Prayer/care tables and audited narrative-read path.
+- Promoted/executable prayer/care migration and audited narrative-read Edge Function/RPC. Current schema is still a draft and no direct browser read path is allowed.
 - Event registration, transport capacity, check-in and public endpoints.
 - Public content publication.
 - SMS provider adapter, send pipeline, callbacks or automation.
