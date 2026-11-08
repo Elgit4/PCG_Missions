@@ -36,7 +36,7 @@ The next domain slice is authored under `schema-drafts/` and is intentionally **
 
 It defines contacts, capture provenance/idempotency, individual-or-team assignment, ordinary notes, interactions, merge history, follow-up lists/tasks and append-only task events. The restricted-pastoral draft adds prayer/care records, assignment lifecycles and separate append-only narrative-read audit tables for prayer and care. The SQL keeps RLS enabled and browser grants withheld. Event references on capture/list are deferred until the event tables exist.
 
-Before promotion, use the Supabase CLI to create the permanent migration filename, then move the reviewed SQL into that generated file and move the pgTAP suite into `tests/`. The CLI was not available in the authoring runtime, so this draft has not been CLI-generated, parsed or executed.
+Before promotion, use the Supabase CLI to create the permanent migration filename, then move the reviewed SQL into that generated file and move the pgTAP suite into `tests/`. The authoring runtime did not have the Supabase CLI, so the drafts remain unpromoted in the repository. The CI workflow uses the CLI to generate temporary migration filenames, copies these drafts into the isolated project, applies them on a disposable local Supabase stack, runs the matching pgTAP suites, then deletes the temporary files during runner cleanup. The successful validation is recorded in [run 42436473154](https://github.com/Elgit4/PCG_Missions/actions/runs/42436473154): all three current suites passed (14 + 24 + 20 assertions).
 
 ## CLI safety
 
@@ -44,6 +44,6 @@ Supabase CLI v3 is local-first: database commands target the local stack unless 
 
 ## Approval and execution status
 
-The SQL is committed as a reviewable development artifact. It has **not** been run against local PostgreSQL/Supabase or any hosted database. The schema is intentionally incomplete: contacts, tasks, restricted pastoral records, events, SMS and public content follow after reconciliation and security tests.
+The SQL is committed as a reviewable development artifact. The identity, contacts/follow-up and restricted-pastoral schemas were applied successfully to a disposable local Supabase/PostgreSQL stack by CI; three structural/deny-by-default pgTAP suites passed. The domain schemas are still draft files, not permanent repository migrations. Full six-role RLS policies and tests, audited narrative-read endpoints, authentication and remaining domains are not yet implemented. No hosted database was changed.
 
 Do not link this workspace to a hosted project, push migrations, seed real data, or enable SMS without explicit approval and the required stakeholder/provider decisions.
