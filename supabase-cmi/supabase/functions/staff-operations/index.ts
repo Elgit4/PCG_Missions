@@ -1,5 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
-import { createRequestDigest, type CanonicalJson } from "../_shared/idempotency.ts";
+import {
+  type CanonicalJson,
+  createRequestDigest,
+} from "../_shared/idempotency.ts";
 import { isUuid, parseContactCreate, parseContactPatch } from "./validation.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -7,7 +10,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "";
 const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const CONTACT_IDEMPOTENCY_HMAC_KEY = Deno.env.get("CMI_CONTACT_IDEMPOTENCY_HMAC_KEY") ?? "";
+const CONTACT_IDEMPOTENCY_HMAC_KEY =
+  Deno.env.get("CMI_CONTACT_IDEMPOTENCY_HMAC_KEY") ?? "";
 const CONTACT_IDEMPOTENCY_KEY_VERSION = Number(
   Deno.env.get("CMI_CONTACT_IDEMPOTENCY_KEY_VERSION") ?? "1",
 );
@@ -126,7 +130,11 @@ async function resolveStaff(
     },
   });
   const service = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
     global: {
       headers: { "X-Application-Name": "pcg-missions-staff-operations" },
     },
@@ -195,9 +203,9 @@ async function resolveScopes(
     .is("revoked_at", null);
   if (assignmentError) throw new Error("ROLE_ASSIGNMENT_LOOKUP_FAILED");
   const roleIds = [
-    ...new Set((assignments ?? []).map((item: { role_id: string }) =>
-      item.role_id
-    )),
+    ...new Set(
+      (assignments ?? []).map((item: { role_id: string }) => item.role_id),
+    ),
   ];
   if (roleIds.length === 0) return [];
 
@@ -257,9 +265,9 @@ async function visibleContactIds(
       .eq("team.is_active", true);
     if (membershipError) throw new Error("TEAM_MEMBERSHIP_LOOKUP_FAILED");
     const teamIds = [
-      ...new Set((memberships ?? []).map((item: { team_id: string }) =>
-        item.team_id
-      )),
+      ...new Set(
+        (memberships ?? []).map((item: { team_id: string }) => item.team_id),
+      ),
     ];
     if (teamIds.length > 0) {
       const { data, error } = await service
@@ -376,7 +384,13 @@ Deno.serve(async (request: Request) => {
         "contact.read.scoped",
       );
       if (scopes.length === 0) {
-        return fail("FORBIDDEN", "You do not have permission to read contacts in this branch.", 403, origin, id);
+        return fail(
+          "FORBIDDEN",
+          "You do not have permission to read contacts in this branch.",
+          403,
+          origin,
+          id,
+        );
       }
       const ids = await visibleContactIds(
         auth.service,
@@ -451,16 +465,38 @@ Deno.serve(async (request: Request) => {
       if (!isUuid(branchId)) {
         return fail("INVALID_QUERY", "Invalid branch_id.", 400, origin, id);
       }
-      const scopes = await resolveScopes(auth.service, auth.profileId, branchId, "contact.read.scoped");
+      const scopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "contact.read.scoped",
+      );
       if (scopes.length === 0) {
         return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
       }
-      const ids = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, scopes);
+      const ids = await visibleContactIds(
+        auth.service,
+        branchId,
+        auth.actorId,
+        auth.profileId,
+        scopes,
+      );
       if (ids !== null && !ids.includes(last)) {
         return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
       }
-      const identityScopes = await resolveScopes(auth.service, auth.profileId, branchId, "contact.identity.read.scoped");
-      const identityIds = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, identityScopes);
+      const identityScopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "contact.identity.read.scoped",
+      );
+      const identityIds = await visibleContactIds(
+        auth.service,
+        auth.profileId,
+        branchId,
+        auth.actorId,
+        identityScopes,
+      );
 
       const { data, error } = await auth.service
         .from("contact")
@@ -470,7 +506,9 @@ Deno.serve(async (request: Request) => {
         .neq("contact_status", "merged")
         .maybeSingle();
       if (error) throw new Error("CONTACT_DETAIL_FAILED");
-      if (!data) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      if (!data) {
+        return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      }
       return response(
         {
           data: redactContactIdentity(
@@ -551,9 +589,11 @@ Deno.serve(async (request: Request) => {
           input.branch_id,
           "contact.identity.capture",
         );
-        const identityCaptureAllowed = identityCaptureScopes.includes("branch") ||
+        const identityCaptureAllowed =
+          identityCaptureScopes.includes("branch") ||
           (input.team_id !== null && identityCaptureScopes.includes("team")) ||
-          (input.team_id === null && identityCaptureScopes.includes("assigned"));
+          (input.team_id === null &&
+            identityCaptureScopes.includes("assigned"));
         if (!identityCaptureAllowed) {
           return fail(
             "IDENTITY_CAPTURE_NOT_APPROVED",
@@ -579,23 +619,27 @@ Deno.serve(async (request: Request) => {
         );
       }
 
-      const digest = await createRequestDigest({
-        operation: "contact.create",
-        actor_id: auth.actorId,
-        branch_id: input.branch_id,
-        client_request_id: input.client_request_id,
-        first_name: input.first_name,
-        last_name: input.last_name,
-        preferred_name: input.preferred_name,
-        phone_e164: input.phone_e164,
-        phone_display: input.phone_display,
-        email_normalized: input.email_normalized,
-        age_range: input.age_range,
-        preferred_language: input.preferred_language,
-        service_area_id: input.service_area_id,
-        team_id: input.team_id,
-        source_metadata: input.source_metadata,
-      } as CanonicalJson, CONTACT_IDEMPOTENCY_HMAC_KEY, CONTACT_IDEMPOTENCY_KEY_VERSION);
+      const digest = await createRequestDigest(
+        {
+          operation: "contact.create",
+          actor_id: auth.actorId,
+          branch_id: input.branch_id,
+          client_request_id: input.client_request_id,
+          first_name: input.first_name,
+          last_name: input.last_name,
+          preferred_name: input.preferred_name,
+          phone_e164: input.phone_e164,
+          phone_display: input.phone_display,
+          email_normalized: input.email_normalized,
+          age_range: input.age_range,
+          preferred_language: input.preferred_language,
+          service_area_id: input.service_area_id,
+          team_id: input.team_id,
+          source_metadata: input.source_metadata,
+        } as CanonicalJson,
+        CONTACT_IDEMPOTENCY_HMAC_KEY,
+        CONTACT_IDEMPOTENCY_KEY_VERSION,
+      );
 
       const { data, error } = await auth.service.rpc("cmi_create_contact", {
         p_actor_auth_user_id: auth.actorId,
@@ -699,7 +743,9 @@ Deno.serve(async (request: Request) => {
         );
       }
       const parsed = parseContactPatch(raw);
-      if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      if (!parsed.ok) {
+        return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      }
       if (
         "phone_e164" in parsed.value ||
         "phone_display" in parsed.value ||
@@ -741,8 +787,16 @@ Deno.serve(async (request: Request) => {
       if (scopes.length === 0) {
         return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
       }
-      const ids = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, scopes);
-      if (ids !== null && !ids.includes(last)) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      const ids = await visibleContactIds(
+        auth.service,
+        branchId,
+        auth.actorId,
+        auth.profileId,
+        scopes,
+      );
+      if (ids !== null && !ids.includes(last)) {
+        return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      }
 
       const { data, error } = await auth.service
         .from("contact")
@@ -753,7 +807,9 @@ Deno.serve(async (request: Request) => {
         .select(CONTACT_COLUMNS)
         .maybeSingle();
       if (error) throw new Error("CONTACT_UPDATE_FAILED");
-      if (!data) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      if (!data) {
+        return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      }
       const identityReadScopes = await resolveScopes(
         auth.service,
         auth.profileId,
