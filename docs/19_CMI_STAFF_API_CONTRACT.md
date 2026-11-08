@@ -110,7 +110,7 @@ Allowed request fields:
 }
 ```
 
-The server fixes `created_by`, `captured_by` and `capture_source`; these cannot be supplied by the caller. `client_request_id` is the idempotency key scoped to the branch. A replay by the same actor returns the original contact; reuse by another actor returns 409.
+The server fixes `created_by`, `captured_by` and `capture_source`; these cannot be supplied by the caller. `client_request_id` is the idempotency key scoped to the branch. The Edge Function HMACs the canonical normalized payload with a server-only key (`CMI_CONTACT_IDEMPOTENCY_HMAC_KEY`) and stores only the 32-byte digest and key version. A retry returns the original contact only when actor, key version and digest all match; reuse by another actor or with a changed payload returns 409. Set `CMI_CONTACT_IDEMPOTENCY_KEY_VERSION` to a positive integer (default `1`). Key rotation must retain old keys until the corresponding receipts expire; the current implementation uses one active version and must not rotate it while receipts remain live.
 
 If the only create scope is `assigned`, the new contact is assigned to the capturing staff member within the same transaction. If the scope is `team`, the caller must select an active team they belong to. A branch-scoped capture does not create a team assignment unless an approved team-scoped grant and team ID are supplied.
 
