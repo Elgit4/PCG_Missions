@@ -44,6 +44,8 @@ Required server environment:
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only
 - `SUPABASE_PUBLISHABLE_KEY` (or legacy `SUPABASE_ANON_KEY`)
 - `CMI_ALLOWED_ORIGINS` — exact comma-separated browser origins
+- `CMI_CONTACT_IDEMPOTENCY_HMAC_KEY` — at least 32 random UTF-8 bytes, server-only; never commit it or expose it to clients.
+- `CMI_CONTACT_IDEMPOTENCY_KEY_VERSION` — positive integer version for the HMAC key; default `1`.
 
 ## staff-operations
 
