@@ -61,6 +61,6 @@ A Deno validation suite covers supported resources, pagination, slug validation,
 
 ## Verification boundary
 
-The 58 foundation assertions and the additional 36 event/public-content assertions have passed on isolated local CMI stacks. The public-content Edge Function type-check and validation suite passed in CI run 42438088374. No hosted Supabase project was linked, queried, migrated or modified; no real visitor/prayer data or live SMS was used.
+The 58 foundation assertions and the additional 36 event/public-content assertions have passed on isolated local CMI stacks. The public-content Edge Function type-check and validation suite passed in CI run 42438088374; the expanded 43-assertion combined run is pending for the latest branch head. No hosted Supabase project was linked, queried, migrated or modified; no real visitor/prayer data or live SMS was used.
 
 Supabase CLI v3 is local-first. Keep CI on the isolated `supabase-cmi/` workspace and do not add `--remote` or hosted credentials without explicit deployment approval.
