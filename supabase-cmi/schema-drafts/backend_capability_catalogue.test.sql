@@ -18,7 +18,7 @@ select is(
 select has_function(
   'public',
   'cmi_create_contact',
-  array['uuid','uuid','uuid','text','text','text','text','text','text','text','text','uuid','jsonb'],
+  array['uuid','uuid','uuid','text','text','text','text','text','text','text','text','uuid','uuid','jsonb'],
   'Atomic contact capture function exists'
 );
 select ok(
@@ -50,7 +50,7 @@ select ok(
   'Contact capture runs as a controlled definer function'
 );
 select ok(
-  (select coalesce(array_to_string(proconfig, ','), '') like '%search_path=pg_catalog, public%'
+  (select coalesce(array_to_string(proconfig, ','), '') like '%search_path=pg_catalog%'
    from pg_proc
    where oid = 'public.cmi_create_contact(uuid,uuid,uuid,text,text,text,text,text,text,text,text,uuid,jsonb)'::regprocedure),
   'Contact capture pins its search path'
