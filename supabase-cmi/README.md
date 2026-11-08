@@ -50,7 +50,7 @@ Run its input-validation tests with:
 deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
 ```
 
-Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and exact `PUBLIC_CONTENT_ALLOWED_ORIGINS` only in the Edge Function's server environment. The service-role key bypasses RLS; the function's fixed query allowlist is therefore security-critical. It exposes only church-wide welcome messages and omits event capacity from public event responses. Do not reuse it for staff operations. Platform rate limiting and production origin configuration are required before deployment. Deno type-check, request-validation tests and the isolated database/pgTAP workflow passed in [run 42438088374](https://github.com/Elgit4/PCG_Missions/actions/runs/42438088374). This function is not deployed.
+Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and exact `PUBLIC_CONTENT_ALLOWED_ORIGINS` only in the Edge Function's server environment. The service-role key bypasses RLS; the function's fixed query allowlist is therefore security-critical. It exposes only church-wide welcome messages and omits event capacity from public event responses. Do not reuse it for staff operations. Platform rate limiting and production origin configuration are required before deployment. Deno type-check and request-validation tests passed in [run 42438088374](https://github.com/Elgit4/PCG_Missions/actions/runs/42438088374). The public-content branch now also adds seven pgTAP assertions verifying that every fixed API projection/filter/order column exists in the schema; the expanded 43-assertion suite is running on the current head. This function is not deployed.
 
 ## Security and approval gates
 
