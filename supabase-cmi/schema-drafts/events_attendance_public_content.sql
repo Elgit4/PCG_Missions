@@ -83,7 +83,7 @@ create table public.event_registration (
   attendee_name_snapshot text not null
     check (length(btrim(attendee_name_snapshot)) between 2 and 180),
   attendee_phone_snapshot text
-    check (attendee_phone_snapshot is null or attendee_phone_snapshot ~ '^\\+[1-9][0-9]{7,14}$'),
+    check (attendee_phone_snapshot is null or attendee_phone_snapshot ~ '^\+[1-9][0-9]{7,14}$'),
   attendee_email_snapshot text
     check (attendee_email_snapshot is null or attendee_email_snapshot = lower(btrim(attendee_email_snapshot))),
   registration_source text not null
@@ -269,7 +269,7 @@ create table public.church_public_profile (
   church_id uuid not null unique references public.church(id) on delete restrict,
   public_name text not null check (length(btrim(public_name)) between 2 and 180),
   welcome_content text,
-  public_phone text check (public_phone is null or public_phone ~ '^\\+[1-9][0-9]{7,14}$'),
+  public_phone text check (public_phone is null or public_phone ~ '^\+[1-9][0-9]{7,14}$'),
   public_email text,
   address_text text,
   website_url text check (website_url is null or website_url ~ '^https://'),
