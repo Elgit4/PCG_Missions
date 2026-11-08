@@ -45,7 +45,7 @@ Deno.test("canonical JSON rejects non-plain objects", () => {
 Deno.test("canonical JSON rejects sparse arrays and normalized key collisions", () => {
   const sparse = new Array(2) as never;
   assertThrows(() => canonicalJson(sparse));
-  const collision = { "é": 1, "e\\u0301": 2 } as never;
+  const collision = { "é": 1, "e\u0301": 2 } as never;
   assertThrows(() => canonicalJson(collision));
 });
 
