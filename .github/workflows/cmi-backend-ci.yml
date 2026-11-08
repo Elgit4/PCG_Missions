@@ -20,7 +20,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cmi-backend-ci-${{ github.ref }}
+  group: cmi-backend-ci
   cancel-in-progress: true
 
 jobs:
@@ -47,6 +47,23 @@ jobs:
           test -f supabase-cmi/supabase/tests/identity_authorization_foundation.test.sql
           test ! -e supabase-cmi/supabase/migrations/20261107001200_churchconnect_core_schema.sql
 
+      - name: Generate temporary CLI migrations from reviewed schema drafts
+        run: |
+          set -euo pipefail
+
+          supabase --workdir supabase-cmi migration new cmi_contacts_followup_domain
+          contacts_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_contacts_followup_domain.sql' -print -quit)"
+          test -n "$contacts_migration"
+          cp supabase-cmi/schema-drafts/contacts_followup_domain.sql "$contacts_migration"
+
+          supabase --workdir supabase-cmi migration new cmi_restricted_pastoral_domain
+          pastoral_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_restricted_pastoral_domain.sql' -print -quit)"
+          test -n "$pastoral_migration"
+          cp supabase-cmi/schema-drafts/restricted_pastoral_domain.sql "$pastoral_migration"
+
+          cp supabase-cmi/schema-drafts/contacts_followup_domain.test.sql supabase-cmi/supabase/tests/cmi_contacts_followup_domain.test.sql
+          cp supabase-cmi/schema-drafts/restricted_pastoral_domain.test.sql supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
+
       - name: Start isolated local CMI stack and apply CMI migrations
         run: supabase --workdir supabase-cmi start
 
@@ -57,7 +74,11 @@ jobs:
         if: always()
         run: |
           if command -v supabase >/dev/null 2>&1; then
-            supabase --workdir supabase-cmi stop
+            supabase --workdir supabase-cmi stop || true
           else
             echo "Supabase CLI was not installed; no local CMI stack was started."
           fi
+          rm -f supabase-cmi/supabase/migrations/*_cmi_contacts_followup_domain.sql
+          rm -f supabase-cmi/supabase/migrations/*_cmi_restricted_pastoral_domain.sql
+          rm -f supabase-cmi/supabase/tests/cmi_contacts_followup_domain.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
