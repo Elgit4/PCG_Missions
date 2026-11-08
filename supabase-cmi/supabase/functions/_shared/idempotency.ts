@@ -36,7 +36,7 @@ function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string
   if (Array.isArray(value)) {
     if (ancestors.has(value)) throw new TypeError("Circular values are not supported.");
     ancestors.add(value);
-    const result = `[${value.map((item) => canonicalize(item, ancestors)).join(",")}]`;
+    const result = `[${Array.from(value, (item) => canonicalize(item, ancestors)).join(",")}]`;
     ancestors.delete(value);
     return result;
   }
@@ -51,7 +51,13 @@ function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string
     ancestors.add(record);
 
     const keys = Object.keys(record).sort();
+    const normalizedKeys = new Set<string>();
     for (const key of keys) {
+      const normalizedKey = key.normalize("NFC");
+      if (normalizedKeys.has(normalizedKey)) {
+        throw new TypeError("Object keys collide after Unicode normalization.");
+      }
+      normalizedKeys.add(normalizedKey);
       if (key === "__proto__" || key === "constructor" || key === "prototype") {
         throw new TypeError("Unsafe object key.");
       }
@@ -119,9 +125,11 @@ export function equalDigestHex(left: string, right: string): boolean {
     return false;
   }
 
+  const normalizedLeft = left.toLowerCase();
+  const normalizedRight = right.toLowerCase();
   let difference = 0;
   for (let index = 0; index < 64; index++) {
-    difference |= left.charCodeAt(index) ^ right.charCodeAt(index);
+    difference |= normalizedLeft.charCodeAt(index) ^ normalizedRight.charCodeAt(index);
   }
   return difference === 0;
 }
