@@ -15,7 +15,8 @@ const allowedOrigins = (): Set<string> =>
 
 export function corsHeaders(request: Request): Headers {
   const headers = new Headers({
-    "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
+    "Access-Control-Allow-Headers":
+      "authorization, apikey, content-type, x-client-info",
     "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
     "Vary": "Origin",
   });
