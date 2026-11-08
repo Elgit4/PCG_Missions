@@ -5,6 +5,7 @@ on:
     branches:
       - design/cmi-logical-data-model
       - main
+      - feat/cmi-backend-foundation
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
@@ -57,8 +58,15 @@ jobs:
           test -n "$pastoral_migration"
           cp supabase-cmi/schema-drafts/restricted_pastoral_domain.sql "$pastoral_migration"
 
+          sleep 1
+          supabase --workdir supabase-cmi migration new cmi_events_attendance_public_content
+          events_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_events_attendance_public_content.sql' -print -quit)"
+          test -n "$events_migration"
+          cp supabase-cmi/schema-drafts/events_attendance_public_content.sql "$events_migration"
+
           cp supabase-cmi/schema-drafts/contacts_followup_domain.test.sql supabase-cmi/supabase/tests/cmi_contacts_followup_domain.test.sql
           cp supabase-cmi/schema-drafts/restricted_pastoral_domain.test.sql supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
+          cp supabase-cmi/schema-drafts/events_attendance_public_content.test.sql supabase-cmi/supabase/tests/cmi_events_attendance_public_content.test.sql
 
       - name: Start isolated local CMI stack and apply CMI migrations
         run: supabase --workdir supabase-cmi start
@@ -76,5 +84,7 @@ jobs:
           fi
           rm -f supabase-cmi/supabase/migrations/*_cmi_contacts_followup_domain.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_restricted_pastoral_domain.sql
+          rm -f supabase-cmi/supabase/migrations/*_cmi_events_attendance_public_content.sql
           rm -f supabase-cmi/supabase/tests/cmi_contacts_followup_domain.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_events_attendance_public_content.test.sql
