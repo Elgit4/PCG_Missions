@@ -209,7 +209,8 @@ create table public.event_idempotency_receipt (
   caller_class text not null check (caller_class in ('public','staff')),
   actor_user_id uuid references public.staff_profile(auth_user_id) on delete restrict,
   idempotency_key uuid not null,
-  -- SHA-256 of the server-normalized, canonical request; never accept a client digest.
+  -- HMAC-SHA-256 of canonical normalized input; never accept a client digest.
+  digest_key_version smallint not null default 1 check (digest_key_version > 0),
   request_digest bytea not null check (octet_length(request_digest) = 32),
   resource_type text not null check (resource_type in (
     'event_registration','transport_reservation','event_checkin','event_closeout'
@@ -480,7 +481,7 @@ comment on table public.event_registration is
 comment on table public.event_checkin is
   'Check-in requires event-scoped idempotency. Name-only matching is not identity proof; walk-in policy remains subject to D-06.';
 comment on table public.event_idempotency_receipt is
-  'Private idempotency ledger. Trusted server code computes SHA-256 over normalized requests and compares digests on replay; no browser role receives direct access. Retention remains subject to D-13.';
+  'Private idempotency ledger. Trusted server code computes versioned HMAC-SHA-256 over canonical normalized requests and compares digests on replay; no browser role receives direct access. Retention and key retirement remain subject to D-13.';
 comment on table public.transport_reservation is
   'Seat capacity requires a serialized trusted transaction; a client-side count is not sufficient.';
 comment on table public.announcement is
