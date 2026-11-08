@@ -56,6 +56,8 @@ jobs:
           test -n "$contacts_migration"
           cp supabase-cmi/schema-drafts/contacts_followup_domain.sql "$contacts_migration"
 
+          # Supabase migration filenames use second-resolution timestamps.
+          sleep 1
           supabase --workdir supabase-cmi migration new cmi_restricted_pastoral_domain
           pastoral_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_restricted_pastoral_domain.sql' -print -quit)"
           test -n "$pastoral_migration"
