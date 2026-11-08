@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(36);
+select plan(43);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -60,6 +60,51 @@ select extensions.ok(
 );
 select extensions.is((select count(*)::integer from public.role_capability),0,
   'no unapproved role-capability grants exist');
+
+-- Keep the Edge Function's fixed public projections aligned with real schema columns.
+select extensions.ok(
+  (select count(*) = 8 from information_schema.columns
+   where table_schema='public' and table_name='church_public_profile'
+   and column_name = any(array['public_name','welcome_content','public_phone','public_email','address_text','website_url','social_links','updated_at'])),
+  'church profile projection columns exist'
+);
+select extensions.ok(
+  (select count(*) = 7 from information_schema.columns
+   where table_schema='public' and table_name='sermon'
+   and column_name = any(array['id','title','body','public_slug','published_at','created_at','status'])),
+  'sermon projection, filter and ordering columns exist'
+);
+select extensions.ok(
+  (select count(*) = 8 from information_schema.columns
+   where table_schema='public' and table_name='daily_word'
+   and column_name = any(array['id','title','body','publication_date','public_slug','published_at','created_at','status'])),
+  'daily word projection, filter and ordering columns exist'
+);
+select extensions.ok(
+  (select count(*) = 7 from information_schema.columns
+   where table_schema='public' and table_name='digital_tract'
+   and column_name = any(array['id','title','body','public_slug','published_at','created_at','status'])),
+  'digital tract projection, filter and ordering columns exist'
+);
+select extensions.ok(
+  (select count(*) = 8 from information_schema.columns
+   where table_schema='public' and table_name='welcome_message'
+   and column_name = any(array['id','title','body','display_order','published_at','created_at','status','branch_id'])),
+  'welcome message projection and filter columns exist'
+);
+select extensions.ok(
+  (select count(*) = 8 from information_schema.columns
+   where table_schema='public' and table_name='announcement'
+   and column_name = any(array['id','title','body','publish_at','published_at','created_at','status','is_public'])),
+  'announcement projection and filter columns exist'
+);
+select extensions.ok(
+  (select count(*) = 11 from information_schema.columns
+   where table_schema='public' and table_name='event'
+   and column_name = any(array['id','title','description','starts_at','ends_at','timezone','location','registration_state','transport_enabled','status','visibility'])),
+  'public event projection, filter and ordering columns exist'
+);
+
 
 insert into auth.users (
  instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,
