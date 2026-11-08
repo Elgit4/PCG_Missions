@@ -42,6 +42,13 @@ Deno.test("canonical JSON rejects non-plain objects", () => {
   assertThrows(() => canonicalJson(new Date() as never));
 });
 
+Deno.test("canonical JSON rejects sparse arrays and normalized key collisions", () => {
+  const sparse = new Array(2) as never;
+  assertThrows(() => canonicalJson(sparse));
+  const collision = { "é": 1, "e\\u0301": 2 } as never;
+  assertThrows(() => canonicalJson(collision));
+});
+
 Deno.test("digest is stable for equivalent object key order", async () => {
   const secret = "0123456789abcdef0123456789abcdef";
   const left = await createRequestDigest({ event: "e1", body: { b: 2, a: 1 } }, secret, 1);
