@@ -39,7 +39,7 @@ jobs:
       - name: Install pinned Supabase CLI
         uses: supabase/setup-cli@v3
         with:
-          version: 3.2.0
+          version: 3.0.0
 
       - name: Show CLI version
         run: supabase --version
@@ -52,4 +52,9 @@ jobs:
 
       - name: Stop isolated local CMI stack
         if: always()
-        run: supabase stop
+        run: |
+          if command -v supabase >/dev/null 2>&1; then
+            supabase stop
+          else
+            echo "Supabase CLI was not installed; no local stack was started."
+          fi
