@@ -79,7 +79,7 @@ Deno.test("public projections use fixed published-only resource mappings", () =>
     { column: "status", value: "published" },
     { column: "visibility", value: "public" },
   ]);
-  assertEquals("capacity" in PUBLIC_RESOURCES.events.columns, false);
+  assertEquals(PUBLIC_RESOURCES.events.columns.includes("capacity"), false);
   assertEquals(PUBLIC_RESOURCES["welcome-messages"].globalOnly, true);
 });
 
