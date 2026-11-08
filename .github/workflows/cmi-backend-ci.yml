@@ -71,6 +71,12 @@ jobs:
       - name: Test public-content request validation
         run: deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
 
+      - name: Type-check staff session Edge Function
+        run: deno check supabase-cmi/supabase/functions/staff-session/index.ts
+
+      - name: Test staff session projection and fail-closed permissions
+        run: deno test supabase-cmi/supabase/functions/staff-session/session_test.ts
+
       - name: Test server-side event idempotency helpers
         run: deno test supabase-cmi/supabase/functions/_shared/idempotency_test.ts
 
