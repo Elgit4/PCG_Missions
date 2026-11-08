@@ -2,7 +2,7 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status:** Identity, contacts/follow-up, restricted-pastoral and events/attendance/public-content schema suites have passed isolated local CMI validation. The public-content Edge Function is implemented as source; its Deno validation tests, type-check and isolated database suite passed in CI run 42438088374. It is not deployed.
+**Status:** Identity, contacts/follow-up, restricted-pastoral and events/attendance/public-content schema suites have passed isolated local CMI validation. The public-content Edge Function source, Deno type-check and request-validation tests pass. The current PR #5 head passed the complete isolated CI workflow, including 101 pgTAP assertions, in [run 42438723308](https://github.com/Elgit4/PCG_Missions/actions/runs/42438723308). The function is not deployed.
 
 ## Implemented and validated
 
@@ -31,7 +31,7 @@ The draft adds 19 relations covering:
 
 The draft intentionally excludes waitlists, public browser table access, role-specific policies, direct registration writes, announcement SMS delivery state, and public content projections. RLS is enabled and browser grants are withheld on all 19 new tables. Capacity enforcement remains a trusted serialized transaction requirement, not a client-side count. Public registration, attendee snapshot retention and walk-in identity rules remain subject to D-05, D-06 and D-13.
 
-The CI workflow generates a temporary migration filename using `supabase migration new`, applies this draft on the disposable local CMI stack, runs its 36-assertion pgTAP suite, and removes temporary files afterward. The corrected suite passed in [GitHub Actions run 42437731467](https://github.com/Elgit4/PCG_Missions/actions/runs/42437731467), after the cross-branch registration fixture was corrected.
+The CI workflow generates a temporary migration filename using `supabase migration new`, applies this draft on the disposable local CMI stack, runs its expanded 43-assertion pgTAP suite, and removes temporary files afterward. The original 36 assertions passed in [run 42437731467](https://github.com/Elgit4/PCG_Missions/actions/runs/42437731467); the expanded suite, including seven API-projection/schema alignment assertions, passed in [run 42438723308](https://github.com/Elgit4/PCG_Missions/actions/runs/42438723308).
 
 ## Newly added — public-content Edge Function (implementation draft)
 
@@ -45,7 +45,7 @@ The read-only Edge Function exposes fixed, allowlisted projections for the churc
 
 The function uses a server-side service-role key because public base-table grants remain closed. This key bypasses RLS, so the implementation is deliberately limited to fixed table/column/filter combinations and must never be reused for staff APIs. It fails closed when secrets are missing. It exposes only church-wide welcome messages (not branch-specific messages) and omits event capacity from the public event projection. Rate limiting and abuse controls must be configured at the platform/gateway layer; CORS is not a security boundary. The function is source-only and has not been deployed.
 
-A Deno validation suite covers supported resources, pagination, slug validation, unknown and duplicate query parameters, inherited object-property resource names, and public-profile request shape. CI runs that suite before the local Supabase database suite. Deno type-check, validation tests and the isolated database/pgTAP workflow all passed in [GitHub Actions run 42438088374](https://github.com/Elgit4/PCG_Missions/actions/runs/42438088374).
+A Deno validation suite covers supported resources, pagination, slug validation, unknown and duplicate query parameters, inherited object-property resource names, and public-profile request shape. CI runs that suite before the local Supabase database suite. Deno type-check and request-validation tests passed in [run 42438088374](https://github.com/Elgit4/PCG_Missions/actions/runs/42438088374) and again on the latest head in [run 42438723308](https://github.com/Elgit4/PCG_Missions/actions/runs/42438723308). The latest workflow also passed all 101 database assertions.
 
 ## Deliberately not implemented
 
@@ -61,6 +61,6 @@ A Deno validation suite covers supported resources, pagination, slug validation,
 
 ## Verification boundary
 
-The 58 foundation assertions and the additional 36 event/public-content assertions have passed on isolated local CMI stacks. The public-content Edge Function type-check and validation suite passed in CI run 42438088374; the expanded 43-assertion combined run is pending for the latest branch head. No hosted Supabase project was linked, queried, migrated or modified; no real visitor/prayer data or live SMS was used.
+The 58 foundation assertions and the expanded 43 event/public-content assertions have passed on isolated local CMI stacks. The current PR #5 head also passed Deno type-checking, request-validation tests and the full database workflow (101 pgTAP assertions total) in [run 42438723308](https://github.com/Elgit4/PCG_Missions/actions/runs/42438723308). No hosted Supabase project was linked, queried, migrated or modified; no real visitor/prayer data or live SMS was used.
 
 Supabase CLI v3 is local-first. Keep CI on the isolated `supabase-cmi/` workspace and do not add `--remote` or hosted credentials without explicit deployment approval.
