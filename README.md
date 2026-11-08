@@ -19,7 +19,7 @@ CMI Follow-up supports church field capture, contacts, follow-up, prayer and car
 - **Communications:** manual one-to-one SMS, permission-scoped bulk SMS and configurable automated SMS; WhatsApp automation is not included.
 - **Out of scope:** multi-church network administration and the future/held capabilities listed in the master specification.
 
-## Backend implementation (feature branch)\n\nThe CMI-only backend workspace is being built separately from the historical ChurchConnect SQL under [supabase-cmi/](supabase-cmi/). See the [backend implementation status](supabase-cmi/IMPLEMENTATION_STATUS.md) and [schema reconciliation crosswalk](docs/16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md). The first identity/authorization foundation migration is committed for review but has not been executed. Contacts/follow-up and restricted-pastoral SQL/pgTAP drafts are under `supabase-cmi/schema-drafts/` and are not yet executable migrations/tests. Do not run the legacy top-level `supabase/` migrations for CMI.\n\n## Proposed database design (review branch)
+## Proposed database design (review branch)
 
 The current database-design proposal is available on the `design/cmi-logical-data-model` branch:
 
@@ -62,3 +62,7 @@ Do not apply the old ChurchConnect migrations to a live CMI project. Do not conn
 - Record stakeholder approvals before implementation where the documents identify an open decision.
 - Use synthetic data for development and testing.
 - Never commit PINs, passwords, service-role keys, provider secrets or private visitor/prayer data.
+
+## Backend implementation status
+
+The CMI backend is being built in the dedicated `supabase-cmi/` workspace, separate from the historical top-level `supabase/` ChurchConnect tree. The identity/authorization foundation is committed for isolated local review. Contacts/follow-up and restricted-pastoral SQL and pgTAP drafts remain under `supabase-cmi/schema-drafts/`; they are not permanent migrations or deployed features. RLS is enabled and direct browser grants and role-capability grants remain withheld pending approval. No hosted Supabase project has been linked or modified. See the [backend implementation status](supabase-cmi/IMPLEMENTATION_STATUS.md), [schema reconciliation crosswalk](docs/16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) and [CMI workspace guide](supabase-cmi/README.md). Never run the legacy top-level `supabase/` migrations for CMI.
