@@ -17,6 +17,9 @@ insert into public.capability (code, description, sensitivity) values
   ('contact.update.scoped', 'Update ordinary contact fields within approved scope.', 'ordinary'),
   ('contact.merge', 'Merge duplicate contacts through an audited transaction.', 'restricted'),
   ('contact.export.scoped', 'Export authorized minimized contact fields.', 'restricted'),
+  ('contact.identity.capture', 'Capture contact phone and email identifiers where explicitly approved.', 'restricted'),
+  ('contact.identity.read.scoped', 'Read contact phone and email identifiers within approved scope.', 'restricted'),
+  ('contact.identity.update.scoped', 'Update contact phone and email identifiers within approved scope.', 'restricted'),
   ('contact.note.create', 'Add ordinary non-sensitive contact notes.', 'ordinary'),
   ('contact.note.read.scoped', 'Read ordinary contact notes within visibility scope.', 'ordinary'),
   ('contact.interaction.record', 'Record contact calls, visits and follow-up outcomes.', 'ordinary'),
@@ -84,6 +87,7 @@ create or replace function public.cmi_create_contact(
   p_age_range text,
   p_preferred_language text,
   p_service_area_id uuid,
+  p_team_id uuid,
   p_source_metadata jsonb
 )
 returns jsonb
@@ -93,6 +97,9 @@ set search_path = pg_catalog
 as $$
 declare
   v_profile_id uuid;
+  v_branch_scope boolean := false;
+  v_assigned_scope boolean := false;
+  v_team_scope boolean := false;
   v_existing_contact_id uuid;
   v_existing_actor uuid;
   v_contact public.contact%rowtype;
@@ -123,8 +130,16 @@ begin
     raise exception using errcode = '22023', message = 'unsupported capture metadata';
   end if;
 
-  select sp.id
-    into v_profile_id
+  select
+    sp.id,
+    pg_catalog.bool_or(rc.scope_mode = 'branch'),
+    pg_catalog.bool_or(rc.scope_mode = 'assigned'),
+    pg_catalog.bool_or(rc.scope_mode = 'team')
+  into
+    v_profile_id,
+    v_branch_scope,
+    v_assigned_scope,
+    v_team_scope
   from public.staff_profile sp
   join public.staff_role_assignment sra
     on sra.staff_profile_id = sp.id
@@ -146,34 +161,54 @@ begin
     and b.is_active
     and cap.code = 'contact.capture.create'
     and cap.is_active
-    and (
-      rc.scope_mode = 'branch'
-      or rc.scope_mode = 'assigned'
-      or (
-        rc.scope_mode = 'team'
-        and exists (
-          select 1
-          from public.staff_team_membership stm
-          join public.team t
-            on t.id = stm.team_id
-           and t.branch_id = stm.branch_id
-           and t.is_active
-          where stm.staff_profile_id = sp.id
-            and stm.branch_id = p_branch_id
-            and stm.starts_at <= pg_catalog.now()
-            and stm.ends_at is null
-            and stm.revoked_at is null
-        )
-      )
-    )
-  limit 1;
+    and rc.scope_mode in ('branch', 'assigned', 'team')
+  group by sp.id;
 
   if v_profile_id is null then
     raise exception using errcode = '42501', message = 'contact capture not authorized';
   end if;
 
+  if (p_phone_e164 is not null or p_phone_display is not null or p_email_normalized is not null)
+     and not exists (
+       select 1
+       from public.staff_role_assignment sra
+       join public.role r on r.id = sra.role_id and r.is_active
+       join public.role_capability rc on rc.role_id = sra.role_id
+       join public.capability cap on cap.id = rc.capability_id
+       where sra.staff_profile_id = v_profile_id
+         and sra.branch_id = p_branch_id
+         and sra.starts_at <= pg_catalog.now()
+         and sra.ends_at is null
+         and sra.revoked_at is null
+         and cap.code = 'contact.identity.capture'
+         and cap.is_active
+     ) then
+    raise exception using errcode = '42501', message = 'contact identity capture not authorized';
+  end if;
+
+  if p_team_id is not null then
+    if not v_team_scope or not exists (
+      select 1
+      from public.staff_team_membership stm
+      join public.team t
+        on t.id = stm.team_id
+       and t.branch_id = stm.branch_id
+       and t.is_active
+      where stm.staff_profile_id = v_profile_id
+        and stm.branch_id = p_branch_id
+        and stm.team_id = p_team_id
+        and stm.starts_at <= pg_catalog.now()
+        and stm.ends_at is null
+        and stm.revoked_at is null
+    ) then
+      raise exception using errcode = '42501', message = 'team contact capture not authorized';
+    end if;
+  elsif not v_branch_scope and not v_assigned_scope then
+    raise exception using errcode = '22023', message = 'team_id is required for team-scoped capture';
+  end if;
+
   -- Serialize requests that share the same branch/idempotency key. This makes
-  -- the contact and its capture provenance an atomic, replay-safe operation.
+  -- the contact, assignment and capture provenance an atomic replay-safe write.
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(p_branch_id::text || ':' || p_client_request_id::text, 0)
   );
@@ -227,6 +262,22 @@ begin
   )
   returning * into v_contact;
 
+  if p_team_id is not null or (not v_branch_scope and v_assigned_scope) then
+    insert into public.contact_assignment (
+      contact_id,
+      branch_id,
+      assignee_user_id,
+      team_id,
+      assigned_by
+    ) values (
+      v_contact.id,
+      p_branch_id,
+      case when p_team_id is null then p_actor_auth_user_id else null end,
+      p_team_id,
+      p_actor_auth_user_id
+    );
+  end if;
+
   insert into public.contact_capture (
     contact_id,
     branch_id,
@@ -253,14 +304,14 @@ end;
 $$;
 
 revoke all on function public.cmi_create_contact(
-  uuid, uuid, uuid, text, text, text, text, text, text, text, text, uuid, jsonb
+  uuid, uuid, uuid, text, text, text, text, text, text, text, text, uuid, uuid, jsonb
 ) from public, anon, authenticated;
 grant execute on function public.cmi_create_contact(
-  uuid, uuid, uuid, text, text, text, text, text, text, text, text, uuid, jsonb
+  uuid, uuid, uuid, text, text, text, text, text, text, text, text, uuid, uuid, jsonb
 ) to service_role;
 
 comment on function public.cmi_create_contact(
-  uuid, uuid, uuid, text, text, text, text, text, text, text, text, uuid, jsonb
-) is 'Atomic staff contact capture. Execute only from the verified CMI Edge Function service.';
+  uuid, uuid, uuid, text, text, text, text, text, text, text, text, uuid, uuid, jsonb
+) is 'Atomic staff contact capture with validated actor, branch, capability and team/self assignment. Execute only from the verified CMI Edge Function service.';
 
 commit;
