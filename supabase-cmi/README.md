@@ -40,6 +40,18 @@ The first three suites passed in [GitHub Actions run 42436473154](https://github
 
 CI generates temporary migration filenames using `supabase migration new`, copies the drafts into the isolated CLI project, applies them locally, runs pgTAP, then removes the temporary files. Draft SQL is not yet promoted to permanent migrations.
 
+## Edge Functions
+
+The first server-side function draft is `supabase/functions/public-content/`. It provides fixed read-only projections for published sermons, daily words, tracts, welcome messages, public announcements, public events and the church public profile. It does not grant anonymous access to the underlying tables. See [Edge Function security and deployment rules](supabase/functions/README.md).
+
+Run its input-validation tests with:
+
+```bash
+deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
+```
+
+Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and exact `PUBLIC_CONTENT_ALLOWED_ORIGINS` only in the Edge Function's server environment. The service-role key bypasses RLS; the function's fixed query allowlist is therefore security-critical. Do not reuse it for staff operations. Platform rate limiting and production origin configuration are required before deployment. This function is not deployed.
+
 ## Security and approval gates
 
 - Auth credentials stay in Supabase Auth; no PIN/password columns.
