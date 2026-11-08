@@ -137,6 +137,22 @@ Check validity; partial active index by assignee/record. Assignment is mandatory
 
 No generic contact-note or report exposure. RLS and audited read path must be independently tested.
 
+### 2.9 `care_access_audit` (required companion to prayer audit)
+
+| Column | Type | Null? | Key/default | Rule |
+|---|---|---:|---|---|
+| `id` | uuid | No | PK, generated | Audit ID |
+| `care_record_id` | uuid | No | FK → care_record, RESTRICT | Accessed care record |
+| `branch_id` | uuid | No | FK → branch | Same branch as care record |
+| `actor_user_id` | uuid | No | FK → staff_profile.user_id, RESTRICT | Actor |
+| `action` | text | No | CHECK | read, update, assign, revoke, oversight |
+| `reason` | text | Yes | — | Required for oversight/break-glass |
+| `request_id` | text | Yes | — | Correlation/request ID |
+| `accessed_at` | timestamptz | No | DEFAULT now() | Access/action instant |
+| `safe_metadata` | jsonb | No | DEFAULT '{}' | No narrative or secrets |
+
+Append-only, like prayer_access_audit. Direct client SELECT is denied. A trusted server-mediated care read writes this row in the same transaction before returning a minimal authorized projection. This table is a required schema addition because a prayer-specific audit row cannot safely identify and audit a care record read.
+
 ## 3. Events, registration, transport and attendance
 
 ### 3.1 `event`
