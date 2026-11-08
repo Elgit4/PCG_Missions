@@ -92,3 +92,19 @@ Deno.test("public projections never map private operational domains", () => {
     false,
   );
 });
+
+
+Deno.test("rejects inherited resource names and duplicate query parameters", () => {
+  assertEquals(
+    parsePublicContentRequest(new URL("https://example.test/?resource=toString")),
+    { ok: false, error: "Unsupported public resource." },
+  );
+  assertEquals(
+    parsePublicContentRequest(new URL("https://example.test/?resource=sermons&limit=10&limit=20")),
+    { ok: false, error: "Duplicate query parameter." },
+  );
+  assertEquals(
+    parsePublicContentRequest(new URL("https://example.test/?resource=sermons&resource=events")),
+    { ok: false, error: "Duplicate query parameter." },
+  );
+});
