@@ -66,3 +66,8 @@ See `IMPLEMENTATION_STATUS.md` and `../docs/16_CMI_SCHEMA_RECONCILIATION_AND_DEC
 
 
 The event schema's attendee and public-profile phone constraints now use the correct single-plus E.164 expression. Tests verify a valid +233 value, reject a number without the international plus and reject a literal backslash prefix. The latest head passed all four suites (104 pgTAP assertions) in [run 42439672140](https://github.com/Elgit4/PCG_Missions/actions/runs/42439672140).
+
+
+## Event integrity test status
+
+The event-domain test suite contains **53 pgTAP assertions**, including registration/contact identity consistency on check-in and append-only closeout history protections. PR #7's isolated workflow passed all four database suites (**111 assertions total**) plus Deno type-check and request-validation tests in [run 42441068594](https://github.com/Elgit4/PCG_Missions/actions/runs/42441068594). The PR remains draft and no hosted project was changed.
