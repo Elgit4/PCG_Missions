@@ -73,6 +73,8 @@ create table public.contact_capture (
     check (capture_source in ('staff_manual', 'public_site', 'offline_queue', 'import')),
   service_area_id uuid,
   client_request_id uuid not null,
+  digest_key_version smallint not null default 1 check (digest_key_version > 0),
+  request_digest bytea not null check (octet_length(request_digest) = 32),
   captured_at timestamptz not null default now(),
   source_metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
