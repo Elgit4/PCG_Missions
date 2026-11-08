@@ -78,3 +78,8 @@ The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role sche
 - Manual, bulk and automated SMS are in scope; WhatsApp automation is not included. SMS must remain disabled until provider, sender-ID, consent/opt-out and budget controls are configured and tested.
 - Multi-church administration and the listed future/held features are out of scope.
 - A documented capability is not proof that the feature has shipped. Verify implementation separately.
+
+## Backend implementation
+
+- [16 — Backend Implementation Baseline](16_BACKEND_IMPLEMENTATION_BASELINE.md): initial Edge Function foundation, legacy ChurchConnect quarantine, platform considerations, implementation sequence and approval gates.
+- [Legacy ChurchConnect artifacts](legacy/churchconnect/README.md): preserved historical SQL, tests and workflow; not part of the active CMI backend.
