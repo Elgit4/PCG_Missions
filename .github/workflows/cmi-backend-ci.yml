@@ -33,11 +33,34 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Deno
         uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+
+      - name: Check formatting for changed CMI Edge Function files
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            echo "No comparison base is available for this event; skipping the diff-scoped formatting check."
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- 'supabase-cmi/supabase/functions/*.ts' 'supabase-cmi/supabase/functions/**/*.ts')"
+          if [[ -z "$changed_files" ]]; then
+            echo "No CMI Edge Function TypeScript files changed."
+            exit 0
+          fi
+
+          while IFS= read -r file; do
+            deno fmt --check "$file"
+          done <<< "$changed_files"
 
       - name: Lint CMI Edge Functions
         run: deno lint supabase-cmi/supabase/functions
