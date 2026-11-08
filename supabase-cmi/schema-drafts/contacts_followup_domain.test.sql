@@ -93,24 +93,28 @@ select extensions.throws_ok(
 );
 
 insert into public.contact_capture (
-  contact_id, branch_id, captured_by, capture_source, client_request_id, source_metadata
+  contact_id, branch_id, captured_by, capture_source, client_request_id, digest_key_version, request_digest, source_metadata
 ) values (
   '40000000-0000-4000-8000-000000000001',
   '20000000-0000-4000-8000-000000000001',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   'staff_manual',
   '50000000-0000-4000-8000-000000000001',
+  1,
+  decode(repeat('00', 32), 'hex'),
   '{"app_version":"test"}'::jsonb
 );
 
 select extensions.throws_ok(
   $q$ insert into public.contact_capture (
-        contact_id, branch_id, capture_source, client_request_id, source_metadata
+        contact_id, branch_id, capture_source, client_request_id, digest_key_version, request_digest, source_metadata
       ) values (
         '40000000-0000-4000-8000-000000000001',
         '20000000-0000-4000-8000-000000000001',
         'offline_queue',
         '50000000-0000-4000-8000-000000000001',
+        1,
+        decode(repeat('00', 32), 'hex'),
         '{}'::jsonb
       ) $q$,
   '23505', null, 'capture retries are idempotent per branch and request ID'
@@ -124,6 +128,8 @@ select extensions.throws_ok(
         '20000000-0000-4000-8000-000000000001',
         'staff_manual',
         '50000000-0000-4000-8000-000000000002',
+        1,
+        decode(repeat('00', 32), 'hex'),
         '{"pastoral_note":"must not be cached"}'::jsonb
       ) $q$,
   '23514', null, 'capture metadata rejects non-allowlisted sensitive fields'
