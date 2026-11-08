@@ -15,12 +15,14 @@
 - Teams, memberships, service areas and staff area coverage.
 - RLS enabled and browser grants withheld on all foundation tables.
 - Initial pgTAP structural and deny-by-default test file.
+- Contacts/follow-up domain SQL draft covering nine tables, integrity constraints, indexes, idempotent capture metadata, and conservative assignment rules.
+- Matching pgTAP draft covering table presence, RLS, closed Data API grants, shared-phone handling, branch consistency, capture idempotency and assignment constraints.
 
 ## Deliberately not implemented yet
 
 - Staff email + PIN credential activation/exchange/reset endpoints. The credential lifecycle and Supabase Auth integration require approval.
 - Role capability grants and role/record scope policies. R-01–R-12 and D-01 remain pending.
-- Contacts, capture, assignment, notes, merge, follow-up tasks.
+- Promoted/executable contacts, capture, assignment, notes, merge and follow-up migrations (current SQL remains a draft under `schema-drafts/` until CLI migration generation and local validation are available).
 - Prayer/care tables and audited narrative-read path.
 - Event registration, transport capacity, check-in and public endpoints.
 - Public content publication.
@@ -34,4 +36,4 @@ See [schema reconciliation crosswalk](../docs/16_CMI_SCHEMA_RECONCILIATION_AND_D
 
 ## Verification
 
-The migration and pgTAP test are committed but have not been executed. The GitHub-only implementation environment did not provide a local PostgreSQL/Supabase runtime in this work session. No hosted Supabase project was accessed, linked, migrated or modified.
+The foundation migration and pgTAP test are committed but have not been executed. The contacts/follow-up SQL and test remain drafts, not CLI migrations. The GitHub-only implementation environment did not provide a local PostgreSQL/Supabase runtime in this work session. No hosted Supabase project was accessed, linked, migrated or modified.
