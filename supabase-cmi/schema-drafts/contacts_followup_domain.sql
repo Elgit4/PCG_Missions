@@ -116,7 +116,7 @@ create table public.contact_assignment (
     references public.contact(id, branch_id) on delete restrict,
   foreign key (team_id, branch_id)
     references public.team(id, branch_id) on delete restrict,
-  check ((assignee_user_id is not null)::integer + (team_id is not null)::integer = 1),
+  check ((assignee_user_id is not null) <> (team_id is not null)),
   check (ends_at is null or ends_at > starts_at)
 );
 
@@ -258,7 +258,7 @@ create table public.followup_task (
     references public.contact(id, branch_id) on delete restrict,
   foreign key (team_id, branch_id)
     references public.team(id, branch_id) on delete restrict,
-  check ((assignee_user_id is not null)::integer + (team_id is not null)::integer = 1),
+  check ((assignee_user_id is not null) <> (team_id is not null)),
   check (
     (status = 'completed' and completed_at is not null)
     or (status <> 'completed' and completed_at is null)
