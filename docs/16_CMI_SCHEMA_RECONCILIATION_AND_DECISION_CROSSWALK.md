@@ -121,3 +121,12 @@ The draft creates 19 relations and keeps RLS enabled with no browser grants or c
 The earlier 58-assertion result still applies only to identity, contacts/follow-up and restricted-pastoral suites. Do not combine it with the new suite or claim 94 assertions passed until the new CI run reports success.
 
 No hosted Supabase project has been linked or modified.
+
+
+## 9. Event transaction API build contract
+
+The event registration, capacity, transport, check-in and closeout implementation contract is now documented in [document 17](17_EVENT_TRANSACTION_API_CONTRACT.md). It specifies server-side serialization, idempotency, caller identity derivation, fixed request allowlists, audit atomicity, capacity concurrency tests and implementation gates.
+
+The contract records additional schema corrections discovered during endpoint design: idempotency payload fingerprints, consent evidence linkage, registration/contact identity consistency on check-in, closeout history immutability and unresolved multiple-transport behavior. These are explicit build gates, not assumed decisions.
+
+No transactional event write endpoints or grants are implemented. D-05, D-06, D-13 and relevant R/D decisions remain pending.
