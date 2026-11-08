@@ -492,9 +492,9 @@ Deno.serve(async (request: Request) => {
       );
       const identityIds = await visibleContactIds(
         auth.service,
-        auth.profileId,
         branchId,
         auth.actorId,
+        auth.profileId,
         identityScopes,
       );
 
