@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(68);
+select plan(70);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -15,6 +15,7 @@ select has_table('public','event_closeout','event closeout table exists');
 select has_table('public','event_closeout_event','event closeout history table exists');
 select has_table('public','event_idempotency_receipt','event idempotency receipt ledger exists');
 select has_column('public','event_idempotency_receipt','request_digest','idempotency request digest is stored');
+select has_column('public','event_idempotency_receipt','digest_key_version','HMAC key version is stored for rotation-safe replay');
 select has_index('public','event_idempotency_receipt','event_idempotency_receipt_created_idx','idempotency receipt retention index exists');
 select has_table('public','calendar_entry','typed calendar entry table exists');
 select has_table('public','announcement','announcement table exists');
@@ -442,6 +443,19 @@ select extensions.throws_ok(
   '71000000-0000-4000-8000-000000000112',201
  )$q$,
  '23514',null,'operation and response resource type must agree');
+
+
+select extensions.throws_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,idempotency_key,
+  digest_key_version,request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'public_registration','public','a1000000-0000-4000-8000-000000000013',
+  0,decode(repeat('ab',32),'hex'),'event_registration',
+  '71000000-0000-4000-8000-000000000113',201
+ )$q$,
+ '23514',null,'HMAC key version must be a positive version number');
 
 select * from finish();
 rollback;
