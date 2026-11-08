@@ -207,7 +207,9 @@ export function parseContactCreate(
 export function parseContactPatch(
   value: unknown,
 ): { ok: true; value: ContactPatchInput } | { ok: false; error: string } {
-  if (!isRecord(value)) return { ok: false, error: "A JSON object is required." };
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
   const allowed = new Set([
     "first_name",
     "last_name",
