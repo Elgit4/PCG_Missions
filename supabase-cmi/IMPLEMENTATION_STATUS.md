@@ -67,3 +67,10 @@ Supabase CLI v3 is local-first. Keep CI on the isolated `supabase-cmi/` workspac
 
 
 The event registration and public-profile E.164 constraints were corrected to match the single-plus international format. Three pgTAP cases cover valid +233 phone values, missing international plus and an invalid literal backslash prefix. The latest head, including schema restoration and qualified pgTAP calls, passed in [run 42439419503](https://github.com/Elgit4/PCG_Missions/actions/runs/42439419503): 104 database assertions total.
+
+
+## Next-stage design — event transaction API contract
+
+The proposed transactional contract is documented in [docs/17_EVENT_TRANSACTION_API_CONTRACT.md](../docs/17_EVENT_TRANSACTION_API_CONTRACT.md). It defines public/staff registration, serialized event-capacity checks, transport-seat reservation, check-in, closeout, idempotency, authorization boundaries and concurrency/security tests.
+
+The contract identifies schema corrections required before implementation: idempotency request digest; consent evidence relation; check-in registration/contact identity consistency; database-level closeout history immutability; and an approved rule for multiple active transport options. No write endpoints or role grants have been activated. Implementation remains blocked by D-05, D-06, D-13 and applicable R-01–R-12/D-01 approvals.
