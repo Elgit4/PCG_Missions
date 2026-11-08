@@ -5,6 +5,7 @@ on:
     branches:
       - design/cmi-logical-data-model
       - main
+      - feat/cmi-backend-foundation
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
