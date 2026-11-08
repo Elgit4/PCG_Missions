@@ -58,7 +58,7 @@ select extensions.ok(
   ),
   'no client policies exist before trusted public projections and reviewed role grants'
 );
-select is((select count(*)::integer from public.role_capability),0,
+select extensions.is((select count(*)::integer from public.role_capability),0,
   'no unapproved role-capability grants exist');
 
 insert into auth.users (
@@ -93,30 +93,30 @@ values
   'Synthetic Event B',now()+interval '2 days',now()+interval '2 days 2 hours',
   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','draft','private','closed');
 
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.event(branch_id,title,starts_at,ends_at,created_by)
  values ('21000000-0000-4000-8000-000000000001','Bad interval',now(),now(),
  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')$q$,
  '23514',null,'event end must be later than event start');
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.event(branch_id,title,starts_at,ends_at,created_by,registration_state)
  values ('21000000-0000-4000-8000-000000000001','Waitlist',now(),now()+interval '1 hour',
  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','waitlist_only')$q$,
  '23514',null,'unapproved waitlist state is not available');
 
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.event_registration(event_id,branch_id,attendee_name_snapshot,registration_source)
  values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
  'Public Attendee','public_site')$q$,
  '23514',null,'public registration requires an idempotency key');
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.event_registration(event_id,branch_id,contact_id,attendee_name_snapshot,registration_source,client_request_id)
  values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
  '41000000-0000-4000-8000-000000000001','Wrong Branch Contact','staff',
  '61000000-0000-4000-8000-000000000001')$q$,
  '23503',null,'registration cannot link a contact from another branch');
 
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.event_team_assignment(event_id,branch_id,team_id,assigned_by)
  values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
  '31000000-0000-4000-8000-000000000002','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')$q$,
@@ -130,12 +130,12 @@ insert into public.event_registration(
  'Synthetic Attendee','staff','61000000-0000-4000-8000-000000000002'
 );
 
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.event_checkin(event_id,branch_id,recorded_by,source,client_request_id)
  values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','staff','61000000-0000-4000-8000-000000000003')$q$,
  '23514',null,'check-in requires a registration, contact or explicit name snapshot');
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.event_checkin(event_id,branch_id,registration_id,attendee_name_snapshot,recorded_by,source,client_request_id)
  values ('51000000-0000-4000-8000-000000000002','21000000-0000-4000-8000-000000000002',
  '71000000-0000-4000-8000-000000000001','Wrong Event',
@@ -149,13 +149,13 @@ insert into public.event_checkin(
  '71000000-0000-4000-8000-000000000001','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
  'staff','61000000-0000-4000-8000-000000000005'
 );
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.event_checkin(event_id,branch_id,registration_id,recorded_by,source,client_request_id)
  values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
  '71000000-0000-4000-8000-000000000001','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
  'staff','61000000-0000-4000-8000-000000000006')$q$,
  '23505',null,'a registration cannot be checked in twice for one event');
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.event_checkin(event_id,branch_id,contact_id,recorded_by,source,client_request_id)
  values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
  '41000000-0000-4000-8000-000000000001','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -166,25 +166,25 @@ insert into public.announcement(id,branch_id,title,body,created_by)
 values ('81000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
  'Synthetic Announcement','A synthetic announcement for tests.',
  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.announcement_team_audience(announcement_id,branch_id,team_id)
  values ('81000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
  '31000000-0000-4000-8000-000000000002')$q$,
  '23503',null,'announcement team audience cannot cross branches');
 
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.external_document_link(label,url,created_by)
  values ('Invalid target','https://example.invalid/file.pdf',
  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')$q$,
  '23514',null,'external document link requires exactly one typed parent');
 
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.sermon(title,body,public_slug,status,created_by)
  values ('Unpublished sermon','Synthetic body','unpublished-sermon','published',
  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')$q$,
  '23514',null,'published content requires a publication timestamp');
 
-select throws_ok(
+select extensions.throws_ok(
  $q$insert into public.calendar_entry(branch_id,entry_type,title,starts_at,scope_type,team_id,created_by)
  values ('21000000-0000-4000-8000-000000000001','other','Invalid scope',now(),'team',
  '31000000-0000-4000-8000-000000000002','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')$q$,
