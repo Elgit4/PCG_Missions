@@ -1,4 +1,5 @@
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const E164_PATTERN = /^\+[1-9][0-9]{7,14}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -34,7 +35,8 @@ export type ContactPatchInput = Partial<
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" &&
-    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+    (Object.getPrototypeOf(value) === Object.prototype ||
+      Object.getPrototypeOf(value) === null);
 }
 
 function optionalText(
@@ -56,7 +58,10 @@ function requiredText(
   field: string,
   maxLength: number,
 ): { ok: true; value: string } | { ok: false; error: string } {
-  if (typeof value !== "string" || value.trim().length < 1 || value.trim().length > maxLength) {
+  if (
+    typeof value !== "string" || value.trim().length < 1 ||
+    value.trim().length > maxLength
+  ) {
     return { ok: false, error: `Invalid ${field}.` };
   }
   return { ok: true, value: value.trim() };
@@ -65,7 +70,9 @@ function requiredText(
 export function parseContactCreate(
   value: unknown,
 ): { ok: true; value: ContactCreateInput } | { ok: false; error: string } {
-  if (!isRecord(value)) return { ok: false, error: "A JSON object is required." };
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
 
   const allowed = new Set([
     "branch_id",
@@ -86,7 +93,9 @@ export function parseContactCreate(
     return { ok: false, error: "Unsupported contact field." };
   }
 
-  if (typeof value.branch_id !== "string" || !UUID_PATTERN.test(value.branch_id)) {
+  if (
+    typeof value.branch_id !== "string" || !UUID_PATTERN.test(value.branch_id)
+  ) {
     return { ok: false, error: "Invalid branch_id." };
   }
   if (
@@ -101,7 +110,11 @@ export function parseContactCreate(
 
   const lastName = optionalText(value.last_name, "last_name", 120);
   if (!lastName.ok) return lastName;
-  const preferredName = optionalText(value.preferred_name, "preferred_name", 120);
+  const preferredName = optionalText(
+    value.preferred_name,
+    "preferred_name",
+    120,
+  );
   if (!preferredName.ok) return preferredName;
   const phone = optionalText(value.phone_e164, "phone_e164", 16);
   if (!phone.ok) return phone;
@@ -118,20 +131,35 @@ export function parseContactCreate(
   }
   const ageRange = optionalText(value.age_range, "age_range", 40);
   if (!ageRange.ok) return ageRange;
-  const language = optionalText(value.preferred_language, "preferred_language", 80);
+  const language = optionalText(
+    value.preferred_language,
+    "preferred_language",
+    80,
+  );
   if (!language.ok) return language;
 
   let serviceAreaId: string | null = null;
-  if (value.service_area_id !== undefined && value.service_area_id !== null && value.service_area_id !== "") {
-    if (typeof value.service_area_id !== "string" || !UUID_PATTERN.test(value.service_area_id)) {
+  if (
+    value.service_area_id !== undefined && value.service_area_id !== null &&
+    value.service_area_id !== ""
+  ) {
+    if (
+      typeof value.service_area_id !== "string" ||
+      !UUID_PATTERN.test(value.service_area_id)
+    ) {
       return { ok: false, error: "Invalid service_area_id." };
     }
     serviceAreaId = value.service_area_id;
   }
 
   let teamId: string | null = null;
-  if (value.team_id !== undefined && value.team_id !== null && value.team_id !== "") {
-    if (typeof value.team_id !== "string" || !UUID_PATTERN.test(value.team_id)) {
+  if (
+    value.team_id !== undefined && value.team_id !== null &&
+    value.team_id !== ""
+  ) {
+    if (
+      typeof value.team_id !== "string" || !UUID_PATTERN.test(value.team_id)
+    ) {
       return { ok: false, error: "Invalid team_id." };
     }
     teamId = value.team_id;
@@ -142,7 +170,12 @@ export function parseContactCreate(
     if (!isRecord(value.source_metadata)) {
       return { ok: false, error: "source_metadata must be an object." };
     }
-    const permitted = new Set(["app_version", "form_version", "device_type", "locale"]);
+    const permitted = new Set([
+      "app_version",
+      "form_version",
+      "device_type",
+      "locale",
+    ]);
     for (const [key, item] of Object.entries(value.source_metadata)) {
       if (!permitted.has(key) || typeof item !== "string" || item.length > 80) {
         return { ok: false, error: "Unsupported source metadata." };
@@ -198,17 +231,30 @@ export function parseContactPatch(
       if (!parsed.ok) return parsed;
       result.first_name = parsed.value;
     } else {
-      const max = key === "phone_display" ? 40 : key === "email_normalized" ? 254 :
-        key === "age_range" ? 40 : key === "preferred_language" ? 80 : 120;
+      const max = key === "phone_display"
+        ? 40
+        : key === "email_normalized"
+        ? 254
+        : key === "age_range"
+        ? 40
+        : key === "preferred_language"
+        ? 80
+        : 120;
       const parsed = optionalText(raw, key, max);
       if (!parsed.ok) return parsed;
       const parsedValue = key === "email_normalized"
         ? parsed.value?.toLowerCase() ?? null
         : parsed.value;
-      if (key === "phone_e164" && parsedValue !== null && !E164_PATTERN.test(parsedValue)) {
+      if (
+        key === "phone_e164" && parsedValue !== null &&
+        !E164_PATTERN.test(parsedValue)
+      ) {
         return { ok: false, error: "phone_e164 must use E.164 format." };
       }
-      if (key === "email_normalized" && parsedValue !== null && !EMAIL_PATTERN.test(parsedValue)) {
+      if (
+        key === "email_normalized" && parsedValue !== null &&
+        !EMAIL_PATTERN.test(parsedValue)
+      ) {
         return { ok: false, error: "Invalid email_normalized." };
       }
       if (key === "last_name") result.last_name = parsedValue;
