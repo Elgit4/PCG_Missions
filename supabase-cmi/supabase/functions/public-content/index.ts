@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import {
   parsePublicContentRequest,
   PUBLIC_RESOURCES,
+  getScheduledPublicationFilter,
   type PublicResource,
 } from "./validation.ts";
 
@@ -100,6 +101,13 @@ Deno.serve(async (request: Request) => {
     for (const filter of config.filters) {
       query = query.eq(filter.column, filter.value);
     }
+
+    // Public announcements must not leak before their scheduled publish_at.
+    const scheduledFilter = getScheduledPublicationFilter(
+      resource,
+      new Date().toISOString(),
+    );
+    if (scheduledFilter) query = query.or(scheduledFilter);
 
     if ("globalOnly" in config && config.globalOnly) {
       query = query.is("branch_id", null);
