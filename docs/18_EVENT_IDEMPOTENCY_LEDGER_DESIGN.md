@@ -1,6 +1,6 @@
 # CMI Follow-up — Event Idempotency Ledger Design
 
-**Status:** Draft schema implementation; not a deployed endpoint or approved operational policy  
+**Status:** Ledger schema and server-side helper merged to `main`; not a deployed endpoint or approved operational policy  
 **Related:** [Event Transaction API Contract](17_EVENT_TRANSACTION_API_CONTRACT.md), [Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md), [PR #8](https://github.com/Elgit4/PCG_Missions/pull/8)
 
 ## 1. Problem
@@ -82,8 +82,15 @@ Use a savepoint or a database-native conflict-handling pattern that safely recov
 
 The event-domain pgTAP suite checks table/column/index presence, RLS and closed browser grants, public/staff actor scope, key uniqueness, digest length and key version, operation allowlists, operation/resource pairing, successful status range and event/branch integrity.
 
-The draft CI run must also pass the full isolated CMI database suite and Deno checks. These are schema-level tests only; endpoint replay, payload conflict and concurrent-claim integration tests remain required before the API can be implemented.
+The merged PR #8 head passed [CI run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750), including the full isolated CMI suite (**129 pgTAP assertions across four suites**) and the Deno idempotency-helper tests. The event/idempotency database suite contains 71 assertions. These are schema/helper-level tests only; endpoint replay, payload-conflict and concurrent-claim integration tests remain required before the API can be implemented.
 
 ## 8. Implementation gate
 
 The receipt ledger is a technical prerequisite, not approval to enable event mutations. Public registration and staff event write paths remain blocked by D-05, D-06 and applicable R-01–R-12/D-01 decisions. Retention and key retirement remain blocked by D-13. No hosted Supabase project is modified by this draft.
+
+
+## 9. Source-control verification (2026-11-08)
+
+PR #8 is merged to `main` as [commit d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8). Its exact PR head `c80a29a46a8a693449d66b209c84e2ba6894209a` passed [workflow run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750).
+
+The receipt relation, canonical JSON/HMAC helper and their database/unit tests are source-control integrated. They do not constitute a live transaction endpoint. Atomic claim/replay/conflict semantics, resource validation within the event/branch, consent linkage, retention/key retirement approval, and production security review remain required. No hosted Supabase project has been modified or linked.
