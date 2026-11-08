@@ -241,12 +241,12 @@ This contract is accepted for implementation only when:
 
 ## 12. Schema remediation progress (2026-11-08)
 
-A follow-on draft PR, [PR #7 — event check-in identity and closeout history](https://github.com/Elgit4/PCG_Missions/pull/7), adds the two database guards called out in Sections 6.3 and 7.3:
+[PR #7 — event check-in identity and closeout history](https://github.com/Elgit4/PCG_Missions/pull/7), merged to `main` as commit [af68c6c](https://github.com/Elgit4/PCG_Missions/commit/af68c6c65949bf3c1c29d1d63c3a53cb666349bb), adds the two database guards called out in Sections 6.3 and 7.3:
 
 - A check-in carrying both `registration_id` and `contact_id` must reference the same canonical contact linked to that registration in the same event and branch. The trigger applies on insert and relevant updates.
 - `event_closeout_event` is protected against UPDATE, DELETE and TRUNCATE; append-only inserts remain possible for a future authorized transaction path.
 
-PR #7's current head passed its isolated workflow in [CI run 42441280069](https://github.com/Elgit4/PCG_Missions/actions/runs/42441280069), including the event-schema pgTAP suite and Deno checks. It remains a draft review PR until integrated; the guards are not deployed or production-active.
+PR #7's reconciled head passed in [CI run 42448742945](https://github.com/Elgit4/PCG_Missions/actions/runs/42448742945), including 112 database assertions, Deno checks and the trigger-function privilege-closure assertion. The guards are merged to source control but are not deployed or production-active.
 
 The following schema/API gates remain unresolved:
 - [PR #8 — private event idempotency receipt ledger](https://github.com/Elgit4/PCG_Missions/pull/8) adds a scoped receipt table with a versioned HMAC-SHA-256 digest, actor scope and operation/resource pairing. Its current head passed the isolated workflow in [CI run 42445664655](https://github.com/Elgit4/PCG_Missions/actions/runs/42445664655), including the idempotency helper tests and expanded database suites. The endpoint must still implement canonicalization, digest comparison, replay and 409 conflict semantics atomically; the table alone does not implement those behaviors.

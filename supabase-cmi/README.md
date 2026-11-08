@@ -71,3 +71,8 @@ The event schema's attendee and public-profile phone constraints now use the cor
 ## Event integrity test status
 
 The event-domain test suite contains **53 pgTAP assertions**, including registration/contact identity consistency on check-in and append-only closeout history protections. PR #7's isolated workflow passed all four database suites (**111 assertions total**) plus Deno type-check and request-validation tests in [run 42441280069](https://github.com/Elgit4/PCG_Missions/actions/runs/42441280069). The changes are not deployed and no hosted project was changed.
+
+
+## Event idempotency ledger
+
+The event schema draft includes a private HMAC-backed idempotency receipt ledger. Keys are scoped by event, branch, operation, caller class and (for staff) trusted actor. Receipts store only a versioned digest and resource reference, not request PII. The helper's canonical JSON serializer rejects unsafe/accessor-backed object structures and sorts Unicode-normalized keys deterministically. The reconciled migration and test suite also verify the event integrity trigger functions cannot be invoked by browser roles. The latest validation is pending on PR #8; this is not an active transaction endpoint or production feature.

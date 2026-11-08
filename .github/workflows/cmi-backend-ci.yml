@@ -8,6 +8,7 @@ on:
       - feat/cmi-backend-foundation
       - feat/cmi-events-attendance-public-content
       - feat/cmi-public-content-edge-api
+      - feat/cmi-event-audit-integrity
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
@@ -39,6 +40,9 @@ jobs:
 
       - name: Test public-content request validation
         run: deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
+
+      - name: Test server-side event idempotency helpers
+        run: deno test supabase-cmi/supabase/functions/_shared/idempotency_test.ts
 
       - name: Install pinned Supabase CLI
         uses: supabase/setup-cli@v3

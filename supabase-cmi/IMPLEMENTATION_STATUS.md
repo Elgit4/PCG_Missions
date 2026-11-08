@@ -85,3 +85,12 @@ PR #7 adds database-level protections for two event invariants:
 The event-domain pgTAP suite now has **53 assertions**. The full isolated CMI workflow passed **111 database assertions across four suites**, plus Deno type-check and public-content request-validation tests, on PR #7 head `45be0c2563cdc827a56748eac3ee4580f802b54b` in [CI run 42441280069](https://github.com/Elgit4/PCG_Missions/actions/runs/42441280069).
 
 These protections remain source-only; no hosted database or production migration was changed. Stakeholder approval, including D-13 retention governance, is still required before production use.
+
+
+## Event idempotency ledger — 2026-11-08
+
+The ledger design and schema are included in [PR #8](https://github.com/Elgit4/PCG_Missions/pull/8). It adds a private `event_idempotency_receipt` relation to the event schema. The ledger scopes keys by event, branch, operation, caller class and, for staff, server-resolved actor. PostgreSQL 15+ `UNIQUE NULLS NOT DISTINCT` also makes public requests with NULL actor IDs unique within the same operation scope.
+
+Each receipt stores a 32-byte versioned HMAC-SHA-256 request digest, an allowlisted operation/resource pairing, a resource reference and successful response status. It stores no raw request body or attendee PII. The Deno helper canonicalizes normalized JSON, computes the HMAC with a server-only key, and compares digest hex values; endpoint code must still implement atomic receipt claim, replay response and HTTP 409 changed-payload behavior. HMAC key retirement and receipt cleanup remain subject to D-13 retention approval.
+
+The event pgTAP suite now has **71 assertions** after adding an explicit check that trigger-only integrity functions are not executable by browser roles. With 14 foundation, 24 contacts/follow-up, 20 restricted-pastoral and 71 event/idempotency assertions, the expected full total is **129 database assertions**. Current reconciled PR #8 CI is pending. No event mutation endpoint, private transaction function, role grant, hosted Supabase project or production migration is activated.
