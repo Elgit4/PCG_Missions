@@ -77,3 +77,77 @@ Deno.test("digest comparison validates shape and compares matching values", () =
   assertEquals(equalDigestHex(digest, "b".repeat(64)), false);
   assertEquals(equalDigestHex("invalid", digest), false);
 });
+
+
+Deno.test("canonical JSON sorts keys after Unicode normalization", () => {
+  const decomposed = JSON.parse('{"z":1,"e\\u0301":2}') as never;
+  const composed = { z: 1, "é": 2 };
+  assertEquals(canonicalJson(decomposed), canonicalJson(composed));
+  assertEquals(canonicalJson(decomposed), '{"z":1,"é":2}');
+});
+
+Deno.test("canonical JSON rejects unsafe object keys", () => {
+  assertThrows(() => canonicalJson(JSON.parse('{"__proto__":{"polluted":true}}')));
+  assertThrows(() => canonicalJson(JSON.parse('{"constructor":1}')));
+  assertThrows(() => canonicalJson(JSON.parse('{"prototype":1}')));
+});
+
+Deno.test("canonical JSON rejects getters without invoking them", () => {
+  let getterCalled = false;
+  const value = Object.defineProperty({}, "value", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return "must not execute";
+    },
+  });
+  assertThrows(() => canonicalJson(value as never));
+  assertEquals(getterCalled, false);
+});
+
+Deno.test("canonical JSON rejects symbol and non-enumerable object properties", () => {
+  const symbolValue: Record<PropertyKey, unknown> = { visible: true };
+  Object.defineProperty(symbolValue, Symbol("hidden"), {
+    enumerable: true,
+    value: "not JSON",
+  });
+  assertThrows(() => canonicalJson(symbolValue as never));
+
+  const hiddenValue = { visible: true };
+  Object.defineProperty(hiddenValue, "hidden", {
+    enumerable: false,
+    value: "not JSON",
+  });
+  assertThrows(() => canonicalJson(hiddenValue as never));
+});
+
+Deno.test("canonical JSON rejects array getters and extra properties", () => {
+  let getterCalled = false;
+  const accessorArray = ["safe"];
+  Object.defineProperty(accessorArray, "0", {
+    enumerable: true,
+    get() {
+      getterCalled = true;
+      return "unsafe";
+    },
+  });
+  assertThrows(() => canonicalJson(accessorArray as never));
+  assertEquals(getterCalled, false);
+
+  const extendedArray = [1, 2] as number[] & { metadata?: string };
+  extendedArray.metadata = "not JSON";
+  assertThrows(() => canonicalJson(extendedArray as never));
+});
+
+Deno.test("HMAC-SHA-256 matches a fixed canonical request vector", async () => {
+  const digest = await createRequestDigest(
+    { a: 1 },
+    "0123456789abcdef0123456789abcdef",
+    7,
+  );
+  assertEquals(digest, {
+    algorithm: "hmac-sha-256",
+    keyVersion: 7,
+    digestHex: "f0546246da9e2349100c845a8561214788d75d900f3c086a72fcfa03bb1f42ab",
+  });
+});
