@@ -25,6 +25,7 @@ export const PUBLIC_RESOURCES = {
     columns: "id,title,body,display_order,published_at,created_at",
     filters: [{ column: "status", value: "published" }],
     order: { column: "display_order", ascending: true },
+    globalOnly: true,
   },
   announcements: {
     table: "announcement",
@@ -37,7 +38,7 @@ export const PUBLIC_RESOURCES = {
   },
   events: {
     table: "event",
-    columns: "id,title,description,starts_at,ends_at,timezone,location,capacity,registration_state,transport_enabled",
+    columns: "id,title,description,starts_at,ends_at,timezone,location,registration_state,transport_enabled",
     filters: [
       { column: "status", value: "published" },
       { column: "visibility", value: "public" },
