@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: cmi-backend-ci
+  group: cmi-backend-ci-${{ github.run_id }}
   cancel-in-progress: true
 
 jobs:
