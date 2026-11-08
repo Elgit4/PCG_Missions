@@ -1,12 +1,6 @@
 name: CMI backend database tests
 
 on:
-  push:
-    branches:
-      - feat/cmi-backend-foundation
-    paths:
-      - "supabase-cmi/**"
-      - ".github/workflows/cmi-backend-ci.yml"
   pull_request:
     branches:
       - design/cmi-logical-data-model
