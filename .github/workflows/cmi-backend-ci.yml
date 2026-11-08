@@ -1,0 +1,55 @@
+name: CMI backend database tests
+
+on:
+  push:
+    branches:
+      - feat/cmi-backend-foundation
+    paths:
+      - "supabase-cmi/**"
+      - ".github/workflows/cmi-backend-ci.yml"
+  pull_request:
+    branches:
+      - design/cmi-logical-data-model
+      - main
+    paths:
+      - "supabase-cmi/**"
+      - ".github/workflows/cmi-backend-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cmi-backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cmi-database-tests:
+    name: CMI local migrations and pgTAP
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: supabase-cmi
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@v3
+        with:
+          version: 3.2.0
+
+      - name: Show CLI version
+        run: supabase --version
+
+      - name: Start isolated local CMI stack and apply CMI migrations
+        run: supabase start
+
+      - name: Run CMI database tests
+        run: supabase test db
+
+      - name: Stop isolated local CMI stack
+        if: always()
+        run: supabase stop
