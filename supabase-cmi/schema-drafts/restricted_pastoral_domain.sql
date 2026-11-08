@@ -67,12 +67,8 @@ create table public.prayer_assignment (
 create unique index prayer_assignment_one_active_user_request_idx
   on public.prayer_assignment(intercessor_user_id, prayer_request_id)
   where ends_at is null and revoked_at is null;
-create index prayer_assignment_active_intercessor_idx
-  on public.prayer_assignment(intercessor_user_id, prayer_request_id)
-  where ends_at is null and revoked_at is null;
 create index prayer_assignment_request_idx
   on public.prayer_assignment(prayer_request_id, starts_at desc);
-
 create table public.prayer_access_audit (
   id uuid primary key default gen_random_uuid(),
   prayer_request_id uuid not null,
@@ -180,8 +176,8 @@ create table public.care_assignment (
 create unique index care_assignment_one_active_assignee_record_idx
   on public.care_assignment(assignee_user_id, care_record_id)
   where ends_at is null and revoked_at is null;
-create index care_assignment_active_assignee_idx
-  on public.care_assignment(assignee_user_id, care_record_id)
+create index care_assignment_record_idx
+  on public.care_assignment(care_record_id, assignee_user_id)
   where ends_at is null and revoked_at is null;
 
 create table public.care_interaction (
