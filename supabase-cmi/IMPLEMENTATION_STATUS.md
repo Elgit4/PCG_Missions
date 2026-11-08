@@ -2,7 +2,7 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status:** Identity, contacts/follow-up, restricted-pastoral and events/attendance/public-content schema suites have passed isolated local CMI validation. The public-content Edge Function source, Deno type-check and request-validation tests pass. The current PR #5 head passed the complete isolated CI workflow, including 104 pgTAP assertions, in [run 42447736530](https://github.com/Elgit4/PCG_Missions/actions/runs/42447736530). The function is not deployed.
+**Status:** PRs #3–#8 are merged into `main`. The dedicated CMI workspace has passed 129 pgTAP assertions across four isolated local suites; the public-content and idempotency Deno checks also passed on PR #8's exact head. The public-content function and event transaction helpers remain source code, not deployed production endpoints. The latest exact-head validation is [PR #8 run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750) for head `c80a29a46a8a693449d66b209c84e2ba6894209a`. The merge commit is [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8).
 
 ## Implemented and validated
 
@@ -45,7 +45,7 @@ The read-only Edge Function exposes fixed, allowlisted projections for the churc
 
 The function uses a server-side service-role key because public base-table grants remain closed. This key bypasses RLS, so the implementation is deliberately limited to fixed table/column/filter combinations and must never be reused for staff APIs. It fails closed when secrets are missing. It exposes only church-wide welcome messages (not branch-specific messages) and omits event capacity from the public event projection. Rate limiting and abuse controls must be configured at the platform/gateway layer; CORS is not a security boundary. The function is source-only and has not been deployed.
 
-A Deno validation suite covers supported resources, pagination, slug validation, unknown and duplicate query parameters, inherited object-property resource names, and public-profile request shape. CI runs that suite before the local Supabase database suite. Deno type-check and request-validation tests passed in [run 42438088374](https://github.com/Elgit4/PCG_Missions/actions/runs/42438088374) and again on the latest head in [run 42447736530](https://github.com/Elgit4/PCG_Missions/actions/runs/42447736530). The latest workflow also passed all 104 database assertions.
+A Deno validation suite covers supported resources, pagination, slug validation, unknown and duplicate query parameters, inherited object-property resource names, and public-profile request shape. CI runs that suite before the local Supabase database suite. Deno type-check and request-validation tests passed in the PR #8 exact-head workflow [run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750). That run also executed the idempotency helper tests and passed all 129 database assertions.
 
 ## Deliberately not implemented
 
@@ -61,7 +61,7 @@ A Deno validation suite covers supported resources, pagination, slug validation,
 
 ## Verification boundary
 
-The 58 foundation assertions and the expanded 46 event/public-content assertions have passed on isolated local CMI stacks. The current PR #5 head also passed Deno type-checking, request-validation tests and the full database workflow (104 pgTAP assertions total) in [run 42447736530](https://github.com/Elgit4/PCG_Missions/actions/runs/42447736530). No hosted Supabase project was linked, queried, migrated or modified; no real visitor/prayer data or live SMS was used.
+The isolated local CMI suites currently total 129 pgTAP assertions: identity/authorization (14), contacts/follow-up (24), restricted pastoral (20), and events/idempotency/public-content (71). PR #8's exact head passed those four suites, Deno type-checking, public-content request-validation tests and idempotency-helper tests in [run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750). This is PR-head validation; the baseline merge commit [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8) had no automatic push-triggered CMI run because the prior workflow did not subscribe to `push`. The accompanying CI change adds a `main` push trigger so subsequent CMI changes receive post-merge validation. No hosted Supabase project was linked, queried, migrated or modified; no real visitor/prayer data or live SMS was used.
 
 Supabase CLI v3 is local-first. Keep CI on the isolated `supabase-cmi/` workspace and do not add `--remote` or hosted credentials without explicit deployment approval.
 
@@ -73,7 +73,7 @@ The event registration and public-profile E.164 constraints were corrected to ma
 
 The proposed transactional contract is documented in [document 17](../docs/17_EVENT_TRANSACTION_API_CONTRACT.md). It defines public/staff registration, serialized event-capacity checks, transport-seat reservation, check-in, closeout, idempotency, authorization boundaries and concurrency/security tests.
 
-The contract identifies schema corrections required before implementation: idempotency request digest; consent evidence relation; check-in registration/contact identity consistency; database-level closeout history immutability; and an approved rule for multiple active transport options. No write endpoints or role grants have been activated. Implementation remains blocked by D-05, D-06, D-13 and applicable R-01–R-12/D-01 approvals.
+The contract's idempotency digest/receipt requirement is now represented by the PR #8 ledger and tested canonicalization/HMAC helper. PR #7 added database enforcement for check-in registration/contact consistency and append-only closeout history. The consent-evidence relation and rule for multiple active transport options remain unresolved. No write endpoints or role grants have been activated. Implementation remains blocked by D-05, D-06, D-13 and applicable R-01–R-12/D-01 approvals.
 
 
 ## Event integrity hardening — 2026-11-08
@@ -82,7 +82,7 @@ PR #7 adds database-level protections for two event invariants:
 - A check-in containing both registration and contact references must match the canonical contact linked to that registration in the same event and branch. The guard applies to inserts and relevant updates.
 - Closeout history is append-only; UPDATE, DELETE and TRUNCATE are rejected while inserts remain available for a future authorized transaction path.
 
-The event-domain pgTAP suite now has **53 assertions**. The full isolated CMI workflow passed **111 database assertions across four suites**, plus Deno type-check and public-content request-validation tests, on PR #7 head `45be0c2563cdc827a56748eac3ee4580f802b54b` in [CI run 42441280069](https://github.com/Elgit4/PCG_Missions/actions/runs/42441280069).
+At the PR #7 milestone, the event-domain suite had **53 assertions**. The latest PR #7 head, `29588a1c6c579b4ffbc9d2635b662d2111f18c31`, passed **112 database assertions across four suites** plus Deno checks in [CI run 42448742945](https://github.com/Elgit4/PCG_Missions/actions/runs/42448742945). PR #8 subsequently expanded the event/idempotency suite to 71 assertions.
 
 These protections remain source-only; no hosted database or production migration was changed. Stakeholder approval, including D-13 retention governance, is still required before production use.
 
@@ -93,4 +93,4 @@ The ledger design and schema are included in [PR #8](https://github.com/Elgit4/P
 
 Each receipt stores a 32-byte versioned HMAC-SHA-256 request digest, an allowlisted operation/resource pairing, a resource reference and successful response status. It stores no raw request body or attendee PII. The Deno helper canonicalizes normalized JSON, computes the HMAC with a server-only key, and compares digest hex values; endpoint code must still implement atomic receipt claim, replay response and HTTP 409 changed-payload behavior. HMAC key retirement and receipt cleanup remain subject to D-13 retention approval.
 
-The event pgTAP suite now has **71 assertions** after adding an explicit check that trigger-only integrity functions are not executable by browser roles. With 14 foundation, 24 contacts/follow-up, 20 restricted-pastoral and 71 event/idempotency assertions, the expected full total is **129 database assertions**. Current reconciled PR #8 CI is pending. No event mutation endpoint, private transaction function, role grant, hosted Supabase project or production migration is activated.
+The event pgTAP suite has **71 assertions**, including the trigger-function privilege-closure test. Together with 14 identity/authorization, 24 contacts/follow-up and 20 restricted-pastoral assertions, the verified total is **129 database assertions**. PR #8's exact head `c80a29a46a8a693449d66b209c84e2ba6894209a` passed [CI run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750); PR #8 is merged to `main` as [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8). No event mutation endpoint, private transaction function, role grant, hosted Supabase project or production migration is activated.
