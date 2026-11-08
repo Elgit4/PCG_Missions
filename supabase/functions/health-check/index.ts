@@ -1,4 +1,5 @@
 import {
+  corsHeaders,
   errorResponse,
   handlePreflight,
   jsonResponse,
@@ -15,12 +16,9 @@ Deno.serve((request: Request): Response => {
   }
 
   if (request.method === "HEAD") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        "Cache-Control": "no-store",
-      },
-    });
+    const headers = corsHeaders(request);
+    headers.set("Cache-Control", "no-store");
+    return new Response(null, { status: 204, headers });
   }
 
   try {
