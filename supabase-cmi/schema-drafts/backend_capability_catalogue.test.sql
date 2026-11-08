@@ -18,13 +18,13 @@ select is(
 select has_function(
   'public',
   'cmi_create_contact',
-  array['uuid','uuid','uuid','text','text','text','text','text','text','text','text','uuid','uuid','jsonb'],
+  array['uuid','uuid','uuid','smallint','bytea','text','text','text','text','text','text','text','text','uuid','uuid','jsonb'],
   'Atomic contact capture function exists'
 );
 select ok(
   not has_function_privilege(
     'anon',
-    'public.cmi_create_contact(uuid,uuid,uuid,text,text,text,text,text,text,text,text,uuid,uuid,jsonb)',
+    'public.cmi_create_contact(uuid,uuid,uuid,smallint,bytea,text,text,text,text,text,text,text,text,uuid,uuid,jsonb)',
     'EXECUTE'
   ),
   'Anonymous role cannot execute contact capture'
