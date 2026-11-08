@@ -101,7 +101,7 @@ Before the next domain migrations, approve:
 - No hosted Supabase project was linked, queried, migrated or modified.
 - No real visitor/prayer data or live SMS provider was used.
 
-**Status:** Identity, contacts/follow-up and restricted pastoral schema drafts have passed isolated local CMI migration and pgTAP validation. Permanent migration promotion, final schema decisions, role-specific authorization, audited narrative-read operations and event/public-content work remain outstanding.
+**Status:** PRs #3–#8 are merged to `main`. Identity, contacts/follow-up, restricted-pastoral and events/attendance/public-content drafts have passed isolated local CMI validation. The public-content source and idempotency helper checks have passed Deno validation. Permanent promotion of domain drafts, final schema decisions, role-specific authorization, audited narrative-read operations and trusted event write services remain outstanding.
 
 ## 8. Events, attendance, transport and public-content draft added
 
@@ -125,6 +125,15 @@ No hosted Supabase project has been linked or modified.
 
 The event registration, capacity, transport, check-in and closeout implementation contract is documented in [document 17](17_EVENT_TRANSACTION_API_CONTRACT.md). It specifies server-side serialization, idempotency, caller identity derivation, fixed request allowlists, audit atomicity, capacity concurrency tests and implementation gates.
 
-The contract records additional schema corrections discovered during endpoint design: idempotency payload fingerprints, consent evidence linkage, registration/contact identity consistency on check-in, closeout history immutability and unresolved multiple-transport behavior. These are explicit build gates, not assumed decisions.
+The contract records additional schema corrections discovered during endpoint design. PR #7 has integrated the check-in registration/contact consistency trigger and append-only closeout history protection. PR #8 has integrated the scoped idempotency receipt ledger and versioned HMAC digest helper. Consent evidence linkage and multiple-transport behavior remain unresolved build gates, not assumed decisions.
 
 No transactional event write endpoints or grants are implemented. D-05, D-06, D-13 and relevant R/D decisions remain pending.
+
+
+## 10. Latest integrated backend verification (2026-11-08)
+
+PR #7 is merged as [commit af68c6c](https://github.com/Elgit4/PCG_Missions/commit/af68c6c65949bf3c1c29d1d63c3a53cb666349bb). Its latest head passed **112 database assertions across four suites** and Deno checks in [run 42448742945](https://github.com/Elgit4/PCG_Missions/actions/runs/42448742945).
+
+PR #8 is merged as [default-branch commit d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8). Its exact head passed **129 database assertions across four suites**, public-content Deno checks and idempotency-helper tests in [run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750). The event/idempotency suite contains 71 assertions at this milestone.
+
+These are isolated local CMI CI results. They do not prove a hosted schema deployment, production endpoint, approved role grants or completion of the outstanding stakeholder decisions. The companion CI maintenance change adds a push trigger for future `main` commits affecting `supabase-cmi/**`, feature-branch target coverage, CMI Deno linting and diff-scoped formatting checks; until it is merged and a resulting run passes, post-merge CMI CI remains unverified. The legacy top-level `supabase/` ChurchConnect project remains outside this CMI validation scope.

@@ -90,9 +90,9 @@ Staff registration uses a separate contract and must resolve the authenticated s
 
 ### 4.4 Required schema review before implementation
 
-The current draft has an event/source/client-request uniqueness index for non-null request IDs, but it does not store a normalized request fingerprint. Add a dedicated idempotency receipt with a request digest and minimal response reference, or an equivalent immutable digest on the registration, before implementing safe replay semantics.
+The original request-ID uniqueness alone was insufficient for safe replay. PR #8 now adds `event_idempotency_receipt`, scoped by event, branch, operation, caller class and staff actor where applicable, with a versioned 32-byte HMAC-SHA-256 request digest and an operation/resource reference. Its Deno helper provides deterministic canonical JSON and digest generation/comparison. This supplies the schema and helper prerequisites, but the endpoint must still claim the key, compare/replay the receipt and return HTTP 409 for changed payloads within the same atomic transaction.
 
-The current `consent_record_id` is a UUID field without a declared FK to an approved consent ledger. D-05/D-13 must determine the consent evidence model and retention before this field is used as proof of consent.
+The current `consent_record_id` remains a UUID field without a declared FK to an approved consent ledger. D-05/D-13 must determine the consent evidence model and retention before this field is used as proof of consent.
 
 ## 5. Transport reservation transaction
 
@@ -145,9 +145,7 @@ A public browser must not be able to submit arbitrary `contact_id` or mark a vis
 
 ### 6.3 Schema correction required
 
-The current check-in table allows both `registration_id` and `contact_id` to be supplied, without asserting that the contact is the same contact linked to that registration. Before implementation, either enforce exactly one identity source or add a database constraint/trigger that proves the two references are consistent.
-
-The current table permits a name-only snapshot. That is not proof of identity. Do not enable name-only walk-in check-in until D-06 defines the verification method, duplicate handling and audit requirements.
+The merged event schema now includes a database trigger that rejects a check-in containing both `registration_id` and `contact_id` unless the contact is the canonical contact linked to that registration in the same event and branch. The guard applies to INSERT and relevant identity/scope UPDATE operations and is covered by pgTAP tests. This does not approve name-only walk-ins: a name snapshot is not proof of identity, and D-06 must define verification, duplicate handling and audit requirements before that path is enabled.
 
 ## 7. Event closeout transaction
 
@@ -170,7 +168,7 @@ The current table permits a name-only snapshot. That is not proof of identity. D
 
 ### 7.3 Schema review
 
-The current `event_closeout_event` table is intended as history but has no explicit immutability trigger in the draft. Add database-level update/delete prevention and a narrow append-only insert path before using it as an audit history.
+The merged event schema now protects `event_closeout_event` with a database trigger that rejects UPDATE and DELETE; a statement-level guard also rejects TRUNCATE. INSERT remains available for a future narrowly authorized transaction path. This establishes the append-only database invariant, but it does not implement the closeout service, authorization or an approved retention/deletion exception.
 
 ## 8. Authorization and Supabase boundary
 
@@ -217,8 +215,8 @@ Concurrency tests must use two independent database sessions and synchronize the
 ## 10. Build sequence after approval
 
 1. Record D-05, D-06, D-13 and applicable R/D decisions in `docs/11_CMI_STAKEHOLDER_DECISION_REGISTER.md`.
-2. Revise event registration, transport and check-in schema for request digests, consent evidence, identity consistency and immutable closeout history.
-3. Add database-level constraints and pgTAP tests for every invariant.
+2. Complete the unresolved consent-evidence relation and any approved transport/registration refinements; retain the merged request-digest ledger, check-in identity trigger and append-only closeout guards.
+3. Add or extend database-level constraints and pgTAP tests for each newly approved invariant.
 4. Implement narrow transaction functions in a private schema, with explicit execute grants and no public base-table access.
 5. Implement separate Edge Function handlers for public registration and authenticated staff event operations.
 6. Add authorization tests for every role, scope, inactive account, revoked assignment and forged field.
@@ -231,25 +229,29 @@ Concurrency tests must use two independent database sessions and synchronize the
 This contract is accepted for implementation only when:
 - D-05/D-06/D-13 are recorded as approved with approver/date;
 - applicable R-01–R-12 and D-01 role/scope grants are approved;
-- the schema corrections in Sections 4.4, 6.3 and 7.3 are addressed;
+- the PR #7 check-in identity and closeout immutability guards and the PR #8 idempotency receipt/digest schema are present and validated; the consent-evidence relation and retention model are separately resolved;
 - all database and concurrency tests pass locally;
 - no direct browser write grants are introduced;
 - no hosted database or production function is changed without separate explicit approval.
 
-**Current outcome:** contract documented; implementation remains blocked by pending stakeholder decisions and schema corrections.
+**Current outcome:** contract documented; the idempotency receipt/digest, check-in identity guard and closeout append-only guard are integrated in source control. Transaction endpoints, atomic replay/conflict processing, consent-evidence linkage, transport policy, role/scope approval and required concurrency tests remain outstanding.
 
 
 ## 12. Schema remediation progress (2026-11-08)
 
-[PR #7 — event check-in identity and closeout history](https://github.com/Elgit4/PCG_Missions/pull/7), merged to `main` as commit [af68c6c](https://github.com/Elgit4/PCG_Missions/commit/af68c6c65949bf3c1c29d1d63c3a53cb666349bb), adds the two database guards called out in Sections 6.3 and 7.3:
+[PR #7 — event check-in identity and closeout history](https://github.com/Elgit4/PCG_Missions/pull/7) is merged to `main` as [commit af68c6c](https://github.com/Elgit4/PCG_Missions/commit/af68c6c65949bf3c1c29d1d63c3a53cb666349bb). It adds:
+- A check-in trigger requiring the supplied contact to match the canonical contact attached to the registration in the same event and branch when both references are present.
+- Append-only closeout history protection against UPDATE, DELETE and TRUNCATE.
 
-- A check-in carrying both `registration_id` and `contact_id` must reference the same canonical contact linked to that registration in the same event and branch. The trigger applies on insert and relevant updates.
-- `event_closeout_event` is protected against UPDATE, DELETE and TRUNCATE; append-only inserts remain possible for a future authorized transaction path.
+The latest PR #7 head `29588a1c6c579b4ffbc9d2635b662d2111f18c31` passed [CI run 42448742945](https://github.com/Elgit4/PCG_Missions/actions/runs/42448742945), including **112 database assertions across four suites** and the Deno checks. This is a source-control validation result, not a production deployment.
 
-PR #7's reconciled head passed in [CI run 42448742945](https://github.com/Elgit4/PCG_Missions/actions/runs/42448742945), including 112 database assertions, Deno checks and the trigger-function privilege-closure assertion. The guards are merged to source control but are not deployed or production-active.
+[PR #8 — private event idempotency receipt ledger](https://github.com/Elgit4/PCG_Missions/pull/8) is merged to `main` as [commit d091a89](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8). It adds the scoped HMAC-backed receipt ledger and server-side canonicalization/digest helper. The exact PR #8 head `c80a29a46a8a693449d66b209c84e2ba6894209a` passed [CI run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750): **129 database assertions across four suites**, public-content Deno checks, and idempotency-helper tests. The event/idempotency suite contains **71 assertions** at this milestone.
 
-The following schema/API gates remain unresolved:
-- [PR #8 — private event idempotency receipt ledger](https://github.com/Elgit4/PCG_Missions/pull/8) adds a scoped receipt table with a versioned HMAC-SHA-256 digest, actor scope and operation/resource pairing. Its current head passed the isolated workflow in [CI run 42445664655](https://github.com/Elgit4/PCG_Missions/actions/runs/42445664655), including the idempotency helper tests and expanded database suites. The endpoint must still implement canonicalization, digest comparison, replay and 409 conflict semantics atomically; the table alone does not implement those behaviors.
-- `consent_record_id` still needs an approved consent-evidence relation and retention model before it can prove consent.
-- The rule for multiple active transport options per registration remains pending D-06.
-- Public registration, capacity, cancellation, waitlist, walk-in, transport and check-in policies remain blocked by D-05/D-06 and applicable role/scope approvals.
+The schema/helper prerequisites are now present, but endpoint behaviour is not implemented. The following remain open:
+- Atomic idempotency-key claim, same-digest receipt replay, changed-payload HTTP 409 handling, and atomic coupling to each event mutation.
+- An approved consent-evidence relation and retention model for `consent_record_id` (D-05/D-13).
+- D-06 decisions for multiple active transport options, walk-in identity, capacity/cancellation and transport rules.
+- Approved role/scope grants and RLS policies (R-01–R-12/D-01).
+- Trusted registration, capacity, transport, check-in and closeout services plus concurrent integration tests.
+
+No hosted Supabase project has been linked or modified, and no event function has been deployed.
