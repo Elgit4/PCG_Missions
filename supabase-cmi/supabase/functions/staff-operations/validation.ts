@@ -14,6 +14,7 @@ export interface ContactCreateInput {
   age_range: string | null;
   preferred_language: string | null;
   service_area_id: string | null;
+  team_id: string | null;
   source_metadata: Record<string, string>;
 }
 
@@ -78,6 +79,7 @@ export function parseContactCreate(
     "age_range",
     "preferred_language",
     "service_area_id",
+    "team_id",
     "source_metadata",
   ]);
   if (Object.keys(value).some((key) => !allowed.has(key))) {
@@ -127,6 +129,14 @@ export function parseContactCreate(
     serviceAreaId = value.service_area_id;
   }
 
+  let teamId: string | null = null;
+  if (value.team_id !== undefined && value.team_id !== null && value.team_id !== "") {
+    if (typeof value.team_id !== "string" || !UUID_PATTERN.test(value.team_id)) {
+      return { ok: false, error: "Invalid team_id." };
+    }
+    teamId = value.team_id;
+  }
+
   let metadata: Record<string, string> = {};
   if (value.source_metadata !== undefined) {
     if (!isRecord(value.source_metadata)) {
@@ -155,6 +165,7 @@ export function parseContactCreate(
       age_range: ageRange.value,
       preferred_language: language.value,
       service_area_id: serviceAreaId,
+      team_id: teamId,
       source_metadata: metadata,
     },
   };
