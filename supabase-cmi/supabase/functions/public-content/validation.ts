@@ -34,6 +34,7 @@ export const PUBLIC_RESOURCES = {
       { column: "status", value: "published" },
       { column: "is_public", value: true },
     ],
+    publishAtColumn: "publish_at",
     order: { column: "published_at", ascending: false },
   },
   events: {
@@ -125,4 +126,15 @@ export function parsePublicContentRequest(
       ? { resource: resource as Exclude<PublicResource, "welcome-messages">, limit, offset }
       : { resource: resource as Exclude<PublicResource, "welcome-messages">, slug, limit, offset },
   };
+}
+
+
+/** Returns the fixed PostgREST OR expression for scheduled public resources. */
+export function getScheduledPublicationFilter(
+  resource: PublicResource,
+  nowIso: string,
+): string | null {
+  const config = PUBLIC_RESOURCES[resource];
+  if (!("publishAtColumn" in config)) return null;
+  return `${config.publishAtColumn}.is.null,${config.publishAtColumn}.lte.${nowIso}`;
 }
