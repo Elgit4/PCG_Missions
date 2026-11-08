@@ -6,6 +6,7 @@ on:
       - design/cmi-logical-data-model
       - main
       - feat/cmi-backend-foundation
+      - feat/cmi-events-attendance-public-content
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
