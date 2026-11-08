@@ -80,9 +80,11 @@ insert into public.branch(id,church_id,name,code) values
 insert into public.team(id,branch_id,name) values
  ('31000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001','Event Team A'),
  ('31000000-0000-4000-8000-000000000002','21000000-0000-4000-8000-000000000002','Event Team B');
-insert into public.contact(id,branch_id,first_name,created_by)
-values ('41000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
-        'Synthetic Attendee','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+insert into public.contact(id,branch_id,first_name,created_by) values
+ ('41000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'Synthetic Attendee','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'),
+ ('41000000-0000-4000-8000-000000000002','21000000-0000-4000-8000-000000000002',
+  'Synthetic Other-Branch Attendee','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
 
 insert into public.event(id,branch_id,title,starts_at,ends_at,created_by,status,visibility,registration_state)
 values
@@ -112,7 +114,7 @@ select extensions.throws_ok(
 select extensions.throws_ok(
  $q$insert into public.event_registration(event_id,branch_id,contact_id,attendee_name_snapshot,registration_source,client_request_id)
  values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
- '41000000-0000-4000-8000-000000000001','Wrong Branch Contact','staff',
+ '41000000-0000-4000-8000-000000000002','Wrong Branch Contact','staff',
  '61000000-0000-4000-8000-000000000001')$q$,
  '23503',null,'registration cannot link a contact from another branch');
 
