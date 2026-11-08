@@ -1,6 +1,6 @@
 # CMI Follow-up backend workspace
 
-This directory is the isolated Supabase CLI workspace for the CMI Follow-up v2.1 backend.
+This directory is the isolated Supabase CLI project root for the CMI Follow-up v2.1 backend. The Supabase CLI configuration and executable files live under `supabase-cmi/supabase/` because that is the directory layout the CLI expects.
 
 ## Critical migration boundary
 
@@ -19,8 +19,8 @@ Check the installed CLI's `--help` output before relying on command flags. The w
 
 ## Current implementation
 
-- `migrations/20261108010000_cmi_identity_authorization_foundation.sql`: first CMI-only foundation migration (church/branch, staff profile link, six-role catalogue, capability catalogue, role assignment and team/area structures).
-- `tests/identity_authorization_foundation.test.sql`: pgTAP structural and deny-by-default checks.
+- `supabase/migrations/20261108010000_cmi_identity_authorization_foundation.sql`: first CMI-only foundation migration (church/branch, staff profile link, six-role catalogue, capability catalogue, role assignment and team/area structures).
+- `supabase/tests/identity_authorization_foundation.test.sql`: pgTAP structural and deny-by-default checks.
 - No role-capability grants are seeded. The stakeholder matrix remains pending.
 - No anonymous or authenticated table grants/policies are created in this first slice. Browser access is deny-by-default until reviewed policies and trusted API operations are implemented.
 - No PIN, password, provider secret or personal data is stored by the schema.
