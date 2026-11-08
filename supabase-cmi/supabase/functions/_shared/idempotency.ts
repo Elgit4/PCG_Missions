@@ -34,11 +34,43 @@ function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string
   }
 
   if (Array.isArray(value)) {
+    if (Object.getPrototypeOf(value) !== Array.prototype) {
+      throw new TypeError("Only plain JSON arrays are supported.");
+    }
     if (ancestors.has(value)) throw new TypeError("Circular values are not supported.");
+
     ancestors.add(value);
-    const result = `[${Array.from(value, (item) => canonicalize(item, ancestors)).join(",")}]`;
-    ancestors.delete(value);
-    return result;
+    try {
+      const keys = Reflect.ownKeys(value);
+      for (const key of keys) {
+        if (key === "length") continue;
+        if (typeof key !== "string" || !/^(0|[1-9][0-9]*)$/.test(key)) {
+          throw new TypeError("JSON arrays cannot contain extra or symbol properties.");
+        }
+
+        const index = Number(key);
+        if (!Number.isSafeInteger(index) || index >= value.length) {
+          throw new TypeError("JSON arrays cannot contain extra properties.");
+        }
+
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+          throw new TypeError("JSON arrays must contain enumerable data properties.");
+        }
+      }
+
+      const items: string[] = [];
+      for (let index = 0; index < value.length; index++) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+          throw new TypeError("Sparse arrays and accessor properties are not supported.");
+        }
+        items.push(canonicalize(descriptor.value, ancestors));
+      }
+      return `[${items.join(",")}]`;
+    } finally {
+      ancestors.delete(value);
+    }
   }
 
   if (typeof value === "object") {
@@ -48,35 +80,58 @@ function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string
       throw new TypeError("Only plain JSON objects are supported.");
     }
     if (ancestors.has(record)) throw new TypeError("Circular values are not supported.");
+
     ancestors.add(record);
+    try {
+      const ownKeys = Reflect.ownKeys(record);
+      const entries: Array<{ key: string; value: unknown }> = [];
+      const normalizedKeys = new Set<string>();
 
-    const keys = Object.keys(record).sort();
-    const normalizedKeys = new Set<string>();
-    for (const key of keys) {
-      const normalizedKey = key.normalize("NFC");
-      if (normalizedKeys.has(normalizedKey)) {
-        throw new TypeError("Object keys collide after Unicode normalization.");
+      for (const ownKey of ownKeys) {
+        if (typeof ownKey !== "string") {
+          throw new TypeError("Symbol properties are not supported.");
+        }
+
+        const descriptor = Object.getOwnPropertyDescriptor(record, ownKey);
+        if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
+          throw new TypeError("JSON objects must contain enumerable data properties.");
+        }
+
+        const normalizedKey = ownKey.normalize("NFC");
+        if (normalizedKeys.has(normalizedKey)) {
+          throw new TypeError("Object keys collide after Unicode normalization.");
+        }
+        normalizedKeys.add(normalizedKey);
+
+        if (
+          normalizedKey === "__proto__" ||
+          normalizedKey === "constructor" ||
+          normalizedKey === "prototype"
+        ) {
+          throw new TypeError("Unsafe object key.");
+        }
+
+        entries.push({ key: normalizedKey, value: descriptor.value });
       }
-      normalizedKeys.add(normalizedKey);
-      if (key === "__proto__" || key === "constructor" || key === "prototype") {
-        throw new TypeError("Unsafe object key.");
-      }
-      if (record[key] === undefined) {
-        throw new TypeError("Undefined values are not supported.");
-      }
+
+      // Sort after normalization so canonically equivalent keys yield one digest.
+      entries.sort((left, right) =>
+        left.key < right.key ? -1 : left.key > right.key ? 1 : 0
+      );
+
+      const fields = entries.map(({ key, value: fieldValue }) =>
+        `${JSON.stringify(key)}:${canonicalize(fieldValue, ancestors)}`
+      );
+      return `{${fields.join(",")}}`;
+    } finally {
+      ancestors.delete(record);
     }
-
-    const result = `{${keys.map((key) =>
-      `${JSON.stringify(key.normalize("NFC"))}:${canonicalize(record[key], ancestors)}`
-    ).join(",")}}`;
-    ancestors.delete(record);
-    return result;
   }
 
   throw new TypeError("Value is not canonical JSON.");
 }
 
-/** Stable JSON serialization: object keys are sorted; array order is retained. */
+/** Stable JSON serialization: normalized object keys are sorted; array order is retained. */
 export function canonicalJson(value: CanonicalJson): string {
   return canonicalize(value);
 }
