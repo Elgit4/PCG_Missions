@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
+import { createRequestDigest, type CanonicalJson } from "../_shared/idempotency.ts";
 import {
   isUuid,
   parseContactCreate,
@@ -9,6 +10,10 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+const CONTACT_IDEMPOTENCY_HMAC_KEY = Deno.env.get("CMI_CONTACT_IDEMPOTENCY_HMAC_KEY") ?? "";
+const CONTACT_IDEMPOTENCY_KEY_VERSION = Number(
+  Deno.env.get("CMI_CONTACT_IDEMPOTENCY_KEY_VERSION") ?? "1",
+);
 const allowedOrigins = new Set(
   (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "")
     .split(",")
@@ -394,10 +399,44 @@ Deno.serve(async (request: Request) => {
         }
       }
 
+      if (
+        CONTACT_IDEMPOTENCY_HMAC_KEY.length < 32 ||
+        !Number.isSafeInteger(CONTACT_IDEMPOTENCY_KEY_VERSION) ||
+        CONTACT_IDEMPOTENCY_KEY_VERSION < 1
+      ) {
+        return fail(
+          "IDEMPOTENCY_NOT_CONFIGURED",
+          "Contact capture is not configured.",
+          503,
+          origin,
+          id,
+        );
+      }
+
+      const digest = await createRequestDigest({
+        operation: "contact.create",
+        actor_id: auth.actorId,
+        branch_id: input.branch_id,
+        client_request_id: input.client_request_id,
+        first_name: input.first_name,
+        last_name: input.last_name,
+        preferred_name: input.preferred_name,
+        phone_e164: input.phone_e164,
+        phone_display: input.phone_display,
+        email_normalized: input.email_normalized,
+        age_range: input.age_range,
+        preferred_language: input.preferred_language,
+        service_area_id: input.service_area_id,
+        team_id: input.team_id,
+        source_metadata: input.source_metadata,
+      } as CanonicalJson, CONTACT_IDEMPOTENCY_HMAC_KEY, CONTACT_IDEMPOTENCY_KEY_VERSION);
+
       const { data, error } = await auth.service.rpc("cmi_create_contact", {
         p_actor_auth_user_id: auth.actorId,
         p_branch_id: input.branch_id,
         p_client_request_id: input.client_request_id,
+        p_digest_key_version: digest.keyVersion,
+        p_request_digest: "\\x" + digest.digestHex,
         p_first_name: input.first_name,
         p_last_name: input.last_name,
         p_preferred_name: input.preferred_name,
