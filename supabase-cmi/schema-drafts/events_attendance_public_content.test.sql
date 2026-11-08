@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(43);
+select plan(46);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -176,6 +176,22 @@ insert into public.event_registration(
  '21000000-0000-4000-8000-000000000001','41000000-0000-4000-8000-000000000001',
  'Synthetic Attendee','staff','61000000-0000-4000-8000-000000000002'
 );
+
+select lives_ok(
+ $q$insert into public.event_registration(event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,registration_source,client_request_id)
+ values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+ 'Valid E164 Phone','+233241234567','staff','61000000-0000-4000-8000-000000000007')$q$,
+ 'E.164 phone with leading plus is accepted');
+select throws_ok(
+ $q$insert into public.event_registration(event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,registration_source,client_request_id)
+ values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+ 'Invalid Phone','233241234567','staff','61000000-0000-4000-8000-000000000008')$q$,
+ '23514',null,'phone without international plus is rejected');
+select throws_ok(
+ $q$insert into public.event_registration(event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,registration_source,client_request_id)
+ values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+ 'Escaped Plus Phone',chr(92)||'+233241234567','staff','61000000-0000-4000-8000-000000000009')$q$,
+ '23514',null,'literal backslash before phone plus is rejected');
 
 select extensions.throws_ok(
  $q$insert into public.event_checkin(event_id,branch_id,recorded_by,source,client_request_id)
