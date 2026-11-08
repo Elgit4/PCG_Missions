@@ -81,7 +81,8 @@
 |---|---|---|
 | `prayer_requests` | Private prayer request record | branch_id, contact_id (nullable), request_text, created_by, status, expires_at, answered_at, sensitivity |
 | `prayer_assignments` | Current/historical intercessor assignment | prayer_request_id, intercessor_staff_id, assigned_by, starts_at, ends_at, active |
-| `prayer_access_events` | Audit of privileged prayer access/actions | prayer_request_id, actor_id, action, reason, occurred_at |
+| `prayer_access_events` | Append-only audit of prayer narrative reads and privileged actions | prayer_request_id, actor_id, action, reason, occurred_at |
+| `care_access_audit` | Append-only audit of care narrative reads and privileged actions | care_record_id, actor_id, action, reason, request_id, accessed_at |
 | `care_groups` | Care grouping/directory category | branch_id, name, description, active |
 | `care_group_memberships` | Contact membership in care groups | care_group_id, contact_id, starts_at, ends_at, active |
 | `care_records` | Restricted care status and pastoral summary | contact_id, status, assigned_staff_id (nullable), created_by, reviewed_at |
@@ -89,7 +90,7 @@
 
 **Sensitive-data rules**
 - Prayer request text and care summaries/interactions require separate RLS policies from ordinary contacts.
-- Intercessors can read only requests currently assigned to them, plus explicitly permitted history needed to perform their task. They cannot discover unassigned or another intercessor's requests by list, search, export, direct ID or relationship traversal.
+- Intercessors can read only requests currently assigned to them, plus explicitly permitted history needed to perform their task. Prayer and care each require a dedicated access-audit relation so every sensitive narrative read is attributable to the correct record type. They cannot discover unassigned or another intercessor's requests by list, search, export, direct ID or relationship traversal.
 - Admin/Pastor oversight is a separately granted and audited capability; it must not be inferred solely from a role name.
 - Avoid broad views, search indexes, notifications and exports that expose these narratives.
 - Do not place prayer/care records in the general offline capture queue.
