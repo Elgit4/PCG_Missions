@@ -319,11 +319,11 @@ revoke all on function public.cmi_create_contact(
   uuid, uuid, uuid, smallint, bytea, text, text, text, text, text, text, text, uuid, uuid, jsonb
 ) from public, anon, authenticated;
 grant execute on function public.cmi_create_contact(
-  uuid, uuid, uuid, text, text, text, text, text, text, text, text, uuid, uuid, jsonb
+  uuid, uuid, uuid, smallint, bytea, text, text, text, text, text, text, text, text, uuid, uuid, jsonb
 ) to service_role;
 
 comment on function public.cmi_create_contact(
-  uuid, uuid, uuid, text, text, text, text, text, text, text, text, uuid, uuid, jsonb
+  uuid, uuid, uuid, smallint, bytea, text, text, text, text, text, text, text, text, uuid, uuid, jsonb
 ) is 'Atomic staff contact capture with validated actor, branch, capability and team/self assignment. Execute only from the verified CMI Edge Function service.';
 
 commit;
