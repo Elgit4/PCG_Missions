@@ -78,6 +78,8 @@ create or replace function public.cmi_create_contact(
   p_actor_auth_user_id uuid,
   p_branch_id uuid,
   p_client_request_id uuid,
+  p_digest_key_version smallint,
+  p_request_digest bytea,
   p_first_name text,
   p_last_name text,
   p_preferred_name text,
@@ -102,11 +104,15 @@ declare
   v_team_scope boolean := false;
   v_existing_contact_id uuid;
   v_existing_actor uuid;
+  v_existing_digest_key_version smallint;
+  v_existing_request_digest bytea;
   v_contact public.contact%rowtype;
 begin
   if p_actor_auth_user_id is null
      or p_branch_id is null
      or p_client_request_id is null
+     or p_digest_key_version is null or p_digest_key_version < 1
+     or p_request_digest is null or pg_catalog.octet_length(p_request_digest) <> 32
      or length(pg_catalog.btrim(coalesce(p_first_name, ''))) not between 1 and 120 then
     raise exception using errcode = '22023', message = 'invalid contact capture input';
   end if;
@@ -213,15 +219,17 @@ begin
     pg_catalog.hashtextextended(p_branch_id::text || ':' || p_client_request_id::text, 0)
   );
 
-  select cc.contact_id, cc.captured_by
-    into v_existing_contact_id, v_existing_actor
+  select cc.contact_id, cc.captured_by, cc.digest_key_version, cc.request_digest
+    into v_existing_contact_id, v_existing_actor, v_existing_digest_key_version, v_existing_request_digest
   from public.contact_capture cc
   where cc.branch_id = p_branch_id
     and cc.client_request_id = p_client_request_id
   for update;
 
   if v_existing_contact_id is not null then
-    if v_existing_actor is distinct from p_actor_auth_user_id then
+    if v_existing_actor is distinct from p_actor_auth_user_id
+       or v_existing_digest_key_version is distinct from p_digest_key_version
+       or v_existing_request_digest is distinct from p_request_digest then
       raise exception using errcode = '23505', message = 'idempotency key already used';
     end if;
 
@@ -285,6 +293,8 @@ begin
     capture_source,
     service_area_id,
     client_request_id,
+    digest_key_version,
+    request_digest,
     source_metadata
   ) values (
     v_contact.id,
@@ -293,6 +303,8 @@ begin
     'staff_manual',
     p_service_area_id,
     p_client_request_id,
+    p_digest_key_version,
+    p_request_digest,
     p_source_metadata
   );
 
@@ -304,7 +316,7 @@ end;
 $$;
 
 revoke all on function public.cmi_create_contact(
-  uuid, uuid, uuid, text, text, text, text, text, text, text, text, uuid, uuid, jsonb
+  uuid, uuid, uuid, smallint, bytea, text, text, text, text, text, text, text, uuid, uuid, jsonb
 ) from public, anon, authenticated;
 grant execute on function public.cmi_create_contact(
   uuid, uuid, uuid, text, text, text, text, text, text, text, text, uuid, uuid, jsonb
