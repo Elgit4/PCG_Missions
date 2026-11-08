@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(53);
+select plan(54);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -299,6 +299,14 @@ select extensions.throws_ok(
  values ('21000000-0000-4000-8000-000000000001','other','Invalid scope',now(),'team',
  '31000000-0000-4000-8000-000000000002','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')$q$,
  '23503',null,'calendar team scope must reference a team in the same branch');
+
+select extensions.ok(
+  not has_function_privilege('anon','public.enforce_event_checkin_identity_consistency()','EXECUTE')
+  and not has_function_privilege('authenticated','public.enforce_event_checkin_identity_consistency()','EXECUTE')
+  and not has_function_privilege('anon','public.prevent_event_closeout_event_mutation()','EXECUTE')
+  and not has_function_privilege('authenticated','public.prevent_event_closeout_event_mutation()','EXECUTE'),
+  'trigger-only event integrity functions are not executable by browser roles'
+);
 
 select * from finish();
 rollback;
