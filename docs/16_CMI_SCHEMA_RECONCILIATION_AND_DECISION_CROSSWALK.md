@@ -12,6 +12,8 @@ The typed dictionaries identify 25 design findings that must be reconciled befor
 
 The first CMI backend foundation migration is intentionally limited to identity, role catalogue, capability catalogue, branch/team/area structures. It seeds the six role names but **does not seed role-capability grants**, create authenticated/anonymous policies, or expose foundation tables through the Data API. This is a deny-by-default starting point, not a complete authorization implementation.
 
+The identity foundation's physical profile uses an internal `staff_profile.id` key plus unique `staff_profile.auth_user_id` linked to `auth.users(id)`. Role/team joins reference the profile key; operational actor/assignee references in the contacts/follow-up draft reference the Auth UUID. This is an explicit refinement over the dictionary's shorthand `staff_profile.user_id` naming and must remain consistent in later schema slices.
+
 ## 2. DD-01–DD-25 reconciliation crosswalk
 
 | Finding | Source | Affected model | Engineering disposition | Approval dependency | Status |
@@ -66,9 +68,15 @@ The isolated CMI workspace contains:
 - no role-capability grants seeded;
 - structural pgTAP tests.
 
-The historical `supabase/` directory is intentionally untouched. Its migrations are ChurchConnect artifacts and must not be used as the CMI migration history.
+The historical `supabase/` directory is intentionally untouched. Its migrations are ChurchConnect artifacts and must not be used as the CMI migration history. The contacts/follow-up SQL is currently in `supabase-cmi/schema-drafts/`, not `migrations/`; it must be promoted through `supabase migration new` once the CLI is available, then parsed and tested locally.
 
-## 5. Decisions that remain release/build gates
+## 5. Contacts and follow-up domain progress
+
+A draft SQL slice now defines `contact`, `contact_capture`, `contact_assignment`, `contact_note`, `contact_interaction`, `contact_merge`, `followup_list`, `followup_task` and `followup_task_event`. It includes same-branch composite foreign keys, E.164 phone checks, non-unique phone/email duplicate-review indexes, capture idempotency, allowlisted capture metadata, exact-one staff/team assignment, task completion consistency, and append-only task history intent. RLS is enabled and browser grants are withheld in the draft.
+
+Event references in contact capture and list scope are deferred until the event-domain migration. Contact merge remains a data-integrity structure only; the trusted transactional merge/reversal operation is not implemented yet. R-03/R-05, D-03/D-04 and field-level visibility remain approval gates. Draft files are not yet in the executable migration/test folders.
+
+## 6. Decisions that remain release/build gates
 
 R-01–R-12 and D-01–D-13 remain pending in document 11. This reconciliation recommends conservative technical defaults but does not approve church policy.
 
@@ -84,7 +92,7 @@ Before the next domain migrations, approve:
 - report fields, review authority and export permissions;
 - offline device enrollment, expiry and recovery.
 
-## 6. Verification record
+## 7. Verification record
 
 - Repository source reviewed on `design/cmi-logical-data-model`, including documents 06–15 and the existing legacy SQL.
 - Legacy migrations inspected and confirmed to encode the former two-role ChurchConnect model.
