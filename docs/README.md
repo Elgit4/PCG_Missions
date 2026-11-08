@@ -34,9 +34,16 @@ These artifacts are on the database-design feature branch and are **proposals fo
 - [Restricted Pastoral, Events & Public Content Data Dictionary](14_PASTORAL_EVENTS_PUBLIC_CONTENT_DATA_DICTIONARY.md) — typed definitions for prayer/care, event registration, transport, attendance, announcements and public content.
 - [SMS, Reporting, Audit & Offline Data Dictionary](15_SMS_REPORTING_AUDIT_OFFLINE_DATA_DICTIONARY.md) — typed definitions for SMS consent/suppression, campaigns, automation, outbox, callbacks, reports, audit and limited sync receipts.
 
-## Backend implementation (feature branch)
+## Backend implementation
 
-The first CMI identity foundation is committed in `supabase-cmi/`. Contacts/follow-up and restricted-pastoral schema/test suites are review drafts in `supabase-cmi/schema-drafts/`; they are not executable migrations/tests yet.\n\n- [Schema Reconciliation & Decision Crosswalk](16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) — reconciles DD-01–DD-25 and records technical dispositions and approval gates.\n- [Isolated CMI Supabase workspace](../supabase-cmi/README.md) — separate CLI config, migration history and test workspace; does not use historical ChurchConnect SQL.\n- [Backend Implementation Status](../supabase-cmi/IMPLEMENTATION_STATUS.md) — delivered foundation scope, deferred domains and verification state.\n\n## Audit and verification records
+The CMI-only backend is developed in `../supabase-cmi/`, isolated from the historical ChurchConnect workspace. The identity/authorization foundation migration is committed for isolated local review. Contacts/follow-up and restricted-pastoral SQL/pgTAP drafts remain under `schema-drafts/` and must not be promoted to permanent migrations until the relevant physical-design and stakeholder decisions are approved.
+
+- [16 — Schema Reconciliation & Decision Crosswalk](16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) — tracks DD-01–DD-25, their proposed dispositions and approval dependencies.
+- [Isolated CMI Supabase workspace](../supabase-cmi/README.md) — separate CLI configuration, migration history and test workspace.
+- [Backend Implementation Status](../supabase-cmi/IMPLEMENTATION_STATUS.md) — implemented foundation, validated draft domains, deferred services and verification limits.
+- [Legacy ChurchConnect artifacts](legacy/churchconnect/README.md) — preserved historical SQL, tests and workflow; not part of the active CMI backend.
+
+## Audit and verification records
 
 - [Repository Consistency & Accuracy Audit](REPOSITORY_AUDIT_REPORT.md) — v2.1 cross-document review, corrected defects, unresolved implementation gaps and verification limitations.
 
@@ -48,7 +55,7 @@ The first CMI identity foundation is committed in `supabase-cmi/`. Contacts/foll
 4. Use document 03 before changing the database or generating an ERD.
 5. Review the proposed logical model and ERD after understanding documents 00–03.
 6. Review the physical schema, validation report, traceability crosswalk and stakeholder decision register.
-7. Resolve approval gates before creating executable migrations.
+7. Resolve approval gates before creating executable domain migrations or enabling production access.
 8. Use document 04 for frontend and backend implementation.
 9. Use document 05 to plan and verify delivery.
 10. Use document 06 for staff operating instructions.
