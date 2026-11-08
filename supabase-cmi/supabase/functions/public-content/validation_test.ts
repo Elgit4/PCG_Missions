@@ -2,7 +2,11 @@ import {
   assertEquals,
   assert,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { parsePublicContentRequest, PUBLIC_RESOURCES } from "./validation.ts";
+import {
+  getScheduledPublicationFilter,
+  parsePublicContentRequest,
+  PUBLIC_RESOURCES,
+} from "./validation.ts";
 
 Deno.test("accepts a published sermons collection with bounded pagination", () => {
   const result = parsePublicContentRequest(
@@ -106,5 +110,21 @@ Deno.test("rejects inherited resource names and duplicate query parameters", () 
   assertEquals(
     parsePublicContentRequest(new URL("https://example.test/?resource=sermons&resource=events")),
     { ok: false, error: "Duplicate query parameter." },
+  );
+});
+
+
+Deno.test("public announcements are withheld until their scheduled publish time", () => {
+  assertEquals(
+    PUBLIC_RESOURCES.announcements.publishAtColumn,
+    "publish_at",
+  );
+  assertEquals(
+    getScheduledPublicationFilter("announcements", "2026-11-08T12:00:00.000Z"),
+    "publish_at.is.null,publish_at.lte.2026-11-08T12:00:00.000Z",
+  );
+  assertEquals(
+    getScheduledPublicationFilter("sermons", "2026-11-08T12:00:00.000Z"),
+    null,
   );
 });
