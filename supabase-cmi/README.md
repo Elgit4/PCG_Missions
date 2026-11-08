@@ -36,7 +36,7 @@ The next domain slice is authored under `schema-drafts/` and is intentionally **
 
 It defines contacts, capture provenance/idempotency, individual-or-team assignment, ordinary notes, interactions, merge history, follow-up lists/tasks and append-only task events. The restricted-pastoral draft adds prayer/care records, assignment lifecycles and separate append-only narrative-read audit tables for prayer and care. The SQL keeps RLS enabled and browser grants withheld. Event references on capture/list are deferred until the event tables exist.
 
-Before promotion, use the Supabase CLI to create the migration filename, then move the reviewed SQL into that generated file and move the pgTAP suite into `tests/`. The CLI was not available in the authoring runtime, so this draft has not been CLI-generated, parsed or executed.
+Before promotion, use the Supabase CLI to create the permanent migration filename, then move the reviewed SQL into that generated file and move the pgTAP suite into `tests/`. The CLI was not available in the authoring runtime, so this draft has not been CLI-generated, parsed or executed.
 
 ## CLI safety
 
