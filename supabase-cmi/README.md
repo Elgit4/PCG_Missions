@@ -70,9 +70,18 @@ The event schema's attendee and public-profile phone constraints now use the cor
 
 ## Event integrity test status
 
-The event-domain test suite contains **53 pgTAP assertions**, including registration/contact identity consistency on check-in and append-only closeout history protections. PR #7's isolated workflow passed all four database suites (**111 assertions total**) plus Deno type-check and request-validation tests in [run 42441280069](https://github.com/Elgit4/PCG_Missions/actions/runs/42441280069). The changes are not deployed and no hosted project was changed.
+At the PR #7 milestone, the event-domain suite contained **53 pgTAP assertions**, including registration/contact identity consistency on check-in and append-only closeout history protections. The latest PR #7 head passed all four database suites (**112 assertions total**) plus Deno checks in [run 42448742945](https://github.com/Elgit4/PCG_Missions/actions/runs/42448742945). PR #8 subsequently expanded the event/idempotency suite to 71 assertions. These changes are source-control only; they are not deployed and no hosted project was changed.
 
 
 ## Event idempotency ledger
 
-The event schema draft includes a private HMAC-backed idempotency receipt ledger. Keys are scoped by event, branch, operation, caller class and (for staff) trusted actor. Receipts store only a versioned digest and resource reference, not request PII. The helper's canonical JSON serializer rejects unsafe/accessor-backed object structures and sorts Unicode-normalized keys deterministically. The reconciled migration and test suite also verify the event integrity trigger functions cannot be invoked by browser roles. The latest validation is pending on PR #8; this is not an active transaction endpoint or production feature.
+The event schema draft includes a private HMAC-backed idempotency receipt ledger. Keys are scoped by event, branch, operation, caller class and (for staff) trusted actor. Receipts store only a versioned digest and resource reference, not request PII. The helper's canonical JSON serializer rejects unsafe/accessor-backed object structures and sorts Unicode-normalized keys deterministically. The reconciled migration and test suite also verify the event integrity trigger functions cannot be invoked by browser roles. PR #8 is merged to `main` as commit [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8); its exact head passed [CI run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750), including 129 database assertions across four suites and the Deno idempotency helper tests. This is not an active transaction endpoint or production feature.
+
+
+## Current source-control status (2026-11-08)
+
+The backend integration PRs #3–#8 are all merged to `main`; there are no open CMI/backend PRs in the latest repository inventory. PR #8 is the latest backend integration milestone. Its exact head `c80a29a46a8a693449d66b209c84e2ba6894209a` passed [CI run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750): 129 pgTAP assertions across four suites, plus Deno type-check, public-content validation and idempotency-helper tests.
+
+The baseline workflow on `main` did not subscribe to `push`, so there was no automatic post-merge CMI run for merge commit [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8). A companion CI maintenance PR is adding the `main` push trigger, branch-pattern coverage for CMI feature targets and a CMI-only Deno lint step. Until that PR is merged and a main-push run completes, do not describe post-merge CMI CI as verified.
+
+No hosted CMI Supabase project has been linked, queried, migrated or modified. Keep all CLI/database validation within this dedicated workspace and its disposable local stack.
