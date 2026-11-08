@@ -36,7 +36,7 @@ All domain drafts preserve branch-consistent foreign keys, RLS and closed browse
 
 ## Validation
 
-The first three suites passed in [GitHub Actions run 42436473154](https://github.com/Elgit4/PCG_Missions/actions/runs/42436473154): 14 + 24 + 20 = 58 assertions. The events/attendance/public-content draft is now included in the isolated local CI workflow with a 36-assertion suite. Its result is pending; do not treat it as passed until the new workflow run completes successfully.
+The first three suites passed in [GitHub Actions run 42436473154](https://github.com/Elgit4/PCG_Missions/actions/runs/42436473154): 14 + 24 + 20 = 58 assertions. The events/attendance/public-content draft is included in the isolated local CI workflow with a 36-assertion suite. The corrected suite passed in [run 42437731467](https://github.com/Elgit4/PCG_Missions/actions/runs/42437731467).
 
 CI generates temporary migration filenames using `supabase migration new`, copies the drafts into the isolated CLI project, applies them locally, runs pgTAP, then removes the temporary files. Draft SQL is not yet promoted to permanent migrations.
 
@@ -50,7 +50,7 @@ Run its input-validation tests with:
 deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
 ```
 
-Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and exact `PUBLIC_CONTENT_ALLOWED_ORIGINS` only in the Edge Function's server environment. The service-role key bypasses RLS; the function's fixed query allowlist is therefore security-critical. Do not reuse it for staff operations. Platform rate limiting and production origin configuration are required before deployment. This function is not deployed.
+Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and exact `PUBLIC_CONTENT_ALLOWED_ORIGINS` only in the Edge Function's server environment. The service-role key bypasses RLS; the function's fixed query allowlist is therefore security-critical. It exposes only church-wide welcome messages and omits event capacity from public event responses. Do not reuse it for staff operations. Platform rate limiting and production origin configuration are required before deployment. This function is not deployed.
 
 ## Security and approval gates
 
