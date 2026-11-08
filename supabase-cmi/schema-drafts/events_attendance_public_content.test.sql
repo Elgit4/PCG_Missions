@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(54);
+select plan(71);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -13,6 +13,10 @@ select has_table('public','transport_reservation','transport reservation table e
 select has_table('public','event_checkin','event check-in table exists');
 select has_table('public','event_closeout','event closeout table exists');
 select has_table('public','event_closeout_event','event closeout history table exists');
+select has_table('public','event_idempotency_receipt','event idempotency receipt ledger exists');
+select has_column('public','event_idempotency_receipt','request_digest','idempotency request digest is stored');
+select has_column('public','event_idempotency_receipt','digest_key_version','HMAC key version is stored for rotation-safe replay');
+select has_index('public','event_idempotency_receipt','event_idempotency_receipt_created_idx','idempotency receipt retention index exists');
 select has_table('public','calendar_entry','typed calendar entry table exists');
 select has_table('public','announcement','announcement table exists');
 select has_table('public','announcement_team_audience','typed team audience table exists');
@@ -25,21 +29,25 @@ select has_table('public','digital_tract','digital tract table exists');
 select has_table('public','external_document_link','typed external document link table exists');
 
 select extensions.ok(
-  (select count(*) = 19 from pg_class c join pg_namespace n on n.oid=c.relnamespace
+  (select count(*) = 20 from pg_class c join pg_namespace n on n.oid=c.relnamespace
    where n.nspname='public' and c.relname = any(array[
     'event','event_staff_assignment','event_team_assignment','event_registration',
     'transport_option','transport_reservation','event_checkin','event_closeout',
-    'event_closeout_event','calendar_entry','announcement','announcement_team_audience',
+    'event_closeout_event','event_idempotency_receipt','calendar_entry','announcement','announcement_team_audience',
     'announcement_event_audience','church_public_profile','welcome_message','sermon',
     'daily_word','digital_tract','external_document_link'
    ]) and c.relrowsecurity),
-  'RLS is enabled on all 19 event and public-content tables'
+  'RLS is enabled on all 20 event and public-content tables'
 );
 select extensions.ok(
   not has_table_privilege('anon','public.event','SELECT')
   and not has_table_privilege('authenticated','public.event','SELECT')
   and not has_table_privilege('anon','public.event_registration','INSERT')
   and not has_table_privilege('authenticated','public.event_registration','INSERT')
+  and not has_table_privilege('anon','public.event_idempotency_receipt','SELECT')
+  and not has_table_privilege('authenticated','public.event_idempotency_receipt','SELECT')
+  and not has_table_privilege('anon','public.event_idempotency_receipt','INSERT')
+  and not has_table_privilege('authenticated','public.event_idempotency_receipt','INSERT')
   and not has_table_privilege('anon','public.sermon','SELECT')
   and not has_table_privilege('authenticated','public.sermon','SELECT'),
   'browser roles have no direct event, registration or public-content grants'
@@ -51,7 +59,7 @@ select extensions.ok(
     where n.nspname='public' and c.relname = any(array[
       'event','event_staff_assignment','event_team_assignment','event_registration',
       'transport_option','transport_reservation','event_checkin','event_closeout',
-      'event_closeout_event','calendar_entry','announcement','announcement_team_audience',
+      'event_closeout_event','event_idempotency_receipt','calendar_entry','announcement','announcement_team_audience',
       'announcement_event_audience','church_public_profile','welcome_message','sermon',
       'daily_word','digital_tract','external_document_link'
     ])
@@ -299,6 +307,155 @@ select extensions.throws_ok(
  values ('21000000-0000-4000-8000-000000000001','other','Invalid scope',now(),'team',
  '31000000-0000-4000-8000-000000000002','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')$q$,
  '23503',null,'calendar team scope must reference a team in the same branch');
+
+
+select extensions.lives_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+  request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'public_registration','public',null,'a1000000-0000-4000-8000-000000000001',
+  decode(repeat('ab',32),'hex'),'event_registration',
+  '71000000-0000-4000-8000-000000000101',201
+ )$q$,
+ 'public idempotency receipt accepts a server-computed SHA-256 digest');
+select extensions.throws_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+  request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'public_registration','public',null,'a1000000-0000-4000-8000-000000000001',
+  decode(repeat('cd',32),'hex'),'event_registration',
+  '71000000-0000-4000-8000-000000000102',201
+ )$q$,
+ '23505',null,'public idempotency key is unique within event and operation scope');
+select extensions.lives_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+  request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'staff_registration','staff','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  'a1000000-0000-4000-8000-000000000002',decode(repeat('ef',32),'hex'),
+  'event_registration','71000000-0000-4000-8000-000000000103',201
+ )$q$,
+ 'staff idempotency receipt is scoped to the authenticated actor');
+select extensions.throws_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+  request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'public_registration','public','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  'a1000000-0000-4000-8000-000000000003',decode(repeat('ab',32),'hex'),
+  'event_registration','71000000-0000-4000-8000-000000000104',201
+ )$q$,
+ '23514',null,'public receipts cannot claim a staff actor');
+select extensions.throws_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+  request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'staff_registration','staff',null,'a1000000-0000-4000-8000-000000000004',
+  decode(repeat('ab',32),'hex'),'event_registration',
+  '71000000-0000-4000-8000-000000000105',201
+ )$q$,
+ '23514',null,'staff receipts require a server-resolved actor');
+select extensions.throws_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,idempotency_key,
+  request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'public_registration','public','a1000000-0000-4000-8000-000000000005',
+  decode(repeat('ab',31),'hex'),'event_registration',
+  '71000000-0000-4000-8000-000000000106',201
+ )$q$,
+ '23514',null,'request digest must be exactly 32 bytes');
+select extensions.throws_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,idempotency_key,
+  request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'delete_event','public','a1000000-0000-4000-8000-000000000006',
+  decode(repeat('ab',32),'hex'),'event_registration',
+  '71000000-0000-4000-8000-000000000107',201
+ )$q$,
+ '23514',null,'unsupported idempotency operations are rejected');
+select extensions.throws_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+  request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'public_registration','staff','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  'a1000000-0000-4000-8000-000000000007',decode(repeat('ab',32),'hex'),
+  'event_registration','71000000-0000-4000-8000-000000000108',201
+ )$q$,
+ '23514',null,'public registration cannot be recorded under staff caller class');
+select extensions.throws_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,idempotency_key,
+  request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'public_registration','public','a1000000-0000-4000-8000-000000000008',
+  decode(repeat('ab',32),'hex'),'event_registration',
+  '71000000-0000-4000-8000-000000000109',302
+ )$q$,
+ '23514',null,'receipt response status must be a successful HTTP status');
+select extensions.throws_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,idempotency_key,
+  request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'public_registration','public','a1000000-0000-4000-8000-000000000009',
+  decode(repeat('ab',32),'hex'),'contact',
+  '71000000-0000-4000-8000-000000000110',201
+ )$q$,
+ '23514',null,'receipt resource type is allowlisted');
+select extensions.throws_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,idempotency_key,
+  request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000002',
+  'public_registration','public','a1000000-0000-4000-8000-000000000010',
+  decode(repeat('ab',32),'hex'),'event_registration',
+  '71000000-0000-4000-8000-000000000111',201
+ )$q$,
+ '23503',null,'receipt event and branch must match');
+
+
+select extensions.throws_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,idempotency_key,
+  request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'public_registration','public','a1000000-0000-4000-8000-000000000012',
+  decode(repeat('ab',32),'hex'),'event_checkin',
+  '71000000-0000-4000-8000-000000000112',201
+ )$q$,
+ '23514',null,'operation and response resource type must agree');
+
+
+select extensions.throws_ok(
+ $q$insert into public.event_idempotency_receipt(
+  event_id,branch_id,operation,caller_class,idempotency_key,
+  digest_key_version,request_digest,resource_type,resource_id,response_status
+ ) values (
+  '51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+  'public_registration','public','a1000000-0000-4000-8000-000000000013',
+  0,decode(repeat('ab',32),'hex'),'event_registration',
+  '71000000-0000-4000-8000-000000000113',201
+ )$q$,
+ '23514',null,'HMAC key version must be a positive version number');
 
 select extensions.ok(
   not has_function_privilege('anon','public.enforce_event_checkin_identity_consistency()','EXECUTE')
