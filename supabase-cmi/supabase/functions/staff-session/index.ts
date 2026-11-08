@@ -159,6 +159,7 @@ Deno.serve(async (request: Request) => {
     const { data: assignments, error: assignmentError } = await service
       .from("staff_role_assignment")
       .select("role_id,branch_id,starts_at,ends_at,revoked_at,role:role!inner(code,name,is_active)")
+      .eq("role.is_active", true)
       .eq("staff_profile_id", profile.id)
       .lte("starts_at", now)
       .is("ends_at", null)
