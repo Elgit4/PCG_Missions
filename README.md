@@ -62,3 +62,7 @@ Do not apply the old ChurchConnect migrations to a live CMI project. Do not conn
 - Record stakeholder approvals before implementation where the documents identify an open decision.
 - Use synthetic data for development and testing.
 - Never commit PINs, passwords, service-role keys, provider secrets or private visitor/prayer data.
+
+## Backend implementation status
+
+The backend foundation is being built on the `backend/cmi-foundation` branch. The active Supabase migration/test directories have been cleared of superseded ChurchConnect SQL; those files are preserved under [docs/legacy/churchconnect](docs/legacy/churchconnect/README.md). The current CMI schema remains a proposal pending reconciliation and stakeholder approval. Do not run or deploy a database migration until the CMI migration set and RLS tests are reviewed. See [Edge Functions](supabase/functions/README.md) for the initial backend runtime and security conventions.

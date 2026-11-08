@@ -1,6 +1,6 @@
-# Local Supabase configuration for ChurchConnect.
+# Local Supabase configuration for CMI Follow-up.
 # This project_id is a local CLI identifier, not a linked hosted project reference.
-project_id = "pcg-missions-churchconnect"
+project_id = "cmi-follow-up-local"
 
 [api]
 enabled = true
