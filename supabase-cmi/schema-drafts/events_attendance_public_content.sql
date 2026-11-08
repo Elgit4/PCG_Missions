@@ -223,6 +223,17 @@ create table public.event_idempotency_receipt (
     or
     (caller_class = 'staff' and actor_user_id is not null and operation <> 'public_registration')
   ),
+  check (
+    (operation in ('public_registration','staff_registration','registration_cancel')
+      and resource_type = 'event_registration')
+    or
+    (operation in ('transport_reservation','transport_cancel')
+      and resource_type = 'transport_reservation')
+    or
+    (operation = 'event_checkin' and resource_type = 'event_checkin')
+    or
+    (operation in ('closeout_submit','closeout_review') and resource_type = 'event_closeout')
+  ),
   unique nulls not distinct (
     event_id, branch_id, operation, caller_class, actor_user_id, idempotency_key
   )
