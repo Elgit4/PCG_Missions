@@ -2,11 +2,11 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status:** Foundation migration drafted and committed; local execution pending.
+**Status:** Foundation migration and pgTAP are committed in the isolated CLI layout; isolated CMI execution pending after a corrected CI run.
 
 ## Implemented in this slice
 
-- Dedicated Supabase CLI configuration with a distinct local project ID and ports.
+- Dedicated Supabase CLI project with configuration at `supabase-cmi/supabase/config.toml`, a distinct local project ID and non-conflicting ports.
 - Church and branch foundation with branch-aware candidate keys.
 - Supabase Auth-linked staff profile; no PIN/password storage.
 - Exactly six CMI role catalogue entries.
@@ -14,7 +14,7 @@
 - Time-bounded staff role assignments supporting multiple roles.
 - Teams, memberships, service areas and staff area coverage.
 - RLS enabled and browser grants withheld on all foundation tables.
-- Initial pgTAP structural and deny-by-default test file.
+- Initial pgTAP structural and deny-by-default test file at `supabase-cmi/supabase/tests/identity_authorization_foundation.test.sql`.
 - Contacts/follow-up domain SQL draft covering nine tables, integrity constraints, indexes, idempotent capture metadata, and conservative assignment rules.
 - Matching pgTAP draft covering table presence, RLS, closed Data API grants, shared-phone handling, branch consistency, capture idempotency and assignment constraints.
 - Restricted-pastoral SQL draft with prayer requests, intercessor assignments, care groups/records/assignments/interactions, and dedicated append-only prayer/care access-audit ledgers.
