@@ -215,8 +215,8 @@ Concurrency tests must use two independent database sessions and synchronize the
 ## 10. Build sequence after approval
 
 1. Record D-05, D-06, D-13 and applicable R/D decisions in `docs/11_CMI_STAKEHOLDER_DECISION_REGISTER.md`.
-2. Revise event registration, transport and check-in schema for request digests, consent evidence, identity consistency and immutable closeout history.
-3. Add database-level constraints and pgTAP tests for every invariant.
+2. Complete the unresolved consent-evidence relation and any approved transport/registration refinements; retain the merged request-digest ledger, check-in identity trigger and append-only closeout guards.
+3. Add or extend database-level constraints and pgTAP tests for each newly approved invariant.
 4. Implement narrow transaction functions in a private schema, with explicit execute grants and no public base-table access.
 5. Implement separate Edge Function handlers for public registration and authenticated staff event operations.
 6. Add authorization tests for every role, scope, inactive account, revoked assignment and forged field.
