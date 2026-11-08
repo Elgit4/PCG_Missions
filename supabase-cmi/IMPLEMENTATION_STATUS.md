@@ -38,4 +38,4 @@ See [schema reconciliation crosswalk](../docs/16_CMI_SCHEMA_RECONCILIATION_AND_D
 
 ## Verification
 
-The foundation migration and pgTAP test are committed but have not been executed. The contacts/follow-up SQL and test remain drafts, not CLI migrations. The GitHub-only implementation environment did not provide a local PostgreSQL/Supabase runtime in this work session. No hosted Supabase project was accessed, linked, migrated or modified.
+The foundation migration and pgTAP test are committed but have not been executed. The contacts/follow-up and restricted-pastoral SQL/test suites remain drafts under `schema-drafts/`, not CLI migrations or runnable pgTAP suites. The GitHub-only implementation environment did not provide a local PostgreSQL/Supabase runtime in this work session. No hosted Supabase project was accessed, linked, migrated or modified.
