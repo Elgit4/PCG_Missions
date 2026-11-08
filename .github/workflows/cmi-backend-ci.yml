@@ -28,10 +28,6 @@ jobs:
     name: CMI local migrations and pgTAP
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    defaults:
-      run:
-        working-directory: supabase-cmi
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -44,17 +40,24 @@ jobs:
       - name: Show CLI version
         run: supabase --version
 
+      - name: Assert the isolated CMI CLI project layout
+        run: |
+          test -f supabase-cmi/supabase/config.toml
+          test -f supabase-cmi/supabase/migrations/20261108010000_cmi_identity_authorization_foundation.sql
+          test -f supabase-cmi/supabase/tests/identity_authorization_foundation.test.sql
+          test ! -e supabase-cmi/supabase/migrations/20261107001200_churchconnect_core_schema.sql
+
       - name: Start isolated local CMI stack and apply CMI migrations
-        run: supabase start
+        run: supabase --workdir supabase-cmi start
 
       - name: Run CMI database tests
-        run: supabase test db
+        run: supabase --workdir supabase-cmi test db
 
       - name: Stop isolated local CMI stack
         if: always()
         run: |
           if command -v supabase >/dev/null 2>&1; then
-            supabase stop
+            supabase --workdir supabase-cmi stop
           else
-            echo "Supabase CLI was not installed; no local stack was started."
+            echo "Supabase CLI was not installed; no local CMI stack was started."
           fi
