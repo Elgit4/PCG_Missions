@@ -229,6 +229,9 @@ on public.event_checkin
 for each row
 execute function public.enforce_event_checkin_identity_consistency();
 
+revoke all on function public.enforce_event_checkin_identity_consistency()
+  from public, anon, authenticated;
+
 -- Closeout history is append-only; protect against UPDATE, DELETE and TRUNCATE.
 create or replace function public.prevent_event_closeout_event_mutation()
 returns trigger
@@ -250,6 +253,9 @@ create trigger event_closeout_event_no_truncate_trg
 before truncate on public.event_closeout_event
 for each statement
 execute function public.prevent_event_closeout_event_mutation();
+
+revoke all on function public.prevent_event_closeout_event_mutation()
+  from public, anon, authenticated;
 
 
 -- Typed calendar scope: branch, team, event, or an individual's own entry.
