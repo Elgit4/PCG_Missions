@@ -68,6 +68,14 @@ const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export function parsePublicContentRequest(
   url: URL,
 ): { ok: true; value: PublicContentRequest } | { ok: false; error: string } {
+  const seenKeys = new Set<string>();
+  for (const key of url.searchParams.keys()) {
+    if (seenKeys.has(key)) {
+      return { ok: false, error: "Duplicate query parameter." };
+    }
+    seenKeys.add(key);
+  }
+
   const resource = url.searchParams.get("resource");
   if (resource === "church-profile") {
     if ([...url.searchParams.keys()].some((key) => key !== "resource")) {
@@ -76,7 +84,7 @@ export function parsePublicContentRequest(
     return { ok: true, value: { resource } };
   }
 
-  if (!resource || !(resource in PUBLIC_RESOURCES)) {
+  if (!resource || !Object.hasOwn(PUBLIC_RESOURCES, resource)) {
     return { ok: false, error: "Unsupported public resource." };
   }
 
