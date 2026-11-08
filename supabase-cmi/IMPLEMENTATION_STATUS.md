@@ -74,3 +74,14 @@ The event registration and public-profile E.164 constraints were corrected to ma
 The proposed transactional contract is documented in [document 17](../docs/17_EVENT_TRANSACTION_API_CONTRACT.md). It defines public/staff registration, serialized event-capacity checks, transport-seat reservation, check-in, closeout, idempotency, authorization boundaries and concurrency/security tests.
 
 The contract identifies schema corrections required before implementation: idempotency request digest; consent evidence relation; check-in registration/contact identity consistency; database-level closeout history immutability; and an approved rule for multiple active transport options. No write endpoints or role grants have been activated. Implementation remains blocked by D-05, D-06, D-13 and applicable R-01–R-12/D-01 approvals.
+
+
+## Event integrity hardening — 2026-11-08
+
+PR #7 adds database-level protections for two event invariants:
+- A check-in containing both registration and contact references must match the canonical contact linked to that registration in the same event and branch. The guard applies to inserts and relevant updates.
+- Closeout history is append-only; UPDATE, DELETE and TRUNCATE are rejected while inserts remain available for a future authorized transaction path.
+
+The event-domain pgTAP suite now has **53 assertions**. The full isolated CMI workflow passed **111 database assertions across four suites**, plus Deno type-check and public-content request-validation tests, on PR #7 head `45be0c2563cdc827a56748eac3ee4580f802b54b` in [CI run 42441280069](https://github.com/Elgit4/PCG_Missions/actions/runs/42441280069).
+
+These protections remain source-only; no hosted database or production migration was changed. Stakeholder approval, including D-13 retention governance, is still required before production use.
