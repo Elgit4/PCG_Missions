@@ -35,6 +35,7 @@ function response(
   origin: string | null,
 ): Response {
   const headers = new Headers(baseHeaders);
+  if (status < 200 || status >= 300) headers.set("Cache-Control", "no-store");
   if (origin && allowedOrigins.has(origin)) {
     headers.set("Access-Control-Allow-Origin", origin);
     headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -98,6 +99,10 @@ Deno.serve(async (request: Request) => {
 
     for (const filter of config.filters) {
       query = query.eq(filter.column, filter.value);
+    }
+
+    if ("globalOnly" in config && config.globalOnly) {
+      query = query.is("branch_id", null);
     }
 
     if ("slug" in parsed.value && parsed.value.slug && "slugColumn" in config) {
