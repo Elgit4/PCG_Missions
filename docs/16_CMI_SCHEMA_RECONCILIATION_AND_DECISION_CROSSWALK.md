@@ -26,7 +26,7 @@ The identity foundation's physical profile uses an internal `staff_profile.id` k
 | DD-06 | 13 | Follow-up task assignment | Enforce one primary target (staff OR team) initially; add dual assignment only after workflow approval. | D-04 | Proposed |
 | DD-07 | 13 | Contact notes and fields | Separate ordinary notes from pastoral narratives; implement field-level projections/DTOs and explicit note visibility; never assume RLS hides columns. | R-03, R-05 | Blocked |
 | DD-08 | 14 | Prayer request intake | Start staff-created requests only; add anonymous/public intake only through a dedicated abuse-protected endpoint and approved consent/retention flow. | R-11, D-07 | Proposed |
-| DD-09 | 14 | Prayer/care narrative read auditing | Deny direct client SELECT. Use a trusted server-mediated read that authenticates, authorizes, writes audit event and returns a minimal DTO transactionally. | R-01, R-02, R-10, D-07 | Blocked |
+| DD-09 | 14 | Prayer/care narrative read auditing | Deny direct client SELECT. Use trusted server-mediated reads and write an append-only audit event transactionally. A dedicated `care_access_audit` table is added alongside `prayer_access_audit`; a prayer-only audit relation cannot identify care reads. | R-01, R-02, R-10, D-07 | Blocked |
 | DD-10 | 14 | Event walk-in check-in | Require stable idempotency key and event-scoped duplicate policy. Do not use name-only matching as identity proof. | D-06 | Proposed |
 | DD-11 | 14 | Registration snapshots | Minimize attendee snapshots, separate public registration from canonical contact linking, define expiry/retention and consent linkage. | D-05, D-13 | Blocked |
 | DD-12 | 14 | Waitlist | Remove waitlist_only from initial enum/check constraints; no waitlist until explicitly approved. | D-06 | Proposed |
@@ -72,9 +72,9 @@ The historical `supabase/` directory is intentionally untouched. Its migrations 
 
 ## 5. Contacts and follow-up domain progress
 
-A draft SQL slice now defines `contact`, `contact_capture`, `contact_assignment`, `contact_note`, `contact_interaction`, `contact_merge`, `followup_list`, `followup_task` and `followup_task_event`. It includes same-branch composite foreign keys, E.164 phone checks, non-unique phone/email duplicate-review indexes, capture idempotency, allowlisted capture metadata, exact-one staff/team assignment, task completion consistency, and append-only task history intent. RLS is enabled and browser grants are withheld in the draft.
+A draft SQL slice now defines `contact`, `contact_capture`, `contact_assignment`, `contact_note`, `contact_interaction`, `contact_merge`, `followup_list`, `followup_task` and `followup_task_event`. A separate restricted-pastoral draft defines prayer requests and assignments, care groups/records/assignments/interactions, and dedicated append-only access-audit relations. It includes same-branch composite foreign keys, E.164 phone checks, non-unique phone/email duplicate-review indexes, capture idempotency, allowlisted capture metadata, exact-one staff/team assignment, task completion consistency, and append-only task history intent. RLS is enabled and browser grants are withheld in the draft.
 
-Event references in contact capture and list scope are deferred until the event-domain migration. Contact merge remains a data-integrity structure only; the trusted transactional merge/reversal operation is not implemented yet. R-03/R-05, D-03/D-04 and field-level visibility remain approval gates. Draft files are not yet in the executable migration/test folders.
+Event references in contact capture and list scope are deferred until the event-domain migration. A restricted-pastoral schema draft adds prayer/care records, active assignments and separate append-only prayer/care access-audit tables; direct browser reads remain denied. Contact merge remains a data-integrity structure only; the trusted transactional merge/reversal operation is not implemented yet. R-03/R-05, D-03/D-04 and field-level visibility remain approval gates. Draft files are not yet in the executable migration/test folders.
 
 ## 6. Decisions that remain release/build gates
 
