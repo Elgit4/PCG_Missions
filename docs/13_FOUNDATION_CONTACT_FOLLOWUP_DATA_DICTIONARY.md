@@ -427,13 +427,13 @@ Use RESTRICT for parent deletion where operational history exists. If a person l
 
 | Finding | Current design tension | Required action before migrations |
 |---|---|---|
-| DD-01 | Document 08 uses `followup_list.scope_type/scope_id`; this dictionary recommends typed `team_id/event_id` FKs. | Approve explicit-FK refinement and update 08/ERD. |
-| DD-02 | `event_team_assignment` supports either team or user, while ERD entity is staff-centric. | Resolve team-vs-individual event assignment semantics and rename/adjust ERD. |
-| DD-03 | `staff_capability_override.scope_type/scope_id` is polymorphic. | Replace with typed scope FKs or typed scope tables before migration. |
-| DD-04 | `staff_profile` Auth FK deletion action interacts with account retention. | Approve deactivation-first offboarding and retention before choosing Auth FK action. |
+| DD-01 | Document 08 uses `followup_list.scope_type/scope_id`; this dictionary recommends typed `team_id/event_id` FKs. | Backend draft uses typed `team_id`; event scope remains deferred until the event table exists. Reconcile document 08/ERD before promoting to a migration. |
+| DD-02 | `event_team_assignment` supports either team or user, while ERD entity is staff-centric. | Still unresolved. No event assignment table is created in the foundation or contacts/follow-up draft. Resolve before event-domain migration. |
+| DD-03 | `staff_capability_override.scope_type/scope_id` is polymorphic. | Still unresolved. The foundation migration does not create overrides. Replace with typed scope FKs or typed scope tables before authorization policies are exposed. |
+| DD-04 | `staff_profile` Auth FK deletion action interacts with account retention. | Foundation uses `auth_user_id` with `ON DELETE RESTRICT` and an inactive/suspended profile state; this is the technical deactivation-first default, not approval of the retention policy. |
 | DD-05 | Branch may be a single fixed configuration, while records carry branch_id. | Confirm D-02; retain composite branch consistency either way. |
-| DD-06 | D-04 task assignment mode is not approved. | Recommended one-target assignment is a safe default only, not a decision. |
-| DD-07 | `contact_note` visibility options and contact field exposure require R-05/R-03. | Finalize field-level projections and visibility policy before grants. |
+| DD-06 | D-04 task assignment mode is not approved. | Contacts/follow-up SQL draft uses an XOR constraint (staff OR team) as the conservative default; retain as a draft until D-04 is approved or amended. |
+| DD-07 | `contact_note` visibility options and contact field exposure require R-05/R-03. | Draft defines visibility values and team/branch integrity only. No client policies or grants are provided; finalize field-level projections before access is enabled. |
 
 ## 9. Validation checklist
 
