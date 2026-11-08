@@ -36,7 +36,7 @@ All domain drafts preserve branch-consistent foreign keys, RLS and closed browse
 
 ## Validation
 
-The first three suites passed in [GitHub Actions run 42436473154](https://github.com/Elgit4/PCG_Missions/actions/runs/42436473154): 14 + 24 + 20 = 58 assertions. The events/attendance/public-content draft is included in the isolated local CI workflow with an expanded 46-assertion suite. The original 36 assertions passed in [run 42437731467](https://github.com/Elgit4/PCG_Missions/actions/runs/42437731467); the expanded 46 assertions and the full 101-assertion workflow passed in [run 42439419503](https://github.com/Elgit4/PCG_Missions/actions/runs/42439419503).
+The first three suites passed in [GitHub Actions run 42436473154](https://github.com/Elgit4/PCG_Missions/actions/runs/42436473154): 14 + 24 + 20 = 58 assertions. The events/attendance/public-content draft is included in the isolated local CI workflow with an expanded 46-assertion suite. The original 36 assertions passed in [run 42437731467](https://github.com/Elgit4/PCG_Missions/actions/runs/42437731467); the expanded 46 assertions and the full 104-assertion workflow passed in [run 42439419503](https://github.com/Elgit4/PCG_Missions/actions/runs/42439419503).
 
 CI generates temporary migration filenames using `supabase migration new`, copies the drafts into the isolated CLI project, applies them locally, runs pgTAP, then removes the temporary files. Draft SQL is not yet promoted to permanent migrations.
 
@@ -50,7 +50,7 @@ Run its input-validation tests with:
 deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
 ```
 
-Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and exact `PUBLIC_CONTENT_ALLOWED_ORIGINS` only in the Edge Function's server environment. The service-role key bypasses RLS; the function's fixed query allowlist is therefore security-critical. It exposes only church-wide welcome messages and omits event capacity from public event responses. Do not reuse it for staff operations. Platform rate limiting and production origin configuration are required before deployment. Deno type-check and request-validation tests passed in [run 42438088374](https://github.com/Elgit4/PCG_Missions/actions/runs/42438088374) and again on the latest head. Seven pgTAP assertions verify that every fixed API projection/filter/order column exists in the schema. The expanded 46-assertion domain suite and all 101 database assertions passed in [run 42439419503](https://github.com/Elgit4/PCG_Missions/actions/runs/42439419503). This function is not deployed.
+Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and exact `PUBLIC_CONTENT_ALLOWED_ORIGINS` only in the Edge Function's server environment. The service-role key bypasses RLS; the function's fixed query allowlist is therefore security-critical. It exposes only church-wide welcome messages and omits event capacity from public event responses. Do not reuse it for staff operations. Platform rate limiting and production origin configuration are required before deployment. Deno type-check and request-validation tests passed in [run 42438088374](https://github.com/Elgit4/PCG_Missions/actions/runs/42438088374) and again on the latest head. Seven pgTAP assertions verify that every fixed API projection/filter/order column exists in the schema. The expanded 46-assertion domain suite and all 104 database assertions passed in [run 42439419503](https://github.com/Elgit4/PCG_Missions/actions/runs/42439419503). This function is not deployed.
 
 ## Security and approval gates
 
