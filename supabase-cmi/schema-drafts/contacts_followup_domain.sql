@@ -34,7 +34,7 @@ create table public.contact (
   unique (id, branch_id),
   foreign key (merged_into_contact_id, branch_id)
     references public.contact(id, branch_id) on delete restrict,
-  check (phone_e164 is null or phone_e164 ~ '^\+[1-9][0-9]{7,14}),
+  check (phone_e164 is null or phone_e164 ~ '^\+[1-9][0-9]{7,14}$'),
   check (
     email_normalized is null
     or (
