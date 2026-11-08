@@ -23,7 +23,10 @@ Deno.test("CORS allows only an explicitly configured origin", () => {
   Deno.env.set("APP_ALLOWED_ORIGINS", "https://staff.example.test");
   try {
     const headers = corsHeaders(request);
-    if (headers.get("Access-Control-Allow-Origin") !== "https://staff.example.test") {
+    if (
+      headers.get("Access-Control-Allow-Origin") !==
+        "https://staff.example.test"
+    ) {
       throw new Error("The configured origin should be allowed.");
     }
   } finally {
@@ -46,7 +49,9 @@ Deno.test("JSON responses are not cacheable and carry a request id", async () =>
 });
 
 Deno.test("Method errors use a stable error envelope", async () => {
-  const request = new Request("https://api.example.test/health", { method: "POST" });
+  const request = new Request("https://api.example.test/health", {
+    method: "POST",
+  });
   const response = methodNotAllowed(request);
   if (response.status !== 405) throw new Error("Expected HTTP 405.");
   const body = await response.json();
@@ -57,7 +62,12 @@ Deno.test("Method errors use a stable error envelope", async () => {
 
 Deno.test("Error responses do not expose stack traces", async () => {
   const request = new Request("https://api.example.test/health");
-  const response = errorResponse(request, "INTERNAL_ERROR", "Request failed.", 500);
+  const response = errorResponse(
+    request,
+    "INTERNAL_ERROR",
+    "Request failed.",
+    500,
+  );
   const body = await response.json();
   if ("stack" in body || "stackTrace" in body) {
     throw new Error("Error response leaked implementation details.");
