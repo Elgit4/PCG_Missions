@@ -102,6 +102,9 @@ declare
   v_branch_scope boolean := false;
   v_assigned_scope boolean := false;
   v_team_scope boolean := false;
+  v_identity_branch_scope boolean := false;
+  v_identity_assigned_scope boolean := false;
+  v_identity_team_scope boolean := false;
   v_existing_contact_id uuid;
   v_existing_actor uuid;
   v_existing_digest_key_version smallint;
@@ -174,26 +177,43 @@ begin
     raise exception using errcode = '42501', message = 'contact capture not authorized';
   end if;
 
-  if (p_phone_e164 is not null or p_phone_display is not null or p_email_normalized is not null)
-     and not exists (
-       select 1
-       from public.staff_role_assignment sra
-       join public.role r on r.id = sra.role_id and r.is_active
-       join public.role_capability rc on rc.role_id = sra.role_id
-       join public.capability cap on cap.id = rc.capability_id
-       where sra.staff_profile_id = v_profile_id
-         and sra.branch_id = p_branch_id
-         and sra.starts_at <= pg_catalog.now()
-         and sra.ends_at is null
-         and sra.revoked_at is null
-         and cap.code = 'contact.identity.capture'
-         and cap.is_active
-     ) then
-    raise exception using errcode = '42501', message = 'contact identity capture not authorized';
+  if p_phone_e164 is not null or p_phone_display is not null or p_email_normalized is not null then
+    select
+      pg_catalog.bool_or(rc.scope_mode = 'branch'),
+      pg_catalog.bool_or(rc.scope_mode = 'assigned'),
+      pg_catalog.bool_or(rc.scope_mode = 'team')
+    into
+      v_identity_branch_scope,
+      v_identity_assigned_scope,
+      v_identity_team_scope
+    from public.staff_role_assignment sra
+    join public.role r
+      on r.id = sra.role_id
+     and r.is_active
+    join public.role_capability rc
+      on rc.role_id = sra.role_id
+    join public.capability cap
+      on cap.id = rc.capability_id
+    where sra.staff_profile_id = v_profile_id
+      and sra.branch_id = p_branch_id
+      and sra.starts_at <= pg_catalog.now()
+      and sra.ends_at is null
+      and sra.revoked_at is null
+      and cap.code = 'contact.identity.capture'
+      and cap.is_active
+    group by sra.staff_profile_id;
+
+    if not coalesce(v_identity_branch_scope, false)
+       and not (
+         (p_team_id is not null and coalesce(v_identity_team_scope, false))
+         or (p_team_id is null and coalesce(v_identity_assigned_scope, false))
+       ) then
+      raise exception using errcode = '42501', message = 'contact identity capture not authorized';
+    end if;
   end if;
 
   if p_team_id is not null then
-    if not v_team_scope or not exists (
+    if not (v_team_scope or v_identity_team_scope) or not exists (
       select 1
       from public.staff_team_membership stm
       join public.team t
@@ -209,7 +229,11 @@ begin
     ) then
       raise exception using errcode = '42501', message = 'team contact capture not authorized';
     end if;
-  elsif not v_branch_scope and not v_assigned_scope then
+  elsif not v_branch_scope and not v_assigned_scope
+        and not (p_phone_e164 is not null or p_phone_display is not null or p_email_normalized is not null)
+        or (p_team_id is null and not v_branch_scope and not v_assigned_scope
+            and (p_phone_e164 is not null or p_phone_display is not null or p_email_normalized is not null)
+            and not coalesce(v_identity_assigned_scope, false)) then
     raise exception using errcode = '22023', message = 'team_id is required for team-scoped capture';
   end if;
 
@@ -270,7 +294,14 @@ begin
   )
   returning * into v_contact;
 
-  if p_team_id is not null or (not v_branch_scope and v_assigned_scope) then
+  if p_team_id is not null
+     or (not v_branch_scope and v_assigned_scope)
+     or (
+       (p_phone_e164 is not null or p_phone_display is not null or p_email_normalized is not null)
+       and not coalesce(v_identity_branch_scope, false)
+       and coalesce(v_identity_assigned_scope, false)
+       and p_team_id is null
+     ) then
     insert into public.contact_assignment (
       contact_id,
       branch_id,
