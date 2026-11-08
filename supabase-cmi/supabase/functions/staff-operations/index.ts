@@ -125,7 +125,8 @@ async function resolveScopes(
 
   const { data: assignments, error: assignmentError } = await service
     .from("staff_role_assignment")
-    .select("role_id")
+    .select("role_id,role:role!inner(is_active)")
+    .eq("role.is_active", true)
     .eq("staff_profile_id", profileId)
     .eq("branch_id", branchId)
     .lte("starts_at", now)
