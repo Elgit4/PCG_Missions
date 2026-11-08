@@ -81,9 +81,3 @@ The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role sche
 - Multi-church administration and the listed future/held features are out of scope.
 - A documented capability is not proof that the feature has shipped. Verify implementation separately.
 
-
-## Event schema integrity hardening
-
-- The event audit-integrity draft PR adds a database trigger ensuring that a check-in's optional registration and contact references identify the same attendee.
-- It also makes closeout history append-only at the database layer, blocking UPDATE, DELETE and TRUNCATE.
-- These controls are draft schema protections only; they do not grant browser access or activate event write endpoints.
