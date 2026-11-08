@@ -249,7 +249,7 @@ A follow-on draft PR, [PR #7 — event check-in identity and closeout history](h
 These changes are in a separate draft PR and remain subject to its current CI run and review. They are not yet part of the base branch and must not be treated as approved or production-active.
 
 The following schema/API gates remain unresolved:
-- Idempotency requires a stored normalized request digest and replay receipt; a unique request key alone cannot safely distinguish same-payload retries from changed-payload reuse.
+- [PR #8 — private event idempotency receipt ledger](https://github.com/Elgit4/PCG_Missions/pull/8) adds a scoped receipt table with a versioned HMAC-SHA-256 digest, actor scope and operation/resource pairing. Its 70-assertion suite is pending CI at the time of this note. The endpoint must still implement canonicalization, digest comparison, replay and 409 conflict semantics atomically; the table alone does not implement those behaviors.
 - `consent_record_id` still needs an approved consent-evidence relation and retention model before it can prove consent.
 - The rule for multiple active transport options per registration remains pending D-06.
 - Public registration, capacity, cancellation, waitlist, walk-in, transport and check-in policies remain blocked by D-05/D-06 and applicable role/scope approvals.
