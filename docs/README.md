@@ -36,7 +36,13 @@ These artifacts are on the database-design feature branch and are **proposals fo
 
 ## Backend implementation (feature branch)
 
-The first CMI identity foundation is committed in `supabase-cmi/`. Contacts/follow-up and restricted-pastoral schema/test suites are review drafts in `supabase-cmi/schema-drafts/`; they are not executable migrations/tests yet.\n\n- [Schema Reconciliation & Decision Crosswalk](16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) — reconciles DD-01–DD-25 and records technical dispositions and approval gates.\n- [Isolated CMI Supabase workspace](../supabase-cmi/README.md) — separate CLI config, migration history and test workspace; does not use historical ChurchConnect SQL.\n- [Backend Implementation Status](../supabase-cmi/IMPLEMENTATION_STATUS.md) — delivered foundation scope, deferred domains and verification state.\n\n## Audit and verification records
+The first CMI identity foundation is committed in `supabase-cmi/`. Contacts/follow-up and restricted-pastoral schema/test suites are review drafts in `supabase-cmi/schema-drafts/`; they are not executable migrations/tests yet.
+
+- [Schema Reconciliation & Decision Crosswalk](16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) — reconciles DD-01–DD-25 and records technical dispositions and approval gates.
+- [Isolated CMI Supabase workspace](../supabase-cmi/README.md) — separate CLI config, migration history and test workspace; does not use historical ChurchConnect SQL.
+- [Backend Implementation Status](../supabase-cmi/IMPLEMENTATION_STATUS.md) — delivered foundation scope, deferred domains and verification state.
+
+## Audit and verification records
 
 - [Repository Consistency & Accuracy Audit](REPOSITORY_AUDIT_REPORT.md) — v2.1 cross-document review, corrected defects, unresolved implementation gaps and verification limitations.
 
@@ -81,3 +87,6 @@ The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role sche
 - Multi-church administration and the listed future/held features are out of scope.
 - A documented capability is not proof that the feature has shipped. Verify implementation separately.
 
+
+- [Event Transaction API Contract](17_EVENT_TRANSACTION_API_CONTRACT.md) — transactional semantics, capacity serialization, idempotency, transport, check-in and closeout rules.
+- [Event Idempotency Ledger Design](18_EVENT_IDEMPOTENCY_LEDGER_DESIGN.md) — private HMAC-backed replay receipt schema, actor scoping, retention and implementation gates.
