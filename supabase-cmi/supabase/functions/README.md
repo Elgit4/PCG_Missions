@@ -15,7 +15,7 @@ Read-only public projection for published content. Supported query examples:
 - `?resource=announcements`
 - `?resource=events`
 
-The function selects explicit public columns, applies publication/visibility filters on the server, bounds pagination, rejects unknown resources and query parameters, permits GET/OPTIONS only, and returns generic errors. It never accepts arbitrary table names, column lists, filters, sort expressions, IDs for private records or write operations.
+The function selects explicit public columns, applies publication/visibility filters on the server, bounds pagination, rejects unknown resources and query parameters, permits GET/OPTIONS only, and returns generic errors. Welcome messages are limited to church-wide rows (`branch_id IS NULL`) until a branch-public identity/routing decision exists. Public event responses omit capacity. It never accepts arbitrary table names, column lists, filters, sort expressions, IDs for private records or write operations.
 
 ### Required server environment
 
