@@ -202,7 +202,7 @@ create or replace function public.enforce_event_checkin_identity_consistency()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, public
-as $
+as $function$
 declare
   linked_contact_id uuid;
 begin
@@ -221,7 +221,7 @@ begin
   end if;
   return new;
 end;
-$;
+$function$;
 
 create trigger event_checkin_identity_consistency_trg
 before insert or update of registration_id, contact_id, event_id, branch_id
@@ -234,12 +234,12 @@ create or replace function public.prevent_event_closeout_event_mutation()
 returns trigger
 language plpgsql
 set search_path = pg_catalog, public
-as $
+as $function$
 begin
   raise exception 'event closeout history is append-only'
     using errcode = '55000';
 end;
-$;
+$function$;
 
 create trigger event_closeout_event_no_mutation_trg
 before update or delete on public.event_closeout_event
