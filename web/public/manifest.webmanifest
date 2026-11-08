@@ -1,0 +1,10 @@
+{
+  "name": "CMI Follow-up",
+  "short_name": "CMI Follow-up",
+  "description": "Church ministry follow-up workspace preview",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f6f1",
+  "theme_color": "#183f36",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
