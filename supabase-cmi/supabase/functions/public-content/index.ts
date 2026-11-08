@@ -111,12 +111,10 @@ Deno.serve(async (request: Request) => {
 
     query = query.order(config.order.column, { ascending: config.order.ascending });
 
-    if (parsed.value.resource !== "church-profile") {
-      query = query.range(
-        parsed.value.offset,
-        parsed.value.offset + parsed.value.limit - 1,
-      );
-    }
+    query = query.range(
+      parsed.value.offset,
+      parsed.value.offset + parsed.value.limit - 1,
+    );
 
     const { data, error } = await query;
     if (error) throw error;
