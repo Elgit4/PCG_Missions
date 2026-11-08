@@ -42,6 +42,7 @@ The CMI-only backend is developed in `../supabase-cmi/`, isolated from the histo
 - [Isolated CMI Supabase workspace](../supabase-cmi/README.md) — separate CLI configuration, migration history and test workspace.
 - [Backend Implementation Status](../supabase-cmi/IMPLEMENTATION_STATUS.md) — implemented foundation, validated draft domains, deferred services and verification limits.
 - [Legacy ChurchConnect artifacts](legacy/churchconnect/README.md) — preserved historical SQL, tests and workflow; not part of the active CMI backend.
+- [Event Transaction API Contract](17_EVENT_TRANSACTION_API_CONTRACT.md) — server-side transaction semantics, capacity serialization, idempotency, transport, check-in, closeout and test gates. This is a proposal, not an active API.
 
 ## Audit and verification records
 

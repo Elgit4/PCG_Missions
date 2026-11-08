@@ -116,8 +116,15 @@ Engineering dispositions implemented in this draft:
 - **DD-14:** announcement SMS delivery is not duplicated; future delivery state belongs to the canonical SMS outbox/campaign domain.
 - Capacity and seat allocation are not represented as client-side count checks; trusted serialized reservation operations remain to be implemented.
 
-The draft creates 19 relations and keeps RLS enabled with no browser grants or client policies. It is not a production migration and does not provide public registration/content endpoints. CI validation is pending for this new slice.
-
-The earlier 58-assertion result still applies only to identity, contacts/follow-up and restricted-pastoral suites. Do not combine it with the new suite or claim 94 assertions passed until the new CI run reports success.
+The draft creates 19 relations and keeps RLS enabled with no browser grants or client policies. It is not a production migration and does not provide public registration/content endpoints. The expanded 46-assertion event/public-content pgTAP suite passed in the reconciled PR #5 workflow; combined with the 58 foundation assertions, that is 104 pgTAP assertions. The read-only public-content Edge Function also passed Deno type-check and request-validation tests. See [CI run 42447736530](https://github.com/Elgit4/PCG_Missions/actions/runs/42447736530).
 
 No hosted Supabase project has been linked or modified.
+
+
+## 9. Event transaction API build contract
+
+The event registration, capacity, transport, check-in and closeout implementation contract is documented in [document 17](17_EVENT_TRANSACTION_API_CONTRACT.md). It specifies server-side serialization, idempotency, caller identity derivation, fixed request allowlists, audit atomicity, capacity concurrency tests and implementation gates.
+
+The contract records additional schema corrections discovered during endpoint design: idempotency payload fingerprints, consent evidence linkage, registration/contact identity consistency on check-in, closeout history immutability and unresolved multiple-transport behavior. These are explicit build gates, not assumed decisions.
+
+No transactional event write endpoints or grants are implemented. D-05, D-06, D-13 and relevant R/D decisions remain pending.
