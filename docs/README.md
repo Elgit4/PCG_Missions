@@ -34,7 +34,7 @@ These artifacts are on the database-design feature branch and are **proposals fo
 - [Restricted Pastoral, Events & Public Content Data Dictionary](14_PASTORAL_EVENTS_PUBLIC_CONTENT_DATA_DICTIONARY.md) — typed definitions for prayer/care, event registration, transport, attendance, announcements and public content.
 - [SMS, Reporting, Audit & Offline Data Dictionary](15_SMS_REPORTING_AUDIT_OFFLINE_DATA_DICTIONARY.md) — typed definitions for SMS consent/suppression, campaigns, automation, outbox, callbacks, reports, audit and limited sync receipts.
 
-## Audit and verification records
+## Backend implementation (feature branch)\n\n- [Schema Reconciliation & Decision Crosswalk](16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) — reconciles DD-01–DD-25 and records technical dispositions and approval gates.\n- [Isolated CMI Supabase workspace](../supabase-cmi/README.md) — separate CLI config, migration history and test workspace; does not use historical ChurchConnect SQL.\n- [Backend Implementation Status](../supabase-cmi/IMPLEMENTATION_STATUS.md) — delivered foundation scope, deferred domains and verification state.\n\n## Audit and verification records
 
 - [Repository Consistency & Accuracy Audit](REPOSITORY_AUDIT_REPORT.md) — v2.1 cross-document review, corrected defects, unresolved implementation gaps and verification limitations.
 
