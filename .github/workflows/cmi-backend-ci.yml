@@ -8,6 +8,7 @@ on:
       - feat/cmi-backend-foundation
       - feat/cmi-events-attendance-public-content
       - feat/cmi-public-content-edge-api
+      - feat/cmi-event-audit-integrity
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
