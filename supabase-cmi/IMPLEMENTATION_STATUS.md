@@ -19,6 +19,7 @@
 - Matching pgTAP draft covering table presence, RLS, closed Data API grants, shared-phone handling, branch consistency, capture idempotency and assignment constraints.
 - Restricted-pastoral SQL draft with prayer requests, intercessor assignments, care groups/records/assignments/interactions, and dedicated append-only prayer/care access-audit ledgers.
 - Matching 20-assertion pgTAP draft covering RLS denial, no direct policies, assignment constraints, branch isolation, oversight reasons and immutable audit rows.
+- CMI CI now generates temporary migration filenames using `supabase migration new`, copies both domain drafts into the local workspace, runs all pgTAP suites, and cleans up the temporary files from the GitHub runner.
 
 ## Deliberately not implemented yet
 
