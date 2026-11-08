@@ -229,11 +229,12 @@ begin
     ) then
       raise exception using errcode = '42501', message = 'team contact capture not authorized';
     end if;
-  elsif not v_branch_scope and not v_assigned_scope
-        and not (p_phone_e164 is not null or p_phone_display is not null or p_email_normalized is not null)
-        or (p_team_id is null and not v_branch_scope and not v_assigned_scope
-            and (p_phone_e164 is not null or p_phone_display is not null or p_email_normalized is not null)
-            and not coalesce(v_identity_assigned_scope, false)) then
+  elsif not v_branch_scope
+        and not v_assigned_scope
+        and not (
+          (p_phone_e164 is not null or p_phone_display is not null or p_email_normalized is not null)
+          and coalesce(v_identity_assigned_scope, false)
+        ) then
     raise exception using errcode = '22023', message = 'team_id is required for team-scoped capture';
   end if;
 
