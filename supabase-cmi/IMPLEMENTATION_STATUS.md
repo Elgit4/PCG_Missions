@@ -33,6 +33,20 @@ The draft intentionally excludes waitlists, public browser table access, role-sp
 
 The CI workflow now generates a temporary migration filename using `supabase migration new`, applies this draft on the disposable local CMI stack, runs its 36-assertion pgTAP suite, and removes temporary files afterward. This new suite has not yet passed; do not describe it as validated until its GitHub Actions run succeeds.
 
+## Newly added — public-content Edge Function (implementation draft)
+
+Source files:
+- `supabase/functions/public-content/index.ts`
+- `supabase/functions/public-content/validation.ts`
+- `supabase/functions/public-content/validation_test.ts`
+- `supabase/functions/README.md`
+
+The read-only Edge Function exposes fixed, allowlisted projections for the church public profile, published sermons, daily words, tracts, welcome messages, public announcements and published public events. It selects explicit columns, applies publication/visibility filters server-side, bounds pagination, rejects arbitrary resources/parameters, supports slug lookup only for slugged content, and allows GET/OPTIONS only. Database errors are not returned to callers. Exact allowed browser origins are configured through a server environment variable.
+
+The function uses a server-side service-role key because public base-table grants remain closed. This key bypasses RLS, so the implementation is deliberately limited to fixed table/column/filter combinations and must never be reused for staff APIs. It fails closed when secrets are missing. Rate limiting and abuse controls must be configured at the platform/gateway layer; CORS is not a security boundary. The function is source-only and has not been deployed.
+
+A Deno validation suite covers supported resources, pagination, slug validation, unknown query parameters and public-profile request shape. CI now runs that suite before the local Supabase database suite. Its result is pending until the new GitHub Actions run completes.
+
 ## Deliberately not implemented
 
 - Full six-role capability grants and role/scope RLS policies; R-01–R-12 and D-01 remain approval gates.
@@ -40,7 +54,7 @@ The CI workflow now generates a temporary migration filename using `supabase mig
 - Trusted transactional contact merge/reversal.
 - Audited prayer/care read Edge Function/RPC.
 - Trusted registration, capacity reservation, transport-seat allocation and check-in endpoints.
-- Public content projection endpoints.
+- Public content Edge Function deployment and production-origin/rate-limit configuration.
 - SMS provider adapter, consent/suppression, callback verification, dispatch budget and automation.
 - Reporting, audit retention policy and limited-offline device enrollment.
 - Production deployment or hosted database linking.
