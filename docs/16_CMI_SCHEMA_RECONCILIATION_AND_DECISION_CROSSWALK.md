@@ -97,8 +97,8 @@ Before the next domain migrations, approve:
 - Repository source reviewed on `design/cmi-logical-data-model`, including documents 06–15 and the existing legacy SQL.
 - Legacy migrations inspected and confirmed to encode the former two-role ChurchConnect model.
 - CMI workspace and first migration/test committed separately under `supabase-cmi/`.
-- No SQL parser, local Supabase runtime, PostgreSQL instance or pgTAP execution was available in this session; tests are authored but unexecuted.
+- Valid isolated CMI local validation is recorded in [GitHub Actions run 42436473154](https://github.com/Elgit4/PCG_Missions/actions/runs/42436473154): Supabase CLI generated temporary migration filenames, applied the foundation, contacts/follow-up and restricted-pastoral schemas, and ran all three pgTAP suites successfully (14 + 24 + 20 assertions). Temporary domain migrations/tests were removed from the runner after validation; source files remain in `schema-drafts/`.
 - No hosted Supabase project was linked, queried, migrated or modified.
 - No real visitor/prayer data or live SMS provider was used.
 
-**Status:** Backend foundation started; domain implementation proceeds only after schema reconciliation and security review.
+**Status:** Identity, contacts/follow-up and restricted pastoral schema drafts have passed isolated local CMI migration and pgTAP validation. Permanent migration promotion, final schema decisions, role-specific authorization, audited narrative-read operations and event/public-content work remain outstanding.
