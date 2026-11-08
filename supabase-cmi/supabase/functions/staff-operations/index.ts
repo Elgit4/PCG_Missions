@@ -1,13 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import { createRequestDigest, type CanonicalJson } from "../_shared/idempotency.ts";
-import {
-  isUuid,
-  parseContactCreate,
-  parseContactPatch,
-} from "./validation.ts";
+import { isUuid, parseContactCreate, parseContactPatch } from "./validation.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  "";
 const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const CONTACT_IDEMPOTENCY_HMAC_KEY = Deno.env.get("CMI_CONTACT_IDEMPOTENCY_HMAC_KEY") ?? "";
@@ -24,11 +21,21 @@ const allowedOrigins = new Set(
 const CONTACT_COLUMNS =
   "id,branch_id,first_name,last_name,preferred_name,phone_e164,phone_display,email_normalized,age_range,preferred_language,contact_status,created_by,created_at,updated_at";
 
-type ScopeMode = "branch" | "team" | "assigned" | "self" | "event" | "explicit_share" | "oversight";
+type ScopeMode =
+  | "branch"
+  | "team"
+  | "assigned"
+  | "self"
+  | "event"
+  | "explicit_share"
+  | "oversight";
 
 type ContactRow = Record<string, unknown> & { id: string };
 
-function redactContactIdentity<T extends ContactRow>(row: T, canRead: boolean): T {
+function redactContactIdentity<T extends ContactRow>(
+  row: T,
+  canRead: boolean,
+): T {
   if (canRead) return row;
   return {
     ...row,
@@ -60,7 +67,10 @@ function response(
   if (origin && allowedOrigins.has(origin)) {
     headers.set("Access-Control-Allow-Origin", origin);
     headers.set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Authorization, apikey, Content-Type");
+    headers.set(
+      "Access-Control-Allow-Headers",
+      "Authorization, apikey, Content-Type",
+    );
     headers.set("Access-Control-Max-Age", "600");
   }
   return new Response(JSON.stringify(body), { status, headers });
@@ -73,12 +83,19 @@ function fail(
   origin: string | null,
   id: string,
 ): Response {
-  return response({ error: { code, message }, request_id: id }, status, origin, id);
+  return response(
+    { error: { code, message }, request_id: id },
+    status,
+    origin,
+    id,
+  );
 }
 
 function getBearer(request: Request): string | null {
   const value = request.headers.get("Authorization");
-  const match = value ? /^Bearer\s+([A-Za-z0-9._~-]+)$/i.exec(value.trim()) : null;
+  const match = value
+    ? /^Bearer\s+([A-Za-z0-9._~-]+)$/i.exec(value.trim())
+    : null;
   return match?.[1] ?? null;
 }
 
@@ -93,20 +110,36 @@ async function readJson(request: Request): Promise<unknown> {
 async function resolveStaff(
   token: string,
 ): Promise<
-  | { ok: true; actorId: string; profileId: string; service: ReturnType<typeof createClient> }
+  | {
+    ok: true;
+    actorId: string;
+    profileId: string;
+    service: ReturnType<typeof createClient>;
+  }
   | { ok: false; status: number; code: string; message: string }
 > {
   const authClient = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
   });
   const service = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-    global: { headers: { "X-Application-Name": "pcg-missions-staff-operations" } },
+    global: {
+      headers: { "X-Application-Name": "pcg-missions-staff-operations" },
+    },
   });
 
   const { data: auth, error: authError } = await authClient.auth.getUser(token);
   if (authError || !auth.user) {
-    return { ok: false, status: 401, code: "INVALID_SESSION", message: "A valid staff session is required." };
+    return {
+      ok: false,
+      status: 401,
+      code: "INVALID_SESSION",
+      message: "A valid staff session is required.",
+    };
   }
 
   const { data: profile, error } = await service
@@ -117,10 +150,20 @@ async function resolveStaff(
 
   if (error) throw new Error("STAFF_PROFILE_LOOKUP_FAILED");
   if (!profile) {
-    return { ok: false, status: 403, code: "STAFF_PROFILE_NOT_FOUND", message: "This account is not provisioned as staff." };
+    return {
+      ok: false,
+      status: 403,
+      code: "STAFF_PROFILE_NOT_FOUND",
+      message: "This account is not provisioned as staff.",
+    };
   }
   if (profile.account_status !== "active") {
-    return { ok: false, status: 403, code: "STAFF_ACCOUNT_NOT_ACTIVE", message: "This staff account is not active." };
+    return {
+      ok: false,
+      status: 403,
+      code: "STAFF_ACCOUNT_NOT_ACTIVE",
+      message: "This staff account is not active.",
+    };
   }
 
   return { ok: true, actorId: auth.user.id, profileId: profile.id, service };
@@ -151,7 +194,11 @@ async function resolveScopes(
     .is("ends_at", null)
     .is("revoked_at", null);
   if (assignmentError) throw new Error("ROLE_ASSIGNMENT_LOOKUP_FAILED");
-  const roleIds = [...new Set((assignments ?? []).map((item: { role_id: string }) => item.role_id))];
+  const roleIds = [
+    ...new Set((assignments ?? []).map((item: { role_id: string }) =>
+      item.role_id
+    )),
+  ];
   if (roleIds.length === 0) return [];
 
   const { data: grants, error: grantError } = await service
@@ -163,9 +210,14 @@ async function resolveScopes(
 
   const scopes = (grants ?? []).flatMap((grant: {
     scope_mode: ScopeMode;
-    capability?: { code: string; is_active: boolean } | Array<{ code: string; is_active: boolean }> | null;
+    capability?:
+      | { code: string; is_active: boolean }
+      | Array<{ code: string; is_active: boolean }>
+      | null;
   }) => {
-    const capability = Array.isArray(grant.capability) ? grant.capability[0] : grant.capability;
+    const capability = Array.isArray(grant.capability)
+      ? grant.capability[0]
+      : grant.capability;
     return capability?.is_active ? [grant.scope_mode] : [];
   });
   return [...new Set(scopes)];
@@ -204,7 +256,11 @@ async function visibleContactIds(
       .is("revoked_at", null)
       .eq("team.is_active", true);
     if (membershipError) throw new Error("TEAM_MEMBERSHIP_LOOKUP_FAILED");
-    const teamIds = [...new Set((memberships ?? []).map((item: { team_id: string }) => item.team_id))];
+    const teamIds = [
+      ...new Set((memberships ?? []).map((item: { team_id: string }) =>
+        item.team_id
+      )),
+    ];
     if (teamIds.length > 0) {
       const { data, error } = await service
         .from("contact_assignment")
@@ -231,7 +287,9 @@ async function visibleContactIds(
   return [...ids];
 }
 
-function validateOptionalQuery(url: URL): { limit: number; offset: number; search: string } | null {
+function validateOptionalQuery(
+  url: URL,
+): { limit: number; offset: number; search: string } | null {
   const allowed = new Set(["branch_id", "limit", "offset", "search"]);
   const seen = new Set<string>();
   for (const key of url.searchParams.keys()) {
@@ -260,7 +318,8 @@ Deno.serve(async (request: Request) => {
       headers: {
         ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
         "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-        "Access-Control-Allow-Headers": "Authorization, apikey, Content-Type, x-client-info",
+        "Access-Control-Allow-Headers":
+          "Authorization, apikey, Content-Type, x-client-info",
         "Access-Control-Max-Age": "600",
         "Vary": "Origin",
       },
@@ -268,17 +327,32 @@ Deno.serve(async (request: Request) => {
   }
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_PUBLIC_KEY) {
-    return fail("SERVICE_NOT_CONFIGURED", "Staff operations service is not configured.", 503, origin, id);
+    return fail(
+      "SERVICE_NOT_CONFIGURED",
+      "Staff operations service is not configured.",
+      503,
+      origin,
+      id,
+    );
   }
 
   const token = getBearer(request);
-  if (!token) return fail("AUTH_REQUIRED", "A valid staff session is required.", 401, origin, id);
+  if (!token) {
+    return fail(
+      "AUTH_REQUIRED",
+      "A valid staff session is required.",
+      401,
+      origin,
+      id,
+    );
+  }
 
   try {
     const auth = await resolveStaff(token);
     if (!auth.ok) return fail(auth.code, auth.message, auth.status, origin, id);
 
-    const path = new URL(request.url).pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+    const path = new URL(request.url).pathname.replace(/\/+$/, "").split("/")
+      .filter(Boolean);
     const last = path[path.length - 1] ?? "";
     const previous = path[path.length - 2] ?? "";
     const url = new URL(request.url);
@@ -287,17 +361,54 @@ Deno.serve(async (request: Request) => {
       const params = validateOptionalQuery(url);
       const branchId = url.searchParams.get("branch_id") ?? "";
       if (!params || !isUuid(branchId)) {
-        return fail("INVALID_QUERY", "Invalid contact query parameters.", 400, origin, id);
+        return fail(
+          "INVALID_QUERY",
+          "Invalid contact query parameters.",
+          400,
+          origin,
+          id,
+        );
       }
-      const scopes = await resolveScopes(auth.service, auth.profileId, branchId, "contact.read.scoped");
+      const scopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "contact.read.scoped",
+      );
       if (scopes.length === 0) {
         return fail("FORBIDDEN", "You do not have permission to read contacts in this branch.", 403, origin, id);
       }
-      const ids = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, scopes);
-      const identityScopes = await resolveScopes(auth.service, auth.profileId, branchId, "contact.identity.read.scoped");
-      const identityIds = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, identityScopes);
+      const ids = await visibleContactIds(
+        auth.service,
+        branchId,
+        auth.actorId,
+        auth.profileId,
+        scopes,
+      );
+      const identityScopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "contact.identity.read.scoped",
+      );
+      const identityIds = await visibleContactIds(
+        auth.service,
+        branchId,
+        auth.actorId,
+        auth.profileId,
+        identityScopes,
+      );
       if (ids !== null && ids.length === 0) {
-        return response({ data: [], page: { limit: params.limit, offset: params.offset }, request_id: id }, 200, origin, id);
+        return response(
+          {
+            data: [],
+            page: { limit: params.limit, offset: params.offset },
+            request_id: id,
+          },
+          200,
+          origin,
+          id,
+        );
       }
 
       let query = auth.service
@@ -314,22 +425,40 @@ Deno.serve(async (request: Request) => {
       }
       const { data, error, count } = await query;
       if (error) throw new Error("CONTACT_LIST_FAILED");
-      return response({
-        data: (data ?? []).map((row: ContactRow) =>
-          redactContactIdentity(row, identityIds === null || identityIds.includes(row.id))
-        ),
-        page: { limit: params.limit, offset: params.offset, total: count ?? 0 },
-        request_id: id,
-      }, 200, origin, id);
+      return response(
+        {
+          data: (data ?? []).map((row: ContactRow) =>
+            redactContactIdentity(
+              row,
+              identityIds === null || identityIds.includes(row.id),
+            )
+          ),
+          page: {
+            limit: params.limit,
+            offset: params.offset,
+            total: count ?? 0,
+          },
+          request_id: id,
+        },
+        200,
+        origin,
+        id,
+      );
     }
 
     if (request.method === "GET" && previous === "contacts" && isUuid(last)) {
       const branchId = url.searchParams.get("branch_id") ?? "";
-      if (!isUuid(branchId)) return fail("INVALID_QUERY", "Invalid branch_id.", 400, origin, id);
+      if (!isUuid(branchId)) {
+        return fail("INVALID_QUERY", "Invalid branch_id.", 400, origin, id);
+      }
       const scopes = await resolveScopes(auth.service, auth.profileId, branchId, "contact.read.scoped");
-      if (scopes.length === 0) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      if (scopes.length === 0) {
+        return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      }
       const ids = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, scopes);
-      if (ids !== null && !ids.includes(last)) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      if (ids !== null && !ids.includes(last)) {
+        return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      }
       const identityScopes = await resolveScopes(auth.service, auth.profileId, branchId, "contact.identity.read.scoped");
       const identityIds = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, identityScopes);
 
@@ -342,7 +471,18 @@ Deno.serve(async (request: Request) => {
         .maybeSingle();
       if (error) throw new Error("CONTACT_DETAIL_FAILED");
       if (!data) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
-      return response({ data: redactContactIdentity(data as ContactRow, identityIds === null || identityIds.includes(last)), request_id: id }, 200, origin, id);
+      return response(
+        {
+          data: redactContactIdentity(
+            data as ContactRow,
+            identityIds === null || identityIds.includes(last),
+          ),
+          request_id: id,
+        },
+        200,
+        origin,
+        id,
+      );
     }
 
     if (request.method === "POST" && last === "contacts") {
@@ -351,7 +491,9 @@ Deno.serve(async (request: Request) => {
         raw = await readJson(request);
       } catch (error) {
         return fail(
-          error instanceof Error && error.message === "CONTENT_TYPE_REQUIRED" ? "CONTENT_TYPE_REQUIRED" : "INVALID_JSON",
+          error instanceof Error && error.message === "CONTENT_TYPE_REQUIRED"
+            ? "CONTENT_TYPE_REQUIRED"
+            : "INVALID_JSON",
           "A valid JSON request body is required.",
           400,
           origin,
@@ -359,15 +501,30 @@ Deno.serve(async (request: Request) => {
         );
       }
       const parsed = parseContactCreate(raw);
-      if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      if (!parsed.ok) {
+        return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      }
 
       const input = parsed.value;
-      const scopes = await resolveScopes(auth.service, auth.profileId, input.branch_id, "contact.capture.create");
+      const scopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        input.branch_id,
+        "contact.capture.create",
+      );
       if (
         scopes.length === 0 ||
-        !scopes.some((scope) => scope === "branch" || scope === "assigned" || scope === "team")
+        !scopes.some((scope) =>
+          scope === "branch" || scope === "assigned" || scope === "team"
+        )
       ) {
-        return fail("FORBIDDEN", "You cannot capture contacts in this branch.", 403, origin, id);
+        return fail(
+          "FORBIDDEN",
+          "You cannot capture contacts in this branch.",
+          403,
+          origin,
+          id,
+        );
       }
 
       if (
@@ -376,7 +533,13 @@ Deno.serve(async (request: Request) => {
         !scopes.includes("branch") &&
         !scopes.includes("assigned")
       ) {
-        return fail("TEAM_REQUIRED", "Choose one of your active teams for this contact.", 422, origin, id);
+        return fail(
+          "TEAM_REQUIRED",
+          "Choose one of your active teams for this contact.",
+          422,
+          origin,
+          id,
+        );
       }
       if (
         input.phone_e164 !== null || input.phone_display !== null ||
@@ -450,9 +613,33 @@ Deno.serve(async (request: Request) => {
         p_source_metadata: input.source_metadata,
       });
       if (error) {
-        if (error.code === "42501") return fail("FORBIDDEN", "Contact capture is not authorized.", 403, origin, id);
-        if (error.code === "23505") return fail("IDEMPOTENCY_CONFLICT", "This capture request has already been used.", 409, origin, id);
-        if (error.code === "22023") return fail("VALIDATION_ERROR", "The contact data is invalid.", 422, origin, id);
+        if (error.code === "42501") {
+          return fail(
+            "FORBIDDEN",
+            "Contact capture is not authorized.",
+            403,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "23505") {
+          return fail(
+            "IDEMPOTENCY_CONFLICT",
+            "This capture request has already been used.",
+            409,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "22023") {
+          return fail(
+            "VALIDATION_ERROR",
+            "The contact data is invalid.",
+            422,
+            origin,
+            id,
+          );
+        }
         throw new Error("CONTACT_CREATE_FAILED");
       }
       const result = data as { contact?: unknown; replayed?: boolean } | null;
@@ -469,24 +656,44 @@ Deno.serve(async (request: Request) => {
         auth.profileId,
         identityReadScopes,
       );
-      const resultContact = result?.contact && typeof result.contact === "object"
-        ? redactContactIdentity(result.contact as ContactRow, identityReadIds === null || identityReadIds.includes(String((result.contact as Record<string, unknown>).id)))
-        : null;
-      return response({
-        data: resultContact,
-        replayed: result?.replayed ?? false,
-        request_id: id,
-      }, result?.replayed ? 200 : 201, origin, id);
+      const resultContact =
+        result?.contact && typeof result.contact === "object"
+          ? redactContactIdentity(
+            result.contact as ContactRow,
+            identityReadIds === null ||
+              identityReadIds.includes(
+                String((result.contact as Record<string, unknown>).id),
+              ),
+          )
+          : null;
+      return response(
+        {
+          data: resultContact,
+          replayed: result?.replayed ?? false,
+          request_id: id,
+        },
+        result?.replayed ? 200 : 201,
+        origin,
+        id,
+      );
     }
 
     if (request.method === "PATCH" && previous === "contacts" && isUuid(last)) {
       const branchId = url.searchParams.get("branch_id") ?? "";
-      if (!isUuid(branchId)) return fail("INVALID_QUERY", "Invalid branch_id.", 400, origin, id);
+      if (!isUuid(branchId)) {
+        return fail("INVALID_QUERY", "Invalid branch_id.", 400, origin, id);
+      }
       let raw: unknown;
       try {
         raw = await readJson(request);
       } catch {
-        return fail("INVALID_JSON", "A valid JSON request body is required.", 400, origin, id);
+        return fail(
+          "INVALID_JSON",
+          "A valid JSON request body is required.",
+          400,
+          origin,
+          id,
+        );
       }
       const parsed = parseContactPatch(raw);
       if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
@@ -512,8 +719,15 @@ Deno.serve(async (request: Request) => {
         }
       }
 
-      const scopes = await resolveScopes(auth.service, auth.profileId, branchId, "contact.update.scoped");
-      if (scopes.length === 0) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      const scopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "contact.update.scoped",
+      );
+      if (scopes.length === 0) {
+        return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      }
       const ids = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, scopes);
       if (ids !== null && !ids.includes(last)) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
 
@@ -527,18 +741,49 @@ Deno.serve(async (request: Request) => {
         .maybeSingle();
       if (error) throw new Error("CONTACT_UPDATE_FAILED");
       if (!data) return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
-      const identityReadScopes = await resolveScopes(auth.service, auth.profileId, branchId, "contact.identity.read.scoped");
-      const identityReadIds = await visibleContactIds(auth.service, branchId, auth.actorId, auth.profileId, identityReadScopes);
-      return response({
-        data: redactContactIdentity(data as ContactRow, identityReadIds === null || identityReadIds.includes(last)),
-        request_id: id,
-      }, 200, origin, id);
+      const identityReadScopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "contact.identity.read.scoped",
+      );
+      const identityReadIds = await visibleContactIds(
+        auth.service,
+        branchId,
+        auth.actorId,
+        auth.profileId,
+        identityReadScopes,
+      );
+      return response(
+        {
+          data: redactContactIdentity(
+            data as ContactRow,
+            identityReadIds === null || identityReadIds.includes(last),
+          ),
+          request_id: id,
+        },
+        200,
+        origin,
+        id,
+      );
     }
 
-    return fail("NOT_FOUND", "The requested staff operation does not exist.", 404, origin, id);
+    return fail(
+      "NOT_FOUND",
+      "The requested staff operation does not exist.",
+      404,
+      origin,
+      id,
+    );
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
     console.error("staff-operations failure", { request_id: id, code });
-    return fail("STAFF_OPERATION_FAILED", "Unable to complete the staff operation.", 500, origin, id);
+    return fail(
+      "STAFF_OPERATION_FAILED",
+      "Unable to complete the staff operation.",
+      500,
+      origin,
+      id,
+    );
   }
 });
