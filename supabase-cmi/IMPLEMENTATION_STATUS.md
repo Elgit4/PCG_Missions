@@ -2,7 +2,7 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status:** Identity, contacts/follow-up, restricted-pastoral and events/attendance/public-content schema suites have passed isolated local CMI validation. The public-content Edge Function is implemented as source and has a Deno validation suite running in CI; it is not deployed.
+**Status:** Identity, contacts/follow-up, restricted-pastoral and events/attendance/public-content schema suites have passed isolated local CMI validation. The public-content Edge Function is implemented as source; its Deno validation tests, type-check and isolated database suite passed in CI run 42438088374. It is not deployed.
 
 ## Implemented and validated
 
@@ -45,7 +45,7 @@ The read-only Edge Function exposes fixed, allowlisted projections for the churc
 
 The function uses a server-side service-role key because public base-table grants remain closed. This key bypasses RLS, so the implementation is deliberately limited to fixed table/column/filter combinations and must never be reused for staff APIs. It fails closed when secrets are missing. It exposes only church-wide welcome messages (not branch-specific messages) and omits event capacity from the public event projection. Rate limiting and abuse controls must be configured at the platform/gateway layer; CORS is not a security boundary. The function is source-only and has not been deployed.
 
-A Deno validation suite covers supported resources, pagination, slug validation, unknown query parameters and public-profile request shape. CI now runs that suite before the local Supabase database suite. Its result is pending until the new GitHub Actions run completes.
+A Deno validation suite covers supported resources, pagination, slug validation, unknown and duplicate query parameters, inherited object-property resource names, and public-profile request shape. CI runs that suite before the local Supabase database suite. Deno type-check, validation tests and the isolated database/pgTAP workflow all passed in [GitHub Actions run 42438088374](https://github.com/Elgit4/PCG_Missions/actions/runs/42438088374).
 
 ## Deliberately not implemented
 
@@ -61,6 +61,6 @@ A Deno validation suite covers supported resources, pagination, slug validation,
 
 ## Verification boundary
 
-The 58 foundation assertions and the additional 36 event/public-content assertions have passed on isolated local CMI stacks. The public-content Edge Function validation suite is separately running in CI. No hosted Supabase project was linked, queried, migrated or modified; no real visitor/prayer data or live SMS was used.
+The 58 foundation assertions and the additional 36 event/public-content assertions have passed on isolated local CMI stacks. The public-content Edge Function type-check and validation suite passed in CI run 42438088374. No hosted Supabase project was linked, queried, migrated or modified; no real visitor/prayer data or live SMS was used.
 
 Supabase CLI v3 is local-first. Keep CI on the isolated `supabase-cmi/` workspace and do not add `--remote` or hosted credentials without explicit deployment approval.
