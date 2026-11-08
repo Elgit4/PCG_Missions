@@ -89,7 +89,7 @@ create or replace function public.cmi_create_contact(
 returns jsonb
 language plpgsql
 security definer
-set search_path = pg_catalog, public
+set search_path = pg_catalog
 as $$
 declare
   v_profile_id uuid;
@@ -128,6 +128,9 @@ begin
   from public.staff_profile sp
   join public.staff_role_assignment sra
     on sra.staff_profile_id = sp.id
+  join public.role r
+    on r.id = sra.role_id
+   and r.is_active
   join public.role_capability rc
     on rc.role_id = sra.role_id
   join public.capability cap
@@ -151,6 +154,10 @@ begin
         and exists (
           select 1
           from public.staff_team_membership stm
+          join public.team t
+            on t.id = stm.team_id
+           and t.branch_id = stm.branch_id
+           and t.is_active
           where stm.staff_profile_id = sp.id
             and stm.branch_id = p_branch_id
             and stm.starts_at <= pg_catalog.now()
