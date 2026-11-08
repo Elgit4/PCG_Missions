@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(36);
+select plan(46);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -60,6 +60,51 @@ select extensions.ok(
 );
 select extensions.is((select count(*)::integer from public.role_capability),0,
   'no unapproved role-capability grants exist');
+
+-- Keep the Edge Function's fixed public projections aligned with real schema columns.
+select extensions.ok(
+  (select count(*) = 8 from information_schema.columns
+   where table_schema='public' and table_name='church_public_profile'
+   and column_name = any(array['public_name','welcome_content','public_phone','public_email','address_text','website_url','social_links','updated_at'])),
+  'church profile projection columns exist'
+);
+select extensions.ok(
+  (select count(*) = 7 from information_schema.columns
+   where table_schema='public' and table_name='sermon'
+   and column_name = any(array['id','title','body','public_slug','published_at','created_at','status'])),
+  'sermon projection, filter and ordering columns exist'
+);
+select extensions.ok(
+  (select count(*) = 8 from information_schema.columns
+   where table_schema='public' and table_name='daily_word'
+   and column_name = any(array['id','title','body','publication_date','public_slug','published_at','created_at','status'])),
+  'daily word projection, filter and ordering columns exist'
+);
+select extensions.ok(
+  (select count(*) = 7 from information_schema.columns
+   where table_schema='public' and table_name='digital_tract'
+   and column_name = any(array['id','title','body','public_slug','published_at','created_at','status'])),
+  'digital tract projection, filter and ordering columns exist'
+);
+select extensions.ok(
+  (select count(*) = 8 from information_schema.columns
+   where table_schema='public' and table_name='welcome_message'
+   and column_name = any(array['id','title','body','display_order','published_at','created_at','status','branch_id'])),
+  'welcome message projection and filter columns exist'
+);
+select extensions.ok(
+  (select count(*) = 8 from information_schema.columns
+   where table_schema='public' and table_name='announcement'
+   and column_name = any(array['id','title','body','publish_at','published_at','created_at','status','is_public'])),
+  'announcement projection and filter columns exist'
+);
+select extensions.ok(
+  (select count(*) = 11 from information_schema.columns
+   where table_schema='public' and table_name='event'
+   and column_name = any(array['id','title','description','starts_at','ends_at','timezone','location','registration_state','transport_enabled','status','visibility'])),
+  'public event projection, filter and ordering columns exist'
+);
+
 
 insert into auth.users (
  instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,
@@ -131,6 +176,22 @@ insert into public.event_registration(
  '21000000-0000-4000-8000-000000000001','41000000-0000-4000-8000-000000000001',
  'Synthetic Attendee','staff','61000000-0000-4000-8000-000000000002'
 );
+
+select extensions.lives_ok(
+ $q$insert into public.event_registration(event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,registration_source,client_request_id)
+ values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+ 'Valid E164 Phone','+233241234567','staff','61000000-0000-4000-8000-000000000007')$q$,
+ 'E.164 phone with leading plus is accepted');
+select extensions.throws_ok(
+ $q$insert into public.event_registration(event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,registration_source,client_request_id)
+ values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+ 'Invalid Phone','233241234567','staff','61000000-0000-4000-8000-000000000008')$q$,
+ '23514',null,'phone without international plus is rejected');
+select extensions.throws_ok(
+ $q$insert into public.event_registration(event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,registration_source,client_request_id)
+ values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
+ 'Escaped Plus Phone',chr(92)||'+233241234567','staff','61000000-0000-4000-8000-000000000009')$q$,
+ '23514',null,'literal backslash before phone plus is rejected');
 
 select extensions.throws_ok(
  $q$insert into public.event_checkin(event_id,branch_id,recorded_by,source,client_request_id)

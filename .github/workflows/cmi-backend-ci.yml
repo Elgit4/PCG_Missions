@@ -6,6 +6,8 @@ on:
       - design/cmi-logical-data-model
       - main
       - feat/cmi-backend-foundation
+      - feat/cmi-events-attendance-public-content
+      - feat/cmi-public-content-edge-api
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
@@ -26,6 +28,17 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Type-check public-content Edge Function
+        run: deno check supabase-cmi/supabase/functions/public-content/index.ts
+
+      - name: Test public-content request validation
+        run: deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
 
       - name: Install pinned Supabase CLI
         uses: supabase/setup-cli@v3
