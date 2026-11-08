@@ -1,49 +1,53 @@
 # CMI Follow-up backend workspace
 
-This directory is the isolated Supabase CLI project root for the CMI Follow-up v2.1 backend. The Supabase CLI configuration and executable files live under `supabase-cmi/supabase/` because that is the directory layout the CLI expects.
+This directory is the isolated Supabase CLI project root for the CMI Follow-up v2.1 backend. The CLI configuration and executable files live under `supabase-cmi/supabase/`.
 
 ## Critical migration boundary
 
-The repository's top-level `supabase/` directory contains historical ChurchConnect migrations and tests for a two-role product. They are **not** the CMI schema. Do not run Supabase CLI commands against that directory for CMI work.
+The repository's top-level `supabase/` directory contains historical ChurchConnect migrations and tests for a two-role product. They are **not** the CMI schema. Never run CMI CLI commands against that directory.
 
-Use this workspace explicitly, for example:
+Use this workspace explicitly:
 
 ```bash
+supabase --workdir supabase-cmi --help
 supabase --workdir supabase-cmi start
 supabase --workdir supabase-cmi status
 supabase --workdir supabase-cmi db reset
 supabase --workdir supabase-cmi test db
 ```
 
-Check the installed CLI's `--help` output before relying on command flags. The workspace has a distinct local project ID and non-conflicting ports. It is not linked to a hosted project.
+Supabase CLI v3 is local-first. Do not add `--remote`, hosted credentials or `--yes` for a hosted mutation without explicit approval.
 
-## Current implementation
+## Current source layout
 
-- `supabase/migrations/20261108010000_cmi_identity_authorization_foundation.sql`: first CMI-only foundation migration (church/branch, staff profile link, six-role catalogue, capability catalogue, role assignment and team/area structures).
-- `supabase/tests/identity_authorization_foundation.test.sql`: pgTAP structural and deny-by-default checks.
-- No role-capability grants are seeded. The stakeholder matrix remains pending.
-- No anonymous or authenticated table grants/policies are created in this first slice. Browser access is deny-by-default until reviewed policies and trusted API operations are implemented.
-- No PIN, password, provider secret or personal data is stored by the schema.
+- `supabase/migrations/`: permanent CMI identity/authorization foundation migration only.
+- `supabase/tests/`: foundation pgTAP suite.
+- `schema-drafts/`: reviewable domain SQL and pgTAP drafts, not yet permanent migration history.
 
-## Contacts and follow-up domain draft
+### Domain drafts
 
-The next domain slice is authored under `schema-drafts/` and is intentionally **not** in the executable migrations or test folders yet:
+1. `contacts_followup_domain.sql` and matching test.
+2. `restricted_pastoral_domain.sql` and matching test.
+3. `events_attendance_public_content.sql` and matching test.
 
-- `schema-drafts/contacts_followup_domain.sql`
-- `schema-drafts/contacts_followup_domain.test.sql`
-- `schema-drafts/restricted_pastoral_domain.sql`
-- `schema-drafts/restricted_pastoral_domain.test.sql`
+The third slice covers event lifecycle, typed event staff/team assignments, registration, transport, check-in, closeout, typed calendar scope, typed announcement audiences, church public profile, welcome messages, sermons, daily word, digital tracts and typed external document links.
 
-It defines contacts, capture provenance/idempotency, individual-or-team assignment, ordinary notes, interactions, merge history, follow-up lists/tasks and append-only task events. The restricted-pastoral draft adds prayer/care records, assignment lifecycles and separate append-only narrative-read audit tables for prayer and care. The SQL keeps RLS enabled and browser grants withheld. Event references on capture/list are deferred until the event tables exist.
+All domain drafts preserve branch-consistent foreign keys, RLS and closed browser grants. No client policies or role-capability grants are created while stakeholder approvals remain pending. The event draft removes the unapproved waitlist state, requires idempotency for public registrations and check-ins, and avoids polymorphic scope/audience/content references.
 
-Before promotion, use the Supabase CLI to create the permanent migration filename, then move the reviewed SQL into that generated file and move the pgTAP suite into `tests/`. The authoring runtime did not have the Supabase CLI, so the drafts remain unpromoted in the repository. The CI workflow uses the CLI to generate temporary migration filenames, copies these drafts into the isolated project, applies them on a disposable local Supabase stack, runs the matching pgTAP suites, then deletes the temporary files during runner cleanup. The successful validation is recorded in [run 42436473154](https://github.com/Elgit4/PCG_Missions/actions/runs/42436473154): all three current suites passed (14 + 24 + 20 assertions).
+## Validation
 
-## CLI safety
+The first three suites passed in [GitHub Actions run 42436473154](https://github.com/Elgit4/PCG_Missions/actions/runs/42436473154): 14 + 24 + 20 = 58 assertions. The events/attendance/public-content draft is now included in the isolated local CI workflow with a 36-assertion suite. Its result is pending; do not treat it as passed until the new workflow run completes successfully.
 
-Supabase CLI v3 is local-first: database commands target the local stack unless `--remote` is explicitly supplied, and hosted mutations require explicit confirmation (or `--yes` in non-interactive workflows). Never add `--remote` or `--yes` for this project without an approved deployment request. See the [Supabase CLI v3 breaking-change notice](https://supabase.com/changelog/supabase-cli-v3).
+CI generates temporary migration filenames using `supabase migration new`, copies the drafts into the isolated CLI project, applies them locally, runs pgTAP, then removes the temporary files. Draft SQL is not yet promoted to permanent migrations.
 
-## Approval and execution status
+## Security and approval gates
 
-The SQL is committed as a reviewable development artifact. The identity, contacts/follow-up and restricted-pastoral schemas were applied successfully to a disposable local Supabase/PostgreSQL stack by CI; three structural/deny-by-default pgTAP suites passed. The domain schemas are still draft files, not permanent repository migrations. Full six-role RLS policies and tests, audited narrative-read endpoints, authentication and remaining domains are not yet implemented. No hosted database was changed.
+- Auth credentials stay in Supabase Auth; no PIN/password columns.
+- Role-capability grants and full role/scope RLS wait for R-01–R-12 and D-01 approvals.
+- Prayer/care narratives remain unavailable through direct browser reads; trusted audited-read endpoints are not yet implemented.
+- Public registration and public content require narrow server-mediated projections; no base-table public grants.
+- Registration snapshot retention, walk-in identity, event waitlist, transport pickup model and data retention remain decision-gated.
+- SMS uses one future canonical outbox/campaign state machine; announcement delivery must not duplicate SMS lifecycle state.
+- No hosted Supabase project has been linked or modified.
 
-Do not link this workspace to a hosted project, push migrations, seed real data, or enable SMS without explicit approval and the required stakeholder/provider decisions.
+See `IMPLEMENTATION_STATUS.md` and `../docs/16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md` for detailed status and design gates.
