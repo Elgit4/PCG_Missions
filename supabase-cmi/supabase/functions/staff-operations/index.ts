@@ -551,10 +551,13 @@ Deno.serve(async (request: Request) => {
           input.branch_id,
           "contact.identity.capture",
         );
-        if (identityCaptureScopes.length === 0) {
+        const identityCaptureAllowed = identityCaptureScopes.includes("branch") ||
+          (input.team_id !== null && identityCaptureScopes.includes("team")) ||
+          (input.team_id === null && identityCaptureScopes.includes("assigned"));
+        if (!identityCaptureAllowed) {
           return fail(
             "IDENTITY_CAPTURE_NOT_APPROVED",
-            "Phone and email capture are not enabled for this account.",
+            "Phone and email capture are not enabled for this record scope.",
             403,
             origin,
             id,
@@ -716,6 +719,16 @@ Deno.serve(async (request: Request) => {
             origin,
             id,
           );
+        }
+        const identityUpdateIds = await visibleContactIds(
+          auth.service,
+          branchId,
+          auth.actorId,
+          auth.profileId,
+          identityUpdateScopes,
+        );
+        if (identityUpdateIds !== null && !identityUpdateIds.includes(last)) {
+          return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
         }
       }
 
