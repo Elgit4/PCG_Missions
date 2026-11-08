@@ -102,3 +102,22 @@ Before the next domain migrations, approve:
 - No real visitor/prayer data or live SMS provider was used.
 
 **Status:** Identity, contacts/follow-up and restricted pastoral schema drafts have passed isolated local CMI migration and pgTAP validation. Permanent migration promotion, final schema decisions, role-specific authorization, audited narrative-read operations and event/public-content work remain outstanding.
+
+## 8. Events, attendance, transport and public-content draft added
+
+A third reviewable SQL slice is now present at `supabase-cmi/schema-drafts/events_attendance_public_content.sql`, with a paired 36-assertion pgTAP suite. The isolated CI workflow generates a temporary migration filename using the CLI, applies the draft locally, runs the suite, and removes temporary artifacts from the runner.
+
+Engineering dispositions implemented in this draft:
+- **DD-02/DD-15:** event staff and team assignments are represented by separate typed relations with composite event/branch and team/branch foreign keys; no polymorphic assignment target.
+- **DD-10:** check-in requires an event-scoped idempotency key and a registration cannot be checked in twice for the same event. The accepted walk-in identity policy remains a D-06 decision; a name snapshot is not treated as proof of identity.
+- **DD-11:** registration snapshots are minimized to the fields in the current data dictionary, but retention and canonical contact-linking policy remain blocked by D-05/D-13.
+- **DD-12:** waitlist state is excluded from the initial event registration state.
+- **DD-13:** calendar scope, announcement audiences and external document links use typed foreign keys/link tables instead of polymorphic IDs.
+- **DD-14:** announcement SMS delivery is not duplicated; future delivery state belongs to the canonical SMS outbox/campaign domain.
+- Capacity and seat allocation are not represented as client-side count checks; trusted serialized reservation operations remain to be implemented.
+
+The draft creates 19 relations and keeps RLS enabled with no browser grants or client policies. It is not a production migration and does not provide public registration/content endpoints. CI validation is pending for this new slice.
+
+The earlier 58-assertion result still applies only to identity, contacts/follow-up and restricted-pastoral suites. Do not combine it with the new suite or claim 94 assertions passed until the new CI run reports success.
+
+No hosted Supabase project has been linked or modified.
