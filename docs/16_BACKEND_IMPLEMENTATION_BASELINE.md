@@ -120,8 +120,8 @@ This foundation commit does not:
 | Repository and CMI requirements inspected | Completed |
 | Legacy migration/test artifacts moved out of active Supabase paths | Completed and preserved |
 | Edge Function source committed | Completed |
-| Deno CI workflow committed | Completed; no run result yet |
-| Local Deno formatting/lint/type-check/tests | Not run — Deno unavailable in this environment |
+| Deno CI workflow committed | Completed; passed on GitHub Actions run [42431556654](https://github.com/Elgit4/PCG_Missions/actions/runs/42431556654) |
+| GitHub Actions Deno format/lint/type-check/unit tests | Passed on run [42431556654](https://github.com/Elgit4/PCG_Missions/actions/runs/42431556654) |
 | Supabase CLI migration generation | Not run — CLI unavailable in this environment |
 | PostgreSQL migration/RLS tests | Not run — no approved CMI migrations or local Supabase stack |
 | Hosted Supabase changes | None |
