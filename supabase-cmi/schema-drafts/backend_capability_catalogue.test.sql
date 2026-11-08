@@ -32,7 +32,7 @@ select ok(
 select ok(
   not has_function_privilege(
     'authenticated',
-    'public.cmi_create_contact(uuid,uuid,uuid,text,text,text,text,text,text,text,text,uuid,jsonb)',
+    'public.cmi_create_contact(uuid,uuid,uuid,smallint,bytea,text,text,text,text,text,text,text,text,uuid,uuid,jsonb)',
     'EXECUTE'
   ),
   'Authenticated browser role cannot execute contact capture directly'
@@ -40,19 +40,19 @@ select ok(
 select ok(
   has_function_privilege(
     'service_role',
-    'public.cmi_create_contact(uuid,uuid,uuid,text,text,text,text,text,text,text,text,uuid,jsonb)',
+    'public.cmi_create_contact(uuid,uuid,uuid,smallint,bytea,text,text,text,text,text,text,text,text,uuid,uuid,jsonb)',
     'EXECUTE'
   ),
   'Only the trusted service role can execute contact capture'
 );
 select ok(
-  (select prosecdef from pg_proc where oid = 'public.cmi_create_contact(uuid,uuid,uuid,text,text,text,text,text,text,text,text,uuid,jsonb)'::regprocedure),
+  (select prosecdef from pg_proc where oid = 'public.cmi_create_contact(uuid,uuid,uuid,smallint,bytea,text,text,text,text,text,text,text,text,uuid,uuid,jsonb)'::regprocedure),
   'Contact capture runs as a controlled definer function'
 );
 select ok(
   (select coalesce(array_to_string(proconfig, ','), '') like '%search_path=pg_catalog%'
    from pg_proc
-   where oid = 'public.cmi_create_contact(uuid,uuid,uuid,text,text,text,text,text,text,text,text,uuid,jsonb)'::regprocedure),
+   where oid = 'public.cmi_create_contact(uuid,uuid,uuid,smallint,bytea,text,text,text,text,text,text,text,text,uuid,uuid,jsonb)'::regprocedure),
   'Contact capture pins its search path'
 );
 select ok(
