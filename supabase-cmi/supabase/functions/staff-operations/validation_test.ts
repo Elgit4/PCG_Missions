@@ -161,6 +161,7 @@ Deno.test("follow-up task create rejects invalid priority and due dates", () => 
       { ...taskRequest, priority: 0 },
       { ...taskRequest, priority: 6 },
       { ...taskRequest, due_at: "not-a-date" },
+      { ...taskRequest, due_at: "2026-11-10T10:30:00" },
     ]
   ) {
     const parsed = parseFollowupTaskCreate(input);
