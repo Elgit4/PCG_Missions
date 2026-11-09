@@ -77,6 +77,12 @@ jobs:
       - name: Test staff session projection and fail-closed permissions
         run: deno test supabase-cmi/supabase/functions/staff-session/session_test.ts
 
+      - name: Type-check staff access operations Edge Function
+        run: deno check supabase-cmi/supabase/functions/staff-access-operations/index.ts
+
+      - name: Test staff access request validation
+        run: deno test supabase-cmi/supabase/functions/staff-access-operations/validation_test.ts
+
       - name: Type-check staff operations Edge Function
         run: deno check supabase-cmi/supabase/functions/staff-operations/index.ts
 
@@ -172,6 +178,13 @@ jobs:
           cp supabase-cmi/schema-drafts/pastoral_read_operations.sql "$pastoral_read_migration"
 
           cp supabase-cmi/schema-drafts/backend_capability_catalogue.test.sql supabase-cmi/supabase/tests/cmi_backend_capability_catalogue.test.sql
+
+          sleep 1
+          supabase --workdir supabase-cmi migration new cmi_staff_access_lifecycle
+          access_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_staff_access_lifecycle.sql' -print -quit)"
+          test -n "$access_migration"
+          cp supabase-cmi/schema-drafts/staff_access_lifecycle.sql "$access_migration"
+          cp supabase-cmi/schema-drafts/staff_access_lifecycle.test.sql supabase-cmi/supabase/tests/cmi_staff_access_lifecycle.test.sql
           cp supabase-cmi/schema-drafts/followup_task_operations.test.sql supabase-cmi/supabase/tests/cmi_followup_task_operations.test.sql
           cp supabase-cmi/schema-drafts/contacts_followup_domain.test.sql supabase-cmi/supabase/tests/cmi_contacts_followup_domain.test.sql
           cp supabase-cmi/schema-drafts/restricted_pastoral_domain.test.sql supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
@@ -196,9 +209,11 @@ jobs:
           rm -f supabase-cmi/supabase/migrations/*_cmi_restricted_pastoral_domain.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_events_attendance_public_content.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_backend_capability_catalogue.sql
+          rm -f supabase-cmi/supabase/migrations/*_cmi_staff_access_lifecycle.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_followup_task_operations.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_pastoral_read_operations.sql
           rm -f supabase-cmi/supabase/tests/cmi_backend_capability_catalogue.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_staff_access_lifecycle.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_followup_task_operations.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_contacts_followup_domain.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
