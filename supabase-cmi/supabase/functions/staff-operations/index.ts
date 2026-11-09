@@ -5,13 +5,13 @@ import {
 } from "../_shared/idempotency.ts";
 import {
   isUuid,
-  parseStaffDirectoryQuery,
-  projectStaffDirectoryRows,
   parseContactCreate,
   parseContactPatch,
   parseFollowupTaskAssignment,
   parseFollowupTaskCreate,
   parseFollowupTaskPatch,
+  parseStaffDirectoryQuery,
+  projectStaffDirectoryRows,
 } from "./validation.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
