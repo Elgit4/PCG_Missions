@@ -47,63 +47,55 @@ Deno.test("rejects unsupported routes and non-UUID record IDs", () => {
   }
 });
 
-Deno.test("accepts an assigned read without an oversight reason", () => {
+Deno.test("accepts an assigned read without an oversight reason code", () => {
   const parsed = parsePastoralReadInput({
     branch_id: BRANCH_ID,
     access_mode: "assigned",
   });
 
-  if (!parsed.ok || parsed.value.reason !== null) {
+  if (!parsed.ok || parsed.value.reason_code !== null) {
     throw new Error("A valid assigned read request was rejected.");
   }
 });
 
-Deno.test("accepts and trims an oversight reason", () => {
+Deno.test("accepts a supported oversight reason code", () => {
   const parsed = parsePastoralReadInput({
     branch_id: BRANCH_ID,
     access_mode: "oversight",
-    reason: "  Documented pastoral continuity review.  ",
+    reason_code: "continuity_of_care",
   });
 
   if (
     !parsed.ok ||
-    parsed.value.reason !== "Documented pastoral continuity review."
+    parsed.value.reason_code !== "continuity_of_care"
   ) {
-    throw new Error("A valid oversight reason was not normalized.");
+    throw new Error("A valid oversight reason code was not accepted.");
   }
 });
 
-Deno.test("rejects an oversight request without a reason", () => {
-  const parsed = parsePastoralReadInput({
-    branch_id: BRANCH_ID,
-    access_mode: "oversight",
-  });
-
-  if (parsed.ok) throw new Error("An oversight read without a reason passed.");
-});
-
-Deno.test("rejects short, blank and oversized oversight reasons", () => {
-  for (const reason of ["too short", " ".repeat(30), "x".repeat(501)]) {
+Deno.test("rejects oversight reads without an approved reason code", () => {
+  for (const reason_code of [undefined, "free-text narrative", "other", ""]) {
     const parsed = parsePastoralReadInput({
       branch_id: BRANCH_ID,
       access_mode: "oversight",
-      reason,
+      ...(reason_code === undefined ? {} : { reason_code }),
     });
+
     if (parsed.ok) {
-      throw new Error("An invalid oversight reason was accepted.");
+      throw new Error("An unsupported oversight reason code was accepted.");
     }
   }
 });
 
-Deno.test("rejects reasons supplied for assigned reads", () => {
+Deno.test("rejects reason codes on assigned reads", () => {
   const parsed = parsePastoralReadInput({
     branch_id: BRANCH_ID,
     access_mode: "assigned",
-    reason: "This should not be accepted for an assigned read.",
+    reason_code: "pastoral_review",
   });
 
   if (parsed.ok) {
-    throw new Error("An assigned read accepted an oversight reason.");
+    throw new Error("An assigned read accepted an oversight reason code.");
   }
 });
 
