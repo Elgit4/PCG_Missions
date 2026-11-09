@@ -120,7 +120,57 @@ Phone and email fields require the separate `contact.identity.capture` capabilit
 
 Requires `contact.update.scoped` and record-scope checks. Only ordinary contact fields are accepted. Identity-field changes additionally require `contact.identity.update.scoped`. Status, branch, creator, merge and other lifecycle controls are not writable through this route.
 
-## 4. Capability catalogue and authorization
+## 4. Follow-up tasks
+
+### `GET /staff-operations/followup/tasks`
+
+Query parameters:
+- `branch_id` — required active branch UUID.
+- `limit` — optional integer 1–50; default 25.
+- `offset` — optional integer 0–5000; default 0.
+- `status` — optional `open`, `in_progress`, `completed` or `cancelled`.
+
+Requires `followup.task.read.scoped`. The server returns only tasks matching the effective branch, team, assigned or self scope. Unsupported scope modes do not imply task access. List responses include task fields and the contact UUID only; they do not join or expose contact identity values.
+
+### `GET /staff-operations/followup/tasks/{taskId}?branch_id={uuid}`
+
+Requires `followup.task.read.scoped` and a matching task scope. Out-of-scope or unknown records return 404. The response includes the task plus append-only lifecycle metadata (`created`, status transitions and safe changed-field names); event details do not contain task-note text.
+
+### `POST /staff-operations/followup/tasks`
+
+Creates the task and its initial lifecycle event in one database transaction. Requires `followup.task.create`.
+
+Allowed request shape:
+
+```json
+{
+  "branch_id": "uuid",
+  "contact_id": "uuid",
+  "client_request_id": "uuid",
+  "list_id": null,
+  "assignee_user_id": "uuid",
+  "team_id": null,
+  "priority": 3,
+  "due_at": "2026-11-10T10:30:00Z",
+  "task_note": "Call after service"
+}
+```
+
+Exactly one of `assignee_user_id` or `team_id` must be supplied. The contact and optional list must be active and belong to the requested branch. An assigned-scope creator can create a task only for themselves. A team-scope creator can create a team task only for a team they actively belong to. Assigning another active staff member or a team through branch-wide scope additionally requires branch-wide `followup.task.assign.scoped` and a valid active target in the same branch.
+
+`client_request_id` is a branch-scoped idempotency key. The Edge Function computes a versioned HMAC of the canonical normalized request using the server-only `CMI_FOLLOWUP_IDEMPOTENCY_HMAC_KEY`; only the 32-byte digest and key version are stored. An identical retry by the same actor returns the original task. Reuse with a changed digest or another actor returns 409. Set `CMI_FOLLOWUP_IDEMPOTENCY_KEY_VERSION` to a positive integer (default `1`); do not rotate the key version while matching task receipts remain in use.
+
+The schema preserves the pending-D-04 safe default: a task has exactly one primary target, either one staff member or one team. Creation starts in `open` status and appends a `created` event in the same transaction.
+
+### `PATCH /staff-operations/followup/tasks/{taskId}?branch_id={uuid}`
+
+Requires `followup.task.update.scoped` and task-level branch, assigned, team or self scope. Only `task_note`, `priority`, `due_at` and `status` are writable. The server enforces the priority range and status transitions, updates `completed_at` consistently, and appends a lifecycle event in the same transaction. A completed task may be reopened to `open` or `in_progress`; a cancelled task is terminal. Assignment fields, creator, branch, contact and task ID are not patchable; a separate audited reassignment operation is not yet implemented.
+
+Task notes are ordinary operational follow-up text only. Prayer/care narratives, contact identity values, credentials and unrelated sensitive information must never be stored in `task_note` or event metadata.
+
+The database RPCs are `SECURITY INVOKER`, pin `search_path` to `pg_catalog` and grant `EXECUTE` only to `service_role`. Browser roles have no direct table or RPC access. No role-capability grants are seeded; these routes remain denied until the pending authorization decisions are approved.
+
+## 5. Capability catalogue and authorization
 
 The proposed action-code catalogue is seeded as metadata only. No role-capability rows are seeded. A capability grant is effective only when:
 1. The Auth user has an active staff profile.
@@ -140,7 +190,7 @@ Public registration is not enabled by this contract. D-05/D-06/D-13 and consent-
 ## 6. Not yet implemented
 
 The following API families remain backend work and must not be represented as available frontend functionality:
-- Follow-up task/list operations and append-only task lifecycle transactions.
+- Follow-up list administration, task reassignment, bulk task operations and richer follow-up workflow automation.
 - Audited prayer/care narrative reads and restricted update/assignment operations.
 - Event registration, serialized capacity reservation, transport reservation, check-in, idempotent replay/conflict handling and closeout submission/review.
 - Calendar and announcement staff management.
@@ -157,6 +207,7 @@ The blocked paths remain disabled until the required policy decisions, security 
 The first integration surface is now defined:
 - Authenticated shell can call `staff-session` after obtaining a Supabase Auth access token.
 - Contact list, detail, capture and ordinary-field update screens can integrate with `staff-operations`.
+- Follow-up task list, detail, create and ordinary-field/status update screens can integrate with `staff-operations`; assignment changes remain unavailable.
 - The UI must treat an empty capability list as no business permissions, not as an Admin default.
 - Phone/email controls must follow the identity capability flags and stay hidden/redacted when unavailable.
 - The public site can read only through `public-content`.
