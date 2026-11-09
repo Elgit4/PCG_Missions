@@ -331,7 +331,7 @@ The following API families remain backend work and must not be represented as av
 - Sermon/welcome-message draft editing is available; Daily Word, Digital Tracts and church-profile administration/publication remain unimplemented pending approved global authoring scope.
 - Calendar team/event/own scopes, follow-up/prayer-schedule entry types and deletion.
 - Typed ministry reporting, review workflow and scoped exports.
-- SMS consent/suppression, campaign approval, outbox dispatch, provider adapter, signed callbacks, budget controls and automations.
+- SMS consent/suppression, campaign approval, transactional outbox/dispatcher, budget reservation, automation rules and delivery-log API. An internal Hubtel Business SMS adapter and status-lookup helper now exist in source, but they are not wired to an endpoint or outbox and cannot send live messages.
 - Offline device registration, encrypted queue enrolment and authenticated sync reconciliation.
 - Staff invitation/activation, email+PIN establishment/reissue, account deactivation and initial church/branch bootstrap.
 
