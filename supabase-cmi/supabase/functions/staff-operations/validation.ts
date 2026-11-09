@@ -306,8 +306,15 @@ function parseTaskDueAt(
   if (value === undefined || value === null || value === "") {
     return { ok: true, value: null };
   }
-  if (typeof value !== "string" || value.length > 64) {
-    return { ok: false, error: "Invalid due_at." };
+  if (
+    typeof value !== "string" ||
+    value.length > 64 ||
+    !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,9})?(?:Z|[+-]\\d{2}:\\d{2})$/i.test(value)
+  ) {
+    return {
+      ok: false,
+      error: "due_at must be an ISO timestamp with an explicit timezone.",
+    };
   }
   const timestamp = Date.parse(value);
   if (!Number.isFinite(timestamp)) {
