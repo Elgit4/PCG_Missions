@@ -13,7 +13,7 @@ create table public.staff_access_audit(
 create index staff_access_audit_branch_created_idx on public.staff_access_audit(branch_id,created_at desc);
 create index staff_access_audit_target_created_idx on public.staff_access_audit(target_profile_id,created_at desc);
 alter table public.staff_access_audit enable row level security;
-revoke all on table public.staff_access_audit from public,anon,authenticated;
+revoke all on table public.staff_access_audit from public,anon,authenticated,service_role;
 create or replace function private.reject_staff_access_audit_mutation() returns trigger language plpgsql set search_path=pg_catalog as $$begin raise exception using errcode='55000',message='staff access audit is append-only';end;$$;
 revoke all on function private.reject_staff_access_audit_mutation() from public,anon,authenticated;
 create trigger staff_access_audit_no_update_delete before update or delete on public.staff_access_audit for each row execute function private.reject_staff_access_audit_mutation();
