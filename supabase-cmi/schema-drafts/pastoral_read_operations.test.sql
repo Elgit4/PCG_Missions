@@ -359,6 +359,7 @@ select extensions.ok(
   ),
   'Prayer projection does not expose linked contact identity'
 );
+reset role;
 select extensions.ok(
   exists (
     select 1 from public.prayer_access_audit
@@ -369,6 +370,7 @@ select extensions.ok(
   ),
   'Assigned prayer narrative read is audited in the same transaction'
 );
+set local role service_role;
 select extensions.throws_ok(
   $q$ select public.cmi_read_prayer_request(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb003',
@@ -379,6 +381,7 @@ select extensions.throws_ok(
   'P0002', 'prayer request not found',
   'Intercessor cannot read a prayer request assigned to another user'
 );
+reset role;
 select extensions.ok(
   not exists (
     select 1 from public.prayer_access_audit
@@ -386,6 +389,7 @@ select extensions.ok(
   ),
   'A denied prayer read does not create an access-audit event'
 );
+set local role service_role;
 select extensions.throws_ok(
   $q$ select public.cmi_read_prayer_request(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
@@ -407,6 +411,7 @@ select extensions.ok(
   )->'request'->>'id') = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba301',
   'Explicitly scoped oversight capability can read the prayer request'
 );
+reset role;
 select extensions.ok(
   exists (
     select 1 from public.prayer_access_audit
@@ -417,6 +422,7 @@ select extensions.ok(
   ),
   'Prayer oversight read stores the reason and oversight audit action'
 );
+set local role service_role;
 select extensions.throws_ok(
   $q$ select public.cmi_read_prayer_request(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002',
@@ -475,6 +481,7 @@ select extensions.ok(
   ),
   'Care projection does not expose linked contact identity'
 );
+reset role;
 select extensions.ok(
   exists (
     select 1 from public.care_access_audit
@@ -485,6 +492,7 @@ select extensions.ok(
   ),
   'Assigned care narrative read is audited in the same transaction'
 );
+set local role service_role;
 select extensions.throws_ok(
   $q$ select public.cmi_read_care_record(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb003',
@@ -495,6 +503,7 @@ select extensions.throws_ok(
   'P0002', 'care record not found',
   'Care worker cannot read a care record assigned to another user'
 );
+reset role;
 select extensions.ok(
   not exists (
     select 1 from public.care_access_audit
@@ -502,6 +511,7 @@ select extensions.ok(
   ),
   'A denied care read does not create an access-audit event'
 );
+set local role service_role;
 select extensions.ok(
   (public.cmi_read_care_record(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002',
@@ -513,6 +523,7 @@ select extensions.ok(
   )->'record'->>'id') = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba401',
   'Explicitly scoped oversight capability can read the care record'
 );
+reset role;
 select extensions.ok(
   exists (
     select 1 from public.care_access_audit
@@ -524,6 +535,7 @@ select extensions.ok(
   ),
   'Care oversight audit records reason and the bounded returned interaction count'
 );
+set local role service_role;
 select extensions.ok(
   not exists (
     select 1 from public.prayer_access_audit
@@ -540,6 +552,7 @@ select extensions.ok(
   ),
   'Care audit metadata never duplicates restricted interaction text'
 );
+set local role service_role;
 select extensions.throws_ok(
   $q$ select public.cmi_read_prayer_request(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002',
