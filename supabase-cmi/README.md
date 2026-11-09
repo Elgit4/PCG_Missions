@@ -22,7 +22,7 @@ Supabase CLI v3 is local-first. Do not add `--remote`, hosted credentials or `--
 
 - `supabase/migrations/`: permanent CMI identity/authorization foundation migration only.
 - `supabase/tests/`: foundation pgTAP suite.
-- `schema-drafts/`: reviewable domain SQL and pgTAP drafts, not yet permanent migration history. The capability catalogue/contact-capture transaction is also validated from this workspace.
+- `schema-drafts/`: reviewable domain SQL and pgTAP drafts, not yet permanent migration history. The capability catalogue/contact-capture and follow-up task transactions are also validated from this workspace.
 
 ### Domain drafts
 
@@ -58,11 +58,14 @@ Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and exact `PUBLIC_CONTENT_ALLOWE
 The `feat/cmi-staff-session-api` branch adds an initial server API for frontend integration:
 - `staff-session`: validates a Supabase Auth access token, checks the active staff profile and returns branch, role and approved capability projections.
 - `staff-operations`: scoped contact list/detail, idempotent contact capture and ordinary-field update endpoints.
+- The same Edge Function now provides scoped follow-up task list/detail, idempotent creation and atomic note/priority/due-date/status updates. It never changes assignment targets through PATCH.
 - Capability definitions are seeded as metadata only. `role_capability` remains empty until R-01–R-12 and D-01 are approved.
 - Phone/email capture, read and update use separate identity capabilities. Without the appropriate grant, identity fields are not returned.
 - Team-scoped capture requires active team membership. Assigned-only capture creates an assignment to the capturing staff member in the same transaction.
 
-See [the Staff API Contract](../docs/19_CMI_STAFF_API_CONTRACT.md). These functions and the capability/contact transaction are source-only in this review branch and have not been deployed.
+Task creation uses a separate HMAC idempotency key and exactly one primary assignment target (staff member or team). Branch/team/assigned/self scope is evaluated on the server. Task updates append lifecycle events atomically; event history is protected against update, delete and truncate.
+
+See [the Staff API Contract](../docs/19_CMI_STAFF_API_CONTRACT.md). These functions and the capability/contact and follow-up task transactions are source-only in this review branch and have not been deployed.
 
 ## Security and approval gates
 
@@ -94,8 +97,6 @@ The event schema draft includes a private HMAC-backed idempotency receipt ledger
 
 Backend PRs #3–#9 are merged to `main`. PR #10 (`feat/cmi-staff-session-api`) remains open and in draft review; it has not been merged.
 
-The functional/security code head `5697b4f3c051da8c127941082205706eb62e1537` passed [CI run 42579507429](https://github.com/Elgit4/PCG_Missions/actions/runs/42579507429). That run completed CMI Edge Function formatting, linting, type-checking and Deno unit tests, then applied the domain drafts and capability/contact transaction through temporary CLI-generated migrations on the disposable local CMI stack. All five pgTAP files passed: **148 assertions, zero failures**. The RPC was executed as `service_role` using `SECURITY INVOKER`.
-
-Six later documentation and SQL-comment commits advanced PR #10 to `9dd081145d5b1ee25a2c48b6c90cee359f0a3094` without changing executable SQL or Edge Function logic. CI run [42580225147](https://github.com/Elgit4/PCG_Missions/actions/runs/42580225147) stopped before project checks because the Deno release download returned HTTP 504 at setup. No workflow rerun was requested.
+The current PR #10 head `0af36f82716f927df003770c596b0a48ab4bd2e1` passed [CI run 42584252881](https://github.com/Elgit4/PCG_Missions/actions/runs/42584252881). Deno formatting, linting, type-checking and unit tests passed. The workflow applied all reviewed schema drafts through temporary CLI-generated migrations on the disposable local CMI stack; **all six pgTAP files passed, 172 assertions with zero failures**. The task transaction tests cover scoped creation/update, idempotent replay/conflict and append-only lifecycle history. CI removed the temporary migration and test copies afterward.
 
 No `role_capability` rows are seeded; business access remains denied until R-01–R-12 and D-01 are approved. No hosted CMI project has been linked, queried, migrated or modified; no Edge Function has been deployed and no SMS has been sent.
