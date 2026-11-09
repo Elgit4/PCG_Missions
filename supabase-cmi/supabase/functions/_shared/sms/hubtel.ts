@@ -73,9 +73,11 @@ function basicAuthorization(config: HubtelSmsConfig): string {
 
 function parseObject(value: unknown): Record<string, unknown> | null {
   if (
-    value === null || typeof value !== "object" ||
-    Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype
-  ) return null;
+    value === null || typeof value !== "object" || Array.isArray(value) ||
+    Object.getPrototypeOf(value) !== Object.prototype
+  ) {
+    return null;
+  }
   return value as Record<string, unknown>;
 }
 
@@ -142,12 +144,13 @@ export function createHubtelSmsProvider(
           Authorization: basicAuthorization(config),
           Accept: "application/json",
           ...(init.body ? { "Content-Type": "application/json" } : {}),
-          ...init.headers,
         },
       });
     } catch {
       throw new HubtelSmsError(
-        safeToRetry ? "HUBTEL_SMS_STATUS_LOOKUP_NETWORK_ERROR" : "HUBTEL_SMS_SUBMISSION_UNCERTAIN",
+        safeToRetry
+          ? "HUBTEL_SMS_STATUS_LOOKUP_NETWORK_ERROR"
+          : "HUBTEL_SMS_SUBMISSION_UNCERTAIN",
         safeToRetry,
       );
     }
@@ -168,6 +171,8 @@ export function createHubtelSmsProvider(
         ? "HUBTEL_SMS_RECIPIENT_OR_ACCOUNT_FORBIDDEN"
         : response.status === 404
         ? "HUBTEL_SMS_MESSAGE_NOT_FOUND"
+        : !safeToRetry && response.status >= 500
+        ? "HUBTEL_SMS_SUBMISSION_UNCERTAIN"
         : retryable
         ? "HUBTEL_SMS_PROVIDER_TEMPORARY_FAILURE"
         : "HUBTEL_SMS_PROVIDER_REJECTED";
@@ -178,7 +183,10 @@ export function createHubtelSmsProvider(
     try {
       payload = await response.json();
     } catch {
-      throw new HubtelSmsError("HUBTEL_SMS_INVALID_PROVIDER_RESPONSE", true);
+      throw new HubtelSmsError(
+        "HUBTEL_SMS_INVALID_PROVIDER_RESPONSE",
+        safeToRetry,
+      );
     }
     const object = parseObject(payload);
     if (!object) {
@@ -203,21 +211,28 @@ export function createHubtelSmsProvider(
       }
 
       // Hubtel's business API expects digits without the leading plus.
-      const payload = await request(`${BASE_URL}/send`, {
+      const payload = await request(
+        `${BASE_URL}/send`,
+        {
         method: "POST",
         body: JSON.stringify({
           From: config.senderId,
           To: input.toE164.slice(1),
           Content: content,
         }),
-      }, false);
+        },
+        false,
+      );
 
       const status = Number(payload.status);
       const messageId = typeof payload.messageId === "string"
         ? payload.messageId
         : "";
       if (status !== 0 || !MESSAGE_ID.test(messageId)) {
-        throw new HubtelSmsError("HUBTEL_SMS_SUBMISSION_NOT_ACCEPTED", false);
+        throw new HubtelSmsError(
+        "HUBTEL_SMS_SUBMISSION_NOT_ACCEPTED",
+        false,
+      );
       }
 
       const rate = typeof payload.rate === "number" &&
@@ -243,7 +258,10 @@ export function createHubtelSmsProvider(
       providerMessageId: string,
     ): Promise<HubtelSmsStatusResult> {
       if (!MESSAGE_ID.test(providerMessageId)) {
-        throw new HubtelSmsError("HUBTEL_SMS_INVALID_MESSAGE_ID", false);
+        throw new HubtelSmsError(
+          "HUBTEL_SMS_INVALID_MESSAGE_ID",
+          false,
+        );
       }
       const payload = await request(
         `${BASE_URL}/${encodeURIComponent(providerMessageId)}`,
