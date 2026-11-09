@@ -2,7 +2,27 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status:** PRs #3–#8 are merged into `main`. The dedicated CMI workspace has passed 129 pgTAP assertions across four isolated local suites; the public-content and idempotency Deno checks also passed on PR #8's exact head. The public-content function and event transaction helpers remain source code, not deployed production endpoints. The latest exact-head validation is [PR #8 run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750) for head `c80a29a46a8a693449d66b209c84e2ba6894209a`. The merge commit is [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8).
+**Status:** PRs #3–#9 are merged into `main`. The `main` baseline passed 129 pgTAP assertions across four local CMI suites. The implementation was tested on commit `0cc2ed86baee16928e14d9e015608128b43e7a0d`; the three commits since then only reconcile implementation/readme documentation and function guidance. The latest PR-head run also passes with no executable-code changes after the tested implementation. PR #10 (`feat/cmi-staff-session-api`) remains an open draft review branch. Its current exact head `7ab4174ebe529279eda55a96ab4f52345aef74e3` passed [CI run 42588602409](https://github.com/Elgit4/PCG_Missions/actions/runs/42588602409): Edge Function formatting, linting, type-checks and Deno tests plus **178 pgTAP assertions across six files** on the disposable local CMI stack. The tested task slice includes scoped list/detail/create/update/reassignment operations, archived-contact exclusion, timezone-aware due dates, HMAC idempotency, sanitized RPC responses, `SECURITY INVOKER` transactions and append-only task history. PR #10 is not merged or deployed; these are source-only review-branch changes. No hosted CMI database was linked, queried, migrated or modified. The PR #8 merge commit is [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8).
+
+## New staff API implementation in review branch
+
+The `feat/cmi-staff-session-api` branch adds an initial API layer for frontend integration:
+
+- `staff-session` validates a Supabase Auth token, requires an active staff profile and returns current active branch assignments, roles and exact approved capabilities.
+- `staff-operations` provides scoped contact list/detail, atomic contact capture and ordinary-field update routes.
+- `staff-operations` also provides scoped follow-up task list/detail, idempotent creation and atomic ordinary-field/status updates. Visibility is filtered by branch, active team membership, direct assignment or task creator; unsupported scope modes do not broaden access.
+- Follow-up task reassignment is a separate branch-authorized transaction. It can target one active same-branch staff member or team, rejects completed/cancelled tasks, appends old/new target metadata and is a no-op for an unchanged target.
+- Task creation enforces exactly one primary assignee (staff member OR team), active same-branch contact/list references, assignment-scope rules and a branch-scoped versioned HMAC idempotency receipt. Task create/update RPCs are service-role-only `SECURITY INVOKER` functions.
+- A new task may reference only an `active` contact; archived or merged contacts are rejected. Task RPC responses use an allowlisted projection and never return the idempotency key or HMAC digest fields.
+- Task updates validate status transitions and append lifecycle history in the same transaction. Database triggers reject UPDATE, DELETE and TRUNCATE on the task event ledger; task-note text is not copied into event metadata.
+- Capability definitions are populated from the proposed action catalogue, but no `role_capability` rows are seeded. Until R-01–R-12 and D-01 are approved, staff sessions return no business capabilities and business operations remain denied.
+- Contact phone/email capture, read and update are separately capability-gated to preserve field-level privacy.
+- Contact creation is one database transaction: validate the actor, branch and capability; enforce the request idempotency key; write the contact and capture provenance; and create the required self/team assignment.
+- The contact RPC uses `SECURITY INVOKER`, a pinned `pg_catalog` search path and `EXECUTE` permission for `service_role` only. CI invokes it as `service_role`, proving it does not need migration-owner privilege elevation.
+- Both staff Edge Functions require JWT verification at the Supabase gateway and independently validate the bearer token with Supabase Auth.
+- The CI workflow type-checks/tests the staff functions and applies the capability/contact transaction draft to the isolated local CMI database for pgTAP validation.
+
+The matching API contract is [document 19](../docs/19_CMI_STAFF_API_CONTRACT.md). These changes are source-only in a review branch and have not been deployed or applied to a hosted database.
 
 ## Implemented and validated
 
@@ -61,7 +81,11 @@ A Deno validation suite covers supported resources, pagination, slug validation,
 
 ## Verification boundary
 
-The isolated local CMI suites currently total 129 pgTAP assertions: identity/authorization (14), contacts/follow-up (24), restricted pastoral (20), and events/idempotency/public-content (71). PR #8's exact head passed those four suites, Deno type-checking, public-content request-validation tests and idempotency-helper tests in [run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750). This is PR-head validation; the baseline merge commit [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8) had no automatic push-triggered CMI run because the prior workflow did not subscribe to `push`. The accompanying CI change adds a `main` push trigger, branch-pattern coverage for `feat/cmi-*`, `design/cmi-*` and `backend/cmi-*` PR targets, CMI Edge Function linting, and diff-scoped formatting checks for changed CMI function files. It also updates `actions/checkout` to v7. No hosted Supabase project was linked, queried, migrated or modified; no real visitor/prayer data or live SMS was used.
+The merged `main` baseline contains 129 pgTAP assertions across four suites: identity/authorization (14), contacts/follow-up (24), restricted pastoral (20), and events/idempotency/public-content (71). PR #10 adds a 19-assertion capability-catalogue/contact-capture suite and a **30-assertion follow-up task transaction suite**. Its current exact head `7ab4174ebe529279eda55a96ab4f52345aef74e3` passed [CI run 42588602409](https://github.com/Elgit4/PCG_Missions/actions/runs/42588602409): **178 database assertions across six files**, plus Edge Function formatting, linting, type-checks and Deno unit tests for public-content, staff-session, staff-operations and idempotency helpers.
+
+The new task suite validates service-role-only function execution, `SECURITY INVOKER`, idempotent creation/replay/conflict, assigned-task creation, scoped task updates, status transitions, completion timestamps and append-only event history (UPDATE/DELETE/TRUNCATE rejected). CI generates temporary migration names with the Supabase CLI, applies the reviewed draft SQL only to the disposable local CMI stack, runs pgTAP and removes temporary migration/test files afterward.
+
+PR #10 remains an open draft and is not in `main`. No role-capability grants have been seeded; R-01–R-12 and D-01 remain approval gates, and business operations therefore remain denied until approved grants are provisioned. Draft SQL has not been promoted into permanent migration history. No hosted Supabase project, production schema or Edge Function has been changed or deployed.
 
 Supabase CLI v3 is local-first. Keep CI on the isolated `supabase-cmi/` workspace and do not add `--remote` or hosted credentials without explicit deployment approval.
 

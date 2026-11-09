@@ -1,8 +1,9 @@
 -- CMI Follow-up v2.1 — restricted prayer and pastoral care domain.
 --
--- DRAFT ONLY: promote to a CLI-generated migration after review.
--- This file is deliberately outside migrations/ until Supabase CLI tooling
--- is available. It has not been parsed or executed.
+-- DRAFT ONLY. This source remains under schema-drafts/ and is not part
+-- of permanent migration history. CI applies it through a temporary
+-- CLI-generated migration on the disposable local CMI stack only.
+-- Do not promote or apply to a hosted database until required approvals.
 --
 -- Depends on identity foundation and contacts/follow-up domain.
 -- No browser grants or client policies are introduced.
