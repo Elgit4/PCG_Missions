@@ -61,7 +61,9 @@ function parseTimestamp(
   return { ok: true, value: new Date(timestamp).toISOString() };
 }
 
-function validEntryType(value: unknown): value is "service" | "event" | "other" {
+function validEntryType(
+  value: unknown,
+): value is "service" | "event" | "other" {
   return typeof value === "string" && ENTRY_TYPES.has(value);
 }
 
