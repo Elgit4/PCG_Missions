@@ -164,7 +164,25 @@ The schema preserves the pending-D-04 safe default: a task has exactly one prima
 
 ### `PATCH /staff-operations/followup/tasks/{taskId}?branch_id={uuid}`
 
-Requires `followup.task.update.scoped` and task-level branch, assigned, team or self scope. Only `task_note`, `priority`, `due_at` and `status` are writable. The server enforces the priority range and status transitions, updates `completed_at` consistently, and appends a lifecycle event in the same transaction. A completed task may be reopened to `open` or `in_progress`; a cancelled task is terminal. Assignment fields, creator, branch, contact and task ID are not patchable; a separate audited reassignment operation is not yet implemented.
+Requires `followup.task.update.scoped` and task-level branch, assigned, team or self scope. Only `task_note`, `priority`, `due_at` and `status` are writable. The server enforces the priority range and status transitions, updates `completed_at` consistently, and appends a lifecycle event in the same transaction. A completed task may be reopened to `open` or `in_progress`; a cancelled task is terminal. Assignment fields, creator, branch, contact and task ID are not patchable; use the separate audited reassignment route above.
+
+### `POST /staff-operations/followup/tasks/{taskId}/reassign?branch_id={uuid}`
+
+Requires `followup.task.assign.scoped` with an explicit `branch` scope. The request body must contain exactly one target:
+
+```json
+{ "assignee_user_id": "uuid" }
+```
+
+or
+
+```json
+{ "team_id": "uuid" }
+```
+
+The target staff account must be active and hold an active role assignment in the same branch; the target team must be active in the same branch. Only `open` and `in_progress` tasks can be reassigned. Completed and cancelled tasks are not assignable. A request selecting the existing target is a no-op and does not add duplicate history.
+
+The reassignment transaction locks the task, validates the actor and branch-level assignment capability, updates exactly one primary target and appends a `reassigned` event containing the old/new target UUIDs in the same transaction. It uses a service-role-only `SECURITY INVOKER` RPC and does not expose general assignment fields through the ordinary PATCH route.
 
 Task notes are ordinary operational follow-up text only. Prayer/care narratives, contact identity values, credentials and unrelated sensitive information must never be stored in `task_note` or event metadata.
 
@@ -207,7 +225,7 @@ The blocked paths remain disabled until the required policy decisions, security 
 The first integration surface is now defined:
 - Authenticated shell can call `staff-session` after obtaining a Supabase Auth access token.
 - Contact list, detail, capture and ordinary-field update screens can integrate with `staff-operations`.
-- Follow-up task list, detail, create and ordinary-field/status update screens can integrate with `staff-operations`; assignment changes remain unavailable.
+- Follow-up task list, detail, create and ordinary-field/status update screens can integrate with `staff-operations`; assignment changes use the separate branch-scoped reassignment endpoint.
 - The UI must treat an empty capability list as no business permissions, not as an Admin default.
 - Phone/email controls must follow the identity capability flags and stay hidden/redacted when unavailable.
 - The public site can read only through `public-content`.
