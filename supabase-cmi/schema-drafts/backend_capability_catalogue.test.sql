@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(17);
 
 select has_table('public', 'capability', 'Capability catalogue exists');
 select ok(
@@ -59,6 +59,159 @@ select ok(
   (select relrowsecurity from pg_class where oid = 'public.capability'::regclass),
   'Capability catalogue retains row-level security'
 );
+
+
+-- Exercise the service-only transaction with a synthetic staff actor whose
+-- role assignment has a future effective end date. The assignment remains
+-- active until that instant; no production grants or records are created.
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+) values (
+  '00000000-0000-0000-0000-000000000000',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10', 'authenticated', 'authenticated',
+  'cmi-contact-rpc-test@example.invalid', 'not-a-real-password-hash',
+  now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()
+);
+
+insert into public.staff_profile(id, auth_user_id, full_name, account_status)
+values (
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa11',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
+  'Synthetic Contact Capture Tester',
+  'active'
+);
+
+insert into public.church(id, name, timezone)
+values (
+  '10000000-0000-4000-8000-000000000010',
+  'Synthetic Contact RPC Church',
+  'Africa/Accra'
+);
+
+insert into public.branch(id, church_id, name, code)
+values (
+  '20000000-0000-4000-8000-000000000010',
+  '10000000-0000-4000-8000-000000000010',
+  'RPC Test Branch',
+  'RPC-TEST'
+);
+
+insert into public.role_capability(role_id, capability_id, scope_mode)
+select r.id, c.id, 'assigned'
+from public.role r
+cross join public.capability c
+where r.code = 'field_worker'
+  and c.code = 'contact.capture.create';
+
+insert into public.staff_role_assignment(
+  staff_profile_id, role_id, branch_id, assigned_by, starts_at, ends_at
+)
+select
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa11',
+  r.id,
+  '20000000-0000-4000-8000-000000000010',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa11',
+  now() - interval '1 day',
+  now() + interval '1 day'
+from public.role r
+where r.code = 'field_worker';
+
+select extensions.ok(
+  (public.cmi_create_contact(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
+    '20000000-0000-4000-8000-000000000010',
+    '50000000-0000-4000-8000-000000000010',
+    1,
+    decode(repeat('11', 32), 'hex'),
+    'Ama',
+    'Mensah',
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    '{}'::jsonb
+  )->>'replayed')::boolean = false,
+  'contact capture stores contact, provenance and self assignment atomically'
+);
+
+select extensions.is(
+  (select count(*)::integer
+   from public.contact c
+   join public.contact_capture cc on cc.contact_id = c.id and cc.branch_id = c.branch_id
+   where c.branch_id = '20000000-0000-4000-8000-000000000010'),
+  1,
+  'first contact capture creates exactly one contact and provenance row'
+);
+
+select extensions.is(
+  (select count(*)::integer
+   from public.contact_assignment ca
+   where ca.branch_id = '20000000-0000-4000-8000-000000000010'
+     and ca.assignee_user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10'),
+  1,
+  'assigned-scope capture creates the capturing staff assignment'
+);
+
+select extensions.ok(
+  (public.cmi_create_contact(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
+    '20000000-0000-4000-8000-000000000010',
+    '50000000-0000-4000-8000-000000000010',
+    1,
+    decode(repeat('11', 32), 'hex'),
+    'Ama',
+    'Mensah',
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    '{}'::jsonb
+  )->>'replayed')::boolean = true,
+  'identical capture retry returns the original contact as a replay'
+);
+
+select extensions.is(
+  (select count(*)::integer
+   from public.contact_capture
+   where branch_id = '20000000-0000-4000-8000-000000000010'
+     and client_request_id = '50000000-0000-4000-8000-000000000010'),
+  1,
+  'identical retry does not duplicate contact capture provenance'
+);
+
+select extensions.throws_ok(
+  $q$ select public.cmi_create_contact(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
+    '20000000-0000-4000-8000-000000000010',
+    '50000000-0000-4000-8000-000000000010',
+    1,
+    decode(repeat('22', 32), 'hex'),
+    'Ama',
+    'Mensah',
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    '{}'::jsonb
+  ) $q$,
+  '23505',
+  null,
+  'reusing an idempotency key with a changed digest returns a conflict'
+);
+
 
 select * from finish();
 rollback;
