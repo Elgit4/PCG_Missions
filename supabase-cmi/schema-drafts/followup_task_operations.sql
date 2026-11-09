@@ -40,14 +40,14 @@ create or replace function private.cmi_reject_followup_task_event_mutation()
 returns trigger
 language plpgsql
 set search_path = pg_catalog
-as $
+as $task_event_guard$
 begin
   raise exception using
     errcode = '55000',
     message = 'follow-up task lifecycle history is append-only';
   return null;
 end;
-$;
+$task_event_guard$;
 
 revoke all on function private.cmi_reject_followup_task_event_mutation()
   from public, anon, authenticated;
