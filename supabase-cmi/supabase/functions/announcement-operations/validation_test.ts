@@ -154,7 +154,8 @@ Deno.test("parses bounded branch announcement pagination", () => {
   assertEquals(
     parseAnnouncementListQuery(
       new URL(
-        `https://example.test/announcements?branch_id=${branchId}&limit=10&offset=20`,
+        `https://example.test/announcements?branch_id=${branchId}` +
+          "&limit=10&offset=20",
       ),
     ),
     {
@@ -175,11 +176,14 @@ Deno.test("parses bounded branch announcement pagination", () => {
   );
 });
 
-Deno.test("rejects duplicate and unsupported announcement query parameters", () => {
+Deno.test(
+  "rejects duplicate and unsupported announcement query parameters",
+  () => {
   assertEquals(
     parseAnnouncementListQuery(
       new URL(
-        `https://example.test/announcements?branch_id=${branchId}&limit=10&limit=20`,
+        `https://example.test/announcements?branch_id=${branchId}` +
+          "&limit=10&limit=20",
       ),
     ),
     { ok: false, error: "Duplicate query parameter." },
