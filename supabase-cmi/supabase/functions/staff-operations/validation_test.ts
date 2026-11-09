@@ -5,6 +5,8 @@ import {
   parseFollowupTaskAssignment,
   parseFollowupTaskCreate,
   parseFollowupTaskPatch,
+  parseStaffDirectoryQuery,
+  projectStaffDirectoryRows,
 } from "./validation.ts";
 
 const branchId = "10000000-0000-4000-8000-000000000001";
@@ -241,6 +243,115 @@ Deno.test("follow-up task reassignment rejects missing, dual or invalid targets"
     if (parsed.ok) {
       throw new Error(
         "Invalid or caller-controlled reassignment was accepted.",
+      );
+    }
+  }
+});
+
+const staffBranchId = "20000000-0000-4000-8000-000000000001";
+
+Deno.test("staff directory query accepts bounded branch search and pagination", () => {
+  const url = new URL(
+    `https://example.test/staff?branch_id=${staffBranchId}&limit=10&offset=20&search=Ama`,
+  );
+  const result = parseStaffDirectoryQuery(url);
+  if (!result.ok) throw new Error(result.error);
+  if (result.value.branch_id !== staffBranchId) {
+    throw new Error("Branch filter was not preserved.");
+  }
+  if (result.value.limit !== 10 || result.value.offset !== 20) {
+    throw new Error("Pagination was not parsed correctly.");
+  }
+  if (result.value.search !== "Ama") {
+    throw new Error("Search text was not normalized.");
+  }
+});
+
+Deno.test("staff directory query rejects missing branch and unknown parameters", () => {
+  for (
+    const url of [
+      new URL("https://example.test/staff"),
+      new URL(
+        `https://example.test/staff?branch_id=${staffBranchId}&role=admin_pastor`,
+      ),
+    ]
+  ) {
+    const result = parseStaffDirectoryQuery(url);
+    if (result.ok) throw new Error("Unsupported directory query was accepted.");
+  }
+});
+
+Deno.test("staff directory query rejects duplicate and out-of-range parameters", () => {
+  const duplicate = new URL(
+    `https://example.test/staff?branch_id=${staffBranchId}&branch_id=${staffBranchId}`,
+  );
+  const tooMany = new URL(
+    `https://example.test/staff?branch_id=${staffBranchId}&limit=51`,
+  );
+  const tooLong = new URL(
+    `https://example.test/staff?branch_id=${staffBranchId}&search=${
+      "a".repeat(81)
+    }`,
+  );
+  for (const url of [duplicate, tooMany, tooLong]) {
+    const result = parseStaffDirectoryQuery(url);
+    if (result.ok) throw new Error("Invalid directory query was accepted.");
+  }
+});
+
+Deno.test("staff directory projection deduplicates roles and excludes inactive staff", () => {
+  const projected = projectStaffDirectoryRows([
+    {
+      id: "30000000-0000-4000-8000-000000000001",
+      full_name: "Ama Mensah",
+      account_status: "active",
+      auth_user_id: "must-not-appear",
+      email: "ama@example.test",
+      phone_e164: "+233241234567",
+      staff_role_assignment: [
+        { role: { code: "coordinator", name: "Coordinator", is_active: true } },
+        { role: { code: "coordinator", name: "Coordinator", is_active: true } },
+        {
+          role: {
+            code: "field_worker",
+            name: "Field Worker",
+            is_active: false,
+          },
+        },
+      ],
+    } as never,
+    {
+      id: "30000000-0000-4000-8000-000000000002",
+      full_name: "Inactive Staff",
+      account_status: "inactive",
+      staff_role_assignment: [
+        { role: { code: "coordinator", name: "Coordinator", is_active: true } },
+      ],
+    },
+  ]);
+  if (projected.length !== 1) {
+    throw new Error("Inactive staff or empty role projections were returned.");
+  }
+  if (
+    projected[0].roles.length !== 1 ||
+    projected[0].roles[0].code !== "coordinator"
+  ) {
+    throw new Error("Directory roles were not deduplicated/filtered.");
+  }
+  const serialized = JSON.stringify(projected);
+  for (
+    const sensitive of [
+      "auth_user_id",
+      "must-not-appear",
+      "email",
+      "ama@example.test",
+      "phone_e164",
+      "+233241234567",
+    ]
+  ) {
+    if (serialized.includes(sensitive)) {
+      throw new Error(
+        `Sensitive field leaked into directory response: ${sensitive}`,
       );
     }
   }
