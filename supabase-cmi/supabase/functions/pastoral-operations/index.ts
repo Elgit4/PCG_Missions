@@ -77,11 +77,35 @@ async function readJson(request: Request): Promise<unknown> {
   if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
     throw new Error("CONTENT_TYPE_REQUIRED");
   }
-  const body = await request.text();
-  if (body.length === 0 || body.length > 4096) {
-    throw new Error("INVALID_JSON_SIZE");
+
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error("INVALID_JSON_SIZE");
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > 4096) {
+        await reader.cancel();
+        throw new Error("INVALID_JSON_SIZE");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
   }
-  return JSON.parse(body) as unknown;
+
+  if (totalBytes === 0) throw new Error("INVALID_JSON_SIZE");
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
 }
 
 Deno.serve(async (request: Request) => {
@@ -110,7 +134,18 @@ Deno.serve(async (request: Request) => {
     return new Response(null, { status: 204, headers });
   }
 
-  const route = parsePastoralReadPath(new URL(request.url).pathname);
+  const requestUrl = new URL(request.url);
+  if (requestUrl.search !== "") {
+    return fail(
+      "INVALID_QUERY",
+      "Query parameters are not accepted for pastoral reads.",
+      400,
+      origin,
+      id,
+    );
+  }
+
+  const route = parsePastoralReadPath(requestUrl.pathname);
   if (!route) {
     return fail(
       "NOT_FOUND",
