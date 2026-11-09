@@ -1,7 +1,7 @@
 # PCG Missions — CMI Staff API Contract
 
 **Baseline:** CMI Follow-up v2.1  
-**Status:** Staff session, contacts and follow-up task APIs are merged to `main`. Audited pastoral reads are implemented in the `feat/cmi-audited-pastoral-reads` review branch only; they are not deployed.  
+**Status:** Staff session, contacts, follow-up task APIs and audited pastoral record reads are merged to `main`. These Edge Functions and SQL transaction drafts are source-controlled but not deployed; pastoral access remains approval-gated.  
 **Backend workspace:** `supabase-cmi/`  
 **Security rule:** Browser clients use a user access token and publishable/anon key only. A service-role key is never shipped to the browser.
 
@@ -201,9 +201,9 @@ The proposed action-code catalogue is seeded as metadata only. No role-capabilit
 
 The presence of a role label is not authorization. Frontend navigation visibility is only a usability aid; every request is authorized server-side.
 
-## 6. Audited prayer and pastoral-care reads (review branch)
+## 6. Audited prayer and pastoral-care reads (merged; approval-gated)
 
-These endpoints are read-only. They do not create requests or records, change status, assign/reassign workers, archive, or delete pastoral data. The source implementation is on `feat/cmi-audited-pastoral-reads` and remains subject to review and stakeholder approval.
+These endpoints are read-only. They do not create requests or records, change status, assign/reassign workers, archive, or delete pastoral data. The implementation was merged in PR #11. Its source remains in `main`, but these operations remain subject to the stakeholder approval gates below and are not deployed.
 
 ### `POST /pastoral-operations/prayer/requests/{requestId}/read`
 
@@ -255,7 +255,7 @@ Public registration is not enabled by this contract. D-05/D-06/D-13 and consent-
 
 The following API families remain backend work and must not be represented as available frontend functionality:
 - Follow-up list administration, bulk task operations and richer follow-up workflow automation.
-- Prayer/care list endpoints, request creation, restricted update/assignment workflows, archival/deletion and retention automation. Individual audited reads exist only on the review branch and remain approval-gated.
+- Prayer/care list endpoints, request creation, restricted update/assignment workflows, archival/deletion and retention automation. Individual-record audited reads are implemented in `main`, but remain approval-gated and undeployed.
 - Event registration, serialized capacity reservation, transport reservation, check-in, idempotent replay/conflict handling and closeout submission/review.
 - Calendar and announcement staff management.
 - Sermon, daily-word, tract and church-profile administration/publication operations.
