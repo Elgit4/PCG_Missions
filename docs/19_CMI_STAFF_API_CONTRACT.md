@@ -261,6 +261,17 @@ The separate `event-operations` function implements a limited authoring API for 
 
 The exact request fields, validation and error contract are in [document 20 — Event Draft Operations API Contract](20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md). No `role_capability` grants are seeded, so these endpoints remain denied until approved grants are provisioned. This slice does not satisfy or bypass the event transaction approval gate in document 17.
 
+## 7B. Announcement draft operations (feature branch)
+
+The separate `announcement-operations` function supports:
+- `GET /announcement-operations/announcements` and `GET /announcement-operations/announcements/{announcementId}` for branch-scoped draft reads.
+- `POST /announcement-operations/announcements` to create a private draft.
+- `PATCH /announcement-operations/announcements/{announcementId}` to edit the authenticated creator's own draft.
+
+List/detail requires `announcement.read.scoped` with branch scope. Create/edit requires `announcement.create.scoped` with branch scope. The server forces `status='draft'` and `is_public=false`; callers cannot set publication, audience, scheduling or delivery fields.
+
+The full request and error contract is in [document 21 — Announcement Draft Operations API Contract](21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this feature remains fail-closed until applicable church decisions and grants are approved. It has not been deployed.
+
 ## 8. Not yet implemented
 
 The following API families remain backend work and must not be represented as available frontend functionality:
