@@ -205,15 +205,23 @@ begin
 
     if not coalesce(v_identity_branch_scope, false)
        and not (
-         (p_team_id is not null and coalesce(v_identity_team_scope, false))
-         or (p_team_id is null and coalesce(v_identity_assigned_scope, false))
+         (
+           p_team_id is not null
+           and v_team_scope
+           and coalesce(v_identity_team_scope, false)
+         )
+         or (
+           p_team_id is null
+           and v_assigned_scope
+           and coalesce(v_identity_assigned_scope, false)
+         )
        ) then
       raise exception using errcode = '42501', message = 'contact identity capture not authorized';
     end if;
   end if;
 
   if p_team_id is not null then
-    if not (v_team_scope or v_identity_team_scope) or not exists (
+    if not v_team_scope or not exists (
       select 1
       from public.staff_team_membership stm
       join public.team t
@@ -296,13 +304,7 @@ begin
   returning * into v_contact;
 
   if p_team_id is not null
-     or (not v_branch_scope and v_assigned_scope)
-     or (
-       (p_phone_e164 is not null or p_phone_display is not null or p_email_normalized is not null)
-       and not coalesce(v_identity_branch_scope, false)
-       and coalesce(v_identity_assigned_scope, false)
-       and p_team_id is null
-     ) then
+     or (not v_branch_scope and v_assigned_scope) then
     insert into public.contact_assignment (
       contact_id,
       branch_id,
