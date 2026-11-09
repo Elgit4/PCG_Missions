@@ -1,7 +1,7 @@
 # PCG Missions — CMI Staff API Contract
 
 **Baseline:** CMI Follow-up v2.1  
-**Status:** Initial server API contract; implementation in review branch  
+**Status:** Staff session, contacts and follow-up task APIs are merged to `main`. Audited pastoral reads are implemented in the `feat/cmi-audited-pastoral-reads` review branch only; they are not deployed.  
 **Backend workspace:** `supabase-cmi/`  
 **Security rule:** Browser clients use a user access token and publishable/anon key only. A service-role key is never shipped to the browser.
 
@@ -201,7 +201,51 @@ The proposed action-code catalogue is seeded as metadata only. No role-capabilit
 
 The presence of a role label is not authorization. Frontend navigation visibility is only a usability aid; every request is authorized server-side.
 
-## 6. Public visitor API
+## 6. Audited prayer and pastoral-care reads (review branch)
+
+These endpoints are read-only. They do not create requests or records, change status, assign/reassign workers, archive, or delete pastoral data. The source implementation is on `feat/cmi-audited-pastoral-reads` and remains subject to review and stakeholder approval.
+
+### `POST /pastoral-operations/prayer/requests/{requestId}/read`
+
+### `POST /pastoral-operations/care/records/{recordId}/read`
+
+Both endpoints require a Supabase Auth bearer token. The Edge Function independently validates it with Supabase Auth, resolves the authenticated actor from the validated user ID, and calls a fixed service-role-only database transaction. The caller cannot provide an actor ID, capability, role, scope or audit actor.
+
+Request body for an assigned read:
+
+```json
+{
+  "branch_id": "uuid",
+  "access_mode": "assigned"
+}
+```
+
+Request body for an oversight read:
+
+```json
+{
+  "branch_id": "uuid",
+  "access_mode": "oversight",
+  "reason_code": "continuity_of_care"
+}
+```
+
+Allowed oversight `reason_code` values are `pastoral_review`, `continuity_of_care`, `safeguarding_concern`, `complaint_review` and `administrative_review`. Free-text reasons are not accepted, reducing the risk of writing sensitive narrative into an audit ledger. Assigned reads reject a reason code.
+
+Authorization is checked in the database transaction:
+- Prayer assigned read: active staff profile, active branch and role assignment, exact `prayer.request.read.assigned` capability with `assigned` scope, and a current non-revoked assignment of that request to the actor.
+- Care assigned read: the same checks with `care.record.read.assigned` and a current care assignment.
+- Prayer oversight read: separate `prayer.oversight.read` capability with `oversight` scope and an allowlisted reason code. An assigned capability does not imply oversight.
+- Care oversight read: separate `care.oversight.read` capability with `oversight` scope and an allowlisted reason code.
+
+The returned prayer projection contains the request narrative and workflow fields but omits linked contact identifiers and identity. The care projection contains care-record workflow fields and at most the latest 100 restricted interactions; it omits the linked contact identifier and identity. Every successful read inserts an audit event in the same database transaction before returning content. Audit rows reject UPDATE, DELETE and TRUNCATE. Audit metadata contains the access mode and, for care reads, interaction count; it does not copy pastoral narrative.
+
+Unknown or out-of-assignment records return 404. Missing capability or branch authorization returns 403. Invalid request fields or reason codes return 422. Both database functions use `SECURITY INVOKER`, pin `search_path` to `pg_catalog`, revoke execution from `PUBLIC`, `anon` and `authenticated`, and grant execution only to `service_role`. Direct browser table access remains revoked.
+
+**Approval gate:** R-01, R-10, R-11 and D-07 remain pending. No `role_capability` grants are seeded. These routes therefore deny real staff access until the required policy decisions are approved and approved grants are provisioned. Do not enable pastoral UI controls by role label or assume every Admin/Pastor, Coordinator or intercessor has access.
+
+## 7. Public visitor API
+
 
 The existing `GET /public-content` function remains a read-only, allowlisted projection for published church profile, welcome messages, sermons, daily words, tracts, public announcements and public events. It does not expose staff tables or direct anonymous database grants.
 
@@ -211,7 +255,7 @@ Public registration is not enabled by this contract. D-05/D-06/D-13 and consent-
 
 The following API families remain backend work and must not be represented as available frontend functionality:
 - Follow-up list administration, bulk task operations and richer follow-up workflow automation.
-- Audited prayer/care narrative reads and restricted update/assignment operations.
+- Prayer/care list endpoints, request creation, restricted update/assignment workflows, archival/deletion and retention automation. Individual audited reads exist only on the review branch and remain approval-gated.
 - Event registration, serialized capacity reservation, transport reservation, check-in, idempotent replay/conflict handling and closeout submission/review.
 - Calendar and announcement staff management.
 - Sermon, daily-word, tract and church-profile administration/publication operations.
@@ -228,6 +272,7 @@ The first integration surface is now defined:
 - Authenticated shell can call `staff-session` after obtaining a Supabase Auth access token.
 - Contact list, detail, capture and ordinary-field update screens can integrate with `staff-operations`.
 - Follow-up task list, detail, create and ordinary-field/status update screens can integrate with `staff-operations`; assignment changes use the separate branch-scoped reassignment endpoint.
+- The pastoral read routes must remain unavailable in navigation and be denied by the server until the required decisions are approved and specific capability grants are provisioned. Oversight access requires the separate oversight capability and a supported reason code.
 - The UI must treat an empty capability list as no business permissions, not as an Admin default.
 - Phone/email controls must follow the identity capability flags and stay hidden/redacted when unavailable.
 - The public site can read only through `public-content`.
