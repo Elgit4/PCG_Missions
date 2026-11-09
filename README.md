@@ -19,9 +19,9 @@ CMI Follow-up supports church field capture, contacts, follow-up, prayer and car
 - **Communications:** manual one-to-one SMS, permission-scoped bulk SMS and configurable automated SMS; WhatsApp automation is not included.
 - **Out of scope:** multi-church network administration and the future/held capabilities listed in the master specification.
 
-## Proposed database design (review branch)
+## Proposed database design (committed review artifacts)
 
-The current database-design proposal is available on the `design/cmi-logical-data-model` branch:
+The current database-design proposal is committed on `main`:
 
 - [Logical Data Model](docs/06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md)
 - [Editable Crow's Foot ERD](docs/database/CMI_Follow_Up_Logical_ERD_v0.1.drawio)
@@ -65,4 +65,4 @@ Do not apply the old ChurchConnect migrations to a live CMI project. Do not conn
 
 ## Backend implementation status
 
-The CMI backend is being built in the dedicated `supabase-cmi/` workspace, separate from the historical top-level `supabase/` ChurchConnect tree. The identity/authorization foundation is committed for isolated local review. Contacts/follow-up and restricted-pastoral SQL and pgTAP drafts remain under `supabase-cmi/schema-drafts/`; they are not permanent migrations or deployed features. RLS is enabled and direct browser grants and role-capability grants remain withheld pending approval. No hosted Supabase project has been linked or modified. See the [backend implementation status](supabase-cmi/IMPLEMENTATION_STATUS.md), [schema reconciliation crosswalk](docs/16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) and [CMI workspace guide](supabase-cmi/README.md). Never run the legacy top-level `supabase/` migrations for CMI.
+The CMI backend is being built in the dedicated `supabase-cmi/` workspace, separate from the historical top-level `supabase/` ChurchConnect tree. The identity/authorization foundation is committed for isolated local review. Contacts/follow-up, follow-up task, restricted-pastoral, event/public-content and capability SQL drafts are validated by isolated local CI but remain drafts rather than permanent migrations. The repository includes source-only Edge Functions for public content, staff/session operations, audited pastoral reads, private event drafts, announcement drafts, visitor-content drafts and branch calendar operations. These are not deployed features. RLS is enabled and direct browser grants and role-capability grants remain withheld pending approval. No hosted Supabase project has been linked or modified. No production Auth configuration, SMS provider credentials, or live messaging has been activated. See the [backend implementation status](supabase-cmi/IMPLEMENTATION_STATUS.md), [schema reconciliation crosswalk](docs/16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) and [CMI workspace guide](supabase-cmi/README.md). Never run the legacy top-level `supabase/` migrations for CMI.

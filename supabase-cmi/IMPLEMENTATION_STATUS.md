@@ -2,7 +2,7 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status (2026-11-09):** PRs #3–#17 are merged to `main`. PR #16's CMI backend CI passed all 29 workflow steps; PR #17's exact-head [CI run #42666252894](https://github.com/Elgit4/PCG_Missions/actions/runs/42666252894) passed the complete CMI backend workflow after adding the staff directory. Current `main` includes the PR #17 merge commit `cd13aa331a08c8bad86f2725e147074bc7954906`. R-01–R-12, D-01–D-13 and the separate authentication/SMS/offline/audit approvals remain pending. No role grants are seeded. No hosted CMI database has been linked or modified, and no Edge Function has been deployed.
+**Status (2026-11-09):** PRs #3–#19 are merged to `main`. The current audited `main` commit is `55a3004b84a6934efd100c7614338f3ffae58b44` (PR #19 merge). Historical implementation checks passed on earlier PR heads, including [run #42666252894](https://github.com/Elgit4/PCG_Missions/actions/runs/42666252894), but the latest `main` workflow [run #42671972079](https://github.com/Elgit4/PCG_Missions/actions/runs/42671972079) concluded `failure`; its jobs endpoint returned no jobs, so no failing step or job log is available. Current `main` must therefore be treated as CI-unverified until a subsequent run succeeds. R-01–R-12, D-01–D-13 and the separate authentication/SMS/offline/audit approvals remain pending. No role grants are seeded. No hosted CMI database has been linked or modified, and no Edge Function has been deployed.
 
 ## Staff API implementation merged to main
 
@@ -166,3 +166,12 @@ The branch-scoped `GET /staff-operations/staff` endpoint requires `staff.directo
 
 Account provisioning, invitation/activation, private PIN setup or reset/reissue, deactivation/reactivation, and role assignment/revocation remain blocked by the pending authentication and authorization approvals. No role grants or credential behavior are inferred from recommendations. The function remains source-only and undeployed.
 
+
+
+## Current completion boundary — 2026-11-09
+
+The source-controlled backend is a substantial but incomplete foundation, not a production-ready backend. The committed Edge Functions cover public read projections, authenticated staff session and ordinary contact/follow-up operations, a staff directory, audited individual pastoral reads, private event drafts, private announcement drafts, sermon/welcome-message drafts and branch calendar entries. The permanent migration establishes the identity/authorization foundation; domain SQL remains in reviewable drafts validated by disposable local CI migrations.
+
+The following work can proceed without inventing church policy: repair/verify CI, reconcile documentation, improve test coverage for existing routes and database invariants, and prepare non-production integration contracts. The following work is blocked by recorded approvals or external credentials: role-capability grants and RLS access policies (R-01–R-12/D-01), staff invitation and email/PIN lifecycle decisions, full prayer/care CRUD and retention (R-01/R-07/R-10/R-11/D-07/D-13), event registration/capacity/transport/check-in (D-05/D-06/D-13), offline device/queue lifecycle (D-08), and SMS provider, Sender ID, consent, opt-out, spend caps and automation (D-09–D-11 plus R-06–R-09). No SMS provider adapter should be activated until the provider and operating policy are confirmed.
+
+No frontend application is present in `main`. No hosted Supabase project, production Auth configuration, production database schema, Edge Function deployment, SMS credentials or live message dispatch has been configured. These remain separate release activities requiring explicit authorization.
