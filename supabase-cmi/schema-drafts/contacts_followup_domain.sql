@@ -1,16 +1,16 @@
 -- CMI Follow-up v2.1 — contacts, capture, assignment and follow-up domain.
 --
--- DRAFT ONLY. This file is deliberately outside the Supabase migrations/
--- directory because the Supabase CLI is not available in the authoring
--- environment. Before promotion, create a migration with:
---   supabase migration new cmi_contacts_followup_domain --workdir supabase-cmi
--- Then copy this reviewed SQL into the generated migration file.
+-- DRAFT ONLY. This file remains under schema-drafts/ and is not part of
+-- permanent migration history. CI creates a temporary timestamped migration
+-- using the Supabase CLI and applies it only to the disposable local CMI stack.
+-- Promote only after the physical design and required stakeholder decisions
+-- are approved; never apply this draft directly to a hosted database.
 --
 -- Depends on: 20261108010000 CMI identity/authorization foundation.
 -- Does NOT grant Data API access or create client RLS policies.
 -- CMI policy decisions R-03..R-05, D-03 and D-04 remain pending.
 --
--- This SQL has not been parsed or executed. Do not apply manually.
+-- Validation in disposable local CI is not production migration approval.
 
 begin;
 
