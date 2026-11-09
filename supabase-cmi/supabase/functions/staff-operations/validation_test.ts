@@ -1,4 +1,10 @@
-import { isUuid, parseContactCreate, parseContactPatch } from "./validation.ts";
+import {
+  isUuid,
+  parseContactCreate,
+  parseContactPatch,
+  parseFollowupTaskCreate,
+  parseFollowupTaskPatch,
+} from "./validation.ts";
 
 const branchId = "10000000-0000-4000-8000-000000000001";
 const requestId = "10000000-0000-4000-8000-000000000002";
@@ -92,4 +98,88 @@ Deno.test("capture metadata rejects unknown keys", () => {
     source_metadata: { email: "private@example.com" },
   });
   if (result.ok) throw new Error("PII metadata was accepted.");
+});
+
+
+const taskRequest = {
+  branch_id: branchId,
+  contact_id: "10000000-0000-4000-8000-000000000010",
+  client_request_id: "10000000-0000-4000-8000-000000000011",
+  assignee_user_id: "10000000-0000-4000-8000-000000000012",
+  priority: 3,
+  due_at: "2026-11-10T10:30:00Z",
+  task_note: "Call after service",
+};
+
+Deno.test("follow-up task create accepts one staff assignment target", () => {
+  const parsed = parseFollowupTaskCreate(taskRequest);
+  if (!parsed.ok) throw new Error(parsed.error);
+  if (parsed.value.priority !== 3) throw new Error("Default priority changed.");
+  if (parsed.value.due_at !== "2026-11-10T10:30:00.000Z") {
+    throw new Error("Due time must be normalized to ISO UTC.");
+  }
+});
+
+Deno.test("follow-up task create accepts a team target instead of a user", () => {
+  const parsed = parseFollowupTaskCreate({
+    ...taskRequest,
+    assignee_user_id: null,
+    team_id: "10000000-0000-4000-8000-000000000013",
+  });
+  if (!parsed.ok) throw new Error(parsed.error);
+});
+
+Deno.test("follow-up task create rejects missing or dual assignment targets", () => {
+  for (const assignment of [
+    { assignee_user_id: null, team_id: null },
+    {
+      assignee_user_id: "10000000-0000-4000-8000-000000000012",
+      team_id: "10000000-0000-4000-8000-000000000013",
+    },
+  ]) {
+    const parsed = parseFollowupTaskCreate({ ...taskRequest, ...assignment });
+    if (parsed.ok) throw new Error("Invalid assignment target was accepted.");
+  }
+});
+
+Deno.test("follow-up task create rejects privileged and cross-scope fields", () => {
+  const parsed = parseFollowupTaskCreate({
+    ...taskRequest,
+    created_by: "10000000-0000-4000-8000-000000000014",
+    status: "completed",
+  });
+  if (parsed.ok) throw new Error("Caller-controlled task fields were accepted.");
+});
+
+Deno.test("follow-up task create rejects invalid priority and due dates", () => {
+  for (const input of [
+    { ...taskRequest, priority: 0 },
+    { ...taskRequest, priority: 6 },
+    { ...taskRequest, due_at: "not-a-date" },
+  ]) {
+    const parsed = parseFollowupTaskCreate(input);
+    if (parsed.ok) throw new Error("Invalid task details were accepted.");
+  }
+});
+
+Deno.test("follow-up task update accepts ordinary details and lifecycle fields", () => {
+  const parsed = parseFollowupTaskPatch({
+    priority: 4,
+    task_note: "Updated follow-up note",
+    status: "in_progress",
+  });
+  if (!parsed.ok) throw new Error(parsed.error);
+});
+
+Deno.test("follow-up task update rejects assignment changes and unknown fields", () => {
+  for (const input of [
+    { assignee_user_id: "10000000-0000-4000-8000-000000000012" },
+    { team_id: "10000000-0000-4000-8000-000000000013" },
+    { branch_id: branchId },
+    { status: "deleted" },
+    {},
+  ]) {
+    const parsed = parseFollowupTaskPatch(input);
+    if (parsed.ok) throw new Error("Privileged or invalid task update was accepted.");
+  }
 });
