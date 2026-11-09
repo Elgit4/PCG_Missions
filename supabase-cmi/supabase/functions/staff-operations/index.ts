@@ -3,7 +3,13 @@ import {
   type CanonicalJson,
   createRequestDigest,
 } from "../_shared/idempotency.ts";
-import { isUuid, parseContactCreate, parseContactPatch } from "./validation.ts";
+import {
+  isUuid,
+  parseContactCreate,
+  parseContactPatch,
+  parseFollowupTaskCreate,
+  parseFollowupTaskPatch,
+} from "./validation.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
@@ -14,6 +20,11 @@ const CONTACT_IDEMPOTENCY_HMAC_KEY =
   Deno.env.get("CMI_CONTACT_IDEMPOTENCY_HMAC_KEY") ?? "";
 const CONTACT_IDEMPOTENCY_KEY_VERSION = Number(
   Deno.env.get("CMI_CONTACT_IDEMPOTENCY_KEY_VERSION") ?? "1",
+);
+const FOLLOWUP_IDEMPOTENCY_HMAC_KEY =
+  Deno.env.get("CMI_FOLLOWUP_IDEMPOTENCY_HMAC_KEY") ?? "";
+const FOLLOWUP_IDEMPOTENCY_KEY_VERSION = Number(
+  Deno.env.get("CMI_FOLLOWUP_IDEMPOTENCY_KEY_VERSION") ?? "1",
 );
 const allowedOrigins = new Set(
   (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "")
@@ -302,6 +313,88 @@ async function visibleContactIds(
   return [...ids];
 }
 
+async function visibleFollowupTaskIds(
+  service: ServiceClient,
+  branchId: string,
+  actorId: string,
+  profileId: string,
+  scopes: ScopeMode[],
+): Promise<string[] | null> {
+  if (scopes.includes("branch")) return null;
+  const ids = new Set<string>();
+
+  if (scopes.includes("assigned")) {
+    const { data, error } = await service
+      .from("followup_task")
+      .select("id")
+      .eq("branch_id", branchId)
+      .eq("assignee_user_id", actorId);
+    if (error) throw new Error("FOLLOWUP_ASSIGNED_TASK_LOOKUP_FAILED");
+    for (const item of data ?? []) ids.add(item.id);
+  }
+
+  if (scopes.includes("team")) {
+    const now = new Date().toISOString();
+    const { data: memberships, error: membershipError } = await service
+      .from("staff_team_membership")
+      .select("team_id,team:team!inner(is_active)")
+      .eq("staff_profile_id", profileId)
+      .eq("branch_id", branchId)
+      .lte("starts_at", now)
+      .or(`ends_at.is.null,ends_at.gt.${now}`)
+      .is("revoked_at", null)
+      .eq("team.is_active", true);
+    if (membershipError) throw new Error("FOLLOWUP_TEAM_MEMBERSHIP_LOOKUP_FAILED");
+    const teamIds = [
+      ...new Set(
+        (memberships ?? []).map((item: { team_id: string }) => item.team_id),
+      ),
+    ];
+    if (teamIds.length > 0) {
+      const { data, error } = await service
+        .from("followup_task")
+        .select("id")
+        .eq("branch_id", branchId)
+        .in("team_id", teamIds);
+      if (error) throw new Error("FOLLOWUP_TEAM_TASK_LOOKUP_FAILED");
+      for (const item of data ?? []) ids.add(item.id);
+    }
+  }
+
+  if (scopes.includes("self")) {
+    const { data, error } = await service
+      .from("followup_task")
+      .select("id")
+      .eq("branch_id", branchId)
+      .eq("created_by", actorId);
+    if (error) throw new Error("FOLLOWUP_SELF_TASK_LOOKUP_FAILED");
+    for (const item of data ?? []) ids.add(item.id);
+  }
+
+  return [...ids];
+}
+
+function validateFollowupTaskQuery(
+  url: URL,
+): { limit: number; offset: number; status: string | null } | null {
+  const allowed = new Set(["branch_id", "limit", "offset", "status"]);
+  const seen = new Set<string>();
+  for (const key of url.searchParams.keys()) {
+    if (!allowed.has(key) || seen.has(key)) return null;
+    seen.add(key);
+  }
+  const limit = Number(url.searchParams.get("limit") ?? "25");
+  const offset = Number(url.searchParams.get("offset") ?? "0");
+  const status = url.searchParams.get("status");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) return null;
+  if (!Number.isInteger(offset) || offset < 0 || offset > 5000) return null;
+  if (
+    status !== null &&
+    !["open", "in_progress", "completed", "cancelled"].includes(status)
+  ) return null;
+  return { limit, offset, status };
+}
+
 function validateOptionalQuery(
   url: URL,
 ): { limit: number; offset: number; search: string } | null {
@@ -371,6 +464,315 @@ Deno.serve(async (request: Request) => {
     const last = path[path.length - 1] ?? "";
     const previous = path[path.length - 2] ?? "";
     const url = new URL(request.url);
+
+    const isFollowupTaskCollection =
+      previous === "followup" && last === "tasks";
+    const isFollowupTaskItem =
+      previous === "tasks" && path[path.length - 3] === "followup" &&
+      isUuid(last);
+
+    if (request.method === "GET" && isFollowupTaskCollection) {
+      const params = validateFollowupTaskQuery(url);
+      const branchId = url.searchParams.get("branch_id") ?? "";
+      if (!params || !isUuid(branchId)) {
+        return fail(
+          "INVALID_QUERY",
+          "Invalid follow-up task query parameters.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const scopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "followup.task.read.scoped",
+      );
+      if (scopes.length === 0) {
+        return fail(
+          "FORBIDDEN",
+          "You do not have permission to read follow-up tasks in this branch.",
+          403,
+          origin,
+          id,
+        );
+      }
+      const ids = await visibleFollowupTaskIds(
+        auth.service,
+        branchId,
+        auth.actorId,
+        auth.profileId,
+        scopes,
+      );
+      if (ids !== null && ids.length === 0) {
+        return response(
+          {
+            data: [],
+            page: { limit: params.limit, offset: params.offset, total: 0 },
+            request_id: id,
+          },
+          200,
+          origin,
+          id,
+        );
+      }
+
+      let query = auth.service
+        .from("followup_task")
+        .select(
+          "id,branch_id,contact_id,list_id,assignee_user_id,team_id,priority,due_at,status,task_note,created_by,completed_at,created_at,updated_at",
+          { count: "exact" },
+        )
+        .eq("branch_id", branchId)
+        .order("due_at", { ascending: true, nullsFirst: false })
+        .order("created_at", { ascending: false })
+        .range(params.offset, params.offset + params.limit - 1);
+      if (ids !== null) query = query.in("id", ids);
+      if (params.status !== null) query = query.eq("status", params.status);
+      const { data, error, count } = await query;
+      if (error) throw new Error("FOLLOWUP_TASK_LIST_FAILED");
+      return response(
+        {
+          data: data ?? [],
+          page: {
+            limit: params.limit,
+            offset: params.offset,
+            total: count ?? 0,
+          },
+          request_id: id,
+        },
+        200,
+        origin,
+        id,
+      );
+    }
+
+    if (
+      request.method === "GET" &&
+      isFollowupTaskItem
+    ) {
+      const branchId = url.searchParams.get("branch_id") ?? "";
+      if (!isUuid(branchId)) {
+        return fail("INVALID_QUERY", "Invalid branch_id.", 400, origin, id);
+      }
+      const scopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "followup.task.read.scoped",
+      );
+      if (scopes.length === 0) {
+        return fail("NOT_FOUND", "Follow-up task not found.", 404, origin, id);
+      }
+      const ids = await visibleFollowupTaskIds(
+        auth.service,
+        branchId,
+        auth.actorId,
+        auth.profileId,
+        scopes,
+      );
+      if (ids !== null && !ids.includes(last)) {
+        return fail("NOT_FOUND", "Follow-up task not found.", 404, origin, id);
+      }
+      const { data, error } = await auth.service
+        .from("followup_task")
+        .select(
+          "id,branch_id,contact_id,list_id,assignee_user_id,team_id,priority,due_at,status,task_note,created_by,completed_at,created_at,updated_at",
+        )
+        .eq("id", last)
+        .eq("branch_id", branchId)
+        .maybeSingle();
+      if (error) throw new Error("FOLLOWUP_TASK_DETAIL_FAILED");
+      if (!data) {
+        return fail("NOT_FOUND", "Follow-up task not found.", 404, origin, id);
+      }
+      const { data: events, error: eventError } = await auth.service
+        .from("followup_task_event")
+        .select("id,event_type,from_status,to_status,details,created_at")
+        .eq("task_id", last)
+        .order("created_at", { ascending: true });
+      if (eventError) throw new Error("FOLLOWUP_TASK_HISTORY_FAILED");
+      return response(
+        { data, events: events ?? [], request_id: id },
+        200,
+        origin,
+        id,
+      );
+    }
+
+    if (request.method === "POST" && isFollowupTaskCollection) {
+      let raw: unknown;
+      try {
+        raw = await readJson(request);
+      } catch (error) {
+        return fail(
+          error instanceof Error && error.message === "CONTENT_TYPE_REQUIRED"
+            ? "CONTENT_TYPE_REQUIRED"
+            : "INVALID_JSON",
+          "A valid JSON request body is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const parsed = parseFollowupTaskCreate(raw);
+      if (!parsed.ok) {
+        return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      }
+      const input = parsed.value;
+      const createScopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        input.branch_id,
+        "followup.task.create",
+      );
+      if (
+        createScopes.length === 0 ||
+        !createScopes.some((scope) =>
+          ["branch", "team", "assigned"].includes(scope)
+        )
+      ) {
+        return fail(
+          "FORBIDDEN",
+          "You cannot create follow-up tasks in this branch.",
+          403,
+          origin,
+          id,
+        );
+      }
+      if (
+        FOLLOWUP_IDEMPOTENCY_HMAC_KEY.length < 32 ||
+        !Number.isSafeInteger(FOLLOWUP_IDEMPOTENCY_KEY_VERSION) ||
+        FOLLOWUP_IDEMPOTENCY_KEY_VERSION < 1
+      ) {
+        return fail(
+          "IDEMPOTENCY_NOT_CONFIGURED",
+          "Follow-up task creation is not configured.",
+          503,
+          origin,
+          id,
+        );
+      }
+      const digest = await createRequestDigest(
+        {
+          operation: "followup.task.create",
+          actor_id: auth.actorId,
+          branch_id: input.branch_id,
+          client_request_id: input.client_request_id,
+          contact_id: input.contact_id,
+          list_id: input.list_id,
+          assignee_user_id: input.assignee_user_id,
+          team_id: input.team_id,
+          priority: input.priority,
+          due_at: input.due_at,
+          task_note: input.task_note,
+        } as CanonicalJson,
+        FOLLOWUP_IDEMPOTENCY_HMAC_KEY,
+        FOLLOWUP_IDEMPOTENCY_KEY_VERSION,
+      );
+
+      const { data, error } = await auth.service.rpc(
+        "cmi_create_followup_task",
+        {
+          p_actor_auth_user_id: auth.actorId,
+          p_branch_id: input.branch_id,
+          p_client_request_id: input.client_request_id,
+          p_digest_key_version: digest.keyVersion,
+          p_request_digest: "\\x" + digest.digestHex,
+          p_contact_id: input.contact_id,
+          p_list_id: input.list_id,
+          p_assignee_user_id: input.assignee_user_id,
+          p_team_id: input.team_id,
+          p_priority: input.priority,
+          p_due_at: input.due_at,
+          p_task_note: input.task_note,
+        },
+      );
+      if (error) {
+        if (error.code === "42501") {
+          return fail(
+            "FORBIDDEN",
+            "Follow-up task creation or assignment is not authorized.",
+            403,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "23505") {
+          return fail(
+            "IDEMPOTENCY_CONFLICT",
+            "This follow-up task request has already been used.",
+            409,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "22023") {
+          return fail("VALIDATION_ERROR", "The task data is invalid.", 422, origin, id);
+        }
+        throw new Error("FOLLOWUP_TASK_CREATE_FAILED");
+      }
+      const result = data as { task?: unknown; replayed?: boolean } | null;
+      return response(
+        {
+          data: result?.task ?? null,
+          replayed: result?.replayed ?? false,
+          request_id: id,
+        },
+        result?.replayed ? 200 : 201,
+        origin,
+        id,
+      );
+    }
+
+    if (request.method === "PATCH" && isFollowupTaskItem) {
+      const branchId = url.searchParams.get("branch_id") ?? "";
+      if (!isUuid(branchId)) {
+        return fail("INVALID_QUERY", "Invalid branch_id.", 400, origin, id);
+      }
+      let raw: unknown;
+      try {
+        raw = await readJson(request);
+      } catch {
+        return fail(
+          "INVALID_JSON",
+          "A valid JSON request body is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const parsed = parseFollowupTaskPatch(raw);
+      if (!parsed.ok) {
+        return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      }
+      const { data, error } = await auth.service.rpc(
+        "cmi_update_followup_task",
+        {
+          p_actor_auth_user_id: auth.actorId,
+          p_branch_id: branchId,
+          p_task_id: last,
+          p_patch: parsed.value,
+        },
+      );
+      if (error) {
+        if (error.code === "42501" || error.code === "P0002") {
+          return fail("NOT_FOUND", "Follow-up task not found.", 404, origin, id);
+        }
+        if (error.code === "22023") {
+          return fail("VALIDATION_ERROR", "The task update is invalid.", 422, origin, id);
+        }
+        throw new Error("FOLLOWUP_TASK_UPDATE_FAILED");
+      }
+      const result = data as { task?: unknown } | null;
+      return response(
+        { data: result?.task ?? null, request_id: id },
+        200,
+        origin,
+        id,
+      );
+    }
 
     if (request.method === "GET" && last === "contacts") {
       const params = validateOptionalQuery(url);
