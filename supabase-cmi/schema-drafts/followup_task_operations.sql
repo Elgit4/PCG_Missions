@@ -36,6 +36,32 @@ comment on column public.followup_task.client_request_id is
 comment on column public.followup_task.request_digest is
   'Versioned HMAC digest of the normalized create request; raw request bodies are never stored.';
 
+create or replace function private.cmi_reject_followup_task_event_mutation()
+returns trigger
+language plpgsql
+set search_path = pg_catalog
+as $
+begin
+  raise exception using
+    errcode = '55000',
+    message = 'follow-up task lifecycle history is append-only';
+  return null;
+end;
+$;
+
+revoke all on function private.cmi_reject_followup_task_event_mutation()
+  from public, anon, authenticated;
+
+create trigger followup_task_event_reject_row_mutation
+before update or delete on public.followup_task_event
+for each row
+execute function private.cmi_reject_followup_task_event_mutation();
+
+create trigger followup_task_event_reject_truncate
+before truncate on public.followup_task_event
+for each statement
+execute function private.cmi_reject_followup_task_event_mutation();
+
 create or replace function public.cmi_create_followup_task(
   p_actor_auth_user_id uuid,
   p_branch_id uuid,
