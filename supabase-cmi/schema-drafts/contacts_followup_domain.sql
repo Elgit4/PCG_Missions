@@ -337,4 +337,20 @@ begin
 end;
 $$;
 
+-- Edge Functions and SECURITY INVOKER RPCs use service_role through the
+-- Data API. Keep browser grants revoked and provide only the required server
+-- table privileges; append-only ledgers are never updateable or deletable.
+grant select, insert, update on table
+  public.contact,
+  public.contact_assignment,
+  public.contact_note,
+  public.contact_interaction,
+  public.followup_list,
+  public.followup_task
+to service_role;
+grant select, insert on table
+  public.contact_capture,
+  public.followup_task_event
+to service_role;
+
 commit;
