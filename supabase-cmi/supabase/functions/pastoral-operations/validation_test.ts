@@ -35,15 +35,15 @@ Deno.test("parses prayer and care read routes", () => {
 
 Deno.test("rejects unsupported routes and non-UUID record IDs", () => {
   if (
-      parsePastoralReadPath(
-        "/pastoral-operations/prayer/requests/not-a-uuid/read",
-      ) !== null ||
-      parsePastoralReadPath(
-        `/pastoral-operations/prayer/requests/${RECORD_ID}/update`,
-      ) !== null ||
-      parsePastoralReadPath(
-        `/pastoral-operations/care/groups/${RECORD_ID}/read`,
-      ) !== null
+    parsePastoralReadPath(
+      "/pastoral-operations/prayer/requests/not-a-uuid/read",
+    ) !== null ||
+    parsePastoralReadPath(
+      `/pastoral-operations/prayer/requests/${RECORD_ID}/update`,
+    ) !== null ||
+    parsePastoralReadPath(
+      `/pastoral-operations/care/groups/${RECORD_ID}/read`,
+    ) !== null
   ) {
     throw new Error("An unsupported pastoral route was accepted.");
   }
