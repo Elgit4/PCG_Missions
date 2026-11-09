@@ -136,10 +136,10 @@ insert into public.staff_role_assignment(
   staff_profile_id, role_id, branch_id, assigned_by, starts_at
 )
 select
-  p.staff_profile_id,
+  p.staff_profile_id::uuid,
   r.id,
-  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
-  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb102',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101'::uuid,
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb102'::uuid,
   now() - interval '1 day'
 from (
   values
