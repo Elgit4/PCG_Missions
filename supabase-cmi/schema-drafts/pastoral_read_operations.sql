@@ -52,13 +52,19 @@ begin
     raise exception using errcode = '22023', message = 'invalid pastoral read input';
   end if;
 
-  if p_access_mode not in ('assigned', 'oversight') then
+  if p_access_mode is null or p_access_mode not in ('assigned', 'oversight') then
     raise exception using errcode = '22023', message = 'invalid pastoral access mode';
   end if;
 
   if p_access_mode = 'oversight' then
-    if pg_catalog.length(pg_catalog.btrim(coalesce(p_reason, ''))) not between 20 and 500 then
-      raise exception using errcode = '22023', message = 'oversight reason is required';
+    if p_reason is null or p_reason not in (
+      'pastoral_review',
+      'continuity_of_care',
+      'safeguarding_concern',
+      'complaint_review',
+      'administrative_review'
+    ) then
+      raise exception using errcode = '22023', message = 'oversight reason code is required';
     end if;
     v_capability_code := 'prayer.oversight.read';
     v_scope_mode := 'oversight';
@@ -161,7 +167,7 @@ grant execute on function public.cmi_read_prayer_request(uuid, uuid, uuid, text,
   to service_role;
 
 comment on function public.cmi_read_prayer_request(uuid, uuid, uuid, text, text, text) is
-  'Returns an allowlisted prayer projection only after active staff, branch, explicit capability and (for assigned mode) live assignment checks; inserts its access audit in the same transaction. Service-role only.';
+  'Returns an allowlisted prayer projection only after active staff, branch, explicit capability and (for assigned mode) live assignment checks; audits the request in the same transaction. Oversight reasons are allowlisted codes. Service-role only.';
 
 create or replace function public.cmi_read_care_record(
   p_actor_auth_user_id uuid,
@@ -191,13 +197,19 @@ begin
     raise exception using errcode = '22023', message = 'invalid pastoral read input';
   end if;
 
-  if p_access_mode not in ('assigned', 'oversight') then
+  if p_access_mode is null or p_access_mode not in ('assigned', 'oversight') then
     raise exception using errcode = '22023', message = 'invalid pastoral access mode';
   end if;
 
   if p_access_mode = 'oversight' then
-    if pg_catalog.length(pg_catalog.btrim(coalesce(p_reason, ''))) not between 20 and 500 then
-      raise exception using errcode = '22023', message = 'oversight reason is required';
+    if p_reason is null or p_reason not in (
+      'pastoral_review',
+      'continuity_of_care',
+      'safeguarding_concern',
+      'complaint_review',
+      'administrative_review'
+    ) then
+      raise exception using errcode = '22023', message = 'oversight reason code is required';
     end if;
     v_capability_code := 'care.oversight.read';
     v_scope_mode := 'oversight';
@@ -326,6 +338,6 @@ grant execute on function public.cmi_read_care_record(uuid, uuid, uuid, text, te
   to service_role;
 
 comment on function public.cmi_read_care_record(uuid, uuid, uuid, text, text, text) is
-  'Returns an allowlisted care projection and latest 100 restricted interactions only after active staff, branch, explicit capability and (for assigned mode) live assignment checks; inserts its access audit in the same transaction. Service-role only.';
+  'Returns an allowlisted care projection and latest 100 restricted interactions only after active staff, branch, explicit capability and (for assigned mode) live assignment checks; audits the request in the same transaction. Oversight reasons are allowlisted codes. Service-role only.';
 
 commit;
