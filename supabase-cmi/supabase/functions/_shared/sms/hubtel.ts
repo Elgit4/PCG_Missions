@@ -111,6 +111,17 @@ export function validateHubtelSmsConfig(
   }
 }
 
+export function hubtelSmsConfigFromEnvironment(): HubtelSmsConfig {
+  return {
+    clientId: Deno.env.get("HUBTEL_SMS_CLIENT_ID") ?? "",
+    clientSecret: Deno.env.get("HUBTEL_SMS_CLIENT_SECRET") ?? "",
+    senderId: Deno.env.get("HUBTEL_SMS_SENDER_ID") ?? "",
+    // Live transmission is opt-in at deployment time. Missing/other values
+    // always leave the provider in disabled mode.
+    liveEnabled: Deno.env.get("CMI_SMS_LIVE_ENABLED") === "true",
+  };
+}
+
 export function createHubtelSmsProvider(
   config: HubtelSmsConfig,
   fetcher: typeof fetch = fetch,
