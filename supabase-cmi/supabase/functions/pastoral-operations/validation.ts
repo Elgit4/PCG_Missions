@@ -10,7 +10,7 @@ export interface PastoralReadPath {
 export interface PastoralReadInput {
   branch_id: string;
   access_mode: PastoralAccessMode;
-  reason: string | null;
+  reason_code: string | null;
 }
 
 export type PastoralReadParseResult =
@@ -59,7 +59,7 @@ export function parsePastoralReadInput(
   }
 
   const input = value as Record<string, unknown>;
-  const allowed = new Set(["branch_id", "access_mode", "reason"]);
+  const allowed = new Set(["branch_id", "access_mode", "reason_code"]);
   if (Object.keys(input).some((key) => !allowed.has(key))) {
     return { ok: false, error: "Unsupported pastoral read field." };
   }
@@ -84,7 +84,7 @@ export function parsePastoralReadInput(
       value: {
         branch_id: input.branch_id,
         access_mode: "assigned",
-        reason: null,
+        reason_code: null,
       },
     };
   }
@@ -93,11 +93,21 @@ export function parsePastoralReadInput(
     return { ok: false, error: "An oversight reason is required." };
   }
 
-  const reason = input.reason.trim();
-  if (reason.length < 20 || reason.length > 500) {
+  const reasonCode = input.reason_code;
+  const allowedReasons = new Set([
+    "pastoral_review",
+    "continuity_of_care",
+    "safeguarding_concern",
+    "complaint_review",
+    "administrative_review",
+  ]);
+  if (
+    typeof reasonCode !== "string" ||
+    !allowedReasons.has(reasonCode)
+  ) {
     return {
       ok: false,
-      error: "Oversight reason must be 20 to 500 characters.",
+      error: "A supported oversight reason_code is required.",
     };
   }
 
