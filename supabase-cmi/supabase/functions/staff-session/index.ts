@@ -8,7 +8,8 @@ import {
 } from "./session.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  "";
 const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const allowedOrigins = new Set(
@@ -38,7 +39,10 @@ function jsonResponse(
   if (origin && allowedOrigins.has(origin)) {
     headers.set("Access-Control-Allow-Origin", origin);
     headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Authorization, apikey, Content-Type");
+    headers.set(
+      "Access-Control-Allow-Headers",
+      "Authorization, apikey, Content-Type",
+    );
     headers.set("Access-Control-Max-Age", "600");
   }
   return new Response(JSON.stringify(body), { status, headers });
@@ -62,7 +66,12 @@ function errorResponse(
   origin: string | null,
   id: string,
 ): Response {
-  return jsonResponse({ error: { code, message }, request_id: id }, status, origin, id);
+  return jsonResponse(
+    { error: { code, message }, request_id: id },
+    status,
+    origin,
+    id,
+  );
 }
 
 Deno.serve(async (request: Request) => {
@@ -70,7 +79,13 @@ Deno.serve(async (request: Request) => {
   const origin = request.headers.get("Origin");
 
   if (origin && !allowedOrigins.has(origin)) {
-    return errorResponse("ORIGIN_NOT_ALLOWED", "Origin not allowed.", 403, null, id);
+    return errorResponse(
+      "ORIGIN_NOT_ALLOWED",
+      "Origin not allowed.",
+      403,
+      null,
+      id,
+    );
   }
 
   if (request.method === "OPTIONS") {
@@ -79,7 +94,8 @@ Deno.serve(async (request: Request) => {
       headers: {
         ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
         "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Authorization, apikey, Content-Type, x-client-info",
+        "Access-Control-Allow-Headers":
+          "Authorization, apikey, Content-Type, x-client-info",
         "Access-Control-Max-Age": "600",
         "Vary": "Origin",
       },
@@ -87,7 +103,13 @@ Deno.serve(async (request: Request) => {
   }
 
   if (request.method !== "GET") {
-    return errorResponse("METHOD_NOT_ALLOWED", "Method not allowed.", 405, origin, id);
+    return errorResponse(
+      "METHOD_NOT_ALLOWED",
+      "Method not allowed.",
+      405,
+      origin,
+      id,
+    );
   }
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_PUBLIC_KEY) {
@@ -102,7 +124,13 @@ Deno.serve(async (request: Request) => {
 
   const token = bearerToken(request);
   if (!token) {
-    return errorResponse("AUTH_REQUIRED", "A valid staff session is required.", 401, origin, id);
+    return errorResponse(
+      "AUTH_REQUIRED",
+      "A valid staff session is required.",
+      401,
+      origin,
+      id,
+    );
   }
 
   try {
@@ -119,13 +147,23 @@ Deno.serve(async (request: Request) => {
         autoRefreshToken: false,
         detectSessionInUrl: false,
       },
-      global: { headers: { "X-Application-Name": "pcg-missions-staff-session" } },
+      global: {
+        headers: { "X-Application-Name": "pcg-missions-staff-session" },
+      },
     });
 
     // Validate the access token with Supabase Auth; never trust decoded JWT claims.
-    const { data: authData, error: authError } = await authClient.auth.getUser(token);
+    const { data: authData, error: authError } = await authClient.auth.getUser(
+      token,
+    );
     if (authError || !authData.user) {
-      return errorResponse("INVALID_SESSION", "A valid staff session is required.", 401, origin, id);
+      return errorResponse(
+        "INVALID_SESSION",
+        "A valid staff session is required.",
+        401,
+        origin,
+        id,
+      );
     }
 
     const { data: profile, error: profileError } = await service
@@ -158,17 +196,22 @@ Deno.serve(async (request: Request) => {
     const now = new Date().toISOString();
     const { data: assignments, error: assignmentError } = await service
       .from("staff_role_assignment")
-      .select("role_id,branch_id,starts_at,ends_at,revoked_at,role:role!inner(code,name,is_active)")
+      .select(
+        "role_id,branch_id,starts_at,ends_at,revoked_at,role:role!inner(code,name,is_active)",
+      )
       .eq("role.is_active", true)
       .eq("staff_profile_id", profile.id)
       .lte("starts_at", now)
-      .is("ends_at", null)
+      .or(`ends_at.is.null,ends_at.gt.${now}`)
       .is("revoked_at", null);
 
     if (assignmentError) throw new Error("STAFF_ROLE_LOOKUP_FAILED");
 
-    const assignmentRows = (assignments ?? []) as unknown as RoleAssignmentRow[];
-    const branchIds = [...new Set(assignmentRows.map((item) => item.branch_id))];
+    const assignmentRows =
+      (assignments ?? []) as unknown as RoleAssignmentRow[];
+    const branchIds = [
+      ...new Set(assignmentRows.map((item) => item.branch_id)),
+    ];
 
     let branchRows: BranchRow[] = [];
     let capabilityRows: RoleCapabilityRow[] = [];
@@ -185,7 +228,9 @@ Deno.serve(async (request: Request) => {
       const roleIds = [...new Set(assignmentRows.map((item) => item.role_id))];
       const { data: grants, error: grantError } = await service
         .from("role_capability")
-        .select("role_id,scope_mode,capability:capability!inner(code,is_active)")
+        .select(
+          "role_id,scope_mode,capability:capability!inner(code,is_active)",
+        )
         .in("role_id", roleIds);
 
       if (grantError) throw new Error("STAFF_CAPABILITY_LOOKUP_FAILED");
@@ -199,13 +244,18 @@ Deno.serve(async (request: Request) => {
       branchRows,
     );
 
-    return jsonResponse({
-      data: {
-        user: { id: authData.user.id, email: authData.user.email ?? null },
-        ...session,
+    return jsonResponse(
+      {
+        data: {
+          user: { id: authData.user.id, email: authData.user.email ?? null },
+          ...session,
+        },
+        request_id: id,
       },
-      request_id: id,
-    }, 200, origin, id);
+      200,
+      origin,
+      id,
+    );
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
     // Log only an internal error code and correlation ID. Do not log tokens or PII.
