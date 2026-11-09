@@ -73,6 +73,12 @@ The `content-operations` Edge Function implements branch-scoped draft list/detai
 
 Daily Word, Digital Tracts and church-wide public profile editing are excluded until their global authoring scope and approval rules are defined under D-02. Publishing remains a separate restricted capability and is not enabled. See [document 22 — Visitor Content Draft Operations API Contract](../docs/22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded and the function has not been deployed.
 
+## Branch calendar operations (feature branch)
+
+The `calendar-operations` Edge Function provides branch-scoped list/detail/create/update for `calendar_entry`. It requires `calendar.read.scoped` or `calendar.manage.scoped` with explicit branch scope. New rows are forced to `scope_type='branch'`; caller-supplied scope and identity fields are rejected. Team/event/own scopes, `followup` and `prayer_schedule` entry types, and deletion are excluded.
+
+See [document 23 — Branch Calendar Operations API Contract](../docs/23_BRANCH_CALENDAR_OPERATIONS_API_CONTRACT.md). No role grants are seeded; the function has not been deployed.
+
 ## Staff API (merged to main)
 
 PR #10 merged the `feat/cmi-staff-session-api` implementation into `main` on 2026-11-09 (merge commit `5487debe93b9a556bfa9fc70d21a6131204682bd`). The merged source provides the initial server API for frontend integration:
