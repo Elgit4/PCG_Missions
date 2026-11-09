@@ -163,7 +163,7 @@ Deno.test("allows only scoped ordinary fields in a calendar update", () => {
     parseCalendarPatch(
       {
         title: "Changed title",
-        starts_at: "2026-11-15T10:00:00Z",
+        starts_at: "2026-11-15T08:30:00Z",
       },
       "2026-11-15T08:00:00.000Z",
       "2026-11-15T09:00:00.000Z",
@@ -172,7 +172,7 @@ Deno.test("allows only scoped ordinary fields in a calendar update", () => {
       ok: true,
       value: {
         title: "Changed title",
-        starts_at: "2026-11-15T10:00:00.000Z",
+        starts_at: "2026-11-15T08:30:00.000Z",
       },
     },
   );
@@ -200,6 +200,14 @@ Deno.test("checks patched time ranges against unchanged values", () => {
   assertEquals(
     parseCalendarPatch(
       { ends_at: "2026-11-15T07:00:00Z" },
+      "2026-11-15T08:00:00.000Z",
+      "2026-11-15T10:00:00.000Z",
+    ),
+    { ok: false, error: "ends_at must be later than starts_at." },
+  );
+  assertEquals(
+    parseCalendarPatch(
+      { starts_at: "2026-11-15T11:00:00Z" },
       "2026-11-15T08:00:00.000Z",
       "2026-11-15T10:00:00.000Z",
     ),
