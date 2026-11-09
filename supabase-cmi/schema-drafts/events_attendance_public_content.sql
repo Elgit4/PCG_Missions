@@ -507,7 +507,6 @@ revoke all on table
   public.external_document_link
 from service_role;
 grant select on table
-  public.branch,
   public.event_staff_assignment,
   public.church_public_profile,
   public.daily_word,
