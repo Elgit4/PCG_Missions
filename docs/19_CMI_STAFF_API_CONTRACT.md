@@ -162,6 +162,8 @@ Exactly one of `assignee_user_id` or `team_id` must be supplied. The contact and
 
 The schema preserves the pending-D-04 safe default: a task has exactly one primary target, either one staff member or one team. Creation starts in `open` status and appends a `created` event in the same transaction.
 
+Task `due_at` values must be ISO timestamps with an explicit UTC marker or numeric offset. Transaction responses include only the allowlisted task fields; the internal client request key, digest key version and HMAC request digest are never returned to staff clients.
+
 ### `PATCH /staff-operations/followup/tasks/{taskId}?branch_id={uuid}`
 
 Requires `followup.task.update.scoped` and task-level branch, assigned, team or self scope. Only `task_note`, `priority`, `due_at` and `status` are writable. The server enforces the priority range and status transitions, updates `completed_at` consistently, and appends a lifecycle event in the same transaction. A completed task may be reopened to `open` or `in_progress`; a cancelled task is terminal. Assignment fields, creator, branch, contact and task ID are not patchable; use the separate audited reassignment route above.
@@ -199,16 +201,16 @@ The proposed action-code catalogue is seeded as metadata only. No role-capabilit
 
 The presence of a role label is not authorization. Frontend navigation visibility is only a usability aid; every request is authorized server-side.
 
-## 5. Public visitor API
+## 6. Public visitor API
 
 The existing `GET /public-content` function remains a read-only, allowlisted projection for published church profile, welcome messages, sermons, daily words, tracts, public announcements and public events. It does not expose staff tables or direct anonymous database grants.
 
 Public registration is not enabled by this contract. D-05/D-06/D-13 and consent-evidence/retention requirements must be approved first.
 
-## 6. Not yet implemented
+## 7. Not yet implemented
 
 The following API families remain backend work and must not be represented as available frontend functionality:
-- Follow-up list administration, task reassignment, bulk task operations and richer follow-up workflow automation.
+- Follow-up list administration, bulk task operations and richer follow-up workflow automation.
 - Audited prayer/care narrative reads and restricted update/assignment operations.
 - Event registration, serialized capacity reservation, transport reservation, check-in, idempotent replay/conflict handling and closeout submission/review.
 - Calendar and announcement staff management.
@@ -220,7 +222,7 @@ The following API families remain backend work and must not be represented as av
 
 The blocked paths remain disabled until the required policy decisions, security review and integration prerequisites are recorded.
 
-## 7. Frontend integration readiness
+## 8. Frontend integration readiness
 
 The first integration surface is now defined:
 - Authenticated shell can call `staff-session` after obtaining a Supabase Auth access token.
