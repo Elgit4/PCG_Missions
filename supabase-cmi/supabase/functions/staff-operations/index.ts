@@ -525,7 +525,7 @@ Deno.serve(async (request: Request) => {
         .eq("staff_role_assignment.role.is_active", true);
 
       if (search) {
-        const safeSearch = search.replace(/[\\%_]/g, "\\    const isFollowupTaskReassign = last === "reassign" &&
+        const safeSearch = search.replace(/[\\%_]/g, (character) => "\\" + character);
       path[path.length - 3] === "tasks" &&
       path[path.length - 4] === "followup" &&
       isUuid(reassignmentTaskId);
