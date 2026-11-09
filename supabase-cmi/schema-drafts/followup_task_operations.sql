@@ -221,7 +221,7 @@ begin
     select 1 from public.contact c
     where c.id = p_contact_id
       and c.branch_id = p_branch_id
-      and c.contact_status <> 'merged'
+      and c.contact_status = 'active'
   ) then
     raise exception using errcode = '22023', message = 'contact is not active in this branch';
   end if;
