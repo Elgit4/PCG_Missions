@@ -122,7 +122,8 @@ select extensions.throws_ok(
 
 select extensions.throws_ok(
   $q$ insert into public.contact_capture (
-        contact_id, branch_id, capture_source, client_request_id, source_metadata
+        contact_id, branch_id, capture_source, client_request_id,
+        digest_key_version, request_digest, source_metadata
       ) values (
         '40000000-0000-4000-8000-000000000001',
         '20000000-0000-4000-8000-000000000001',
