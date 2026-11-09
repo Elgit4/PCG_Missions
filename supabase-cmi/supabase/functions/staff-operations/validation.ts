@@ -309,7 +309,8 @@ function parseTaskDueAt(
   if (
     typeof value !== "string" ||
     value.length > 64 ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i.test(value)
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i
+      .test(value)
   ) {
     return {
       ok: false,
@@ -449,7 +450,6 @@ export function parseFollowupTaskPatch(
   }
   return { ok: true, value: result };
 }
-
 
 export interface FollowupTaskAssignmentInput {
   assignee_user_id: string | null;
