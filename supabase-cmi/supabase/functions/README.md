@@ -38,14 +38,14 @@ The function fails closed if server credentials are absent. Supabase service-rol
 
 `GET /staff-session` validates a Supabase Auth access token, resolves the active staff profile and returns the current active branch, role and capability projection. The capability projection is empty while `role_capability` has no approved grants. This function requires a JWT at the Supabase gateway and validates the bearer token again with Auth.
 
-Required server environment:
+### Shared staff-function environment
+
+Both staff functions require:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only
-- `SUPABASE_PUBLISHABLE_KEY` (or legacy `SUPABASE_ANON_KEY`)
+- `SUPABASE_PUBLISHABLE_KEY` (or legacy `SUPABASE_ANON_KEY`) for Auth token validation
 - `CMI_ALLOWED_ORIGINS` — exact comma-separated browser origins
-- `CMI_CONTACT_IDEMPOTENCY_HMAC_KEY` — at least 32 random UTF-8 bytes, server-only; never commit it or expose it to clients.
-- `CMI_CONTACT_IDEMPOTENCY_KEY_VERSION` — positive integer version for the HMAC key; default `1`.
 
 ## staff-operations
 
@@ -56,7 +56,12 @@ Initial authenticated staff endpoints:
 - `POST /staff-operations/contacts`
 - `PATCH /staff-operations/contacts/{contactId}?branch_id={uuid}`
 
-Each request resolves the Auth user and active staff profile, then checks the exact capability and branch/record scope. Contact identity values are redacted unless `contact.identity.read.scoped` applies. Phone/email capture and updates require their own capabilities. Contact creation calls the atomic `cmi_create_contact` database function, which revalidates actor and scope, records capture provenance, applies a branch-scoped idempotency key and creates the required assignment in the same transaction.
+Additional server-only environment:
+
+- `CMI_CONTACT_IDEMPOTENCY_HMAC_KEY` — at least 32 random UTF-8 bytes; never commit it or expose it to clients.
+- `CMI_CONTACT_IDEMPOTENCY_KEY_VERSION` — positive integer version for the HMAC key; default `1`.
+
+Each request resolves the Auth user and active staff profile, then checks the exact capability and branch/record scope. Contact identity values are redacted unless `contact.identity.read.scoped` applies. Phone/email capture and updates require their own capabilities. Contact creation calls the atomic `cmi_create_contact` database function, which revalidates actor and scope, records capture provenance, applies a branch-scoped idempotency key and creates the required assignment in the same transaction. The RPC is executable by `service_role` only and uses `SECURITY INVOKER` with a fixed `search_path`; it runs with the calling server role's privileges rather than elevating to the migration owner.
 
 The capability definitions are seeded as metadata only; no role grants are created. Since stakeholder decisions R-01–R-12 and D-01 remain pending, the API is expected to deny business operations until approved grants are introduced. See [Staff API Contract](../../../docs/19_CMI_STAFF_API_CONTRACT.md).
 
