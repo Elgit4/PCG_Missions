@@ -7,6 +7,7 @@ import {
   isUuid,
   parseContactCreate,
   parseContactPatch,
+  parseFollowupTaskAssignment,
   parseFollowupTaskCreate,
   parseFollowupTaskPatch,
 } from "./validation.ts";
@@ -472,6 +473,11 @@ Deno.serve(async (request: Request) => {
     const isFollowupTaskItem = previous === "tasks" &&
       path[path.length - 3] === "followup" &&
       isUuid(last);
+    const reassignmentTaskId = path[path.length - 2] ?? "";
+    const isFollowupTaskReassign = last === "reassign" &&
+      path[path.length - 3] === "tasks" &&
+      path[path.length - 4] === "followup" &&
+      isUuid(reassignmentTaskId);
 
     if (request.method === "GET" && isFollowupTaskCollection) {
       const params = validateFollowupTaskQuery(url);
@@ -603,6 +609,99 @@ Deno.serve(async (request: Request) => {
       if (eventError) throw new Error("FOLLOWUP_TASK_HISTORY_FAILED");
       return response(
         { data, events: events ?? [], request_id: id },
+        200,
+        origin,
+        id,
+      );
+    }
+
+    if (request.method === "POST" && isFollowupTaskReassign) {
+      const queryKeys = [...url.searchParams.keys()];
+      const branchIds = url.searchParams.getAll("branch_id");
+      const branchId = branchIds[0] ?? "";
+      if (
+        queryKeys.length !== 1 ||
+        queryKeys[0] !== "branch_id" ||
+        branchIds.length !== 1 ||
+        !isUuid(branchId)
+      ) {
+        return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
+      }
+
+      let raw: unknown;
+      try {
+        raw = await readJson(request);
+      } catch {
+        return fail(
+          "INVALID_JSON",
+          "A valid JSON request body is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const parsed = parseFollowupTaskAssignment(raw);
+      if (!parsed.ok) {
+        return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      }
+
+      const assignmentScopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "followup.task.assign.scoped",
+      );
+      if (!assignmentScopes.includes("branch")) {
+        return fail(
+          "FORBIDDEN",
+          "Branch-level follow-up task reassignment is not permitted.",
+          403,
+          origin,
+          id,
+        );
+      }
+
+      const { data, error } = await auth.service.rpc(
+        "cmi_reassign_followup_task",
+        {
+          p_actor_auth_user_id: auth.actorId,
+          p_branch_id: branchId,
+          p_task_id: reassignmentTaskId,
+          p_assignee_user_id: parsed.value.assignee_user_id,
+          p_team_id: parsed.value.team_id,
+        },
+      );
+      if (error) {
+        if (error.code === "42501") {
+          return fail(
+            "FORBIDDEN",
+            "Task reassignment or target selection is not authorized.",
+            403,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "P0002") {
+          return fail("NOT_FOUND", "Follow-up task not found.", 404, origin, id);
+        }
+        if (error.code === "22023") {
+          return fail(
+            "VALIDATION_ERROR",
+            "Only active follow-up tasks can be reassigned.",
+            422,
+            origin,
+            id,
+          );
+        }
+        throw new Error("FOLLOWUP_TASK_REASSIGN_FAILED");
+      }
+      const result = data as { task?: unknown; changed?: boolean } | null;
+      return response(
+        {
+          data: result?.task ?? null,
+          changed: result?.changed ?? false,
+          request_id: id,
+        },
         200,
         origin,
         id,
