@@ -274,3 +274,168 @@ export function parseContactPatch(
 export function isUuid(value: string): boolean {
   return UUID_PATTERN.test(value);
 }
+
+
+export interface FollowupTaskCreateInput {
+  branch_id: string;
+  contact_id: string;
+  client_request_id: string;
+  list_id: string | null;
+  assignee_user_id: string | null;
+  team_id: string | null;
+  priority: number;
+  due_at: string | null;
+  task_note: string | null;
+}
+
+export type FollowupTaskPatchInput = Partial<
+  Pick<FollowupTaskCreateInput, "priority" | "due_at" | "task_note">
+> & { status?: "open" | "in_progress" | "completed" | "cancelled" };
+
+const TASK_STATUSES = new Set([
+  "open",
+  "in_progress",
+  "completed",
+  "cancelled",
+]);
+
+function parseTaskDueAt(
+  value: unknown,
+): { ok: true; value: string | null } | { ok: false; error: string } {
+  if (value === undefined || value === null || value === "") {
+    return { ok: true, value: null };
+  }
+  if (typeof value !== "string" || value.length > 64) {
+    return { ok: false, error: "Invalid due_at." };
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return { ok: false, error: "Invalid due_at." };
+  }
+  return { ok: true, value: new Date(timestamp).toISOString() };
+}
+
+export function parseFollowupTaskCreate(
+  value: unknown,
+): { ok: true; value: FollowupTaskCreateInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+
+  const allowed = new Set([
+    "branch_id",
+    "contact_id",
+    "client_request_id",
+    "list_id",
+    "assignee_user_id",
+    "team_id",
+    "priority",
+    "due_at",
+    "task_note",
+  ]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    return { ok: false, error: "Unsupported follow-up task field." };
+  }
+
+  for (const field of ["branch_id", "contact_id", "client_request_id"]) {
+    if (typeof value[field] !== "string" || !UUID_PATTERN.test(value[field])) {
+      return { ok: false, error: `Invalid ${field}.` };
+    }
+  }
+
+  const optionalUuid = (field: string): string | null | undefined => {
+    const item = value[field];
+    if (item === undefined || item === null || item === "") return null;
+    if (typeof item !== "string" || !UUID_PATTERN.test(item)) return undefined;
+    return item;
+  };
+
+  const listId = optionalUuid("list_id");
+  const assigneeId = optionalUuid("assignee_user_id");
+  const teamId = optionalUuid("team_id");
+  if (listId === undefined || assigneeId === undefined || teamId === undefined) {
+    return { ok: false, error: "Invalid list_id or assignment target." };
+  }
+  if ((assigneeId === null) === (teamId === null)) {
+    return {
+      ok: false,
+      error: "Exactly one of assignee_user_id or team_id is required.",
+    };
+  }
+
+  const priority = value.priority === undefined ? 3 : value.priority;
+  if (
+    typeof priority !== "number" || !Number.isInteger(priority) ||
+    priority < 1 || priority > 5
+  ) {
+    return { ok: false, error: "priority must be an integer from 1 to 5." };
+  }
+
+  const dueAt = parseTaskDueAt(value.due_at);
+  if (!dueAt.ok) return dueAt;
+  const taskNote = optionalText(value.task_note, "task_note", 2000);
+  if (!taskNote.ok) return taskNote;
+
+  return {
+    ok: true,
+    value: {
+      branch_id: value.branch_id as string,
+      contact_id: value.contact_id as string,
+      client_request_id: value.client_request_id as string,
+      list_id: listId,
+      assignee_user_id: assigneeId,
+      team_id: teamId,
+      priority,
+      due_at: dueAt.value,
+      task_note: taskNote.value,
+    },
+  };
+}
+
+export function parseFollowupTaskPatch(
+  value: unknown,
+): { ok: true; value: FollowupTaskPatchInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const allowed = new Set(["priority", "due_at", "task_note", "status"]);
+  const keys = Object.keys(value);
+  if (keys.length === 0 || keys.some((key) => !allowed.has(key))) {
+    return { ok: false, error: "Unsupported or empty follow-up task update." };
+  }
+
+  const result: FollowupTaskPatchInput = {};
+  if (Object.hasOwn(value, "priority")) {
+    const priority = value.priority;
+    if (
+      typeof priority !== "number" || !Number.isInteger(priority) ||
+      priority < 1 || priority > 5
+    ) {
+      return { ok: false, error: "priority must be an integer from 1 to 5." };
+    }
+    result.priority = priority;
+  }
+  if (Object.hasOwn(value, "due_at")) {
+    const dueAt = parseTaskDueAt(value.due_at);
+    if (!dueAt.ok) return dueAt;
+    result.due_at = dueAt.value;
+  }
+  if (Object.hasOwn(value, "task_note")) {
+    const note = optionalText(value.task_note, "task_note", 2000);
+    if (!note.ok) return note;
+    result.task_note = note.value;
+  }
+  if (Object.hasOwn(value, "status")) {
+    if (typeof value.status !== "string" || !TASK_STATUSES.has(value.status)) {
+      return { ok: false, error: "Invalid follow-up task status." };
+    }
+    result.status = value.status as FollowupTaskPatchInput["status"];
+  }
+  return { ok: true, value: result };
+}
