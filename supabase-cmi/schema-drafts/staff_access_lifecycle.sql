@@ -28,7 +28,8 @@ begin
  if v_actor is null then raise exception using errcode='42501',message='active staff actor required';end if;
  if not exists(select 1 from public.branch b join public.church c on c.id=b.church_id and c.is_configured_instance where b.id=p_branch_id and b.is_active) then raise exception using errcode='42501',message='active configured branch required';end if;
  if not exists(select 1 from public.staff_role_assignment s join public.role r on r.id=s.role_id and r.is_active join public.role_capability rc on rc.role_id=r.id and rc.scope_mode='branch' join public.capability cap on cap.id=rc.capability_id and cap.code='access.role.assign' and cap.is_active where s.staff_profile_id=v_actor and s.branch_id=p_branch_id and s.starts_at<=now() and(s.ends_at is null or s.ends_at>now()) and s.revoked_at is null) then raise exception using errcode='42501',message='role assignment capability required';end if;
- if not exists(select 1 from public.staff_profile where id=p_target_profile_id and account_status='active') then raise exception using errcode='P0002',message='active target staff not found';end if;
+ perform 1 from public.staff_profile where id=p_target_profile_id and account_status='active' for update;
+ if not found then raise exception using errcode='P0002',message='active target staff not found';end if;
  select id into v_role from public.role where code=p_role_code and is_active;
  if v_role is null then raise exception using errcode='22023',message='active role not found';end if;
  if p_role_code='admin_pastor' and not exists(select 1 from public.staff_role_assignment s join public.role r on r.id=s.role_id where s.staff_profile_id=v_actor and s.branch_id=p_branch_id and r.code='admin_pastor' and s.starts_at<=now() and(s.ends_at is null or s.ends_at>now()) and s.revoked_at is null) then raise exception using errcode='42501',message='existing Admin/Pastor assignment required';end if;
