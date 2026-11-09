@@ -592,9 +592,16 @@ Deno.serve(async (request: Request) => {
         );
         const identityCaptureAllowed =
           identityCaptureScopes.includes("branch") ||
-          (input.team_id !== null && identityCaptureScopes.includes("team")) ||
-          (input.team_id === null &&
-            identityCaptureScopes.includes("assigned"));
+          (
+            input.team_id !== null &&
+            captureScopes.includes("team") &&
+            identityCaptureScopes.includes("team")
+          ) ||
+          (
+            input.team_id === null &&
+            captureScopes.includes("assigned") &&
+            identityCaptureScopes.includes("assigned")
+          );
         if (!identityCaptureAllowed) {
           return fail(
             "IDENTITY_CAPTURE_NOT_APPROVED",
