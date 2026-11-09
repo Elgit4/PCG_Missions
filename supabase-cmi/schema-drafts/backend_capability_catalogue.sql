@@ -256,8 +256,7 @@ begin
     into v_existing_contact_id, v_existing_actor, v_existing_digest_key_version, v_existing_request_digest
   from public.contact_capture cc
   where cc.branch_id = p_branch_id
-    and cc.client_request_id = p_client_request_id
-  for update;
+    and cc.client_request_id = p_client_request_id;
 
   if v_existing_contact_id is not null then
     if v_existing_actor is distinct from p_actor_auth_user_id
