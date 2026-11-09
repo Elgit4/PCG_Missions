@@ -101,3 +101,35 @@ Deno.test("empty role-capability matrix returns no capabilities", () => {
     throw new Error("Pending grants must remain fail-closed.");
   }
 });
+
+Deno.test("session keeps assignments active until their effective end time", () => {
+  const now = new Date("2026-11-09T06:00:00.000Z");
+  const assignments: RoleAssignmentRow[] = [
+    {
+      role_id: "role-active",
+      branch_id: "branch-1",
+      starts_at: "2026-10-01T00:00:00.000Z",
+      ends_at: "2026-12-01T00:00:00.000Z",
+      role: { code: "coordinator", name: "Coordinator", is_active: true },
+    },
+    {
+      role_id: "role-expired",
+      branch_id: "branch-1",
+      starts_at: "2026-01-01T00:00:00.000Z",
+      ends_at: "2026-11-01T00:00:00.000Z",
+      role: { code: "field_worker", name: "Field Worker", is_active: true },
+    },
+    {
+      role_id: "role-future",
+      branch_id: "branch-1",
+      starts_at: "2026-12-01T00:00:00.000Z",
+      role: { code: "team_leader", name: "Team Leader", is_active: true },
+    },
+  ];
+
+  const session = buildStaffSession(profile, assignments, [], branches, now);
+
+  if (session.roles.length !== 1 || session.roles[0].code !== "coordinator") {
+    throw new Error("Only assignments active at the supplied instant should be returned.");
+  }
+});
