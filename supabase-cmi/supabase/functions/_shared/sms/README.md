@@ -119,7 +119,7 @@ Until then, adapter tests use mocked fetch responses only. No messages are sent 
 ## 9. Implementation references
 
 - CMI v2.1 requirements: SMS communication and privacy requirements.
-- [Roles, Permissions and Security](../../../../docs/02_ROLES_PERMISSIONS_AND_SECURITY.md), §10.
+- [Roles, Permissions and Security](../../../../../docs/02_ROLES_PERMISSIONS_AND_SECURITY.md), §10.
 - [Stakeholder Decision Register](../../docs/11_CMI_STAKEHOLDER_DECISION_REGISTER.md), R-06–R-09 and D-09–D-11.
 - [Role, Capability and Scope Matrix](../../docs/07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md), SMS action separation.
 - [Requirements-Driven Engineering Baseline](../../docs/25_CMI_REQUIREMENTS_DRIVEN_ENGINEERING_BASELINE.md), SMS implementation contract.
