@@ -642,10 +642,12 @@ select extensions.throws_ok(
   '42501', 'pastoral read not authorized',
   'Care record reads require an active role assignment in that branch'
 );
+reset role;
 update public.staff_profile
 set account_status = 'inactive',
     deactivated_at = now()
 where auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002';
+set local role service_role;
 select extensions.throws_ok(
   $q$ select public.cmi_read_prayer_request(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002',
@@ -656,11 +658,11 @@ select extensions.throws_ok(
   '42501', 'pastoral read not authorized',
   'Inactive staff cannot read prayer narratives even with an oversight grant'
 );
+reset role;
 update public.staff_profile
 set account_status = 'active',
     deactivated_at = null
 where auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002';
-reset role;
 
 select extensions.throws_ok(
   $q$ update public.prayer_access_audit
