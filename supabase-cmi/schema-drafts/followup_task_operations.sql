@@ -254,7 +254,22 @@ begin
     end if;
 
     return pg_catalog.jsonb_build_object(
-      'task', pg_catalog.to_jsonb(v_existing),
+      'task', pg_catalog.jsonb_build_object(
+      'id', v_existing.id,
+      'branch_id', v_existing.branch_id,
+      'contact_id', v_existing.contact_id,
+      'list_id', v_existing.list_id,
+      'assignee_user_id', v_existing.assignee_user_id,
+      'team_id', v_existing.team_id,
+      'priority', v_existing.priority,
+      'due_at', v_existing.due_at,
+      'status', v_existing.status,
+      'task_note', v_existing.task_note,
+      'created_by', v_existing.created_by,
+      'completed_at', v_existing.completed_at,
+      'created_at', v_existing.created_at,
+      'updated_at', v_existing.updated_at
+    ),
       'replayed', true
     );
   end if;
@@ -302,7 +317,22 @@ begin
   );
 
   return pg_catalog.jsonb_build_object(
-    'task', pg_catalog.to_jsonb(v_task),
+    'task', pg_catalog.jsonb_build_object(
+      'id', v_task.id,
+      'branch_id', v_task.branch_id,
+      'contact_id', v_task.contact_id,
+      'list_id', v_task.list_id,
+      'assignee_user_id', v_task.assignee_user_id,
+      'team_id', v_task.team_id,
+      'priority', v_task.priority,
+      'due_at', v_task.due_at,
+      'status', v_task.status,
+      'task_note', v_task.task_note,
+      'created_by', v_task.created_by,
+      'completed_at', v_task.completed_at,
+      'created_at', v_task.created_at,
+      'updated_at', v_task.updated_at
+    ),
     'replayed', false
   );
 end;
@@ -498,7 +528,22 @@ begin
     pg_catalog.jsonb_build_object('changed_fields', coalesce(v_changed_fields, '[]'::jsonb))
   );
 
-  return pg_catalog.jsonb_build_object('task', pg_catalog.to_jsonb(v_task));
+  return pg_catalog.jsonb_build_object('task', pg_catalog.jsonb_build_object(
+      'id', v_task.id,
+      'branch_id', v_task.branch_id,
+      'contact_id', v_task.contact_id,
+      'list_id', v_task.list_id,
+      'assignee_user_id', v_task.assignee_user_id,
+      'team_id', v_task.team_id,
+      'priority', v_task.priority,
+      'due_at', v_task.due_at,
+      'status', v_task.status,
+      'task_note', v_task.task_note,
+      'created_by', v_task.created_by,
+      'completed_at', v_task.completed_at,
+      'created_at', v_task.created_at,
+      'updated_at', v_task.updated_at
+    ));
 end;
 $$;
 
@@ -615,7 +660,22 @@ begin
   if v_task.assignee_user_id is not distinct from p_assignee_user_id
      and v_task.team_id is not distinct from p_team_id then
     return pg_catalog.jsonb_build_object(
-      'task', pg_catalog.to_jsonb(v_task),
+      'task', pg_catalog.jsonb_build_object(
+      'id', v_task.id,
+      'branch_id', v_task.branch_id,
+      'contact_id', v_task.contact_id,
+      'list_id', v_task.list_id,
+      'assignee_user_id', v_task.assignee_user_id,
+      'team_id', v_task.team_id,
+      'priority', v_task.priority,
+      'due_at', v_task.due_at,
+      'status', v_task.status,
+      'task_note', v_task.task_note,
+      'created_by', v_task.created_by,
+      'completed_at', v_task.completed_at,
+      'created_at', v_task.created_at,
+      'updated_at', v_task.updated_at
+    ),
       'changed', false
     );
   end if;
@@ -645,7 +705,22 @@ begin
   );
 
   return pg_catalog.jsonb_build_object(
-    'task', pg_catalog.to_jsonb(v_task),
+    'task', pg_catalog.jsonb_build_object(
+      'id', v_task.id,
+      'branch_id', v_task.branch_id,
+      'contact_id', v_task.contact_id,
+      'list_id', v_task.list_id,
+      'assignee_user_id', v_task.assignee_user_id,
+      'team_id', v_task.team_id,
+      'priority', v_task.priority,
+      'due_at', v_task.due_at,
+      'status', v_task.status,
+      'task_note', v_task.task_note,
+      'created_by', v_task.created_by,
+      'completed_at', v_task.completed_at,
+      'created_at', v_task.created_at,
+      'updated_at', v_task.updated_at
+    ),
     'changed', true
   );
 end;
