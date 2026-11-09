@@ -251,7 +251,7 @@ The existing `GET /public-content` function remains a read-only, allowlisted pro
 
 Public registration is not enabled by this contract. D-05/D-06/D-13 and consent-evidence/retention requirements must be approved first.
 
-## 7A. Event draft management (feature branch)
+## 7A. Event draft management (merged to main in PR #15)
 
 The separate `event-operations` function implements a limited authoring API for private event drafts:
 - `GET /event-operations/events` and `GET /event-operations/events/{eventId}` require `event.read.scoped`.
