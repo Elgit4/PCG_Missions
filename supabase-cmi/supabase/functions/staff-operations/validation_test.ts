@@ -2,6 +2,7 @@ import {
   isUuid,
   parseContactCreate,
   parseContactPatch,
+  parseFollowupTaskAssignment,
   parseFollowupTaskCreate,
   parseFollowupTaskPatch,
 } from "./validation.ts";
@@ -189,6 +190,53 @@ Deno.test("follow-up task update rejects assignment changes and unknown fields",
     const parsed = parseFollowupTaskPatch(input);
     if (parsed.ok) {
       throw new Error("Privileged or invalid task update was accepted.");
+    }
+  }
+});
+
+
+Deno.test("follow-up task reassignment accepts one staff target", () => {
+  const parsed = parseFollowupTaskAssignment({
+    assignee_user_id: "10000000-0000-4000-8000-000000000015",
+  });
+  if (!parsed.ok) throw new Error(parsed.error);
+  if (
+    parsed.value.assignee_user_id !==
+      "10000000-0000-4000-8000-000000000015" ||
+    parsed.value.team_id !== null
+  ) {
+    throw new Error("Staff reassignment target was not normalized.");
+  }
+});
+
+Deno.test("follow-up task reassignment accepts one team target", () => {
+  const parsed = parseFollowupTaskAssignment({
+    team_id: "10000000-0000-4000-8000-000000000016",
+  });
+  if (!parsed.ok) throw new Error(parsed.error);
+  if (
+    parsed.value.team_id !== "10000000-0000-4000-8000-000000000016" ||
+    parsed.value.assignee_user_id !== null
+  ) {
+    throw new Error("Team reassignment target was not normalized.");
+  }
+});
+
+Deno.test("follow-up task reassignment rejects missing, dual or invalid targets", () => {
+  for (
+    const input of [
+      {},
+      {
+        assignee_user_id: "10000000-0000-4000-8000-000000000015",
+        team_id: "10000000-0000-4000-8000-000000000016",
+      },
+      { assignee_user_id: "not-a-uuid" },
+      { assignee_user_id: "10000000-0000-4000-8000-000000000015", status: "open" },
+    ]
+  ) {
+    const parsed = parseFollowupTaskAssignment(input);
+    if (parsed.ok) {
+      throw new Error("Invalid or caller-controlled reassignment was accepted.");
     }
   }
 });
