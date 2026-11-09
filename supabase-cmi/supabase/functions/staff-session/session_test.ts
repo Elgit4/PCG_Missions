@@ -57,7 +57,10 @@ Deno.test("session contains active roles and only active branches", () => {
   if (session.roles[0].code !== "coordinator") {
     throw new Error("Unexpected role.");
   }
-  if (session.branches.length !== 1 || session.branches[0].id !== "branch-1") {
+  if (
+    session.branches.length !== 1 ||
+    session.branches[0].id !== "branch-1"
+  ) {
     throw new Error("Inactive branches must not be returned.");
   }
 });
@@ -66,30 +69,30 @@ Deno.test(
   "session exposes only grants belonging to an active role assignment",
   () => {
     const assignments: RoleAssignmentRow[] = [
-    {
-      role_id: "role-1",
-      branch_id: "branch-1",
-      starts_at: "2026-01-01T00:00:00Z",
-      role: { code: "coordinator", name: "Coordinator", is_active: true },
-    },
-  ];
+      {
+        role_id: "role-1",
+        branch_id: "branch-1",
+        starts_at: "2026-01-01T00:00:00Z",
+        role: { code: "coordinator", name: "Coordinator", is_active: true },
+      },
+    ];
     const grants: RoleCapabilityRow[] = [
-    {
-      role_id: "role-1",
-      scope_mode: "branch",
-      capability: { code: "contact.read.scoped", is_active: true },
-    },
-    {
-      role_id: "role-1",
-      scope_mode: "assigned",
-      capability: { code: "contact.read.scoped", is_active: false },
-    },
-    {
-      role_id: "role-2",
-      scope_mode: "branch",
-      capability: { code: "contact.export.scoped", is_active: true },
-    },
-  ];
+      {
+        role_id: "role-1",
+        scope_mode: "branch",
+        capability: { code: "contact.read.scoped", is_active: true },
+      },
+      {
+        role_id: "role-1",
+        scope_mode: "assigned",
+        capability: { code: "contact.read.scoped", is_active: false },
+      },
+      {
+        role_id: "role-2",
+        scope_mode: "branch",
+        capability: { code: "contact.export.scoped", is_active: true },
+      },
+    ];
 
     const session = buildStaffSession(profile, assignments, grants, branches);
 
@@ -124,29 +127,35 @@ Deno.test(
   () => {
     const now = new Date("2026-11-09T06:00:00.000Z");
     const assignments: RoleAssignmentRow[] = [
-    {
-      role_id: "role-active",
-      branch_id: "branch-1",
-      starts_at: "2026-10-01T00:00:00.000Z",
-      ends_at: "2026-12-01T00:00:00.000Z",
-      role: { code: "coordinator", name: "Coordinator", is_active: true },
-    },
-    {
-      role_id: "role-expired",
-      branch_id: "branch-1",
-      starts_at: "2026-01-01T00:00:00.000Z",
-      ends_at: "2026-11-01T00:00:00.000Z",
-      role: { code: "field_worker", name: "Field Worker", is_active: true },
-    },
-    {
-      role_id: "role-future",
-      branch_id: "branch-1",
-      starts_at: "2026-12-01T00:00:00.000Z",
-      role: { code: "team_leader", name: "Team Leader", is_active: true },
-    },
-  ];
+      {
+        role_id: "role-active",
+        branch_id: "branch-1",
+        starts_at: "2026-10-01T00:00:00.000Z",
+        ends_at: "2026-12-01T00:00:00.000Z",
+        role: { code: "coordinator", name: "Coordinator", is_active: true },
+      },
+      {
+        role_id: "role-expired",
+        branch_id: "branch-1",
+        starts_at: "2026-01-01T00:00:00.000Z",
+        ends_at: "2026-11-01T00:00:00.000Z",
+        role: { code: "field_worker", name: "Field Worker", is_active: true },
+      },
+      {
+        role_id: "role-future",
+        branch_id: "branch-1",
+        starts_at: "2026-12-01T00:00:00.000Z",
+        role: { code: "team_leader", name: "Team Leader", is_active: true },
+      },
+    ];
 
-    const session = buildStaffSession(profile, assignments, [], branches, now);
+    const session = buildStaffSession(
+      profile,
+      assignments,
+      [],
+      branches,
+      now,
+    );
 
     if (
       session.roles.length !== 1 ||
