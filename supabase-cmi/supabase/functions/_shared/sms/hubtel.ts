@@ -102,9 +102,7 @@ function mapDeliveryState(value: string): SmsDeliveryState {
   }
 }
 
-export function validateHubtelSmsConfig(
-  config: HubtelSmsConfig,
-): void {
+export function validateHubtelSmsConfig(config: HubtelSmsConfig): void {
   if (
     !config.clientId.trim() || !config.clientSecret.trim() ||
     !SENDER.test(config.senderId)
@@ -160,8 +158,10 @@ export function createHubtelSmsProvider(
       // was lost. Never auto-retry a submission without a provider idempotency
       // contract; status lookups are safe to retry.
       const retryable = safeToRetry && (
-        response.status === 408 || response.status === 425 ||
-        response.status === 429 || response.status >= 500
+        response.status === 408 ||
+        response.status === 425 ||
+        response.status === 429 ||
+        response.status >= 500
       );
       const code = response.status === 401
         ? "HUBTEL_SMS_AUTHENTICATION_FAILED"
@@ -190,7 +190,10 @@ export function createHubtelSmsProvider(
     }
     const object = parseObject(payload);
     if (!object) {
-      throw new HubtelSmsError("HUBTEL_SMS_INVALID_PROVIDER_RESPONSE", true);
+      throw new HubtelSmsError(
+        "HUBTEL_SMS_INVALID_PROVIDER_RESPONSE",
+        safeToRetry,
+      );
     }
     return object;
   }
@@ -214,12 +217,12 @@ export function createHubtelSmsProvider(
       const payload = await request(
         `${BASE_URL}/send`,
         {
-        method: "POST",
-        body: JSON.stringify({
-          From: config.senderId,
-          To: input.toE164.slice(1),
-          Content: content,
-        }),
+          method: "POST",
+          body: JSON.stringify({
+            From: config.senderId,
+            To: input.toE164.slice(1),
+            Content: content,
+          }),
         },
         false,
       );
@@ -230,9 +233,9 @@ export function createHubtelSmsProvider(
         : "";
       if (status !== 0 || !MESSAGE_ID.test(messageId)) {
         throw new HubtelSmsError(
-        "HUBTEL_SMS_SUBMISSION_NOT_ACCEPTED",
-        false,
-      );
+          "HUBTEL_SMS_SUBMISSION_NOT_ACCEPTED",
+          false,
+        );
       }
 
       const rate = typeof payload.rate === "number" &&
