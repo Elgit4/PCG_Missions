@@ -129,7 +129,14 @@ jobs:
           test -n "$capability_migration"
           cp supabase-cmi/schema-drafts/backend_capability_catalogue.sql "$capability_migration"
 
+          sleep 1
+          supabase --workdir supabase-cmi migration new cmi_followup_task_operations
+          followup_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_followup_task_operations.sql' -print -quit)"
+          test -n "$followup_migration"
+          cp supabase-cmi/schema-drafts/followup_task_operations.sql "$followup_migration"
+
           cp supabase-cmi/schema-drafts/backend_capability_catalogue.test.sql supabase-cmi/supabase/tests/cmi_backend_capability_catalogue.test.sql
+          cp supabase-cmi/schema-drafts/followup_task_operations.test.sql supabase-cmi/supabase/tests/cmi_followup_task_operations.test.sql
           cp supabase-cmi/schema-drafts/contacts_followup_domain.test.sql supabase-cmi/supabase/tests/cmi_contacts_followup_domain.test.sql
           cp supabase-cmi/schema-drafts/restricted_pastoral_domain.test.sql supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
           cp supabase-cmi/schema-drafts/events_attendance_public_content.test.sql supabase-cmi/supabase/tests/cmi_events_attendance_public_content.test.sql
@@ -152,7 +159,9 @@ jobs:
           rm -f supabase-cmi/supabase/migrations/*_cmi_restricted_pastoral_domain.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_events_attendance_public_content.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_backend_capability_catalogue.sql
+          rm -f supabase-cmi/supabase/migrations/*_cmi_followup_task_operations.sql
           rm -f supabase-cmi/supabase/tests/cmi_backend_capability_catalogue.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_followup_task_operations.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_contacts_followup_domain.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_events_attendance_public_content.test.sql
