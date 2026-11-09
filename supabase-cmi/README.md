@@ -67,6 +67,12 @@ The `announcement-operations` Edge Function provides branch-scoped draft list/de
 
 See [document 21 — Announcement Draft Operations API Contract](../docs/21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded, so the API stays fail-closed until the applicable church decisions are approved. It has not been deployed.
 
+## Visitor content draft operations (feature branch)
+
+The `content-operations` Edge Function implements branch-scoped draft list/detail, create and creator-only edit for sermons and welcome messages. It requires `content.manage.draft` with explicit branch scope and only exposes the authenticated user's own drafts. Publication fields remain server-controlled and every new record is a private draft.
+
+Daily Word, Digital Tracts and church-wide public profile editing are excluded until their global authoring scope and approval rules are defined under D-02. Publishing remains a separate restricted capability and is not enabled. See [document 22 — Visitor Content Draft Operations API Contract](../docs/22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded and the function has not been deployed.
+
 ## Staff API (merged to main)
 
 PR #10 merged the `feat/cmi-staff-session-api` implementation into `main` on 2026-11-09 (merge commit `5487debe93b9a556bfa9fc70d21a6131204682bd`). The merged source provides the initial server API for frontend integration:
