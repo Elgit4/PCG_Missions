@@ -332,19 +332,23 @@ Deno.test("staff directory projection deduplicates roles and excludes inactive s
   if (projected.length !== 1) {
     throw new Error("Inactive staff or empty role projections were returned.");
   }
-  if (projected[0].roles.length !== 1 ||
-    projected[0].roles[0].code !== "coordinator") {
+  if (
+    projected[0].roles.length !== 1 ||
+    projected[0].roles[0].code !== "coordinator"
+  ) {
     throw new Error("Directory roles were not deduplicated/filtered.");
   }
   const serialized = JSON.stringify(projected);
-  for (const sensitive of [
-    "auth_user_id",
-    "must-not-appear",
-    "email",
-    "ama@example.test",
-    "phone_e164",
-    "+233241234567",
-  ]) {
+  for (
+    const sensitive of [
+      "auth_user_id",
+      "must-not-appear",
+      "email",
+      "ama@example.test",
+      "phone_e164",
+      "+233241234567",
+    ]
+  ) {
     if (serialized.includes(sensitive)) {
       throw new Error(
         `Sensitive field leaked into directory response: ${sensitive}`,
