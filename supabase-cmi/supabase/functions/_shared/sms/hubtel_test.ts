@@ -208,8 +208,7 @@ Deno.test(
     const provider = createHubtelSmsProvider(config, () =>
       Promise.reject(
         new Error("simulated connection reset after request transmission"),
-      )
-    );
+      ));
     let actual: HubtelSmsError | null = null;
     try {
       await provider.send({ toE164: "+233241234567", content: "Hello" });
