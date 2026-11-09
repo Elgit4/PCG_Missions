@@ -502,6 +502,155 @@ begin
 end;
 $$;
 
+create or replace function public.cmi_reassign_followup_task(
+  p_actor_auth_user_id uuid,
+  p_branch_id uuid,
+  p_task_id uuid,
+  p_assignee_user_id uuid,
+  p_team_id uuid
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = pg_catalog
+as $task_reassign$
+declare
+  v_profile_id uuid;
+  v_branch_assign_scope boolean := false;
+  v_target_profile_id uuid;
+  v_task public.followup_task%rowtype;
+  v_old_assignee_user_id uuid;
+  v_old_team_id uuid;
+begin
+  if p_actor_auth_user_id is null
+     or p_branch_id is null
+     or p_task_id is null
+     or ((p_assignee_user_id is null) = (p_team_id is null)) then
+    raise exception using errcode = '22023', message = 'invalid follow-up task assignment';
+  end if;
+
+  select sp.id
+    into v_profile_id
+  from public.staff_profile sp
+  join public.branch b
+    on b.id = p_branch_id
+   and b.is_active
+  where sp.auth_user_id = p_actor_auth_user_id
+    and sp.account_status = 'active';
+
+  if v_profile_id is null then
+    raise exception using errcode = '42501', message = 'task reassignment not authorized';
+  end if;
+
+  select coalesce(pg_catalog.bool_or(rc.scope_mode = 'branch'), false)
+    into v_branch_assign_scope
+  from public.staff_role_assignment sra
+  join public.role r
+    on r.id = sra.role_id
+   and r.is_active
+  join public.role_capability rc
+    on rc.role_id = sra.role_id
+  join public.capability cap
+    on cap.id = rc.capability_id
+   and cap.is_active
+  where sra.staff_profile_id = v_profile_id
+    and sra.branch_id = p_branch_id
+    and sra.starts_at <= pg_catalog.now()
+    and (sra.ends_at is null or sra.ends_at > pg_catalog.now())
+    and sra.revoked_at is null
+    and cap.code = 'followup.task.assign.scoped';
+
+  if not v_branch_assign_scope then
+    raise exception using errcode = '42501', message = 'task reassignment not authorized';
+  end if;
+
+  select task.*
+    into v_task
+  from public.followup_task task
+  where task.id = p_task_id
+    and task.branch_id = p_branch_id
+  for update;
+
+  if v_task.id is null then
+    raise exception using errcode = 'P0002', message = 'follow-up task not found';
+  end if;
+
+  if v_task.status not in ('open', 'in_progress') then
+    raise exception using errcode = '22023', message = 'only active follow-up tasks can be reassigned';
+  end if;
+
+  if p_assignee_user_id is not null then
+    select target.id
+      into v_target_profile_id
+    from public.staff_profile target
+    where target.auth_user_id = p_assignee_user_id
+      and target.account_status = 'active';
+
+    if v_target_profile_id is null or not exists (
+      select 1
+      from public.staff_role_assignment target_assignment
+      join public.role target_role
+        on target_role.id = target_assignment.role_id
+       and target_role.is_active
+      where target_assignment.staff_profile_id = v_target_profile_id
+        and target_assignment.branch_id = p_branch_id
+        and target_assignment.starts_at <= pg_catalog.now()
+        and (target_assignment.ends_at is null or target_assignment.ends_at > pg_catalog.now())
+        and target_assignment.revoked_at is null
+    ) then
+      raise exception using errcode = '42501', message = 'target staff member is not active in this branch';
+    end if;
+  else
+    if not exists (
+      select 1
+      from public.team target_team
+      where target_team.id = p_team_id
+        and target_team.branch_id = p_branch_id
+        and target_team.is_active
+    ) then
+      raise exception using errcode = '42501', message = 'target team is not active in this branch';
+    end if;
+  end if;
+
+  if v_task.assignee_user_id is not distinct from p_assignee_user_id
+     and v_task.team_id is not distinct from p_team_id then
+    return pg_catalog.jsonb_build_object(
+      'task', pg_catalog.to_jsonb(v_task),
+      'changed', false
+    );
+  end if;
+
+  v_old_assignee_user_id := v_task.assignee_user_id;
+  v_old_team_id := v_task.team_id;
+
+  update public.followup_task
+  set assignee_user_id = p_assignee_user_id,
+      team_id = p_team_id
+  where id = p_task_id
+    and branch_id = p_branch_id
+  returning * into v_task;
+
+  insert into public.followup_task_event (
+    task_id, actor_user_id, event_type, details
+  ) values (
+    p_task_id,
+    p_actor_auth_user_id,
+    'reassigned',
+    pg_catalog.jsonb_build_object(
+      'from_assignee_user_id', v_old_assignee_user_id,
+      'from_team_id', v_old_team_id,
+      'to_assignee_user_id', p_assignee_user_id,
+      'to_team_id', p_team_id
+    )
+  );
+
+  return pg_catalog.jsonb_build_object(
+    'task', pg_catalog.to_jsonb(v_task),
+    'changed', true
+  );
+end;
+$task_reassign$;
+
 revoke all on function public.cmi_create_followup_task(uuid,uuid,uuid,smallint,bytea,uuid,uuid,uuid,uuid,smallint,timestamptz,text)
   from public, anon, authenticated;
 grant execute on function public.cmi_create_followup_task(uuid,uuid,uuid,smallint,bytea,uuid,uuid,uuid,uuid,smallint,timestamptz,text)
@@ -512,9 +661,17 @@ revoke all on function public.cmi_update_followup_task(uuid,uuid,uuid,jsonb)
 grant execute on function public.cmi_update_followup_task(uuid,uuid,uuid,jsonb)
   to service_role;
 
+revoke all on function public.cmi_reassign_followup_task(uuid,uuid,uuid,uuid,uuid)
+  from public, anon, authenticated;
+grant execute on function public.cmi_reassign_followup_task(uuid,uuid,uuid,uuid,uuid)
+  to service_role;
+
 comment on function public.cmi_create_followup_task(uuid,uuid,uuid,smallint,bytea,uuid,uuid,uuid,uuid,smallint,timestamptz,text)
   is 'Atomic follow-up task creation with actor/scope checks, a branch idempotency key and created event history.';
 comment on function public.cmi_update_followup_task(uuid,uuid,uuid,jsonb)
   is 'Atomic scoped follow-up task update with validated status transitions and append-only lifecycle event history.';
+
+comment on function public.cmi_reassign_followup_task(uuid,uuid,uuid,uuid,uuid)
+  is 'Atomic branch-authorized reassignment of an active task to one active same-branch staff member or team, with append-only history.';
 
 commit;
