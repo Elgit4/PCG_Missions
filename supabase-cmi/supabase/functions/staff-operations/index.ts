@@ -772,7 +772,13 @@ Deno.serve(async (request: Request) => {
       );
       if (error) {
         if (error.code === "42501" || error.code === "P0002") {
-          return fail("NOT_FOUND", "Follow-up task not found.", 404, origin, id);
+          return fail(
+            "NOT_FOUND",
+            "Follow-up task not found.",
+            404,
+            origin,
+            id,
+          );
         }
         if (error.code === "22023") {
           return fail(
