@@ -2,7 +2,7 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status (2026-11-09):** PRs #3–#13 are merged to `main`. PR #10 merged at `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged at `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`; PR #13 merged as `b8843c2ea09561ccaf712222dccb282490126fd6`. The current `main` head is `b8843c2ea09561ccaf712222dccb282490126fd6`. PR #13's exact-head [CI run #42600705230](https://github.com/Elgit4/PCG_Missions/actions/runs/42600705230) passed **227 pgTAP assertions across seven files**, including the 49-assertion pastoral-read suite, plus all CMI formatting, lint, type-check and Deno validation steps (58 Deno unit tests). The post-merge `main` workflow [run #42601107555](https://github.com/Elgit4/PCG_Missions/actions/runs/42601107555) also passed on the merge commit. R-01, R-10, R-11 and D-07 remain pending, so no role grants are seeded. No hosted CMI database was linked, queried or modified, and no Edge Function has been deployed.
+**Status (2026-11-09):** PRs #3–#15 are merged to `main`. PR #10 merged at `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged at `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`; PR #13 merged as `b8843c2ea09561ccaf712222dccb282490126fd6`; PR #15 added the scoped private event-draft API and merged as `a6a3a8948932039d1a85666b7f49f9f7e4ed9e1c`. The current `main` head is `1e05c9f3829c2c9ffaf45570b913078f69035335`. PR #13's exact-head [CI run #42600705230](https://github.com/Elgit4/PCG_Missions/actions/runs/42600705230) passed **227 pgTAP assertions across seven files** and 58 Deno tests. PR #15's exact-head [CI run #42611211003](https://github.com/Elgit4/PCG_Missions/actions/runs/42611211003) also passed the complete CMI pipeline, including all 227 pgTAP assertions and 70 Deno tests. R-01, R-10, R-11 and D-07 remain pending, so no role grants are seeded. No hosted CMI database was linked, queried or modified, and no Edge Function has been deployed.
 
 ## Staff API implementation merged to main
 
@@ -66,6 +66,16 @@ The read-only Edge Function exposes fixed, allowlisted projections for the churc
 The function uses a server-side service-role key because public base-table grants remain closed. This key bypasses RLS, so the implementation is deliberately limited to fixed table/column/filter combinations and must never be reused for staff APIs. It fails closed when secrets are missing. It exposes only church-wide welcome messages (not branch-specific messages) and omits event capacity from the public event projection. Rate limiting and abuse controls must be configured at the platform/gateway layer; CORS is not a security boundary. The function is source-only and has not been deployed.
 
 A Deno validation suite covers supported resources, pagination, slug validation, unknown and duplicate query parameters, inherited object-property resource names, and public-profile request shape. CI runs that suite before the local Supabase database suite. Deno type-check and request-validation tests passed in the PR #8 exact-head workflow [run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750). That run also executed the idempotency helper tests and passed all 129 database assertions.
+
+## Event draft operations — merged to main in PR #15
+
+The `event-operations` Edge Function now provides:
+- Branch-scoped event list/detail reads using `event.read.scoped`.
+- Private draft creation and editing using `event.manage.scoped` with branch scope.
+- Server-controlled initial state: `draft`, `private`, registration closed and no capacity.
+- Strict rejection of caller-controlled publication, registration, capacity and actor fields.
+
+The function deliberately does not implement public event publication, registration, capacity transactions, transport, check-in, offline reconciliation, event assignments or closeout. Those remain subject to D-05/D-06/D-13 and applicable role/scope decisions in documents 11 and 17. No role grants are seeded. See [document 20](../docs/20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md).
 
 ## Deliberately not implemented
 
