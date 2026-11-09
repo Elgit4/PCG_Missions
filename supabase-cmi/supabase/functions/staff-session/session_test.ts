@@ -15,8 +15,18 @@ const profile: StaffProfile = {
 };
 
 const branches: BranchRow[] = [
-  { id: "branch-1", name: "Main Branch", timezone: "Africa/Accra", is_active: true },
-  { id: "branch-2", name: "Inactive Branch", timezone: "Africa/Accra", is_active: false },
+  {
+    id: "branch-1",
+    name: "Main Branch",
+    timezone: "Africa/Accra",
+    is_active: true,
+  },
+  {
+    id: "branch-2",
+    name: "Inactive Branch",
+    timezone: "Africa/Accra",
+    is_active: false,
+  },
 ];
 
 Deno.test("session contains active roles and only active branches", () => {
@@ -44,13 +54,17 @@ Deno.test("session contains active roles and only active branches", () => {
   const session = buildStaffSession(profile, assignments, [], branches);
 
   if (session.roles.length !== 1) throw new Error("Expected one active role.");
-  if (session.roles[0].code !== "coordinator") throw new Error("Unexpected role.");
+  if (session.roles[0].code !== "coordinator") {
+    throw new Error("Unexpected role.");
+  }
   if (session.branches.length !== 1 || session.branches[0].id !== "branch-1") {
     throw new Error("Inactive branches must not be returned.");
   }
 });
 
-Deno.test("session exposes only grants belonging to an active role assignment", () => {
+Deno.test(
+  "session exposes only grants belonging to an active role assignment",
+  () => {
   const assignments: RoleAssignmentRow[] = [
     {
       role_id: "role-1",
@@ -80,7 +94,9 @@ Deno.test("session exposes only grants belonging to an active role assignment", 
   const session = buildStaffSession(profile, assignments, grants, branches);
 
   if (session.capabilities.length !== 1) {
-    throw new Error("Only the active assigned role's active capability should be returned.");
+    throw new Error(
+      "Only the active assigned role's active capability should be returned.",
+    );
   }
   if (session.capabilities[0].code !== "contact.read.scoped") {
     throw new Error("Unexpected capability.");
@@ -102,7 +118,9 @@ Deno.test("empty role-capability matrix returns no capabilities", () => {
   }
 });
 
-Deno.test("session keeps assignments active until their effective end time", () => {
+Deno.test(
+  "session keeps assignments active until their effective end time",
+  () => {
   const now = new Date("2026-11-09T06:00:00.000Z");
   const assignments: RoleAssignmentRow[] = [
     {
@@ -130,6 +148,8 @@ Deno.test("session keeps assignments active until their effective end time", () 
   const session = buildStaffSession(profile, assignments, [], branches, now);
 
   if (session.roles.length !== 1 || session.roles[0].code !== "coordinator") {
-    throw new Error("Only assignments active at the supplied instant should be returned.");
+    throw new Error(
+      "Only assignments active at the supplied instant should be returned.",
+    );
   }
 });
