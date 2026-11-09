@@ -256,7 +256,10 @@ Deno.serve(async (req: Request) => {
         }
         throw new Error("ACCOUNT_STATUS_UPDATE_FAILED");
       }
-      if (!data || typeof data !== "object" || typeof data.auth_user_id !== "string") {
+      if (
+        !data || typeof data !== "object" ||
+        typeof data.auth_user_id !== "string"
+      ) {
         throw new Error("ACCOUNT_AUTH_REFERENCE_MISSING");
       }
       const { auth_user_id: authUserId, ...publicData } = data;
