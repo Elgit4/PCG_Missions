@@ -4,7 +4,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(46);
+select plan(49);
 
 select has_function(
   'public', 'cmi_read_prayer_request',
@@ -239,6 +239,21 @@ insert into public.care_interaction(
   'Synthetic confidential pastoral interaction note.'
 );
 
+-- Populate more than the response limit so the projection cap is exercised.
+insert into public.care_interaction(
+  care_record_id, branch_id, actor_user_id, interaction_type,
+  outcome_code, restricted_note, occurred_at
+)
+select
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba401',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+  'visit',
+  'follow_up_required',
+  'Synthetic restricted history row ' || series.n::text,
+  now() - (series.n * interval '1 second')
+from generate_series(1, 105) as series(n);
+
 -- Separate records test assignments that have expired or were explicitly revoked.
 insert into public.prayer_request(
   id, branch_id, contact_id, created_by, request_text
@@ -364,6 +379,13 @@ select extensions.throws_ok(
   'P0002', 'prayer request not found',
   'Intercessor cannot read a prayer request assigned to another user'
 );
+select extensions.ok(
+  not exists (
+    select 1 from public.prayer_access_audit
+    where request_id = 'synthetic-prayer-unassigned'
+  ),
+  'A denied prayer read does not create an access-audit event'
+);
 select extensions.throws_ok(
   $q$ select public.cmi_read_prayer_request(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
@@ -428,6 +450,18 @@ select extensions.ok(
     'Synthetic confidential pastoral interaction note.',
   'Assigned care reader receives the restricted interaction projection'
 );
+select extensions.is(
+  pg_catalog.jsonb_array_length(public.cmi_read_care_record(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba401',
+    'assigned',
+    null,
+    'synthetic-care-history-limit'
+  )->'interactions'),
+  100,
+  'Care read returns no more than the latest 100 restricted interactions'
+);
 select extensions.ok(
   not (
     public.cmi_read_care_record(
@@ -460,6 +494,13 @@ select extensions.throws_ok(
   ) $q$,
   'P0002', 'care record not found',
   'Care worker cannot read a care record assigned to another user'
+);
+select extensions.ok(
+  not exists (
+    select 1 from public.care_access_audit
+    where request_id = 'synthetic-care-unassigned'
+  ),
+  'A denied care read does not create an access-audit event'
 );
 select extensions.ok(
   (public.cmi_read_care_record(
