@@ -153,12 +153,14 @@ Deno.test("Hubtel status lookup maps delivery states", async () => {
 });
 
 Deno.test("provider acceptance status must be zero", async () => {
-  const provider = createHubtelSmsProvider(config, async () =>
-    Response.json({
-      rate: 0.03,
-      messageId: "fab43849-6c5b-4334-a88b-d06520b1ace8",
-      status: 2,
-    })
+  const provider = createHubtelSmsProvider(
+    config,
+    async () =>
+      Response.json({
+        rate: 0.03,
+        messageId: "fab43849-6c5b-4334-a88b-d06520b1ace8",
+        status: 2,
+      }),
   );
   let rejected = false;
   try {
