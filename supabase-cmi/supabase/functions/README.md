@@ -40,7 +40,7 @@ The function fails closed if server credentials are absent. Supabase service-rol
 
 ### Shared staff-function environment
 
-Both staff functions require:
+All authenticated staff functions require:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY` — server-only
@@ -73,4 +73,18 @@ Each request resolves the Auth user and active staff profile, then checks the ex
 Follow-up task routes use `followup.task.read.scoped`, `followup.task.create` and `followup.task.update.scoped` with branch/team/assigned/self filtering. Creation additionally checks assignment scope, requires exactly one staff or team target, HMACs a branch-scoped request key, and appends the `created` event atomically. Updates accept only task note, priority, due date and status; state changes and lifecycle history are committed together. The task RPCs are service-role-only `SECURITY INVOKER` functions. A separate `POST .../{taskId}/reassign` route requires the branch-level `followup.task.assign.scoped` capability and validates an active same-branch staff member or team; only open/in-progress tasks can be moved, and the old/new target UUIDs are written to append-only history. Reassigning to the current target is a no-op. General assignment fields remain unavailable through PATCH. Task notes must never contain prayer/care narratives or other sensitive text. New tasks may reference only active (not archived or merged) contacts. Due timestamps require an explicit UTC marker or numeric offset. The task create, replay, update and reassignment RPC responses return allowlisted task fields only; internal request IDs and HMAC digest metadata are not returned.
 
 The capability definitions are seeded as metadata only; no role grants are created. Since stakeholder decisions R-01–R-12 and D-01 remain pending, the API is expected to deny business operations until approved grants are introduced. See [Staff API Contract](../../../docs/19_CMI_STAFF_API_CONTRACT.md).
+
+
+## pastoral-operations
+
+Read-only audited access to one restricted record at a time:
+
+- `POST /pastoral-operations/prayer/requests/{requestId}/read`
+- `POST /pastoral-operations/care/records/{recordId}/read`
+
+Requires a staff Supabase Auth bearer token and validates it through Auth before using the server-only service client. The Edge Function derives the actor from the verified Auth user; caller-supplied actor IDs, capability codes and scopes are rejected. The body accepts only `branch_id`, `access_mode` and (for oversight) an allowlisted `reason_code`.
+
+The database transactions enforce current active staff, branch and role assignment plus the exact assigned or oversight capability. Assigned reads also require an active record assignment to that actor. Oversight uses a separate capability and one of five controlled reason codes. The audit insert is committed in the same transaction as the read; audit rows reject UPDATE, DELETE and TRUNCATE. Responses omit contact IDs/identity; care returns at most 100 recent restricted interactions.
+
+This function does not list, create, update, assign, archive or delete pastoral records. No role grants are seeded. R-01, R-10, R-11 and D-07 remain approval gates, so staff access remains denied until stakeholders approve and explicit grants are provisioned. Do not deploy this function until those approvals, a security review, production origins and platform rate limiting are in place. The new SQL remains in `schema-drafts/` and is validated only through the isolated local CMI CI workflow. It has not been deployed.
 

@@ -39,3 +39,7 @@ verify_jwt = true
 [functions.staff-operations]
 # Staff JWT required. Business access is separately checked against capabilities.
 verify_jwt = true
+
+[functions.pastoral-operations]
+# Restricted narratives are returned only through audited server transactions.
+verify_jwt = true

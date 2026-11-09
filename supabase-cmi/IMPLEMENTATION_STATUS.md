@@ -2,7 +2,7 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status:** PRs #3–#9 are merged into `main`. The `main` baseline passed 129 pgTAP assertions across four local CMI suites. The implementation was tested on commit `0cc2ed86baee16928e14d9e015608128b43e7a0d`; the three commits since then only reconcile implementation/readme documentation and function guidance. The latest PR-head run also passes with no executable-code changes after the tested implementation. PR #10 (`feat/cmi-staff-session-api`) remains an open draft review branch. Its current exact head `7ab4174ebe529279eda55a96ab4f52345aef74e3` passed [CI run 42588602409](https://github.com/Elgit4/PCG_Missions/actions/runs/42588602409): Edge Function formatting, linting, type-checks and Deno tests plus **178 pgTAP assertions across six files** on the disposable local CMI stack. The tested task slice includes scoped list/detail/create/update/reassignment operations, archived-contact exclusion, timezone-aware due dates, HMAC idempotency, sanitized RPC responses, `SECURITY INVOKER` transactions and append-only task history. PR #10 is not merged or deployed; these are source-only review-branch changes. No hosted CMI database was linked, queried, migrated or modified. The PR #8 merge commit is [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8).
+**Status (2026-11-09):** PRs #3–#10 are merged to `main`. PR #10 merged at commit `5487debe93b9a556bfa9fc70d21a6131204682bd`. Its latest observed PR-head CI run, [run #165](https://github.com/Elgit4/PCG_Missions/actions/runs/42589357372), completed successfully with **178 pgTAP assertions across six files** and the CMI Deno checks. The current feature branch `feat/cmi-audited-pastoral-reads` adds read-only audited prayer/care record access and its database/validation tests; that increment is under review and has not yet been CI-verified. R-01, R-10, R-11 and D-07 remain pending, so no role grants are seeded. No hosted CMI database was linked, queried or modified, and no Edge Function has been deployed.
 
 ## New staff API implementation in review branch
 
@@ -72,7 +72,7 @@ A Deno validation suite covers supported resources, pagination, slug validation,
 - Full six-role capability grants and role/scope RLS policies; R-01–R-12 and D-01 remain approval gates.
 - Staff credential activation/reset implementation; Supabase Auth remains the credential authority.
 - Trusted transactional contact merge/reversal.
-- Audited prayer/care read Edge Function/RPC.
+- Prayer/care list endpoints, request creation, restricted update/assignment workflows, archival/deletion and retention automation. Individual-record audited reads are added on `feat/cmi-audited-pastoral-reads` but remain under review and approval-gated.
 - Trusted registration, capacity reservation, transport-seat allocation and check-in endpoints.
 - Public content Edge Function deployment and production-origin/rate-limit configuration.
 - SMS provider adapter, consent/suppression, callback verification, dispatch budget and automation.
@@ -85,7 +85,7 @@ The merged `main` baseline contains 129 pgTAP assertions across four suites: ide
 
 The new task suite validates service-role-only function execution, `SECURITY INVOKER`, idempotent creation/replay/conflict, assigned-task creation, scoped task updates, status transitions, completion timestamps and append-only event history (UPDATE/DELETE/TRUNCATE rejected). CI generates temporary migration names with the Supabase CLI, applies the reviewed draft SQL only to the disposable local CMI stack, runs pgTAP and removes temporary migration/test files afterward.
 
-PR #10 remains an open draft and is not in `main`. No role-capability grants have been seeded; R-01–R-12 and D-01 remain approval gates, and business operations therefore remain denied until approved grants are provisioned. Draft SQL has not been promoted into permanent migration history. No hosted Supabase project, production schema or Edge Function has been changed or deployed.
+PR #10 merged to `main` on 2026-11-09. No role-capability grants have been seeded; R-01–R-12 and D-01 remain approval gates, and business operations therefore remain denied until approved grants are provisioned. Draft SQL has not been promoted into permanent migration history. No hosted Supabase project, production schema or Edge Function has been changed or deployed.
 
 Supabase CLI v3 is local-first. Keep CI on the isolated `supabase-cmi/` workspace and do not add `--remote` or hosted credentials without explicit deployment approval.
 
@@ -118,3 +118,30 @@ The ledger design and schema are included in [PR #8](https://github.com/Elgit4/P
 Each receipt stores a 32-byte versioned HMAC-SHA-256 request digest, an allowlisted operation/resource pairing, a resource reference and successful response status. It stores no raw request body or attendee PII. The Deno helper canonicalizes normalized JSON, computes the HMAC with a server-only key, and compares digest hex values; endpoint code must still implement atomic receipt claim, replay response and HTTP 409 changed-payload behavior. HMAC key retirement and receipt cleanup remain subject to D-13 retention approval.
 
 The event pgTAP suite has **71 assertions**, including the trigger-function privilege-closure test. Together with 14 identity/authorization, 24 contacts/follow-up and 20 restricted-pastoral assertions, the verified total is **129 database assertions**. PR #8's exact head `c80a29a46a8a693449d66b209c84e2ba6894209a` passed [CI run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750); PR #8 is merged to `main` as [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8). No event mutation endpoint, private transaction function, role grant, hosted Supabase project or production migration is activated.
+
+
+## Audited prayer and pastoral-care read slice — 2026-11-09
+
+**Branch:** `feat/cmi-audited-pastoral-reads`  
+**Status:** Source and tests committed; awaiting draft PR CI and review.
+
+### Implemented on the feature branch
+
+- Added `pastoral-operations` Edge Function with authenticated POST read routes for individual prayer requests and care records.
+- The Edge Function validates the bearer token with Supabase Auth. The actor ID comes only from the verified Auth user and is passed to a server-only database transaction.
+- Added `cmi_read_prayer_request` and `cmi_read_care_record` as `SECURITY INVOKER` transactions with fixed `pg_catalog` search paths and service-role-only execution.
+- Both transactions validate the active staff profile, active branch, active role assignment, exact capability and scope. Assigned reads additionally require a current, non-revoked assignment to that actor.
+- Oversight reads require the separate oversight capability and `oversight` scope. The accepted audit reason is an allowlisted category code, not free text.
+- The audit row is inserted in the same transaction as the read. Both audit ledgers reject UPDATE, DELETE and TRUNCATE.
+- Response projections omit contact IDs and contact identity. Care reads return at most the latest 100 restricted interactions.
+- No list, create, update, assignment, archive, delete or retention operations are added. No role grants are seeded.
+
+### Added verification
+
+- A new 30-assertion pgTAP suite checks function security, assigned and oversight authorization, branch isolation, audit atomicity, response minimization and append-only audit protection.
+- A Deno unit-test suite covers route and request validation, including the controlled oversight reason codes.
+- The CI workflow type-checks the function, tests validation, and applies the new SQL/test files only as temporary CLI-generated migrations and tests on the disposable local CMI stack. This feature branch has not yet been run by CI.
+
+### Approval and deployment boundary
+
+The stakeholder decision register still marks R-01, R-10, R-11 and D-07 pending. The new routes deny access unless explicit grants are eventually approved and provisioned. The SQL remains in `schema-drafts/`; it is not permanent migration history. No hosted Supabase project, production schema, SMS provider or Edge Function has been touched.

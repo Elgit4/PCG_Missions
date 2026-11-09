@@ -53,9 +53,9 @@ deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
 
 Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and exact `PUBLIC_CONTENT_ALLOWED_ORIGINS` only in the Edge Function's server environment. The service-role key bypasses RLS; the function's fixed query allowlist is therefore security-critical. It exposes only church-wide welcome messages and omits event capacity from public event responses. Do not reuse it for staff operations. Platform rate limiting and production origin configuration are required before deployment. At the PR #5 milestone, Deno type-check and request-validation tests passed in [run 42438088374](https://github.com/Elgit4/PCG_Missions/actions/runs/42438088374) and the expanded event/public-content suite contributed to 104 database assertions in [run 42439672140](https://github.com/Elgit4/PCG_Missions/actions/runs/42439672140). Those are historical validation checkpoints; the later PR #8 exact-head run [42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750) passed the current 129-assertion total and current Deno checks. This function is not deployed.
 
-## Staff API groundwork (review branch)
+## Staff API (merged to main)
 
-The `feat/cmi-staff-session-api` branch adds an initial server API for frontend integration:
+PR #10 merged the `feat/cmi-staff-session-api` implementation into `main` on 2026-11-09 (merge commit `5487debe93b9a556bfa9fc70d21a6131204682bd`). The merged source provides the initial server API for frontend integration:
 - `staff-session`: validates a Supabase Auth access token, checks the active staff profile and returns branch, role and approved capability projections.
 - `staff-operations`: scoped contact list/detail, idempotent contact capture and ordinary-field update endpoints.
 - The same Edge Function now provides scoped follow-up task list/detail, idempotent creation and atomic note/priority/due-date/status updates. It never changes assignment targets through PATCH.
@@ -65,13 +65,13 @@ The `feat/cmi-staff-session-api` branch adds an initial server API for frontend 
 
 Task creation uses a separate HMAC idempotency key and exactly one primary assignment target (staff member or team). Branch/team/assigned/self scope is evaluated on the server. Task updates append lifecycle events atomically; event history is protected against update, delete and truncate.
 
-See [the Staff API Contract](../docs/19_CMI_STAFF_API_CONTRACT.md). These functions and the capability/contact and follow-up task transactions are source-only in this review branch and have not been deployed.
+See [the Staff API Contract](../docs/19_CMI_STAFF_API_CONTRACT.md). These functions and their capability/contact/follow-up task transaction drafts are source-controlled but have not been deployed or applied to a hosted database.
 
 ## Security and approval gates
 
 - Auth credentials stay in Supabase Auth; no PIN/password columns.
 - Role-capability grants and full role/scope RLS wait for R-01–R-12 and D-01 approvals.
-- Prayer/care narratives remain unavailable through direct browser reads; trusted audited-read endpoints are not yet implemented.
+- Prayer/care narratives remain unavailable through direct browser reads. Audited individual-record reads are now being implemented on `feat/cmi-audited-pastoral-reads`; no list or mutation endpoints are included.
 - Public registration and public content require narrow server-mediated projections; no base-table public grants.
 - Registration snapshot retention, walk-in identity, event waitlist, transport pickup model and data retention remain decision-gated.
 - SMS uses one future canonical outbox/campaign state machine; announcement delivery must not duplicate SMS lifecycle state.
@@ -95,7 +95,7 @@ The event schema draft includes a private HMAC-backed idempotency receipt ledger
 
 ## Current source-control status (2026-11-09)
 
-Backend PRs #3–#9 are merged to `main`. PR #10 (`feat/cmi-staff-session-api`) remains open, in draft review and unmerged.
+Backend PRs #3–#10 are merged to `main`. PR #10 (`feat/cmi-staff-session-api`) merged on 2026-11-09 as `5487debe93b9a556bfa9fc70d21a6131204682bd`.
 
 The current PR #10 head `7ab4174ebe529279eda55a96ab4f52345aef74e3` passed [CI run 42588602409](https://github.com/Elgit4/PCG_Missions/actions/runs/42588602409). Deno formatting, linting, type-checking and unit tests passed. The workflow applied all reviewed SQL drafts using temporary CLI-generated migrations on the disposable local CMI stack; **all six pgTAP files passed, 178 assertions with zero failures**.
 
@@ -104,3 +104,17 @@ The three commits after the tested implementation commit changed status/contract
 Task due dates require an explicit timezone. RPC task responses omit the internal client request key and versioned HMAC digest. All temporary migration and test copies were removed after local verification.
 
 No `role_capability` rows are seeded; business access remains denied until R-01–R-12 and D-01 are approved. No hosted CMI project has been linked, queried, migrated or modified; no Edge Function has been deployed and no SMS has been sent.
+
+
+## Audited pastoral reads — review branch (2026-11-09)
+
+The branch `feat/cmi-audited-pastoral-reads` adds two read-only POST routes through `pastoral-operations`:
+
+- `/pastoral-operations/prayer/requests/{requestId}/read`
+- `/pastoral-operations/care/records/{recordId}/read`
+
+The database RPCs independently validate the active staff profile, active branch, active role assignment, exact capability and (for assigned mode) current record assignment. Privileged oversight uses a separate `oversight` scope and one of five allowlisted reason codes. The read and append-only audit insert occur in one database transaction. Prayer responses omit the linked contact ID; care responses also omit contact identity and include at most the latest 100 restricted interactions.
+
+Both RPCs are `SECURITY INVOKER`, pin `search_path` to `pg_catalog`, and are executable only by `service_role`. Browser table grants remain closed. The new SQL and pgTAP suite are still review drafts, applied only by the isolated local CI workflow after a draft PR is opened. Deno validation and Edge Function checks are added to the same workflow.
+
+No role-capability grants are seeded. R-01, R-10, R-11 and D-07 remain pending; these reads remain denied for actual staff until decisions are approved and the approved grants are provisioned. No create, list, update, assignment, archive, delete or retention endpoints are included. Nothing has been deployed or applied to a hosted Supabase project.
