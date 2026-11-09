@@ -344,7 +344,9 @@ async function visibleFollowupTaskIds(
       .or(`ends_at.is.null,ends_at.gt.${now}`)
       .is("revoked_at", null)
       .eq("team.is_active", true);
-    if (membershipError) throw new Error("FOLLOWUP_TEAM_MEMBERSHIP_LOOKUP_FAILED");
+    if (membershipError) {
+      throw new Error("FOLLOWUP_TEAM_MEMBERSHIP_LOOKUP_FAILED");
+    }
     const teamIds = [
       ...new Set(
         (memberships ?? []).map((item: { team_id: string }) => item.team_id),
@@ -465,10 +467,10 @@ Deno.serve(async (request: Request) => {
     const previous = path[path.length - 2] ?? "";
     const url = new URL(request.url);
 
-    const isFollowupTaskCollection =
-      previous === "followup" && last === "tasks";
-    const isFollowupTaskItem =
-      previous === "tasks" && path[path.length - 3] === "followup" &&
+    const isFollowupTaskCollection = previous === "followup" &&
+      last === "tasks";
+    const isFollowupTaskItem = previous === "tasks" &&
+      path[path.length - 3] === "followup" &&
       isUuid(last);
 
     if (request.method === "GET" && isFollowupTaskCollection) {
@@ -563,7 +565,13 @@ Deno.serve(async (request: Request) => {
         "followup.task.read.scoped",
       );
       if (scopes.length === 0) {
-        return fail("NOT_FOUND", "Follow-up task not found.", 404, origin, id);
+        return fail(
+          "NOT_FOUND",
+          "Follow-up task not found.",
+          404,
+          origin,
+          id,
+        );
       }
       const ids = await visibleFollowupTaskIds(
         auth.service,
@@ -709,7 +717,13 @@ Deno.serve(async (request: Request) => {
           );
         }
         if (error.code === "22023") {
-          return fail("VALIDATION_ERROR", "The task data is invalid.", 422, origin, id);
+          return fail(
+            "VALIDATION_ERROR",
+            "The task data is invalid.",
+            422,
+            origin,
+            id,
+          );
         }
         throw new Error("FOLLOWUP_TASK_CREATE_FAILED");
       }
@@ -761,7 +775,13 @@ Deno.serve(async (request: Request) => {
           return fail("NOT_FOUND", "Follow-up task not found.", 404, origin, id);
         }
         if (error.code === "22023") {
-          return fail("VALIDATION_ERROR", "The task update is invalid.", 422, origin, id);
+          return fail(
+            "VALIDATION_ERROR",
+            "The task update is invalid.",
+            422,
+            origin,
+            id,
+          );
         }
         throw new Error("FOLLOWUP_TASK_UPDATE_FAILED");
       }
