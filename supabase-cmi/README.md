@@ -95,7 +95,7 @@ The event schema draft includes a private HMAC-backed idempotency receipt ledger
 
 ## Current source-control status (2026-11-09)
 
-Backend PRs #3–#10 are merged to `main`. PR #10 (`feat/cmi-staff-session-api`) merged on 2026-11-09 as `5487debe93b9a556bfa9fc70d21a6131204682bd`.
+Backend PRs #3–#11 are merged to `main`. PR #10 merged as `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged as `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`.
 
 The current PR #10 head `7ab4174ebe529279eda55a96ab4f52345aef74e3` passed [CI run 42588602409](https://github.com/Elgit4/PCG_Missions/actions/runs/42588602409). Deno formatting, linting, type-checking and unit tests passed. The workflow applied all reviewed SQL drafts using temporary CLI-generated migrations on the disposable local CMI stack; **all six pgTAP files passed, 178 assertions with zero failures**.
 
@@ -106,15 +106,15 @@ Task due dates require an explicit timezone. RPC task responses omit the interna
 No `role_capability` rows are seeded; business access remains denied until R-01–R-12 and D-01 are approved. No hosted CMI project has been linked, queried, migrated or modified; no Edge Function has been deployed and no SMS has been sent.
 
 
-## Audited pastoral reads — review branch (2026-11-09)
+## Audited pastoral reads — merged to main (2026-11-09)
 
-The branch `feat/cmi-audited-pastoral-reads` adds two read-only POST routes through `pastoral-operations`:
+PR #11 merged the `feat/cmi-audited-pastoral-reads` implementation into `main`, adding two read-only POST routes through `pastoral-operations`:
 
 - `/pastoral-operations/prayer/requests/{requestId}/read`
 - `/pastoral-operations/care/records/{recordId}/read`
 
 The database RPCs independently validate the active staff profile, active branch, active role assignment, exact capability and (for assigned mode) current record assignment. Privileged oversight uses a separate `oversight` scope and one of five allowlisted reason codes. The read and append-only audit insert occur in one database transaction. Prayer responses omit the linked contact ID; care responses also omit contact identity and include at most the latest 100 restricted interactions.
 
-Both RPCs are `SECURITY INVOKER`, pin `search_path` to `pg_catalog`, and are executable only by `service_role`. Browser table grants remain closed. The new SQL and pgTAP suite are still review drafts, applied only by the isolated local CI workflow after a draft PR is opened. Deno validation and Edge Function checks are added to the same workflow.
+Both RPCs are `SECURITY INVOKER`, pin `search_path` to `pg_catalog`, and are executable only by `service_role`. Browser table grants remain closed. The SQL remains in `schema-drafts/`, not permanent migration history. CI applies it only through temporary CLI-generated migrations on the disposable local CMI stack. Exact-head run [42594351467](https://github.com/Elgit4/PCG_Missions/actions/runs/42594351467) passed all seven pgTAP files (208 assertions), Deno formatting/lint/type-checks and 58 Deno unit tests.
 
-No role-capability grants are seeded. R-01, R-10, R-11 and D-07 remain pending; these reads remain denied for actual staff until decisions are approved and the approved grants are provisioned. No create, list, update, assignment, archive, delete or retention endpoints are included. Nothing has been deployed or applied to a hosted Supabase project.
+No role-capability grants are seeded. R-01, R-10, R-11 and D-07 remain pending; these reads remain denied for actual staff until decisions are approved and the approved grants are provisioned. No create, list, update, assignment, archive, delete or retention endpoints are included. The functions remain undeployed; nothing has been applied to a hosted Supabase project.
