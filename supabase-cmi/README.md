@@ -95,8 +95,10 @@ The event schema draft includes a private HMAC-backed idempotency receipt ledger
 
 ## Current source-control status (2026-11-09)
 
-Backend PRs #3–#9 are merged to `main`. PR #10 (`feat/cmi-staff-session-api`) remains open and in draft review; it has not been merged.
+Backend PRs #3–#9 are merged to `main`. PR #10 (`feat/cmi-staff-session-api`) remains open, in draft review and unmerged.
 
-The follow-up task implementation commit `0af36f82716f927df003770c596b0a48ab4bd2e1` passed [CI run 42584252881](https://github.com/Elgit4/PCG_Missions/actions/runs/42584252881). Deno formatting, linting, type-checking and unit tests passed. The workflow applied all reviewed schema drafts through temporary CLI-generated migrations on the disposable local CMI stack; **all six pgTAP files passed, 172 assertions with zero failures**. The task transaction tests cover scoped creation/update, idempotent replay/conflict and append-only lifecycle history. CI removed the temporary migration and test copies afterward.
+The current PR #10 head `0cc2ed86baee16928e14d9e015608128b43e7a0d` passed [CI run 42588198521](https://github.com/Elgit4/PCG_Missions/actions/runs/42588198521). Deno formatting, linting, type-checking and unit tests passed. The workflow applied all reviewed SQL drafts using temporary CLI-generated migrations on the disposable local CMI stack; **all six pgTAP files passed, 178 assertions with zero failures**. The 30-assertion task suite covers scoped creation, replay/conflict, one-target assignment, separate reassignment, status transitions, archived-contact rejection, sanitized RPC projections and append-only history.
+
+Task due dates require an explicit timezone. RPC task responses omit the internal client request key and versioned HMAC digest. All temporary migration and test copies were removed after local verification.
 
 No `role_capability` rows are seeded; business access remains denied until R-01–R-12 and D-01 are approved. No hosted CMI project has been linked, queried, migrated or modified; no Edge Function has been deployed and no SMS has been sent.
