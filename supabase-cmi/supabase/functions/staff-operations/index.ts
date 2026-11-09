@@ -560,9 +560,22 @@ Deno.serve(async (request: Request) => {
       request.method === "GET" &&
       isFollowupTaskItem
     ) {
-      const branchId = url.searchParams.get("branch_id") ?? "";
-      if (!isUuid(branchId)) {
-        return fail("INVALID_QUERY", "Invalid branch_id.", 400, origin, id);
+      const taskBranchIds = url.searchParams.getAll("branch_id");
+      const taskQueryKeys = [...url.searchParams.keys()];
+      const branchId = taskBranchIds[0] ?? "";
+      if (
+        taskQueryKeys.length !== 1 ||
+        taskQueryKeys[0] !== "branch_id" ||
+        taskBranchIds.length !== 1 ||
+        !isUuid(branchId)
+      ) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
       }
       const scopes = await resolveScopes(
         auth.service,
@@ -625,7 +638,13 @@ Deno.serve(async (request: Request) => {
         branchIds.length !== 1 ||
         !isUuid(branchId)
       ) {
-        return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
       }
 
       let raw: unknown;
@@ -682,7 +701,13 @@ Deno.serve(async (request: Request) => {
           );
         }
         if (error.code === "P0002") {
-          return fail("NOT_FOUND", "Follow-up task not found.", 404, origin, id);
+          return fail(
+            "NOT_FOUND",
+            "Follow-up task not found.",
+            404,
+            origin,
+            id,
+          );
         }
         if (error.code === "22023") {
           return fail(
@@ -840,9 +865,22 @@ Deno.serve(async (request: Request) => {
     }
 
     if (request.method === "PATCH" && isFollowupTaskItem) {
-      const branchId = url.searchParams.get("branch_id") ?? "";
-      if (!isUuid(branchId)) {
-        return fail("INVALID_QUERY", "Invalid branch_id.", 400, origin, id);
+      const taskBranchIds = url.searchParams.getAll("branch_id");
+      const taskQueryKeys = [...url.searchParams.keys()];
+      const branchId = taskBranchIds[0] ?? "";
+      if (
+        taskQueryKeys.length !== 1 ||
+        taskQueryKeys[0] !== "branch_id" ||
+        taskBranchIds.length !== 1 ||
+        !isUuid(branchId)
+      ) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
       }
       let raw: unknown;
       try {
