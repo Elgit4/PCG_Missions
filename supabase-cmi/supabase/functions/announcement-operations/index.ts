@@ -321,7 +321,13 @@ Deno.serve(async (request: Request) => {
         "announcement.read.scoped",
       );
       if (!scopes.includes("branch")) {
-        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, id);
+        return fail(
+          "FORBIDDEN",
+          "The operation is not permitted.",
+          403,
+          origin,
+          id,
+        );
       }
 
       const { data, error } = await auth.service
@@ -406,7 +412,13 @@ Deno.serve(async (request: Request) => {
         "announcement.create.scoped",
       );
       if (!scopes.includes("branch")) {
-        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, id);
+        return fail(
+          "FORBIDDEN",
+          "The operation is not permitted.",
+          403,
+          origin,
+          id,
+        );
       }
 
       const { data, error } = await auth.service
@@ -469,7 +481,13 @@ Deno.serve(async (request: Request) => {
         "announcement.create.scoped",
       );
       if (!scopes.includes("branch")) {
-        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, id);
+        return fail(
+          "FORBIDDEN",
+          "The operation is not permitted.",
+          403,
+          origin,
+          id,
+        );
       }
 
       const { data: current, error: currentError } = await auth.service
