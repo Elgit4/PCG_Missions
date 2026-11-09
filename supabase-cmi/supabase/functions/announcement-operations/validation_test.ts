@@ -176,7 +176,6 @@ Deno.test("parses bounded branch announcement pagination", () => {
   );
 });
 
-
 Deno.test(
   "rejects duplicate and unsupported announcement query parameters",
   () => {
