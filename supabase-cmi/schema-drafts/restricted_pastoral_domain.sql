@@ -274,4 +274,21 @@ begin
 end;
 $$;
 
+-- Only the trusted pastoral Edge Function and invoker-rights RPCs receive
+-- Data API table privileges. Browser roles remain revoked. Audit ledgers are
+-- insert-only for the service role.
+grant select on table
+  public.prayer_request,
+  public.prayer_assignment,
+  public.care_group,
+  public.care_group_membership,
+  public.care_record,
+  public.care_assignment,
+  public.care_interaction
+to service_role;
+grant insert on table
+  public.prayer_access_audit,
+  public.care_access_audit
+to service_role;
+
 commit;
