@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(71);
+select plan(72);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -68,6 +68,20 @@ select extensions.ok(
 );
 select extensions.is((select count(*)::integer from public.role_capability),0,
   'no unapproved role-capability grants exist');
+
+select extensions.ok(
+  has_table_privilege('service_role','public.event','SELECT')
+  and has_table_privilege('service_role','public.event','INSERT')
+  and has_table_privilege('service_role','public.calendar_entry','UPDATE')
+  and has_table_privilege('service_role','public.announcement','INSERT')
+  and has_table_privilege('service_role','public.sermon','UPDATE')
+  and has_table_privilege('service_role','public.church_public_profile','SELECT')
+  and not has_table_privilege('service_role','public.event','DELETE')
+  and not has_table_privilege('service_role','public.event_registration','INSERT')
+  and not has_table_privilege('anon','public.event','SELECT')
+  and not has_table_privilege('authenticated','public.sermon','SELECT'),
+  'service_role has explicit least-privilege calendar/event/content access while browser access and registration writes stay closed'
+);
 
 -- Keep the Edge Function's fixed public projections aligned with real schema columns.
 select extensions.ok(
