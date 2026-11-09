@@ -38,9 +38,9 @@ Deno.test(
     let called = false;
     const provider = createHubtelSmsProvider(
       { ...config, liveEnabled: false },
-      async () => {
+      () => {
         called = true;
-        return new Response("{}");
+        return Promise.resolve(new Response("{}"));
       },
     );
     let rejected = false;
@@ -59,9 +59,9 @@ Deno.test(
   "invalid phone and empty message are rejected before network call",
   async () => {
     let calls = 0;
-    const provider = createHubtelSmsProvider(config, async () => {
+    const provider = createHubtelSmsProvider(config, () => {
       calls++;
-      return new Response("{}");
+      return Promise.resolve(new Response("{}"));
     });
     for (
       const input of [
@@ -86,15 +86,15 @@ Deno.test(
   async () => {
     let requestUrl = "";
     let requestInit: RequestInit | undefined;
-    const provider = createHubtelSmsProvider(config, async (input, init) => {
+    const provider = createHubtelSmsProvider(config, (input, init) => {
       requestUrl = String(input);
       requestInit = init;
-      return Response.json({
+      return Promise.resolve(Response.json({
         rate: 0.03,
         messageId: "fab43849-6c5b-4334-a88b-d06520b1ace8",
         status: 0,
         networkId: "62001",
-      });
+      }));
     });
     const result = await provider.send({
       toE164: "+233241234567",
@@ -140,7 +140,7 @@ Deno.test("Hubtel status lookup maps delivery states", async () => {
   for (const [providerStatus, expected] of statuses) {
     const provider = createHubtelSmsProvider(
       config,
-      async () => Response.json({ status: providerStatus }),
+      () => Promise.resolve(Response.json({ status: providerStatus })),
     );
     const result = await provider.getStatus(
       "fab43849-6c5b-4334-a88b-d06520b1ace8",
@@ -155,12 +155,12 @@ Deno.test("Hubtel status lookup maps delivery states", async () => {
 Deno.test("provider acceptance status must be zero", async () => {
   const provider = createHubtelSmsProvider(
     config,
-    async () =>
-      Response.json({
+    () =>
+      Promise.resolve(Response.json({
         rate: 0.03,
         messageId: "fab43849-6c5b-4334-a88b-d06520b1ace8",
         status: 2,
-      }),
+      })),
   );
   let rejected = false;
   try {
@@ -184,7 +184,7 @@ Deno.test(
     ) {
       const provider = createHubtelSmsProvider(
         config,
-        async () => new Response("{}", { status }),
+        () => Promise.resolve(new Response("{}", { status })),
       );
       let actual: boolean | null = null;
       try {
@@ -205,9 +205,11 @@ Deno.test(
 Deno.test(
   "ambiguous send transport failure is not automatically retryable",
   async () => {
-    const provider = createHubtelSmsProvider(config, async () => {
-      throw new Error("simulated connection reset after request transmission");
-    });
+    const provider = createHubtelSmsProvider(config, () =>
+      Promise.reject(
+        new Error("simulated connection reset after request transmission"),
+      )
+    );
     let actual: HubtelSmsError | null = null;
     try {
       await provider.send({ toE164: "+233241234567", content: "Hello" });
