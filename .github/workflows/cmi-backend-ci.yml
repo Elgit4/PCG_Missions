@@ -95,6 +95,12 @@ jobs:
       - name: Test announcement draft request validation
         run: deno test supabase-cmi/supabase/functions/announcement-operations/validation_test.ts
 
+      - name: Type-check content operations Edge Function
+        run: deno check supabase-cmi/supabase/functions/content-operations/index.ts
+
+      - name: Test content draft request validation
+        run: deno test supabase-cmi/supabase/functions/content-operations/validation_test.ts
+
       - name: Type-check pastoral operations Edge Function
         run: deno check supabase-cmi/supabase/functions/pastoral-operations/index.ts
 
