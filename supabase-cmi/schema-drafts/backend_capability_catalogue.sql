@@ -94,7 +94,7 @@ create or replace function public.cmi_create_contact(
 )
 returns jsonb
 language plpgsql
-security definer
+security invoker
 set search_path = pg_catalog
 as $$
 declare
