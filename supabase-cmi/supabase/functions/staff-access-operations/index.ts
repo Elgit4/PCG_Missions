@@ -312,4 +312,5 @@ Deno.serve(async (req: Request) => {
       origin,
       id,
     );
-  });
+  }
+});
