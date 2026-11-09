@@ -27,21 +27,23 @@ Deno.test("parses prayer and care read routes", () => {
     care?.kind !== "care_record" ||
     care.recordId !== RECORD_ID
   ) {
-    throw new Error("Pastoral read route parsing returned an unexpected result.");
+    throw new Error(
+      "Pastoral read route parsing returned an unexpected result.",
+    );
   }
 });
 
 Deno.test("rejects unsupported routes and non-UUID record IDs", () => {
   if (
-    parsePastoralReadPath(
-      "/pastoral-operations/prayer/requests/not-a-uuid/read",
-    ) !== null ||
-    parsePastoralReadPath(
-      `/pastoral-operations/prayer/requests/${RECORD_ID}/update`,
-    ) !== null ||
-    parsePastoralReadPath(
-      `/pastoral-operations/care/groups/${RECORD_ID}/read`,
-    ) !== null
+      parsePastoralReadPath(
+        "/pastoral-operations/prayer/requests/not-a-uuid/read",
+      ) !== null ||
+      parsePastoralReadPath(
+        `/pastoral-operations/prayer/requests/${RECORD_ID}/update`,
+      ) !== null ||
+      parsePastoralReadPath(
+        `/pastoral-operations/care/groups/${RECORD_ID}/read`,
+      ) !== null
   ) {
     throw new Error("An unsupported pastoral route was accepted.");
   }
