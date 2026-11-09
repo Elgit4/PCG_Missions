@@ -299,6 +299,7 @@ declare
   v_team_scope boolean := false;
   v_self_scope boolean := false;
   v_task public.followup_task%rowtype;
+  v_old_status text;
   v_new_status text;
   v_new_task_note text;
   v_new_priority smallint;
@@ -398,7 +399,8 @@ begin
     raise exception using errcode = '42501', message = 'follow-up task update not authorized';
   end if;
 
-  v_new_status := coalesce(p_patch->>'status', v_task.status);
+  v_old_status := v_task.status;
+  v_new_status := coalesce(p_patch->>'status', v_old_status);
   if v_new_status <> v_task.status and not (
     (v_task.status in ('open', 'in_progress') and v_new_status in ('open', 'in_progress', 'completed', 'cancelled'))
     or (v_task.status = 'completed' and v_new_status in ('open', 'in_progress'))
@@ -442,23 +444,11 @@ begin
     into v_changed_fields
   from pg_catalog.jsonb_object_keys(p_patch) as key;
 
-  if v_new_status <> (select task.status from public.followup_task task where task.id = p_task_id) then
-    v_event_type := 'status_changed';
-  end if;
-  -- Compare against the locked row's previous values captured by the patch.
-  if p_patch ? 'status' and p_patch->>'status' <> coalesce(
-    (select event.from_status from public.followup_task_event event
-     where event.task_id = p_task_id and event.event_type in ('created','status_changed','completed','reopened','cancelled')
-     order by event.created_at desc limit 1),
-    v_new_status
-  ) then
+  if v_new_status <> v_old_status then
     v_event_type := case
       when v_new_status = 'completed' then 'completed'
       when v_new_status = 'cancelled' then 'cancelled'
-      when v_new_status in ('open', 'in_progress') and exists (
-        select 1 from public.followup_task_event event
-        where event.task_id = p_task_id and event.event_type = 'completed'
-      ) then 'reopened'
+      when v_old_status = 'completed' then 'reopened'
       else 'status_changed'
     end;
   end if;
@@ -476,14 +466,8 @@ begin
     p_task_id,
     p_actor_auth_user_id,
     v_event_type,
-    case when p_patch ? 'status' then
-      (select event.to_status
-       from public.followup_task_event event
-       where event.task_id = p_task_id
-         and event.event_type in ('created','status_changed','completed','reopened','cancelled')
-       order by event.created_at desc limit 1)
-    else null end,
-    case when p_patch ? 'status' then v_new_status else null end,
+    case when v_new_status <> v_old_status then v_old_status else null end,
+    case when v_new_status <> v_old_status then v_new_status else null end,
     pg_catalog.jsonb_build_object('changed_fields', coalesce(v_changed_fields, '[]'::jsonb))
   );
 
