@@ -199,7 +199,7 @@ async function resolveScopes(
     .eq("staff_profile_id", profileId)
     .eq("branch_id", branchId)
     .lte("starts_at", now)
-    .is("ends_at", null)
+    .or(`ends_at.is.null,ends_at.gt.${now}`)
     .is("revoked_at", null);
   if (assignmentError) throw new Error("ROLE_ASSIGNMENT_LOOKUP_FAILED");
   const roleIds = [
@@ -239,6 +239,7 @@ async function visibleContactIds(
   scopes: ScopeMode[],
 ): Promise<string[] | null> {
   if (scopes.includes("branch")) return null;
+  const now = new Date().toISOString();
 
   const ids = new Set<string>();
   if (scopes.includes("assigned")) {
@@ -247,8 +248,8 @@ async function visibleContactIds(
       .select("contact_id")
       .eq("branch_id", branchId)
       .eq("assignee_user_id", actorId)
-      .lte("starts_at", new Date().toISOString())
-      .is("ends_at", null);
+      .lte("starts_at", now)
+      .or(`ends_at.is.null,ends_at.gt.${now}`);
     if (error) throw new Error("CONTACT_ASSIGNMENT_LOOKUP_FAILED");
     for (const item of data ?? []) ids.add(item.contact_id);
   }
@@ -259,8 +260,8 @@ async function visibleContactIds(
       .select("team_id,team:team!inner(is_active)")
       .eq("staff_profile_id", profileId)
       .eq("branch_id", branchId)
-      .lte("starts_at", new Date().toISOString())
-      .is("ends_at", null)
+      .lte("starts_at", now)
+      .or(`ends_at.is.null,ends_at.gt.${now}`)
       .is("revoked_at", null)
       .eq("team.is_active", true);
     if (membershipError) throw new Error("TEAM_MEMBERSHIP_LOOKUP_FAILED");
