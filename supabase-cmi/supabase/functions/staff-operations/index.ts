@@ -5,6 +5,8 @@ import {
 } from "../_shared/idempotency.ts";
 import {
   isUuid,
+  parseStaffDirectoryQuery,
+  projectStaffDirectoryRows,
   parseContactCreate,
   parseContactPatch,
   parseFollowupTaskAssignment,
@@ -478,6 +480,79 @@ Deno.serve(async (request: Request) => {
       path[path.length - 3] === "tasks" &&
       path[path.length - 4] === "followup" &&
       isUuid(reassignmentTaskId);
+    const isStaffDirectoryCollection = previous === "staff-operations" &&
+      last === "staff";
+
+    if (request.method === "GET" && isStaffDirectoryCollection) {
+      const parsed = parseStaffDirectoryQuery(url);
+      if (!parsed.ok) {
+        return fail("INVALID_QUERY", parsed.error, 400, origin, id);
+      }
+      const { branch_id, limit, offset, search } = parsed.value;
+      const scopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branch_id,
+        "staff.directory.read",
+      );
+      // The directory is deliberately branch-only. Team/event/self scopes do
+      // not imply permission to enumerate staff across a wider workspace.
+      if (!scopes.includes("branch")) {
+        return fail(
+          "FORBIDDEN",
+          "The operation is not permitted.",
+          403,
+          origin,
+          id,
+        );
+      }
+
+      const now = new Date().toISOString();
+      let query = auth.service
+        .from("staff_profile")
+        .select(
+          "id,full_name,account_status,staff_role_assignment!inner(role:role!inner(code,name,is_active))",
+          { count: "exact" },
+        )
+        .eq("account_status", "active")
+        .eq("staff_role_assignment.branch_id", branch_id)
+        .lte("staff_role_assignment.starts_at", now)
+        .or(
+          `ends_at.is.null,ends_at.gt.${now}`,
+          { referencedTable: "staff_role_assignment" },
+        )
+        .is("staff_role_assignment.revoked_at", null)
+        .eq("staff_role_assignment.role.is_active", true);
+
+      if (search) {
+        const safeSearch = search.replace(/[\\%_]/g, "\\    const isFollowupTaskReassign = last === "reassign" &&
+      path[path.length - 3] === "tasks" &&
+      path[path.length - 4] === "followup" &&
+      isUuid(reassignmentTaskId);
+
+    if (request.method === "GET" && isFollowupTaskCollection) {");
+        query = query.ilike("full_name", `%${safeSearch}%`);
+      }
+
+      const { data, error, count } = await query
+        .order("full_name", { ascending: true })
+        .range(offset, offset + limit - 1);
+      if (error) throw new Error("STAFF_DIRECTORY_LOOKUP_FAILED");
+
+      const members = projectStaffDirectoryRows(data ?? []);
+      return response(
+        {
+          data: members,
+          total: count ?? members.length,
+          limit,
+          offset,
+          request_id: id,
+        },
+        200,
+        origin,
+        id,
+      );
+    }
 
     if (request.method === "GET" && isFollowupTaskCollection) {
       const params = validateFollowupTaskQuery(url);

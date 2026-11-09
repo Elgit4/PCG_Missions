@@ -2,7 +2,7 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status (2026-11-09):** PRs #3–#15 are merged to `main`. PR #10 merged at `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged at `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`; PR #13 merged as `b8843c2ea09561ccaf712222dccb282490126fd6`; PR #15 added the scoped private event-draft API and merged as `a6a3a8948932039d1a85666b7f49f9f7e4ed9e1c`. The current `main` head is `1e05c9f3829c2c9ffaf45570b913078f69035335`. PR #13's exact-head [CI run #42600705230](https://github.com/Elgit4/PCG_Missions/actions/runs/42600705230) passed **227 pgTAP assertions across seven files** and 58 Deno tests. PR #15's exact-head [CI run #42611211003](https://github.com/Elgit4/PCG_Missions/actions/runs/42611211003) also passed the complete CMI pipeline, including all 227 pgTAP assertions and 70 Deno tests. R-01, R-10, R-11 and D-07 remain pending, so no role grants are seeded. No hosted CMI database was linked, queried or modified, and no Edge Function has been deployed.
+**Status (2026-11-09):** PRs #3–#16 are merged to `main`. PR #16 is merged at `25db35dbf42a66fb405f77f0203e246591a4d34e`; its CMI backend CI run [#42619630282](https://github.com/Elgit4/PCG_Missions/actions/runs/42619630282) passed all 29 workflow steps. This report previously tracked an older `main` head; the repository baseline is now the PR #16 merge commit above. R-01–R-12, D-01–D-13 and the separate authentication/SMS/offline/audit approvals remain pending. No role grants are seeded. No hosted CMI database has been linked or modified, and no Edge Function has been deployed.
 
 ## Staff API implementation merged to main
 
@@ -155,3 +155,10 @@ The event pgTAP suite has **71 assertions**, including the trigger-function priv
 ### Approval and deployment boundary
 
 The stakeholder decision register still marks R-01, R-10, R-11 and D-07 pending. The new routes deny access unless explicit grants are eventually approved and provisioned. The SQL remains in `schema-drafts/`; it is not permanent migration history. No hosted Supabase project, production schema, SMS provider or Edge Function has been touched.
+
+## Staff directory read-only slice — unmerged feature branch
+
+The feature branch `feat/cmi-backend-completion` adds `GET /staff-operations/staff` as a minimized branch directory. It requires `staff.directory.read` with branch scope, returns active assigned staff with distinct role labels, and excludes Auth IDs, email, phone and credential data. Request validation covers branch UUID, duplicate/unknown query parameters, bounded pagination and search length. Projection tests verify role de-duplication, inactive-profile exclusion and response minimization.
+
+This does not implement account provisioning, invitation/activation, private PIN setup or reset/reissue, deactivation/reactivation, or role assignment/revocation. Those operations remain blocked by the pending authentication and authorization approvals; no role grants or credential behavior are inferred from recommendations. The feature remains source-only and undeployed.
+

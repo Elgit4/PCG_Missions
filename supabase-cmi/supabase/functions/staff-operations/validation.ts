@@ -275,6 +275,96 @@ export function isUuid(value: string): boolean {
   return UUID_PATTERN.test(value);
 }
 
+export interface StaffDirectoryQuery {
+  branch_id: string;
+  limit: number;
+  offset: number;
+  search: string;
+}
+
+export function parseStaffDirectoryQuery(
+  url: URL,
+): { ok: true; value: StaffDirectoryQuery } | { ok: false; error: string } {
+  const allowed = new Set(["branch_id", "limit", "offset", "search"]);
+  const seen = new Set<string>();
+  for (const key of url.searchParams.keys()) {
+    if (!allowed.has(key) || seen.has(key)) {
+      return { ok: false, error: "Unsupported or duplicate query parameter." };
+    }
+    seen.add(key);
+  }
+
+  const branchId = url.searchParams.get("branch_id") ?? "";
+  if (!UUID_PATTERN.test(branchId)) {
+    return { ok: false, error: "A valid branch_id is required." };
+  }
+
+  const limit = Number(url.searchParams.get("limit") ?? "25");
+  const offset = Number(url.searchParams.get("offset") ?? "0");
+  const search = (url.searchParams.get("search") ?? "").trim();
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) {
+    return { ok: false, error: "limit must be an integer from 1 to 50." };
+  }
+  if (!Number.isInteger(offset) || offset < 0 || offset > 5000) {
+    return { ok: false, error: "offset must be an integer from 0 to 5000." };
+  }
+  if (search.length > 80) {
+    return { ok: false, error: "search must not exceed 80 characters." };
+  }
+
+  return { ok: true, value: { branch_id: branchId, limit, offset, search } };
+}
+
+export interface StaffDirectoryProfileRow {
+  id: string;
+  full_name: string;
+  account_status?: string;
+  staff_role_assignment?: Array<{
+    role?: {
+      code: string;
+      name: string;
+      is_active: boolean;
+    } | null;
+  }> | null;
+}
+
+export interface StaffDirectoryMember {
+  id: string;
+  full_name: string;
+  roles: Array<{ code: string; name: string }>;
+}
+
+/**
+ * Projects active staff and their active role names for one branch.
+ * Only allowlisted fields are returned; Auth IDs, email and phone never enter
+ * the directory response.
+ */
+export function projectStaffDirectoryRows(
+  rows: StaffDirectoryProfileRow[],
+): StaffDirectoryMember[] {
+  return rows
+    .filter((row) => row.account_status === undefined ||
+      row.account_status === "active")
+    .map((row) => {
+      const roles = new Map<string, string>();
+      for (const assignment of row.staff_role_assignment ?? []) {
+        const role = assignment.role;
+        if (role?.is_active && role.code && role.name) {
+          roles.set(role.code, role.name);
+        }
+      }
+      return {
+        id: row.id,
+        full_name: row.full_name,
+        roles: [...roles.entries()]
+          .map(([code, name]) => ({ code, name }))
+          .sort((a, b) => a.code.localeCompare(b.code)),
+      };
+    })
+    .filter((row) => row.roles.length > 0)
+    .sort((a, b) => a.full_name.localeCompare(b.full_name));
+}
+
 export interface FollowupTaskCreateInput {
   branch_id: string;
   contact_id: string;

@@ -286,6 +286,41 @@ The `calendar-operations` function provides branch-only `calendar_entry` list/de
 
 Team/event/own scope, the `followup` and `prayer_schedule` entry types, and deletion are not exposed. The exact endpoints and validation are in [document 23 — Branch Calendar Operations API Contract](23_BRANCH_CALENDAR_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this feature remains fail-closed and undeployed.
 
+## 7E. Branch-scoped staff directory
+
+### `GET /staff-operations/staff?branch_id={uuid}&limit={n}&offset={n}&search={text}`
+
+The directory is a read-only, minimized projection for authenticated staff.
+
+- Requires the exact `staff.directory.read` capability with `branch` scope for an active branch. Other scope modes do not imply permission to enumerate branch staff.
+- Returns only active staff profiles that hold at least one current, non-revoked active role assignment in the requested branch.
+- Results are ordered by staff full name; pagination is bounded to `limit=1..50`, `offset=0..5000`. Optional name search is limited to 80 characters.
+- The response contains only `id`, `full_name` and distinct active role `code/name` pairs. Auth user IDs, email, phone, credential metadata, assignment reasons and other personal fields are not returned.
+- The route is GET-only. It does not provision accounts, activate/deactivate staff, issue/reset credentials, assign/revoke roles, or modify team membership.
+- No role grants are seeded. The endpoint therefore remains denied until the applicable stakeholder authorization decisions are approved and grants are provisioned.
+
+Example response:
+
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "full_name": "Ama Mensah",
+      "roles": [
+        { "code": "coordinator", "name": "Coordinator" }
+      ]
+    }
+  ],
+  "total": 1,
+  "limit": 25,
+  "offset": 0,
+  "request_id": "uuid"
+}
+```
+
+The read-only directory is not account administration. Staff invitation/activation, private PIN establishment/reissue, account deactivation, role assignment and capability administration remain blocked until the corresponding authentication and R-01–R-12/D-01 decisions are approved. Administrators must never receive or set a staff member's permanent PIN.
+
 ## 8. Not yet implemented
 
 The following API families remain backend work and must not be represented as available frontend functionality:

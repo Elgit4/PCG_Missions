@@ -55,6 +55,7 @@ Initial authenticated staff endpoints:
 - `GET /staff-operations/contacts/{contactId}?branch_id={uuid}`
 - `POST /staff-operations/contacts`
 - `PATCH /staff-operations/contacts/{contactId}?branch_id={uuid}`
+- `GET /staff-operations/staff?branch_id={uuid}&limit={n}&offset={n}&search={text}` — branch-scoped, minimized directory read requiring `staff.directory.read` with branch scope.
 - `GET /staff-operations/followup/tasks?branch_id={uuid}`
 - `GET /staff-operations/followup/tasks/{taskId}?branch_id={uuid}`
 - `POST /staff-operations/followup/tasks`
