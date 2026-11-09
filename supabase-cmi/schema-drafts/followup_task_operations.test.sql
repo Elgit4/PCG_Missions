@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(27);
+select plan(30);
 
 select has_column('public', 'followup_task', 'client_request_id', 'task create idempotency key is stored');
 select has_column('public', 'followup_task', 'digest_key_version', 'task digest key version is stored');
@@ -143,6 +143,15 @@ values (
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'
 );
 
+insert into public.contact(id, branch_id, first_name, contact_status, created_by)
+values (
+  '40000000-0000-4000-8000-000000000021',
+  '20000000-0000-4000-8000-000000000020',
+  'Archived Task Contact',
+  'archived',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'
+);
+
 insert into public.staff_role_assignment(
   staff_profile_id, role_id, branch_id, assigned_by, starts_at, ends_at
 )
@@ -249,6 +258,42 @@ select throws_ok(
   'reusing a task request key with a changed digest is rejected'
 );
 
+select throws_ok(
+  $q$ select public.cmi_create_followup_task(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    '20000000-0000-4000-8000-000000000020',
+    '50000000-0000-4000-8000-000000000021',
+    1::smallint,
+    decode(repeat('cc', 32), 'hex'),
+    '40000000-0000-4000-8000-000000000021',
+    null,
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    null,
+    3::smallint,
+    null,
+    'Call archived visitor'
+  ) $q$,
+  '22023', null,
+  'archived contacts cannot receive new follow-up tasks'
+);
+
+with reassigned as (
+  select public.cmi_reassign_followup_task(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    '20000000-0000-4000-8000-000000000020',
+    (select id from public.followup_task
+     where client_request_id = '50000000-0000-4000-8000-000000000020'),
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
+    null
+  ) as result
+)
+select extensions.is(
+  result->'task'->>'assignee_user_id',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
+  'branch reassignment returns the selected staff member as the primary target'
+)
+from reassigned;
+
 with reassigned as (
   select public.cmi_reassign_followup_task(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
@@ -260,9 +305,13 @@ with reassigned as (
   ) as result
 )
 select extensions.ok(
-  result->'task'->>'assignee_user_id' = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22'
-  and not ((result->'task') ?| array['client_request_id', 'digest_key_version', 'request_digest'])
-  and exists (
+  not ((result->'task') ?| array['client_request_id', 'digest_key_version', 'request_digest']),
+  'branch reassignment omits internal idempotency fields'
+)
+from reassigned;
+
+select extensions.ok(
+  exists (
     select 1
     from public.followup_task_event event
     where event.task_id = (
@@ -273,9 +322,8 @@ select extensions.ok(
       and event.details->>'from_assignee_user_id' = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'
       and event.details->>'to_assignee_user_id' = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22'
   ),
-  'branch reassignment returns safe fields and records old/new primary target IDs'
-)
-from reassigned;
+  'branch reassignment records old and new primary target IDs'
+);
 
 with reassigned as (
   select public.cmi_reassign_followup_task(
@@ -318,7 +366,7 @@ from updated;
 
 select throws_ok(
   $q$ select public.cmi_update_followup_task(
-    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
     '20000000-0000-4000-8000-000000000020',
     (select id from public.followup_task
      where client_request_id = '50000000-0000-4000-8000-000000000020'),
