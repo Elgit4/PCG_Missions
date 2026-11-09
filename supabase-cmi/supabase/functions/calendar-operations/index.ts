@@ -32,15 +32,6 @@ function createServiceClient() {
 }
 
 type ServiceClient = ReturnType<typeof createServiceClient>;
-type ScopeMode =
-  | "branch"
-  | "team"
-  | "assigned"
-  | "self"
-  | "event"
-  | "explicit_share"
-  | "oversight";
-
 const CALENDAR_COLUMNS =
   "id,branch_id,entry_type,title,starts_at,ends_at,scope_type,created_by,created_at,updated_at";
 
