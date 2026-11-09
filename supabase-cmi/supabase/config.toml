@@ -48,10 +48,6 @@ verify_jwt = true
 # Protected staff access administration; validates JWT and database capabilities.
 verify_jwt = true
 
-[functions.staff-operations]
-# Authenticated staff contact, directory and follow-up operations.
-verify_jwt = true
-
 [functions.event-operations]
 # Branch-scoped private event-draft operations.
 verify_jwt = true
