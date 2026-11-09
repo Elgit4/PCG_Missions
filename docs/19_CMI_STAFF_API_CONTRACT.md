@@ -280,6 +280,12 @@ The API never accepts caller-supplied creator, status or publication fields and 
 
 See [document 22 — Visitor Content Draft Operations API Contract](22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this function remains fail-closed until the applicable decisions and grants are approved. It has not been deployed.
 
+## 7D. Branch calendar operations (feature branch)
+
+The `calendar-operations` function provides branch-only `calendar_entry` list/detail/create/update. Reads require `calendar.read.scoped` with branch scope; mutations require `calendar.manage.scoped` with branch scope. New rows have server-forced `scope_type='branch'`, null team/event/owner fields and an authenticated creator. Updates use an `updated_at` concurrency predicate.
+
+Team/event/own scope, the `followup` and `prayer_schedule` entry types, and deletion are not exposed. The exact endpoints and validation are in [document 23 — Branch Calendar Operations API Contract](23_BRANCH_CALENDAR_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this feature remains fail-closed and undeployed.
+
 ## 8. Not yet implemented
 
 The following API families remain backend work and must not be represented as available frontend functionality:
