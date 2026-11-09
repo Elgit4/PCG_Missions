@@ -442,3 +442,41 @@ export function parseFollowupTaskPatch(
   }
   return { ok: true, value: result };
 }
+
+
+export interface FollowupTaskAssignmentInput {
+  assignee_user_id: string | null;
+  team_id: string | null;
+}
+
+export function parseFollowupTaskAssignment(
+  value: unknown,
+): { ok: true; value: FollowupTaskAssignmentInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const keys = Object.keys(value);
+  if (
+    keys.length !== 1 ||
+    (keys[0] !== "assignee_user_id" && keys[0] !== "team_id")
+  ) {
+    return {
+      ok: false,
+      error: "Exactly one assignment target must be supplied.",
+    };
+  }
+  const target = value[keys[0]];
+  if (typeof target !== "string" || !UUID_PATTERN.test(target)) {
+    return { ok: false, error: "Invalid assignment target UUID." };
+  }
+  return {
+    ok: true,
+    value: {
+      assignee_user_id: keys[0] === "assignee_user_id" ? target : null,
+      team_id: keys[0] === "team_id" ? target : null,
+    },
+  };
+}
