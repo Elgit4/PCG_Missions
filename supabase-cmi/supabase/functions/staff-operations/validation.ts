@@ -288,9 +288,11 @@ export interface FollowupTaskCreateInput {
   task_note: string | null;
 }
 
-export type FollowupTaskPatchInput = Partial<
-  Pick<FollowupTaskCreateInput, "priority" | "due_at" | "task_note">
-> & { status?: "open" | "in_progress" | "completed" | "cancelled" };
+export type FollowupTaskPatchInput =
+  & Partial<
+    Pick<FollowupTaskCreateInput, "priority" | "due_at" | "task_note">
+  >
+  & { status?: "open" | "in_progress" | "completed" | "cancelled" };
 
 const TASK_STATUSES = new Set([
   "open",
@@ -356,7 +358,9 @@ export function parseFollowupTaskCreate(
   const listId = optionalUuid("list_id");
   const assigneeId = optionalUuid("assignee_user_id");
   const teamId = optionalUuid("team_id");
-  if (listId === undefined || assigneeId === undefined || teamId === undefined) {
+  if (
+    listId === undefined || assigneeId === undefined || teamId === undefined
+  ) {
     return { ok: false, error: "Invalid list_id or assignment target." };
   }
   if ((assigneeId === null) === (teamId === null)) {
