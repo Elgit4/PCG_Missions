@@ -1,11 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 
-import {
-  buildStaffSession,
-  type BranchRow,
-  type RoleAssignmentRow,
-  type RoleCapabilityRow,
-  type StaffProfile,
+import { buildStaffSession } from "./session.ts";
+import type {
+  BranchRow,
+  RoleAssignmentRow,
+  RoleCapabilityRow,
+  StaffProfile,
 } from "./session.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
