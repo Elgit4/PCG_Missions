@@ -195,7 +195,6 @@ Deno.test("follow-up task update rejects assignment changes and unknown fields",
   }
 });
 
-
 Deno.test("follow-up task reassignment accepts one staff target", () => {
   const parsed = parseFollowupTaskAssignment({
     assignee_user_id: "10000000-0000-4000-8000-000000000015",
@@ -232,12 +231,17 @@ Deno.test("follow-up task reassignment rejects missing, dual or invalid targets"
         team_id: "10000000-0000-4000-8000-000000000016",
       },
       { assignee_user_id: "not-a-uuid" },
-      { assignee_user_id: "10000000-0000-4000-8000-000000000015", status: "open" },
+      {
+        assignee_user_id: "10000000-0000-4000-8000-000000000015",
+        status: "open",
+      },
     ]
   ) {
     const parsed = parseFollowupTaskAssignment(input);
     if (parsed.ok) {
-      throw new Error("Invalid or caller-controlled reassignment was accepted.");
+      throw new Error(
+        "Invalid or caller-controlled reassignment was accepted.",
+      );
     }
   }
 });
