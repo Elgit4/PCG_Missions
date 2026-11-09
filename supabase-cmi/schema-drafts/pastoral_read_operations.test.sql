@@ -4,7 +4,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(30);
+select plan(46);
 
 select has_function(
   'public', 'cmi_read_prayer_request',
@@ -70,6 +70,32 @@ select ok(
   'Trusted service role can execute care read transaction'
 );
 select ok(
+  not has_function_privilege(
+    'anon',
+    'public.cmi_read_care_record(uuid,uuid,uuid,text,text,text)',
+    'EXECUTE'
+  ),
+  'Anonymous role cannot execute care read transaction'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.cmi_read_care_record(uuid,uuid,uuid,text,text,text)',
+    'EXECUTE'
+  ),
+  'Authenticated browser role cannot execute care read transaction directly'
+);
+select ok(
+  not has_table_privilege('anon', 'public.prayer_access_audit', 'SELECT')
+  and not has_table_privilege('authenticated', 'public.prayer_access_audit', 'SELECT'),
+  'Browser roles cannot read prayer access audit rows directly'
+);
+select ok(
+  not has_table_privilege('anon', 'public.care_access_audit', 'SELECT')
+  and not has_table_privilege('authenticated', 'public.care_access_audit', 'SELECT'),
+  'Browser roles cannot read care access audit rows directly'
+);
+select ok(
   not (
     select prosecdef
     from pg_proc
@@ -101,6 +127,10 @@ insert into auth.users (
   ('00000000-0000-0000-0000-000000000000',
    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb003', 'authenticated', 'authenticated',
    'cmi-pastoral-unassigned@example.invalid', 'not-a-real-password-hash',
+   now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()),
+  ('00000000-0000-0000-0000-000000000000',
+   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb004', 'authenticated', 'authenticated',
+   'cmi-pastoral-no-capability@example.invalid', 'not-a-real-password-hash',
    now(), '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now());
 
 insert into public.staff_profile(id, auth_user_id, full_name, account_status)
@@ -110,7 +140,9 @@ values
   ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb102',
    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002', 'Synthetic Oversight Reviewer', 'active'),
   ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb103',
-   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb003', 'Synthetic Unassigned Worker', 'active');
+   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb003', 'Synthetic Unassigned Worker', 'active'),
+  ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb104',
+   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb004', 'Synthetic Staff Without Grants', 'active');
 
 insert into public.church(id, name, timezone)
 values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba001', 'Synthetic Pastoral Operations Church', 'Africa/Accra');
@@ -205,6 +237,85 @@ insert into public.care_interaction(
   'visit',
   'follow_up_required',
   'Synthetic confidential pastoral interaction note.'
+);
+
+-- Separate records test assignments that have expired or were explicitly revoked.
+insert into public.prayer_request(
+  id, branch_id, contact_id, created_by, request_text
+) values
+  (
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba302',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba201',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+    'Synthetic expired prayer assignment fixture.'
+  ),
+  (
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba303',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba201',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+    'Synthetic revoked prayer assignment fixture.'
+  );
+
+insert into public.prayer_assignment(
+  prayer_request_id, branch_id, intercessor_user_id, assigned_by, starts_at, ends_at
+) values (
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba302',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002',
+  now() - interval '2 days',
+  now() - interval '1 day'
+);
+
+insert into public.prayer_assignment(
+  prayer_request_id, branch_id, intercessor_user_id, assigned_by, starts_at, revoked_at
+) values (
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba303',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002',
+  now() - interval '2 days',
+  now() - interval '1 day'
+);
+
+insert into public.care_record(
+  id, branch_id, contact_id, created_by
+) values
+  (
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba402',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba201',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001'
+  ),
+  (
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba403',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba201',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001'
+  );
+
+insert into public.care_assignment(
+  care_record_id, branch_id, assignee_user_id, assigned_by, starts_at, ends_at
+) values (
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba402',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002',
+  now() - interval '2 days',
+  now() - interval '1 day'
+);
+
+insert into public.care_assignment(
+  care_record_id, branch_id, assignee_user_id, assigned_by, starts_at, revoked_at
+) values (
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba403',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002',
+  now() - interval '2 days',
+  now() - interval '1 day'
 );
 
 set local role service_role;
@@ -372,6 +483,130 @@ select extensions.ok(
   ),
   'Care oversight audit records reason and safe interaction count'
 );
+select extensions.ok(
+  not exists (
+    select 1 from public.prayer_access_audit
+    where request_id = 'synthetic-prayer-assigned-read'
+      and safe_metadata::text like '%Synthetic confidential prayer request%'
+  ),
+  'Prayer audit metadata never duplicates prayer narrative text'
+);
+select extensions.ok(
+  not exists (
+    select 1 from public.care_access_audit
+    where request_id = 'synthetic-care-assigned-read'
+      and safe_metadata::text like '%Synthetic confidential pastoral interaction note%'
+  ),
+  'Care audit metadata never duplicates restricted interaction text'
+);
+select extensions.throws_ok(
+  $q$ select public.cmi_read_prayer_request(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba301',
+    'oversight', 'free_text_not_allowed', 'synthetic-prayer-invalid-reason'
+  ) $q$,
+  '22023', 'oversight reason code is required',
+  'Database rejects prayer oversight reason codes outside its allowlist'
+);
+select extensions.throws_ok(
+  $q$ select public.cmi_read_care_record(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba401',
+    'oversight', 'free_text_not_allowed', 'synthetic-care-invalid-reason'
+  ) $q$,
+  '22023', 'oversight reason code is required',
+  'Database rejects care oversight reason codes outside its allowlist'
+);
+select extensions.throws_ok(
+  $q$ select public.cmi_read_prayer_request(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb004',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba301',
+    'assigned', null, 'synthetic-prayer-no-capability'
+  ) $q$,
+  '42501', 'pastoral read not authorized',
+  'Active staff without any role grant cannot read prayer narratives'
+);
+select extensions.throws_ok(
+  $q$ select public.cmi_read_care_record(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb004',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba401',
+    'assigned', null, 'synthetic-care-no-capability'
+  ) $q$,
+  '42501', 'pastoral read not authorized',
+  'Active staff without any role grant cannot read care narratives'
+);
+select extensions.throws_ok(
+  $q$ select public.cmi_read_prayer_request(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba302',
+    'assigned', null, 'synthetic-prayer-expired-assignment'
+  ) $q$,
+  'P0002', 'prayer request not found',
+  'Expired prayer assignments no longer authorize narrative reads'
+);
+select extensions.throws_ok(
+  $q$ select public.cmi_read_prayer_request(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba303',
+    'assigned', null, 'synthetic-prayer-revoked-assignment'
+  ) $q$,
+  'P0002', 'prayer request not found',
+  'Revoked prayer assignments no longer authorize narrative reads'
+);
+select extensions.throws_ok(
+  $q$ select public.cmi_read_care_record(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba402',
+    'assigned', null, 'synthetic-care-expired-assignment'
+  ) $q$,
+  'P0002', 'care record not found',
+  'Expired care assignments no longer authorize restricted reads'
+);
+select extensions.throws_ok(
+  $q$ select public.cmi_read_care_record(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba403',
+    'assigned', null, 'synthetic-care-revoked-assignment'
+  ) $q$,
+  'P0002', 'care record not found',
+  'Revoked care assignments no longer authorize restricted reads'
+);
+select extensions.throws_ok(
+  $q$ select public.cmi_read_care_record(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba102',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba401',
+    'assigned', null, 'synthetic-care-wrong-branch'
+  ) $q$,
+  '42501', 'pastoral read not authorized',
+  'Care record reads require an active role assignment in that branch'
+);
+update public.staff_profile
+set account_status = 'inactive',
+    deactivated_at = now()
+where auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002';
+select extensions.throws_ok(
+  $q$ select public.cmi_read_prayer_request(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba301',
+    'oversight', 'pastoral_review', 'synthetic-prayer-inactive-staff'
+  ) $q$,
+  '42501', 'pastoral read not authorized',
+  'Inactive staff cannot read prayer narratives even with an oversight grant'
+);
+update public.staff_profile
+set account_status = 'active',
+    deactivated_at = null
+where auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002';
 reset role;
 
 select extensions.throws_ok(

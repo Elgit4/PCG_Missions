@@ -2,11 +2,11 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status (2026-11-09):** PRs #3–#10 are merged to `main`. PR #10 merged at commit `5487debe93b9a556bfa9fc70d21a6131204682bd`. Its latest observed PR-head CI run, [run #165](https://github.com/Elgit4/PCG_Missions/actions/runs/42589357372), completed successfully with **178 pgTAP assertions across six files** and the CMI Deno checks. The current feature branch `feat/cmi-audited-pastoral-reads` adds read-only audited prayer/care record access and its database/validation tests; that increment is under review and has not yet been CI-verified. R-01, R-10, R-11 and D-07 remain pending, so no role grants are seeded. No hosted CMI database was linked, queried or modified, and no Edge Function has been deployed.
+**Status (2026-11-09):** PRs #3–#11 are merged to `main`. PR #10 merged at `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged at `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`. PR #11's exact-head [CI run #176](https://github.com/Elgit4/PCG_Missions/actions/runs/42594351467) passed **208 pgTAP assertions across seven files**, plus all CMI formatting, lint, type-check and Deno validation steps (58 Deno unit tests). The branch `test/cmi-pastoral-read-hardening` adds 16 database assertions for audit-ledger access, inactive staff, missing grants, expired/revoked assignments and audit metadata minimization; it is not yet CI-verified. R-01, R-10, R-11 and D-07 remain pending, so no role grants are seeded. No hosted CMI database was linked, queried or modified, and no Edge Function has been deployed.
 
-## New staff API implementation in review branch
+## Staff API implementation merged to main
 
-The `feat/cmi-staff-session-api` branch adds an initial API layer for frontend integration:
+PR #10 merged the `feat/cmi-staff-session-api` implementation into `main` as source code for frontend integration:
 
 - `staff-session` validates a Supabase Auth token, requires an active staff profile and returns current active branch assignments, roles and exact approved capabilities.
 - `staff-operations` provides scoped contact list/detail, atomic contact capture and ordinary-field update routes.
@@ -22,7 +22,7 @@ The `feat/cmi-staff-session-api` branch adds an initial API layer for frontend i
 - Both staff Edge Functions require JWT verification at the Supabase gateway and independently validate the bearer token with Supabase Auth.
 - The CI workflow type-checks/tests the staff functions and applies the capability/contact transaction draft to the isolated local CMI database for pgTAP validation.
 
-The matching API contract is [document 19](../docs/19_CMI_STAFF_API_CONTRACT.md). These changes are source-only in a review branch and have not been deployed or applied to a hosted database.
+The matching API contract is [document 19](../docs/19_CMI_STAFF_API_CONTRACT.md). The merged functions remain source-only: they have not been deployed or applied to a hosted database.
 
 ## Implemented and validated
 
@@ -81,11 +81,11 @@ A Deno validation suite covers supported resources, pagination, slug validation,
 
 ## Verification boundary
 
-The merged `main` baseline contains 129 pgTAP assertions across four suites: identity/authorization (14), contacts/follow-up (24), restricted pastoral (20), and events/idempotency/public-content (71). PR #10 adds a 19-assertion capability-catalogue/contact-capture suite and a **30-assertion follow-up task transaction suite**. Its current exact head `7ab4174ebe529279eda55a96ab4f52345aef74e3` passed [CI run 42588602409](https://github.com/Elgit4/PCG_Missions/actions/runs/42588602409): **178 database assertions across six files**, plus Edge Function formatting, linting, type-checks and Deno unit tests for public-content, staff-session, staff-operations and idempotency helpers.
+PR #10 increased the verified database total to **178 assertions across six files**. PR #11 adds the audited prayer/care read transactions and 30 pgTAP assertions. Its exact head passed [CI run 42594351467](https://github.com/Elgit4/PCG_Missions/actions/runs/42594351467): **208 database assertions across seven files**, with all Deno formatting, lint, type-check and unit-test steps also passing.
 
 The new task suite validates service-role-only function execution, `SECURITY INVOKER`, idempotent creation/replay/conflict, assigned-task creation, scoped task updates, status transitions, completion timestamps and append-only event history (UPDATE/DELETE/TRUNCATE rejected). CI generates temporary migration names with the Supabase CLI, applies the reviewed draft SQL only to the disposable local CMI stack, runs pgTAP and removes temporary migration/test files afterward.
 
-PR #10 merged to `main` on 2026-11-09. No role-capability grants have been seeded; R-01–R-12 and D-01 remain approval gates, and business operations therefore remain denied until approved grants are provisioned. Draft SQL has not been promoted into permanent migration history. No hosted Supabase project, production schema or Edge Function has been changed or deployed.
+PR #10 and PR #11 merged to `main` on 2026-11-09. No role-capability grants have been seeded; R-01–R-12 and D-01 remain approval gates, and business operations therefore remain denied until approved grants are provisioned. Draft SQL has not been promoted into permanent migration history. No hosted Supabase project, production schema or Edge Function has been changed or deployed.
 
 Supabase CLI v3 is local-first. Keep CI on the isolated `supabase-cmi/` workspace and do not add `--remote` or hosted credentials without explicit deployment approval.
 
@@ -120,10 +120,10 @@ Each receipt stores a 32-byte versioned HMAC-SHA-256 request digest, an allowlis
 The event pgTAP suite has **71 assertions**, including the trigger-function privilege-closure test. Together with 14 identity/authorization, 24 contacts/follow-up and 20 restricted-pastoral assertions, the verified total is **129 database assertions**. PR #8's exact head `c80a29a46a8a693449d66b209c84e2ba6894209a` passed [CI run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750); PR #8 is merged to `main` as [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8). No event mutation endpoint, private transaction function, role grant, hosted Supabase project or production migration is activated.
 
 
-## Audited prayer and pastoral-care read slice — 2026-11-09
+## Audited prayer and pastoral-care read slice — merged to main, 2026-11-09
 
 **Branch:** `feat/cmi-audited-pastoral-reads`  
-**Status:** Source and tests committed; awaiting draft PR CI and review.
+**Status:** Merged in PR #11; exact-head CI run #176 passed.
 
 ### Implemented on the feature branch
 
@@ -140,7 +140,7 @@ The event pgTAP suite has **71 assertions**, including the trigger-function priv
 
 - A new 30-assertion pgTAP suite checks function security, assigned and oversight authorization, branch isolation, audit atomicity, response minimization and append-only audit protection.
 - A Deno unit-test suite covers route and request validation, including the controlled oversight reason codes.
-- The CI workflow type-checks the function, tests validation, and applies the new SQL/test files only as temporary CLI-generated migrations and tests on the disposable local CMI stack. This feature branch has not yet been run by CI.
+- The CI workflow type-checks the function, tests validation, and applies the SQL/test files only as temporary CLI-generated migrations and tests on the disposable local CMI stack. Run #176 passed all seven pgTAP suites (208 assertions) and all Deno checks.
 
 ### Approval and deployment boundary
 
