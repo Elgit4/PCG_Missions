@@ -1,12 +1,12 @@
 import {
   isUuid,
-  parseStaffDirectoryQuery,
-  projectStaffDirectoryRows,
   parseContactCreate,
   parseContactPatch,
   parseFollowupTaskAssignment,
   parseFollowupTaskCreate,
   parseFollowupTaskPatch,
+  parseStaffDirectoryQuery,
+  projectStaffDirectoryRows,
 } from "./validation.ts";
 
 const branchId = "10000000-0000-4000-8000-000000000001";
@@ -268,10 +268,14 @@ Deno.test("staff directory query accepts bounded branch search and pagination", 
 });
 
 Deno.test("staff directory query rejects missing branch and unknown parameters", () => {
-  for (const url of [
-    new URL("https://example.test/staff"),
-    new URL(`https://example.test/staff?branch_id=${staffBranchId}&role=admin_pastor`),
-  ]) {
+  for (
+    const url of [
+      new URL("https://example.test/staff"),
+      new URL(
+        `https://example.test/staff?branch_id=${staffBranchId}&role=admin_pastor`,
+      ),
+    ]
+  ) {
     const result = parseStaffDirectoryQuery(url);
     if (result.ok) throw new Error("Unsupported directory query was accepted.");
   }
@@ -285,7 +289,9 @@ Deno.test("staff directory query rejects duplicate and out-of-range parameters",
     `https://example.test/staff?branch_id=${staffBranchId}&limit=51`,
   );
   const tooLong = new URL(
-    `https://example.test/staff?branch_id=${staffBranchId}&search=${"a".repeat(81)}`,
+    `https://example.test/staff?branch_id=${staffBranchId}&search=${
+      "a".repeat(81)
+    }`,
   );
   for (const url of [duplicate, tooMany, tooLong]) {
     const result = parseStaffDirectoryQuery(url);
@@ -305,7 +311,13 @@ Deno.test("staff directory projection deduplicates roles and excludes inactive s
       staff_role_assignment: [
         { role: { code: "coordinator", name: "Coordinator", is_active: true } },
         { role: { code: "coordinator", name: "Coordinator", is_active: true } },
-        { role: { code: "field_worker", name: "Field Worker", is_active: false } },
+        {
+          role: {
+            code: "field_worker",
+            name: "Field Worker",
+            is_active: false,
+          },
+        },
       ],
     } as never,
     {
@@ -334,7 +346,9 @@ Deno.test("staff directory projection deduplicates roles and excludes inactive s
     "+233241234567",
   ]) {
     if (serialized.includes(sensitive)) {
-      throw new Error(`Sensitive field leaked into directory response: ${sensitive}`);
+      throw new Error(
+        `Sensitive field leaked into directory response: ${sensitive}`,
+      );
     }
   }
 });
