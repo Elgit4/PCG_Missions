@@ -1,9 +1,12 @@
 # PCG Missions — Event Draft Operations API Contract
 
 **Baseline:** CMI Follow-up v2.1  
-**Status:** Implemented on feature branch; role grants remain approval-gated  
+**Status:** Merged to main in PR #15 on 2026-11-09; role grants remain approval-gated  
 **Backend workspace:** `supabase-cmi/`  
 **Related contracts:** [Event Transaction API](17_EVENT_TRANSACTION_API_CONTRACT.md), [Staff API](19_CMI_STAFF_API_CONTRACT.md)
+
+**Merge commit:** `a6a3a8948932039d1a85666b7f49f9f7e4ed9e1c`  
+**Exact-head CI:** run [42611211003](https://github.com/Elgit4/PCG_Missions/actions/runs/42611211003) passed formatting, lint, all Deno type-check/unit-test steps and the isolated CMI database suites.
 
 ## 1. Scope
 

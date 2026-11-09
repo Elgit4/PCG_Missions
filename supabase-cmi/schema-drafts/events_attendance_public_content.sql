@@ -480,6 +480,46 @@ begin
   end loop;
 end $$;
 
+-- Supabase Data API no longer exposes newly created public tables by
+-- default. These are the narrowly scoped server-side grants required by the
+-- Edge Functions. No browser role receives direct access, and no registration,
+-- transport, check-in or closeout writes are enabled here.
+revoke all on table
+  public.event,
+  public.event_staff_assignment,
+  public.event_team_assignment,
+  public.event_registration,
+  public.transport_option,
+  public.transport_reservation,
+  public.event_checkin,
+  public.event_closeout,
+  public.event_closeout_event,
+  public.event_idempotency_receipt,
+  public.calendar_entry,
+  public.announcement,
+  public.announcement_team_audience,
+  public.announcement_event_audience,
+  public.church_public_profile,
+  public.welcome_message,
+  public.sermon,
+  public.daily_word,
+  public.digital_tract,
+  public.external_document_link
+from service_role;
+grant select on table
+  public.event_staff_assignment,
+  public.church_public_profile,
+  public.daily_word,
+  public.digital_tract
+to service_role;
+grant select, insert, update on table
+  public.event,
+  public.calendar_entry,
+  public.announcement,
+  public.welcome_message,
+  public.sermon
+to service_role;
+
 comment on schema public is
   'CMI event and public-content draft; public projections and trusted endpoints are not yet enabled.';
 comment on table public.event_registration is

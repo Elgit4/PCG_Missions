@@ -245,6 +245,37 @@ begin
 end;
 $$;
 
+-- Supabase Data API exposure is opt-in for newly created public tables.
+-- Edge Functions use service_role through PostgREST, so grant only the
+-- server-side identity lookups they require. Browser roles stay closed.
+grant usage on schema public to service_role;
+revoke all on table
+  public.church,
+  public.branch,
+  public.staff_profile,
+  public.role,
+  public.capability,
+  public.role_capability,
+  public.staff_role_assignment,
+  public.team,
+  public.staff_team_membership,
+  public.service_area,
+  public.staff_area_coverage
+from service_role;
+grant select on table
+  public.church,
+  public.branch,
+  public.staff_profile,
+  public.role,
+  public.capability,
+  public.role_capability,
+  public.staff_role_assignment,
+  public.team,
+  public.staff_team_membership,
+  public.service_area,
+  public.staff_area_coverage
+to service_role;
+
 comment on schema private is
   'Unexposed CMI helper routines. Never expose privileged routines through the Data API.';
 comment on table public.staff_profile is

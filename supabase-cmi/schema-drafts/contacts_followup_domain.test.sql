@@ -5,7 +5,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(24);
+select plan(25);
 
 select has_table('public', 'contact', 'contact table exists');
 select has_table('public', 'contact_capture', 'contact capture table exists');
@@ -41,6 +41,18 @@ select extensions.ok(
   not has_table_privilege('anon', 'public.followup_task', 'SELECT')
   and not has_table_privilege('authenticated', 'public.followup_task', 'SELECT'),
   'follow-up Data API access remains closed to browser roles'
+);
+
+select extensions.ok(
+  has_table_privilege('service_role', 'public.contact', 'SELECT')
+  and has_table_privilege('service_role', 'public.contact', 'INSERT')
+  and has_table_privilege('service_role', 'public.contact', 'UPDATE')
+  and has_table_privilege('service_role', 'public.contact_capture', 'INSERT')
+  and has_table_privilege('service_role', 'public.followup_task_event', 'INSERT')
+  and not has_table_privilege('service_role', 'public.contact', 'DELETE')
+  and not has_table_privilege('service_role', 'public.contact_capture', 'UPDATE')
+  and not has_table_privilege('service_role', 'public.followup_task_event', 'DELETE'),
+  'service_role receives minimal application table grants and append-only ledger protections'
 );
 
 select extensions.is(

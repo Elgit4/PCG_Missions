@@ -251,7 +251,7 @@ The existing `GET /public-content` function remains a read-only, allowlisted pro
 
 Public registration is not enabled by this contract. D-05/D-06/D-13 and consent-evidence/retention requirements must be approved first.
 
-## 7A. Event draft management (feature branch)
+## 7A. Event draft management (merged to main in PR #15)
 
 The separate `event-operations` function implements a limited authoring API for private event drafts:
 - `GET /event-operations/events` and `GET /event-operations/events/{eventId}` require `event.read.scoped`.
@@ -260,6 +260,31 @@ The separate `event-operations` function implements a limited authoring API for 
 - Capacity, public publication, assignments and all attendee/transport/check-in/closeout operations are excluded.
 
 The exact request fields, validation and error contract are in [document 20 — Event Draft Operations API Contract](20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md). No `role_capability` grants are seeded, so these endpoints remain denied until approved grants are provisioned. This slice does not satisfy or bypass the event transaction approval gate in document 17.
+
+## 7B. Announcement draft operations (feature branch)
+
+The separate `announcement-operations` function supports:
+- `GET /announcement-operations/announcements` and `GET /announcement-operations/announcements/{announcementId}` for branch-scoped draft reads.
+- `POST /announcement-operations/announcements` to create a private draft.
+- `PATCH /announcement-operations/announcements/{announcementId}` to edit the authenticated creator's own draft.
+
+List/detail requires `announcement.read.scoped` with branch scope. Create/edit requires `announcement.create.scoped` with branch scope. The server forces `status='draft'` and `is_public=false`; callers cannot set publication, audience, scheduling or delivery fields.
+
+The full request and error contract is in [document 21 — Announcement Draft Operations API Contract](21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this feature remains fail-closed until applicable church decisions and grants are approved. It has not been deployed.
+
+## 7C. Visitor content draft operations (feature branch)
+
+The `content-operations` function adds branch-scoped draft list/detail/create/edit for `sermon` and `welcome_message` only. It requires `content.manage.draft` with branch scope. Draft list/detail and mutation are restricted to the authenticated creator's rows; all create/update SQL requests also constrain branch and `status='draft'`.
+
+The API never accepts caller-supplied creator, status or publication fields and forces new rows to draft with null `published_at`. Daily Word, Digital Tracts and church-wide profile editing are excluded until global authoring scope is approved under D-02. Publication, scheduling and delivery are not implemented.
+
+See [document 22 — Visitor Content Draft Operations API Contract](22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this function remains fail-closed until the applicable decisions and grants are approved. It has not been deployed.
+
+## 7D. Branch calendar operations (feature branch)
+
+The `calendar-operations` function provides branch-only `calendar_entry` list/detail/create/update. Reads require `calendar.read.scoped` with branch scope; mutations require `calendar.manage.scoped` with branch scope. New rows have server-forced `scope_type='branch'`, null team/event/owner fields and an authenticated creator. Updates use an `updated_at` concurrency predicate.
+
+Team/event/own scope, the `followup` and `prayer_schedule` entry types, and deletion are not exposed. The exact endpoints and validation are in [document 23 — Branch Calendar Operations API Contract](23_BRANCH_CALENDAR_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this feature remains fail-closed and undeployed.
 
 ## 8. Not yet implemented
 

@@ -53,13 +53,31 @@ deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
 
 Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and exact `PUBLIC_CONTENT_ALLOWED_ORIGINS` only in the Edge Function's server environment. The service-role key bypasses RLS; the function's fixed query allowlist is therefore security-critical. It exposes only church-wide welcome messages and omits event capacity from public event responses. Do not reuse it for staff operations. Platform rate limiting and production origin configuration are required before deployment. At the PR #5 milestone, Deno type-check and request-validation tests passed in [run 42438088374](https://github.com/Elgit4/PCG_Missions/actions/runs/42438088374) and the expanded event/public-content suite contributed to 104 database assertions in [run 42439672140](https://github.com/Elgit4/PCG_Missions/actions/runs/42439672140). Those are historical validation checkpoints; the later PR #8 exact-head run [42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750) passed the current 129-assertion total and current Deno checks. This function is not deployed.
 
-## Event draft operations (feature branch)
+## Event draft operations (merged to main in PR #15)
 
 The `event-operations` Edge Function adds branch-scoped list/detail and private-draft create/edit endpoints. Event mutations require `event.manage.scoped` with branch scope; reads require `event.read.scoped` with branch scope or a current direct staff event assignment.
 
 New events are always created as private drafts with registration closed. The API does not accept capacity, publication, assignment, registration, transport, check-in or closeout fields. It therefore does not implement the decision-gated event transactions in document 17.
 
 See [document 20 — Event Draft Operations API Contract](../docs/20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md). The function is source-only and remains inaccessible until approved capability grants are provisioned. It has not been deployed.
+
+## Announcement draft operations (feature branch)
+
+The `announcement-operations` Edge Function provides branch-scoped draft list/detail, create and creator-only edit operations. New announcements are forced to private draft state; publication flags, scheduling, audience links and all delivery channels are excluded.
+
+See [document 21 — Announcement Draft Operations API Contract](../docs/21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded, so the API stays fail-closed until the applicable church decisions are approved. It has not been deployed.
+
+## Visitor content draft operations (feature branch)
+
+The `content-operations` Edge Function implements branch-scoped draft list/detail, create and creator-only edit for sermons and welcome messages. It requires `content.manage.draft` with explicit branch scope and only exposes the authenticated user's own drafts. Publication fields remain server-controlled and every new record is a private draft.
+
+Daily Word, Digital Tracts and church-wide public profile editing are excluded until their global authoring scope and approval rules are defined under D-02. Publishing remains a separate restricted capability and is not enabled. See [document 22 — Visitor Content Draft Operations API Contract](../docs/22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded and the function has not been deployed.
+
+## Branch calendar operations (feature branch)
+
+The `calendar-operations` Edge Function provides branch-scoped list/detail/create/update for `calendar_entry`. It requires `calendar.read.scoped` or `calendar.manage.scoped` with explicit branch scope. New rows are forced to `scope_type='branch'`; caller-supplied scope and identity fields are rejected. Team/event/own scopes, `followup` and `prayer_schedule` entry types, and deletion are excluded.
+
+See [document 23 — Branch Calendar Operations API Contract](../docs/23_BRANCH_CALENDAR_OPERATIONS_API_CONTRACT.md). No role grants are seeded; the function has not been deployed.
 
 ## Staff API (merged to main)
 
@@ -103,7 +121,7 @@ The event schema draft includes a private HMAC-backed idempotency receipt ledger
 
 ## Current source-control status (2026-11-09)
 
-Backend PRs #3–#13 are merged to `main`. PR #10 merged as `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged as `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`; PR #13 merged as `b8843c2ea09561ccaf712222dccb282490126fd6`. PR #13 added test-only coverage for the 100-interaction response cap and denied-read audit behavior. The current main commit passed [CI run 42601107555](https://github.com/Elgit4/PCG_Missions/actions/runs/42601107555), with 227 pgTAP assertions across seven suites and all 58 Deno unit tests.
+Backend PRs #3–#15 are merged to `main`. PR #10 merged as `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged as `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`; PR #13 merged as `b8843c2ea09561ccaf712222dccb282490126fd6`; PR #15 merged as `a6a3a8948932039d1a85666b7f49f9f7e4ed9e1c` and added branch-scoped private event-draft operations. PR #15 exact-head [CI run 42611211003](https://github.com/Elgit4/PCG_Missions/actions/runs/42611211003) passed the full workflow: 227 pgTAP assertions across seven suites and all 70 Deno unit tests.
 
 The current PR #10 head `7ab4174ebe529279eda55a96ab4f52345aef74e3` passed [CI run 42588602409](https://github.com/Elgit4/PCG_Missions/actions/runs/42588602409). Deno formatting, linting, type-checking and unit tests passed. The workflow applied all reviewed SQL drafts using temporary CLI-generated migrations on the disposable local CMI stack; **all six pgTAP files passed, 178 assertions with zero failures**.
 
