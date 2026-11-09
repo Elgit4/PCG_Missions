@@ -5,7 +5,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(20);
+select plan(21);
 
 select has_table('public', 'prayer_request', 'prayer request table exists');
 select has_table('public', 'prayer_assignment', 'prayer assignment table exists');
@@ -52,6 +52,17 @@ select extensions.ok(
       ])
   ),
   'no direct client policies exist before the audited read service is implemented'
+);
+
+select extensions.ok(
+  has_table_privilege('service_role', 'public.prayer_request', 'SELECT')
+  and has_table_privilege('service_role', 'public.care_record', 'SELECT')
+  and has_table_privilege('service_role', 'public.prayer_access_audit', 'INSERT')
+  and has_table_privilege('service_role', 'public.care_access_audit', 'INSERT')
+  and not has_table_privilege('service_role', 'public.prayer_access_audit', 'SELECT')
+  and not has_table_privilege('service_role', 'public.prayer_access_audit', 'UPDATE')
+  and not has_table_privilege('service_role', 'public.care_access_audit', 'DELETE'),
+  'service_role can read restricted records and append audits without mutating audit history'
 );
 
 select extensions.is(
