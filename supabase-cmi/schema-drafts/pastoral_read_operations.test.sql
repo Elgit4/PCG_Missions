@@ -269,7 +269,7 @@ select extensions.ok(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba301',
     'oversight',
-    'Synthetic reason for an authorized pastoral oversight review.',
+    'pastoral_review',
     'synthetic-prayer-oversight'
   )->'request'->>'id') = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba301',
   'Explicitly scoped oversight capability can read the prayer request'
@@ -280,7 +280,7 @@ select extensions.ok(
     where request_id = 'synthetic-prayer-oversight'
       and actor_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002'
       and action = 'oversight'
-      and reason = 'Synthetic reason for an authorized pastoral oversight review.'
+      and reason = 'pastoral_review'
   ),
   'Prayer oversight read stores the reason and oversight audit action'
 );
@@ -291,7 +291,7 @@ select extensions.throws_ok(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba301',
     'oversight', null, 'synthetic-prayer-no-reason'
   ) $q$,
-  '22023', 'oversight reason is required',
+  '22023', 'oversight reason code is required',
   'Prayer oversight requires a reason'
 );
 select extensions.throws_ok(
@@ -356,7 +356,7 @@ select extensions.ok(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba401',
     'oversight',
-    'Synthetic reason for an authorized care oversight review.',
+    'continuity_of_care',
     'synthetic-care-oversight'
   )->'record'->>'id') = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba401',
   'Explicitly scoped oversight capability can read the care record'
@@ -367,7 +367,7 @@ select extensions.ok(
     where request_id = 'synthetic-care-oversight'
       and actor_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002'
       and action = 'oversight'
-      and reason = 'Synthetic reason for an authorized care oversight review.'
+      and reason = 'continuity_of_care'
       and (safe_metadata->>'interaction_count')::integer = 1
   ),
   'Care oversight audit records reason and safe interaction count'
