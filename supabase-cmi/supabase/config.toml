@@ -47,3 +47,23 @@ verify_jwt = true
 [functions.staff-access-operations]
 # Protected staff access administration; validates JWT and database capabilities.
 verify_jwt = true
+
+[functions.staff-operations]
+# Authenticated staff contact, directory and follow-up operations.
+verify_jwt = true
+
+[functions.event-operations]
+# Branch-scoped private event-draft operations.
+verify_jwt = true
+
+[functions.announcement-operations]
+# Branch-scoped private announcement-draft operations.
+verify_jwt = true
+
+[functions.content-operations]
+# Branch-scoped private sermon and welcome-message drafts.
+verify_jwt = true
+
+[functions.calendar-operations]
+# Branch-scoped calendar operations.
+verify_jwt = true
