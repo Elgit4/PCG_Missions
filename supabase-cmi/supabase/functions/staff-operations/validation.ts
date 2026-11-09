@@ -321,11 +321,18 @@ export interface StaffDirectoryProfileRow {
   account_status?: string;
   staff_role_assignment?:
     | Array<{
-      role?: {
-        code: string;
-        name: string;
-        is_active: boolean;
-      } | null;
+      role?:
+        | {
+          code: string;
+          name: string;
+          is_active: boolean;
+        }
+        | Array<{
+          code: string;
+          name: string;
+          is_active: boolean;
+        }>
+        | null;
     }>
     | null;
 }
@@ -352,9 +359,16 @@ export function projectStaffDirectoryRows(
     .map((row) => {
       const roles = new Map<string, string>();
       for (const assignment of row.staff_role_assignment ?? []) {
-        const role = assignment.role;
-        if (role?.is_active && role.code && role.name) {
-          roles.set(role.code, role.name);
+        const relation = assignment.role;
+        const relatedRoles = Array.isArray(relation)
+          ? relation
+          : relation
+          ? [relation]
+          : [];
+        for (const role of relatedRoles) {
+          if (role.is_active && role.code && role.name) {
+            roles.set(role.code, role.name);
+          }
         }
       }
       return {
