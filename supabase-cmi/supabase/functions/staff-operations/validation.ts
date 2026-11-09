@@ -319,13 +319,15 @@ export interface StaffDirectoryProfileRow {
   id: string;
   full_name: string;
   account_status?: string;
-  staff_role_assignment?: Array<{
-    role?: {
-      code: string;
-      name: string;
-      is_active: boolean;
-    } | null;
-  }> | null;
+  staff_role_assignment?:
+    | Array<{
+      role?: {
+        code: string;
+        name: string;
+        is_active: boolean;
+      } | null;
+    }>
+    | null;
 }
 
 export interface StaffDirectoryMember {
@@ -343,8 +345,10 @@ export function projectStaffDirectoryRows(
   rows: StaffDirectoryProfileRow[],
 ): StaffDirectoryMember[] {
   return rows
-    .filter((row) => row.account_status === undefined ||
-      row.account_status === "active")
+    .filter((row) =>
+      row.account_status === undefined ||
+      row.account_status === "active"
+    )
     .map((row) => {
       const roles = new Map<string, string>();
       for (const assignment of row.staff_role_assignment ?? []) {
