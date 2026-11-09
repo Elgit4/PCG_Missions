@@ -210,7 +210,7 @@ Deno.serve(async (request: Request) => {
       p_actor_auth_user_id: authData.user.id,
       p_branch_id: parsed.value.branch_id,
       p_access_mode: parsed.value.access_mode,
-      p_reason: parsed.value.reason,
+      p_reason: parsed.value.reason_code,
       p_request_id: id,
       [recordParameter]: route.recordId,
     };
