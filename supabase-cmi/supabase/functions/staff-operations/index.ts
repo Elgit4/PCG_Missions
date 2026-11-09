@@ -525,7 +525,10 @@ Deno.serve(async (request: Request) => {
         .eq("staff_role_assignment.role.is_active", true);
 
       if (search) {
-        const safeSearch = search.replace(/[\\%_]/g, (character) => "\\" + character);
+        const safeSearch = search.replace(
+          /[\\%_]/g,
+          (character) => "\\" + character,
+        );
         query = query.ilike("full_name", "%" + safeSearch + "%");
       }
 
