@@ -120,6 +120,7 @@ export function createHubtelSmsProvider(
   async function request(
     url: string,
     init: RequestInit,
+    safeToRetry: boolean,
   ): Promise<Record<string, unknown>> {
     let response: Response;
     try {
@@ -134,14 +135,20 @@ export function createHubtelSmsProvider(
         },
       });
     } catch {
-      throw new HubtelSmsError("HUBTEL_SMS_NETWORK_ERROR", true);
+      throw new HubtelSmsError(
+        safeToRetry ? "HUBTEL_SMS_STATUS_LOOKUP_NETWORK_ERROR" : "HUBTEL_SMS_SUBMISSION_UNCERTAIN",
+        safeToRetry,
+      );
     }
 
     if (!response.ok) {
-      const retryable = response.status === 408 ||
-        response.status === 425 ||
-        response.status === 429 ||
-        response.status >= 500;
+      // A failed send may have reached the provider even when the response
+      // was lost. Never auto-retry a submission without a provider idempotency
+      // contract; status lookups are safe to retry.
+      const retryable = safeToRetry && (
+        response.status === 408 || response.status === 425 ||
+        response.status === 429 || response.status >= 500
+      );
       const code = response.status === 401
         ? "HUBTEL_SMS_AUTHENTICATION_FAILED"
         : response.status === 402
@@ -180,7 +187,7 @@ export function createHubtelSmsProvider(
         throw new HubtelSmsError("HUBTEL_SMS_INVALID_RECIPIENT", false);
       }
       const content = input.content.trim();
-      if (!content || content.length > 1600) {
+      if (!content) {
         throw new HubtelSmsError("HUBTEL_SMS_INVALID_CONTENT", false);
       }
 
@@ -192,7 +199,7 @@ export function createHubtelSmsProvider(
           To: input.toE164.slice(1),
           Content: content,
         }),
-      });
+      }, false);
 
       const status = Number(payload.status);
       const messageId = typeof payload.messageId === "string"
@@ -230,6 +237,7 @@ export function createHubtelSmsProvider(
       const payload = await request(
         `${BASE_URL}/${encodeURIComponent(providerMessageId)}`,
         { method: "GET" },
+        true,
       );
       const rawStatus = typeof payload.status === "string"
         ? payload.status
