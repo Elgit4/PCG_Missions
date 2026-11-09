@@ -276,8 +276,8 @@ async function visibleContactIds(
         .select("contact_id")
         .eq("branch_id", branchId)
         .in("team_id", teamIds)
-        .lte("starts_at", new Date().toISOString())
-        .is("ends_at", null);
+        .lte("starts_at", now)
+        .or(`ends_at.is.null,ends_at.gt.${now}`);
       if (error) throw new Error("TEAM_CONTACT_LOOKUP_FAILED");
       for (const item of data ?? []) ids.add(item.contact_id);
     }
