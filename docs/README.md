@@ -49,6 +49,7 @@ The CMI-only backend is developed in `../supabase-cmi/`, isolated from the histo
 - [Announcement Draft Operations API Contract](21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md) — private branch-scoped announcement drafts.
 - [Visitor Content Draft Operations API Contract](22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md) — sermon and welcome-message drafts.
 - [Branch Calendar Operations API Contract](23_BRANCH_CALENDAR_OPERATIONS_API_CONTRACT.md) — branch-scoped calendar entries.
+- [Staff Access Operations API Contract](24_CMI_STAFF_ACCESS_OPERATIONS_API_CONTRACT.md) — guarded role assignment/revocation and account deactivation/reactivation; no grants are seeded.
 
 ## Audit and verification records
 
