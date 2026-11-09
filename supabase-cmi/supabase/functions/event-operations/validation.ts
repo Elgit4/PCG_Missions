@@ -172,7 +172,9 @@ export function parseEventCreate(
   if (Object.keys(value).some((key) => !allowed.has(key))) {
     return { ok: false, error: "Unsupported event field." };
   }
-  if (typeof value.branch_id !== "string" || !UUID_PATTERN.test(value.branch_id)) {
+  if (
+    typeof value.branch_id !== "string" || !UUID_PATTERN.test(value.branch_id)
+  ) {
     return { ok: false, error: "Invalid branch_id." };
   }
 
