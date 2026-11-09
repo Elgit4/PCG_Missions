@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(18);
+select plan(21);
 
 select has_column('public', 'followup_task', 'client_request_id', 'task create idempotency key is stored');
 select has_column('public', 'followup_task', 'digest_key_version', 'task digest key version is stored');
