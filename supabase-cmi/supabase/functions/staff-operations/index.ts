@@ -526,7 +526,7 @@ Deno.serve(async (request: Request) => {
 
       if (search) {
         const safeSearch = search.replace(/[\\%_]/g, (character) => "\\" + character);
-        query = query.ilike("full_name", \`%\${safeSearch}%\`);
+        query = query.ilike("full_name", "%" + safeSearch + "%");
       }
 
       const { data, error, count } = await query
