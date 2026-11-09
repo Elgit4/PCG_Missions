@@ -1,4 +1,7 @@
-import { assertEquals, assert } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   isUuid,
   parseEventCreate,
@@ -64,7 +67,15 @@ Deno.test("rejects caller-controlled lifecycle and capacity fields", () => {
     starts_at: "2026-11-15T08:00:00Z",
     ends_at: "2026-11-15T12:00:00Z",
   };
-  for (const field of ["status", "visibility", "registration_state", "capacity", "created_by"]) {
+  for (
+    const field of [
+      "status",
+      "visibility",
+      "registration_state",
+      "capacity",
+      "created_by",
+    ]
+  ) {
     assertEquals(
       parseEventCreate({ ...base, [field]: "published" }),
       { ok: false, error: "Unsupported event field." },
@@ -83,7 +94,11 @@ Deno.test("rejects invalid title and description lengths", () => {
     { ok: false, error: "Invalid title." },
   );
   assertEquals(
-    parseEventCreate({ ...base, title: "Valid title", description: "x".repeat(12001) }),
+    parseEventCreate({
+      ...base,
+      title: "Valid title",
+      description: "x".repeat(12001),
+    }),
     { ok: false, error: "Invalid description." },
   );
 });
@@ -96,7 +111,10 @@ Deno.test("requires timestamps to include an explicit timezone", () => {
   };
   assertEquals(
     parseEventCreate({ ...base, starts_at: "2026-11-15T08:00:00" }),
-    { ok: false, error: "starts_at must be an ISO timestamp with an explicit timezone." },
+    {
+      ok: false,
+      error: "starts_at must be an ISO timestamp with an explicit timezone.",
+    },
   );
 });
 
@@ -173,22 +191,34 @@ Deno.test("checks temporal order when both patch timestamps are supplied", () =>
 
 Deno.test("parses bounded event-list pagination", () => {
   assertEquals(
-    parseEventListQuery(new URL(`https://example.test/events?branch_id=${branchId}&limit=10&offset=20`)),
+    parseEventListQuery(
+      new URL(
+        `https://example.test/events?branch_id=${branchId}&limit=10&offset=20`,
+      ),
+    ),
     { ok: true, value: { branch_id: branchId, limit: 10, offset: 20 } },
   );
   assertEquals(
-    parseEventListQuery(new URL(`https://example.test/events?branch_id=${branchId}&limit=51`)),
+    parseEventListQuery(
+      new URL(`https://example.test/events?branch_id=${branchId}&limit=51`),
+    ),
     { ok: false, error: "Limit must be an integer from 1 to 50." },
   );
 });
 
 Deno.test("rejects duplicate and unsupported event-list parameters", () => {
   assertEquals(
-    parseEventListQuery(new URL(`https://example.test/events?branch_id=${branchId}&limit=10&limit=20`)),
+    parseEventListQuery(
+      new URL(
+        `https://example.test/events?branch_id=${branchId}&limit=10&limit=20`,
+      ),
+    ),
     { ok: false, error: "Duplicate query parameter." },
   );
   assertEquals(
-    parseEventListQuery(new URL(`https://example.test/events?branch_id=${branchId}&status=draft`)),
+    parseEventListQuery(
+      new URL(`https://example.test/events?branch_id=${branchId}&status=draft`),
+    ),
     { ok: false, error: "Unsupported query parameter." },
   );
 });
