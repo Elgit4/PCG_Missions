@@ -1,9 +1,9 @@
-import {
-  buildStaffSession,
-  type BranchRow,
-  type RoleAssignmentRow,
-  type RoleCapabilityRow,
-  type StaffProfile,
+import { buildStaffSession } from "./session.ts";
+import type {
+  BranchRow,
+  RoleAssignmentRow,
+  RoleCapabilityRow,
+  StaffProfile,
 } from "./session.ts";
 
 const profile: StaffProfile = {
