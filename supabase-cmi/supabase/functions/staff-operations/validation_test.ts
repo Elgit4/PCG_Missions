@@ -356,4 +356,3 @@ Deno.test("staff directory projection deduplicates roles and excludes inactive s
     }
   }
 });
-
