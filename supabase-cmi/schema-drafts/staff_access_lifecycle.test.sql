@@ -1,5 +1,5 @@
 begin;
-select plan(21);
+select plan(27);
 select has_table('public','staff_access_audit','Staff access audit exists');
 select ok((select relrowsecurity from pg_class where oid='public.staff_access_audit'::regclass),'Audit RLS enabled');
 select ok(not has_table_privilege('anon','public.staff_access_audit','SELECT'),'Anon cannot read access audit');
@@ -29,6 +29,17 @@ select public.cmi_assign_staff_role('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20','aaaa
 reset role;
 select is((select count(*)::integer from public.staff_role_assignment where staff_profile_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23'),1,'Guarded role assignment creates assignment');
 select is((select count(*)::integer from public.staff_access_audit where target_profile_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23' and action='role_assigned'),1,'Role assignment and audit are atomic');
+
+set local role service_role;
+select throws_ok($q$select public.cmi_assign_staff_role('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23','20000000-0000-4000-8000-000000000020','field_worker',now(),'2026-12-31T23:59:59Z','Unauthorized duplicate assignment')$q$,'42501',null,'Staff without role-assignment capability cannot assign roles');
+select throws_ok($q$select public.cmi_revoke_staff_role('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21',(select id from public.staff_role_assignment where staff_profile_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23'),'20000000-0000-4000-8000-000000000020','Unauthorized role revocation')$q$,'42501',null,'Staff without role-assignment capability cannot revoke roles');
+select throws_ok($q$select public.cmi_set_staff_account_status('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23','20000000-0000-4000-8000-000000000020','inactive','Unauthorized account deactivation')$q$,'42501',null,'Staff without account-management capability cannot change account state');
+reset role;
+set local role service_role;
+select throws_ok($q$select public.cmi_assign_staff_role('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23','20000000-0000-4000-8000-000000000099','field_worker',now(),null,'Branch outside configured instance')$q$,'42501',null,'Role assignment rejects an unconfigured branch');
+select throws_ok($q$select public.cmi_assign_staff_role('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23','20000000-0000-4000-8000-000000000020','super_admin',now(),null,'Unsupported role assignment')$q$,'22023',null,'Role assignment rejects unknown role codes');
+select throws_ok($q$select public.cmi_assign_staff_role('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23','20000000-0000-4000-8000-000000000020','field_worker',now()+interval '1 day',null,'Overlapping duplicate assignment')$q$,'23505',null,'Overlapping role assignments are rejected');
+reset role;
 select throws_ok($q$update public.staff_access_audit set reason='tampered audit entry' where action='role_assigned'$q$,'55000',null,'Audit rows cannot be updated');
 set local role service_role;
 select public.cmi_revoke_staff_role('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',(select id from public.staff_role_assignment where staff_profile_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23'),'20000000-0000-4000-8000-000000000020','Role no longer required');
