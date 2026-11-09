@@ -20,7 +20,7 @@ This directory is organized by function. Read the documents in the order below. 
 
 ## Proposed database design artifacts
 
-These artifacts are on the database-design feature branch and are **proposals for review**, not approved production schema:
+These artifacts are committed on `main` and are **proposals for review**, not approved production schema:
 
 - [Logical Data Model Proposal](06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md) — entity inventory, relationships, candidate constraints, RLS design notes and data decisions.
 - [CMI Logical Crow's Foot ERD](database/CMI_Follow_Up_Logical_ERD_v0.1.drawio) — editable diagrams.net file with separate domain pages.
@@ -36,14 +36,19 @@ These artifacts are on the database-design feature branch and are **proposals fo
 
 ## Backend implementation
 
-The CMI-only backend is developed in `../supabase-cmi/`, isolated from the historical ChurchConnect workspace. The identity/authorization foundation migration is committed for isolated local review. Contacts/follow-up and restricted-pastoral SQL/pgTAP drafts remain under `schema-drafts/` and must not be promoted to permanent migrations until the relevant physical-design and stakeholder decisions are approved.
+The CMI-only backend is developed in `../supabase-cmi/`, isolated from the historical ChurchConnect workspace. The identity/authorization foundation migration is committed for isolated local review. Contacts/follow-up, follow-up task, restricted-pastoral, event/public-content and capability SQL/pgTAP drafts remain under `schema-drafts/`. CI validates them on an isolated local Supabase stack; they must not be promoted to permanent migrations until the relevant physical-design and stakeholder decisions are approved.
 
 - [16 — Schema Reconciliation & Decision Crosswalk](16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) — tracks DD-01–DD-25, their proposed dispositions and approval dependencies.
 - [Isolated CMI Supabase workspace](../supabase-cmi/README.md) — separate CLI configuration, migration history and test workspace.
 - [Backend Implementation Status](../supabase-cmi/IMPLEMENTATION_STATUS.md) — implemented foundation, validated draft domains, deferred services and verification limits.
 - [Legacy ChurchConnect artifacts](legacy/churchconnect/README.md) — preserved historical SQL, tests and workflow; not part of the active CMI backend.
-- [Event Transaction API Contract](17_EVENT_TRANSACTION_API_CONTRACT.md) — server-side transaction semantics, capacity serialization, idempotency, transport, check-in, closeout and test gates. This is a proposal, not an active API.
-- [Staff API Contract](19_CMI_STAFF_API_CONTRACT.md) — authenticated session, scoped contact operations and the initial frontend integration boundary.
+- [Event Transaction API Contract](17_EVENT_TRANSACTION_API_CONTRACT.md) — proposed server-side registration, capacity, transport, check-in and closeout transactions; not active endpoints.
+- [Event Idempotency Ledger Design](18_EVENT_IDEMPOTENCY_LEDGER_DESIGN.md) — versioned request receipts and replay/conflict semantics.
+- [Staff API Contract](19_CMI_STAFF_API_CONTRACT.md) — authenticated session, scoped contacts, follow-up tasks and staff directory.
+- [Event Draft Operations API Contract](20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md) — private branch-scoped event drafts.
+- [Announcement Draft Operations API Contract](21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md) — private branch-scoped announcement drafts.
+- [Visitor Content Draft Operations API Contract](22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md) — sermon and welcome-message drafts.
+- [Branch Calendar Operations API Contract](23_BRANCH_CALENDAR_OPERATIONS_API_CONTRACT.md) — branch-scoped calendar entries.
 
 ## Audit and verification records
 
@@ -77,7 +82,7 @@ The following files were created for the earlier ChurchConnect two-role requirem
 - `database/ChurchConnect_ERD_v1.0.drawio`
 - `database/ChurchConnect_ERD_v1.1.drawio`
 
-The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role schema and are not the target CMI database. They are not evidence of CMI six-role, event registration, transport, public-content or offline-queue implementation. The target CMI schema and ERD must be designed and tested from document 03 before any production migration is applied.
+The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role schema and are not the target CMI database. They are not evidence of CMI six-role, event registration, transport, public-content or offline-queue implementation. The current CMI ERD and schema proposals are committed on `main`, but remain proposals pending approval and reconciliation; the validated SQL drafts are not yet the approved production schema.
 
 ## Baseline rules
 

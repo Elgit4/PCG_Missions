@@ -61,19 +61,19 @@ New events are always created as private drafts with registration closed. The AP
 
 See [document 20 — Event Draft Operations API Contract](../docs/20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md). The function is source-only and remains inaccessible until approved capability grants are provisioned. It has not been deployed.
 
-## Announcement draft operations (feature branch)
+## Announcement draft operations (merged to main in PR #16)
 
 The `announcement-operations` Edge Function provides branch-scoped draft list/detail, create and creator-only edit operations. New announcements are forced to private draft state; publication flags, scheduling, audience links and all delivery channels are excluded.
 
 See [document 21 — Announcement Draft Operations API Contract](../docs/21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded, so the API stays fail-closed until the applicable church decisions are approved. It has not been deployed.
 
-## Visitor content draft operations (feature branch)
+## Visitor content draft operations (merged to main in PR #16)
 
 The `content-operations` Edge Function implements branch-scoped draft list/detail, create and creator-only edit for sermons and welcome messages. It requires `content.manage.draft` with explicit branch scope and only exposes the authenticated user's own drafts. Publication fields remain server-controlled and every new record is a private draft.
 
 Daily Word, Digital Tracts and church-wide public profile editing are excluded until their global authoring scope and approval rules are defined under D-02. Publishing remains a separate restricted capability and is not enabled. See [document 22 — Visitor Content Draft Operations API Contract](../docs/22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded and the function has not been deployed.
 
-## Branch calendar operations (feature branch)
+## Branch calendar operations (merged to main in PR #16)
 
 The `calendar-operations` Edge Function provides branch-scoped list/detail/create/update for `calendar_entry`. It requires `calendar.read.scoped` or `calendar.manage.scoped` with explicit branch scope. New rows are forced to `scope_type='branch'`; caller-supplied scope and identity fields are rejected. Team/event/own scopes, `followup` and `prayer_schedule` entry types, and deletion are excluded.
 
@@ -119,9 +119,11 @@ At the PR #7 milestone, the event-domain suite contained **53 pgTAP assertions**
 The event schema draft includes a private HMAC-backed idempotency receipt ledger. Keys are scoped by event, branch, operation, caller class and (for staff) trusted actor. Receipts store only a versioned digest and resource reference, not request PII. The helper's canonical JSON serializer rejects unsafe/accessor-backed object structures and sorts Unicode-normalized keys deterministically. The reconciled migration and test suite also verify the event integrity trigger functions cannot be invoked by browser roles. PR #8 is merged to `main` as commit [d091a894](https://github.com/Elgit4/PCG_Missions/commit/d091a89404165d11e96949b5aa7d35a646a89db8); its exact head passed [CI run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750), including 129 database assertions across four suites and the Deno idempotency helper tests. This is not an active transaction endpoint or production feature.
 
 
-## Current source-control status (2026-11-09)
+## Historical implementation checkpoints
 
-Backend PRs #3–#15 are merged to `main`. PR #10 merged as `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged as `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`; PR #13 merged as `b8843c2ea09561ccaf712222dccb282490126fd6`; PR #15 merged as `a6a3a8948932039d1a85666b7f49f9f7e4ed9e1c` and added branch-scoped private event-draft operations. PR #15 exact-head [CI run 42611211003](https://github.com/Elgit4/PCG_Missions/actions/runs/42611211003) passed the full workflow: 227 pgTAP assertions across seven suites and all 70 Deno unit tests.
+The milestones below document earlier successful validation runs. They are not a claim that the latest `main` CI is green.
+
+Backend PRs #3–#19 are now merged to `main`. PR #10 merged as `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged as `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`; PR #13 merged as `b8843c2ea09561ccaf712222dccb282490126fd6`; PR #15 merged as `a6a3a8948932039d1a85666b7f49f9f7e4ed9e1c` and added branch-scoped private event-draft operations. PR #15 exact-head [CI run 42611211003](https://github.com/Elgit4/PCG_Missions/actions/runs/42611211003) passed the full workflow: 227 pgTAP assertions across seven suites and all 70 Deno unit tests.
 
 The current PR #10 head `7ab4174ebe529279eda55a96ab4f52345aef74e3` passed [CI run 42588602409](https://github.com/Elgit4/PCG_Missions/actions/runs/42588602409). Deno formatting, linting, type-checking and unit tests passed. The workflow applied all reviewed SQL drafts using temporary CLI-generated migrations on the disposable local CMI stack; **all six pgTAP files passed, 178 assertions with zero failures**.
 
@@ -144,3 +146,16 @@ The database RPCs independently validate the active staff profile, active branch
 Both RPCs are `SECURITY INVOKER`, pin `search_path` to `pg_catalog`, and are executable only by `service_role`. Browser table grants remain closed. The SQL remains in `schema-drafts/`, not permanent migration history. CI applies it only through temporary CLI-generated migrations on the disposable local CMI stack. PR #11's exact-head run [42594351467](https://github.com/Elgit4/PCG_Missions/actions/runs/42594351467) passed the initial 30-assertion pastoral suite (208 assertions total). Subsequent hardening expanded it to 46 assertions (224 total) in main CI run [42596909576](https://github.com/Elgit4/PCG_Missions/actions/runs/42596909576). PR #13 then added three tests for the bounded 100-interaction projection and absence of audit rows after denied reads. Its exact-head run [42600705230](https://github.com/Elgit4/PCG_Missions/actions/runs/42600705230) passed all seven pgTAP files (**227 assertions**), Deno formatting/lint/type-checks and all 58 Deno unit tests. PR #13 is merged as [b8843c2](https://github.com/Elgit4/PCG_Missions/commit/b8843c2ea09561ccaf712222dccb282490126fd6); the post-merge `main` workflow [42601107555](https://github.com/Elgit4/PCG_Missions/actions/runs/42601107555) also passed.
 
 No role-capability grants are seeded. R-01, R-10, R-11 and D-07 remain pending; these reads remain denied for actual staff until decisions are approved and the approved grants are provisioned. No create, list, update, assignment, archive, delete or retention endpoints are included. The functions remain undeployed; nothing has been applied to a hosted Supabase project.
+
+
+## Current backend readiness snapshot — 2026-11-09
+
+- Repository: `Elgit4/PCG_Missions`; current audited `main` commit: `55a3004b84a6934efd100c7614338f3ffae58b44` (PR #19 merge).
+- Latest `main` workflow run: [42671972079](https://github.com/Elgit4/PCG_Missions/actions/runs/42671972079) concluded `failure`. GitHub's jobs endpoint returned an empty job list for that run, so there is no job log or identified failing step available from the current run record. Treat `main` CI as not verified green until a new run succeeds.
+- The CMI schema foundation is the only permanent CMI migration. The six domain SQL drafts and matching pgTAP suites are validated through temporary migrations on the isolated local CI stack; they are not permanent migration history.
+- Source-only Edge Functions currently cover public-content projections, staff session/operations, pastoral audited reads, private event drafts, announcement drafts, sermon/welcome drafts and branch calendar operations.
+- No role-capability grants are seeded. R-01–R-12, D-01–D-13 and authentication/SMS/offline/audit approvals remain pending. Do not infer access rules or activate messaging.
+- Staff invitation/activation and private PIN lifecycle, complete prayer/care management, event registration/capacity/transport/check-in transactions, reporting, offline sync and SMS dispatch remain incomplete or approval-gated.
+- No frontend application is present in `main`; no hosted Supabase project has been linked or modified; no production migration or Edge Function has been deployed.
+
+The next unblocked engineering step is to restore a verifiable green CMI CI run and keep documentation aligned. Feature work requiring the outstanding church policy decisions must remain blocked until those decisions are recorded.
