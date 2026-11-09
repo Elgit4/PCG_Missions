@@ -291,8 +291,6 @@ from service_role;
 grant select on table
   public.prayer_request,
   public.prayer_assignment,
-  public.care_group,
-  public.care_group_membership,
   public.care_record,
   public.care_assignment,
   public.care_interaction
