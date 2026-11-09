@@ -92,8 +92,10 @@ The event schema draft includes a private HMAC-backed idempotency receipt ledger
 
 ## Current source-control status (2026-11-09)
 
-Backend PRs #3–#9 are merged to `main`. PR #10 (`feat/cmi-staff-session-api`) remains open and in draft review; it has not been merged. Its exact head `5697b4f3c051da8c127941082205706eb62e1537` passed [CI run 42579507429](https://github.com/Elgit4/PCG_Missions/actions/runs/42579507429).
+Backend PRs #3–#9 are merged to `main`. PR #10 (`feat/cmi-staff-session-api`) remains open and in draft review; it has not been merged.
 
-That run completed CMI Edge Function formatting, linting, type-checking and Deno unit tests, then applied the domain drafts and capability/contact transaction through temporary CLI-generated migrations on the disposable local CMI stack. All five pgTAP files passed: **148 assertions, zero failures**.
+The functional/security code head `5697b4f3c051da8c127941082205706eb62e1537` passed [CI run 42579507429](https://github.com/Elgit4/PCG_Missions/actions/runs/42579507429). That run completed CMI Edge Function formatting, linting, type-checking and Deno unit tests, then applied the domain drafts and capability/contact transaction through temporary CLI-generated migrations on the disposable local CMI stack. All five pgTAP files passed: **148 assertions, zero failures**. The RPC was executed as `service_role` using `SECURITY INVOKER`.
 
-The staff session/contact APIs and capability/contact transaction remain source-only in PR #10. No `role_capability` rows are seeded; business access remains denied until R-01–R-12 and D-01 are approved. No hosted CMI project has been linked, queried, migrated or modified; no Edge Function has been deployed and no SMS has been sent.
+Six later documentation and SQL-comment commits advanced PR #10 to `9dd081145d5b1ee25a2c48b6c90cee359f0a3094` without changing executable SQL or Edge Function logic. CI run [42580225147](https://github.com/Elgit4/PCG_Missions/actions/runs/42580225147) stopped before project checks because the Deno release download returned HTTP 504 at setup. No workflow rerun was requested.
+
+No `role_capability` rows are seeded; business access remains denied until R-01–R-12 and D-01 are approved. No hosted CMI project has been linked, queried, migrated or modified; no Edge Function has been deployed and no SMS has been sent.
