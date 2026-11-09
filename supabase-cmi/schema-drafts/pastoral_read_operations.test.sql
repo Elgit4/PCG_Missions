@@ -535,7 +535,6 @@ select extensions.ok(
   ),
   'Care oversight audit records reason and the bounded returned interaction count'
 );
-set local role service_role;
 select extensions.ok(
   not exists (
     select 1 from public.prayer_access_audit
