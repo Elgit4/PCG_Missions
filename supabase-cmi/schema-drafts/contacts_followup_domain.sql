@@ -354,10 +354,10 @@ from service_role;
 grant select, insert, update on table
   public.contact,
   public.contact_assignment,
-  public.contact_note,
-  public.contact_interaction,
-  public.followup_list,
   public.followup_task
+to service_role;
+grant select on table
+  public.followup_list
 to service_role;
 grant select, insert on table
   public.contact_capture,
