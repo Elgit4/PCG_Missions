@@ -484,9 +484,11 @@ Deno.serve(async (request: Request) => {
 
     if (request.method === "PATCH" && isItem) {
       const branchId = url.searchParams.get("branch_id") ?? "";
-      if (!isUuid(branchId) || [...url.searchParams.keys()].some((key) =>
-        key !== "branch_id"
-      ) || url.searchParams.getAll("branch_id").length !== 1) {
+      if (
+        !isUuid(branchId) || [...url.searchParams.keys()].some((key) =>
+          key !== "branch_id"
+        ) || url.searchParams.getAll("branch_id").length !== 1
+      ) {
         return fail(
           "INVALID_QUERY",
           "A single valid branch_id is required.",
