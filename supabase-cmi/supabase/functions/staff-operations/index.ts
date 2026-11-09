@@ -526,12 +526,7 @@ Deno.serve(async (request: Request) => {
 
       if (search) {
         const safeSearch = search.replace(/[\\%_]/g, (character) => "\\" + character);
-      path[path.length - 3] === "tasks" &&
-      path[path.length - 4] === "followup" &&
-      isUuid(reassignmentTaskId);
-
-    if (request.method === "GET" && isFollowupTaskCollection) {");
-        query = query.ilike("full_name", `%${safeSearch}%`);
+        query = query.ilike("full_name", \`%\${safeSearch}%\`);
       }
 
       const { data, error, count } = await query
