@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(21);
+select plan(24);
 
 select has_column('public', 'followup_task', 'client_request_id', 'task create idempotency key is stored');
 select has_column('public', 'followup_task', 'digest_key_version', 'task digest key version is stored');
@@ -249,6 +249,33 @@ select ok(
   not has_table_privilege('anon', 'public.followup_task', 'SELECT')
   and not has_table_privilege('authenticated', 'public.followup_task', 'SELECT'),
   'follow-up task table remains closed to browser reads'
+);
+
+select throws_ok(
+  $q$ update public.followup_task_event
+      set details = '{"manual_edit":true}'::jsonb
+      where task_id = (
+        select id from public.followup_task
+        where client_request_id = '50000000-0000-4000-8000-000000000020'
+      ) $q$,
+  '55000', null,
+  'follow-up lifecycle history rejects update attempts'
+);
+
+select throws_ok(
+  $q$ delete from public.followup_task_event
+      where task_id = (
+        select id from public.followup_task
+        where client_request_id = '50000000-0000-4000-8000-000000000020'
+      ) $q$,
+  '55000', null,
+  'follow-up lifecycle history rejects delete attempts'
+);
+
+select throws_ok(
+  $q$ truncate table public.followup_task_event $q$,
+  '55000', null,
+  'follow-up lifecycle history rejects truncate attempts'
 );
 
 select * from finish();
