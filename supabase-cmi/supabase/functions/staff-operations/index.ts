@@ -22,6 +22,21 @@ const allowedOrigins = new Set(
     .filter(Boolean),
 );
 
+function createServiceClient() {
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    global: {
+      headers: { "X-Application-Name": "pcg-missions-staff-operations" },
+    },
+  });
+}
+
+type ServiceClient = ReturnType<typeof createServiceClient>;
+
 const CONTACT_COLUMNS =
   "id,branch_id,first_name,last_name,preferred_name,phone_e164,phone_display,email_normalized,age_range,preferred_language,contact_status,created_by,created_at,updated_at";
 
@@ -118,7 +133,7 @@ async function resolveStaff(
     ok: true;
     actorId: string;
     profileId: string;
-    service: ReturnType<typeof createClient>;
+    service: ServiceClient;
   }
   | { ok: false; status: number; code: string; message: string }
 > {
@@ -129,16 +144,7 @@ async function resolveStaff(
       detectSessionInUrl: false,
     },
   });
-  const service = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-    global: {
-      headers: { "X-Application-Name": "pcg-missions-staff-operations" },
-    },
-  });
+  const service = createServiceClient();
 
   const { data: auth, error: authError } = await authClient.auth.getUser(token);
   if (authError || !auth.user) {
@@ -178,7 +184,7 @@ async function resolveStaff(
 }
 
 async function resolveScopes(
-  service: ReturnType<typeof createClient>,
+  service: ServiceClient,
   profileId: string,
   branchId: string,
   capabilityCode: string,
@@ -232,7 +238,7 @@ async function resolveScopes(
 }
 
 async function visibleContactIds(
-  service: ReturnType<typeof createClient>,
+  service: ServiceClient,
   branchId: string,
   actorId: string,
   profileId: string,
@@ -594,12 +600,12 @@ Deno.serve(async (request: Request) => {
           identityCaptureScopes.includes("branch") ||
           (
             input.team_id !== null &&
-            captureScopes.includes("team") &&
+            scopes.includes("team") &&
             identityCaptureScopes.includes("team")
           ) ||
           (
             input.team_id === null &&
-            captureScopes.includes("assigned") &&
+            scopes.includes("assigned") &&
             identityCaptureScopes.includes("assigned")
           );
         if (!identityCaptureAllowed) {
