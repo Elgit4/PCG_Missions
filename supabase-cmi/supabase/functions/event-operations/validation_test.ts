@@ -129,7 +129,10 @@ Deno.test("rejects invalid timestamps and an end before the start", () => {
       starts_at: "not-a-date",
       ends_at: "2026-11-15T12:00:00Z",
     }),
-    { ok: false, error: "starts_at must be an ISO timestamp with an explicit timezone." },
+    {
+      ok: false,
+      error: "starts_at must be an ISO timestamp with an explicit timezone.",
+    },
   );
   assertEquals(
     parseEventCreate({
