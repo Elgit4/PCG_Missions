@@ -1,5 +1,5 @@
 begin;
-select plan(17);
+select plan(19);
 
 select has_table('public', 'capability', 'Capability catalogue exists');
 select ok(
@@ -186,6 +186,62 @@ select extensions.is(
      and client_request_id = '50000000-0000-4000-8000-000000000010'),
   1,
   'identical retry does not duplicate contact capture provenance'
+);
+
+
+insert into public.role_capability(role_id, capability_id, scope_mode)
+select r.id, c.id, 'team'
+from public.role r
+cross join public.capability c
+where r.code = 'field_worker'
+  and c.code = 'contact.identity.capture';
+
+select extensions.throws_ok(
+  $q$ select public.cmi_create_contact(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
+    '20000000-0000-4000-8000-000000000010',
+    '50000000-0000-4000-8000-000000000011',
+    1,
+    decode(repeat('33', 32), 'hex'),
+    'Ama',
+    'Mensah',
+    null,
+    '+233241234567',
+    '+233 24 123 4567',
+    null,
+    null,
+    null,
+    null,
+    null,
+    '{}'::jsonb
+  ) $q$,
+  '42501',
+  null,
+  'identity team scope cannot be used outside the contact-create assigned scope'
+);
+
+select extensions.throws_ok(
+  $q$ select public.cmi_create_contact(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
+    '20000000-0000-4000-8000-000000000010',
+    '50000000-0000-4000-8000-000000000012',
+    1,
+    decode(repeat('44', 32), 'hex'),
+    'Ama',
+    'Mensah',
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    '30000000-0000-4000-8000-000000000010',
+    '{}'::jsonb
+  ) $q$,
+  '42501',
+  null,
+  'identity field permission cannot authorize a team assignment'
 );
 
 select extensions.throws_ok(
