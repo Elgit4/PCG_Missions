@@ -165,7 +165,7 @@ begin
     and sp.account_status = 'active'
     and sra.branch_id = p_branch_id
     and sra.starts_at <= pg_catalog.now()
-    and sra.ends_at is null
+    and (sra.ends_at is null or sra.ends_at > pg_catalog.now())
     and sra.revoked_at is null
     and b.is_active
     and cap.code = 'contact.capture.create'
@@ -197,7 +197,7 @@ begin
     where sra.staff_profile_id = v_profile_id
       and sra.branch_id = p_branch_id
       and sra.starts_at <= pg_catalog.now()
-      and sra.ends_at is null
+      and (sra.ends_at is null or sra.ends_at > pg_catalog.now())
       and sra.revoked_at is null
       and cap.code = 'contact.identity.capture'
       and cap.is_active
@@ -224,7 +224,7 @@ begin
         and stm.branch_id = p_branch_id
         and stm.team_id = p_team_id
         and stm.starts_at <= pg_catalog.now()
-        and stm.ends_at is null
+        and (stm.ends_at is null or stm.ends_at > pg_catalog.now())
         and stm.revoked_at is null
     ) then
       raise exception using errcode = '42501', message = 'team contact capture not authorized';
@@ -348,7 +348,7 @@ end;
 $$;
 
 revoke all on function public.cmi_create_contact(
-  uuid, uuid, uuid, smallint, bytea, text, text, text, text, text, text, text, uuid, uuid, jsonb
+  uuid, uuid, uuid, smallint, bytea, text, text, text, text, text, text, text, text, uuid, uuid, jsonb
 ) from public, anon, authenticated;
 grant execute on function public.cmi_create_contact(
   uuid, uuid, uuid, smallint, bytea, text, text, text, text, text, text, text, text, uuid, uuid, jsonb
