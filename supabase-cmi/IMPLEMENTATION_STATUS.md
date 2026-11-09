@@ -193,3 +193,25 @@ The baseline selects:
 - Limited offline capture only, audited pastoral reads, narrow public projections, transactional event capacity and no unapproved waitlist, and no arbitrary retention periods.
 
 The document is an engineering baseline, not an authorization to deploy, activate role grants, choose a provider or send live SMS.
+
+
+## Hubtel SMS provider adapter — source-only
+
+A provider adapter and mocked unit-test suite are available on the current integration branch:
+- `supabase/functions/_shared/sms/hubtel.ts` implements the documented Hubtel Business SMS POST send and message-status lookup.
+- Credentials are read only from server-side environment secrets: `HUBTEL_SMS_CLIENT_ID`, `HUBTEL_SMS_CLIENT_SECRET`, `HUBTEL_SMS_SENDER_ID`.
+- `CMI_SMS_LIVE_ENABLED` must equal the exact string `true` before the adapter will submit a message. Missing/other values fail closed.
+- The adapter distinguishes provider acceptance from final delivery, maps provider statuses, uses Basic auth and never places credentials in URL query parameters.
+- Ambiguous send failures are marked non-retryable because the documented Hubtel SMS request contract does not expose an idempotency key; blindly retrying could send duplicates.
+- Status lookups are safe to retry. No signed SMS callback contract is assumed; the published Hubtel SMS integration documents message-ID status lookup.
+- CI now type-checks and tests the adapter with mocked fetch calls.
+
+This is not a complete messaging system. There is no SMS outbox schema/dispatcher, consent/suppression workflow, campaign approval, automation engine, spend reservation, polling worker or delivery-log API yet. The adapter is not wired to any public or staff endpoint. No Hubtel account, sender ID, API credentials or balance has been configured. No live SMS has been sent. R-06–R-09 and D-09–D-11 remain pending, so live dispatch must remain disabled.
+
+## Frontend integration handoff
+
+Document [26 — Frontend Integration Handoff](../docs/26_CMI_FRONTEND_INTEGRATION_HANDOFF.md) consolidates the actual existing function names, endpoint families, request headers, session/capability model, available draft workflows, gated workflows and frontend acceptance tests. It explicitly notes that source code is not deployment and that domain schema drafts are not permanent migrations.
+
+The current Supabase config explicitly declares JWT verification for all authenticated CMI Edge Functions; only `public-content` has gateway JWT verification disabled because it is an anonymous published-content projection. Staff functions independently validate bearer tokens with Supabase Auth. The service-role key and all provider credentials remain server-only.
+
+The latest source branch includes PR #20/#21/#22 changes plus the Hubtel adapter and frontend handoff. PR #23 will target PR #22's branch; merge order remains #20, #21, #22, then #23. No PR has been merged by this work.

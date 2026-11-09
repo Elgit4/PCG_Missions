@@ -122,6 +122,12 @@ jobs:
       - name: Test server-side event idempotency helpers
         run: deno test supabase-cmi/supabase/functions/_shared/idempotency_test.ts
 
+      - name: Type-check Hubtel SMS provider adapter
+        run: deno check supabase-cmi/supabase/functions/_shared/sms/hubtel.ts
+
+      - name: Test Hubtel SMS provider adapter
+        run: deno test supabase-cmi/supabase/functions/_shared/sms/hubtel_test.ts
+
       - name: Install pinned Supabase CLI
         uses: supabase/setup-cli@v3
         with:

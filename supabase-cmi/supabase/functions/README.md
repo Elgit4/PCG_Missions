@@ -89,3 +89,8 @@ The database transactions enforce current active staff, branch and role assignme
 
 This function does not list, create, update, assign, archive or delete pastoral records. No role grants are seeded. R-01, R-10, R-11 and D-07 remain approval gates, so staff access remains denied until stakeholders approve and explicit grants are provisioned. Do not deploy this function until those approvals, a security review, production origins and platform rate limiting are in place. The new SQL remains in `schema-drafts/` and is validated only through the isolated local CMI CI workflow. It has not been deployed.
 
+
+
+## Shared SMS provider adapter
+
+The internal module `_shared/sms/hubtel.ts` implements Hubtel Business SMS send and status lookup. It is a library for a future trusted outbox dispatcher, not an exposed Edge Function route. It requires server-only `HUBTEL_SMS_CLIENT_ID`, `HUBTEL_SMS_CLIENT_SECRET`, `HUBTEL_SMS_SENDER_ID` and the exact live-enable flag `CMI_SMS_LIVE_ENABLED=true`. Live dispatch remains disabled until SMS consent/suppression, campaign authorization, budgets, provider setup and stakeholder decisions are complete. The adapter has mocked tests and refuses automatic retries for ambiguous submissions. See its [setup runbook](_shared/sms/README.md).
