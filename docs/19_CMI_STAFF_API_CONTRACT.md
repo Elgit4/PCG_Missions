@@ -272,6 +272,14 @@ List/detail requires `announcement.read.scoped` with branch scope. Create/edit r
 
 The full request and error contract is in [document 21 — Announcement Draft Operations API Contract](21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this feature remains fail-closed until applicable church decisions and grants are approved. It has not been deployed.
 
+## 7C. Visitor content draft operations (feature branch)
+
+The `content-operations` function adds branch-scoped draft list/detail/create/edit for `sermon` and `welcome_message` only. It requires `content.manage.draft` with branch scope. Draft list/detail and mutation are restricted to the authenticated creator's rows; all create/update SQL requests also constrain branch and `status='draft'`.
+
+The API never accepts caller-supplied creator, status or publication fields and forces new rows to draft with null `published_at`. Daily Word, Digital Tracts and church-wide profile editing are excluded until global authoring scope is approved under D-02. Publication, scheduling and delivery are not implemented.
+
+See [document 22 — Visitor Content Draft Operations API Contract](22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this function remains fail-closed until the applicable decisions and grants are approved. It has not been deployed.
+
 ## 8. Not yet implemented
 
 The following API families remain backend work and must not be represented as available frontend functionality:
