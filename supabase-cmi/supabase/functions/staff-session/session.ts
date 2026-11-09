@@ -1,3 +1,5 @@
+type Relation<T> = T | T[] | null;
+
 export interface StaffProfile {
   id: string;
   auth_user_id: string;
@@ -12,26 +14,13 @@ export interface RoleAssignmentRow {
   starts_at: string;
   ends_at?: string | null;
   revoked_at?: string | null;
-  role?:
-    | { code: string; name: string; is_active: boolean }
-    | Array<{
-        code: string;
-        name: string;
-        is_active: boolean;
-      }>
-    | null;
+  role?: Relation<{ code: string; name: string; is_active: boolean }>;
 }
 
 export interface RoleCapabilityRow {
   role_id: string;
   scope_mode: string;
-  capability?:
-    | { code: string; is_active: boolean }
-    | Array<{
-        code: string;
-        is_active: boolean;
-      }>
-    | null;
+  capability?: Relation<{ code: string; is_active: boolean }>;
 }
 
 export interface BranchRow {
