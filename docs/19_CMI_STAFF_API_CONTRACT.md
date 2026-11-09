@@ -251,6 +251,16 @@ The existing `GET /public-content` function remains a read-only, allowlisted pro
 
 Public registration is not enabled by this contract. D-05/D-06/D-13 and consent-evidence/retention requirements must be approved first.
 
+## 7A. Event draft management (feature branch)
+
+The separate `event-operations` function implements a limited authoring API for private event drafts:
+- `GET /event-operations/events` and `GET /event-operations/events/{eventId}` require `event.read.scoped`.
+- `POST /event-operations/events` and `PATCH /event-operations/events/{eventId}` require `event.manage.scoped` with branch scope.
+- New events are forced to `draft`, `private` and `registration_state='closed'`.
+- Capacity, public publication, assignments and all attendee/transport/check-in/closeout operations are excluded.
+
+The exact request fields, validation and error contract are in [document 20 — Event Draft Operations API Contract](20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md). No `role_capability` grants are seeded, so these endpoints remain denied until approved grants are provisioned. This slice does not satisfy or bypass the event transaction approval gate in document 17.
+
 ## 8. Not yet implemented
 
 The following API families remain backend work and must not be represented as available frontend functionality:
