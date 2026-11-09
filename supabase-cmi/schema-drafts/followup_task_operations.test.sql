@@ -184,8 +184,8 @@ where r.code = 'field_worker'
   and c.code = 'followup.task.assign.scoped';
 
 set local role service_role;
-select extensions.ok(
-  (public.cmi_create_followup_task(
+with created as (
+  select public.cmi_create_followup_task(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
     '20000000-0000-4000-8000-000000000020',
     '50000000-0000-4000-8000-000000000020',
@@ -198,12 +198,17 @@ select extensions.ok(
     3::smallint,
     null,
     'Call this visitor'
-  )->>'replayed')::boolean = false,
-  'service_role creates an assigned task through the atomic transaction'
-);
+  ) as result
+)
+select extensions.ok(
+  (result->>'replayed')::boolean = false
+  and not ((result->'task') ?| array['client_request_id', 'digest_key_version', 'request_digest']),
+  'service_role creates an assigned task without exposing idempotency internals'
+)
+from created;
 
-select extensions.ok(
-  (public.cmi_create_followup_task(
+with replayed as (
+  select public.cmi_create_followup_task(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
     '20000000-0000-4000-8000-000000000020',
     '50000000-0000-4000-8000-000000000020',
@@ -216,9 +221,14 @@ select extensions.ok(
     3::smallint,
     null,
     'Call this visitor'
-  )->>'replayed')::boolean = true,
-  'identical task create retry returns the original task'
-);
+  ) as result
+)
+select extensions.ok(
+  (result->>'replayed')::boolean = true
+  and not ((result->'task') ?| array['client_request_id', 'digest_key_version', 'request_digest']),
+  'identical task create retry returns a sanitized original task'
+)
+from replayed;
 
 select throws_ok(
   $q$ select public.cmi_create_followup_task(
@@ -239,17 +249,19 @@ select throws_ok(
   'reusing a task request key with a changed digest is rejected'
 );
 
+with reassigned as (
+  select public.cmi_reassign_followup_task(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    '20000000-0000-4000-8000-000000000020',
+    (select id from public.followup_task
+     where client_request_id = '50000000-0000-4000-8000-000000000020'),
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
+    null
+  ) as result
+)
 select extensions.ok(
-  (
-    public.cmi_reassign_followup_task(
-      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
-      '20000000-0000-4000-8000-000000000020',
-      (select id from public.followup_task
-       where client_request_id = '50000000-0000-4000-8000-000000000020'),
-      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
-      null
-    )->'task'->>'assignee_user_id' = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22'
-  )
+  result->'task'->>'assignee_user_id' = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22'
+  and not ((result->'task') ?| array['client_request_id', 'digest_key_version', 'request_digest'])
   and exists (
     select 1
     from public.followup_task_event event
@@ -261,39 +273,48 @@ select extensions.ok(
       and event.details->>'from_assignee_user_id' = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'
       and event.details->>'to_assignee_user_id' = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22'
   ),
-  'branch assignment grant changes the one primary target and records old/new target IDs'
-);
+  'branch reassignment returns safe fields and records old/new primary target IDs'
+)
+from reassigned;
 
+with reassigned as (
+  select public.cmi_reassign_followup_task(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    '20000000-0000-4000-8000-000000000020',
+    (select id from public.followup_task
+     where client_request_id = '50000000-0000-4000-8000-000000000020'),
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
+    null
+  ) as result
+)
 select extensions.ok(
-  (
-    public.cmi_reassign_followup_task(
-      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
-      '20000000-0000-4000-8000-000000000020',
-      (select id from public.followup_task
-       where client_request_id = '50000000-0000-4000-8000-000000000020'),
-      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
-      null
-    )->>'changed'
-  )::boolean = false
+  (result->>'changed')::boolean = false
+  and not ((result->'task') ?| array['client_request_id', 'digest_key_version', 'request_digest'])
   and (
     select count(*) = 2
     from public.followup_task_event event
     join public.followup_task task on task.id = event.task_id
     where task.client_request_id = '50000000-0000-4000-8000-000000000020'
   ),
-  'repeating the existing assignment is a no-op and does not append another event'
-);
+  'repeating the existing assignment is a sanitized no-op without duplicate history'
+)
+from reassigned;
 
-select extensions.ok(
-  (public.cmi_update_followup_task(
+with updated as (
+  select public.cmi_update_followup_task(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
     '20000000-0000-4000-8000-000000000020',
     (select id from public.followup_task
      where client_request_id = '50000000-0000-4000-8000-000000000020'),
     '{"status":"completed","priority":2}'::jsonb
-  )->'task'->>'status') = 'completed',
-  'authorized task update completes the task and changes its priority'
-);
+  ) as result
+)
+select extensions.ok(
+  result->'task'->>'status' = 'completed'
+  and not ((result->'task') ?| array['client_request_id', 'digest_key_version', 'request_digest']),
+  'authorized update returns sanitized task fields and completes the task'
+)
+from updated;
 
 select throws_ok(
   $q$ select public.cmi_update_followup_task(
