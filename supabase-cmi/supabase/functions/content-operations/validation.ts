@@ -72,7 +72,10 @@ function parseDisplayOrder(
     value < 0 ||
     value > 10000
   ) {
-    return { ok: false, error: "display_order must be an integer from 0 to 10000." };
+    return {
+      ok: false,
+      error: "display_order must be an integer from 0 to 10000.",
+    };
   }
   return { ok: true, value };
 }
@@ -85,7 +88,8 @@ function parseSlug(
   if (!SLUG_PATTERN.test(parsed.value)) {
     return {
       ok: false,
-      error: "public_slug must contain lowercase letters, numbers and single hyphens.",
+      error:
+        "public_slug must contain lowercase letters, numbers and single hyphens.",
     };
   }
   return parsed;
