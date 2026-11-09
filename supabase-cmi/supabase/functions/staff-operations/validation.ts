@@ -275,7 +275,6 @@ export function isUuid(value: string): boolean {
   return UUID_PATTERN.test(value);
 }
 
-
 export interface FollowupTaskCreateInput {
   branch_id: string;
   contact_id: string;
