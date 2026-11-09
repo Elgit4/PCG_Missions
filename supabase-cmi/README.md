@@ -95,7 +95,7 @@ The event schema draft includes a private HMAC-backed idempotency receipt ledger
 
 ## Current source-control status (2026-11-09)
 
-Backend PRs #3–#11 are merged to `main`. PR #10 merged as `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged as `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`.
+Backend PRs #3–#13 are merged to `main`. PR #10 merged as `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged as `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`; PR #13 merged as `b8843c2ea09561ccaf712222dccb282490126fd6`. PR #13 added test-only coverage for the 100-interaction response cap and denied-read audit behavior. The current main commit passed [CI run 42601107555](https://github.com/Elgit4/PCG_Missions/actions/runs/42601107555), with 227 pgTAP assertions across seven suites and all 58 Deno unit tests.
 
 The current PR #10 head `7ab4174ebe529279eda55a96ab4f52345aef74e3` passed [CI run 42588602409](https://github.com/Elgit4/PCG_Missions/actions/runs/42588602409). Deno formatting, linting, type-checking and unit tests passed. The workflow applied all reviewed SQL drafts using temporary CLI-generated migrations on the disposable local CMI stack; **all six pgTAP files passed, 178 assertions with zero failures**.
 
