@@ -13,7 +13,8 @@ alter table public.followup_task
   add constraint followup_task_idempotency_fields_ck check (
     (client_request_id is null and digest_key_version is null and request_digest is null)
     or
-    (client_request_id is not null and digest_key_version > 0
+    (client_request_id is not null
+      and digest_key_version is not null and digest_key_version > 0
       and request_digest is not null and pg_catalog.octet_length(request_digest) = 32)
   );
 
@@ -442,7 +443,7 @@ begin
 
   select pg_catalog.jsonb_agg(key order by key)
     into v_changed_fields
-  from pg_catalog.jsonb_object_keys(p_patch) as key;
+  from pg_catalog.jsonb_object_keys(p_patch) as keys(key);
 
   if v_new_status <> v_old_status then
     v_event_type := case
