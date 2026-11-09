@@ -157,3 +157,17 @@ Deno.test("HTTP 429 and 5xx are retryable; authentication errors are not", async
     assert(actual === retryable, `Retry classification mismatch for ${status}`);
   }
 });
+
+Deno.test("ambiguous send transport failure is not automatically retryable", async () => {
+  const provider = createHubtelSmsProvider(config, async () => {
+    throw new Error("simulated connection reset after request transmission");
+  });
+  let actual: HubtelSmsError | null = null;
+  try {
+    await provider.send({ toE164: "+233241234567", content: "Hello" });
+  } catch (error) {
+    if (error instanceof HubtelSmsError) actual = error;
+  }
+  assert(actual?.code === "HUBTEL_SMS_SUBMISSION_UNCERTAIN", "Ambiguous send must be marked uncertain.");
+  assert(actual.retryable === false, "Ambiguous send must not be auto-retried.");
+});
