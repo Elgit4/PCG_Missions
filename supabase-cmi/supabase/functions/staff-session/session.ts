@@ -63,17 +63,26 @@ export function buildStaffSession(
   assignments: RoleAssignmentRow[],
   roleCapabilities: RoleCapabilityRow[],
   branches: BranchRow[],
+  now: Date = new Date(),
 ): StaffSession {
   const activeBranches = new Map(
     branches.filter((branch) => branch.is_active).map((branch) => [branch.id, branch]),
   );
 
+  const nowMs = now.getTime();
   const activeAssignments = assignments.flatMap((assignment) => {
     const role = relationOne(assignment.role);
+    const startsAt = Date.parse(assignment.starts_at);
+    const endsAt = assignment.ends_at == null
+      ? null
+      : Date.parse(assignment.ends_at);
+
     if (
       !role ||
       !role.is_active ||
-      assignment.ends_at != null ||
+      !Number.isFinite(startsAt) ||
+      startsAt > nowMs ||
+      (endsAt !== null && (!Number.isFinite(endsAt) || endsAt <= nowMs)) ||
       assignment.revoked_at != null ||
       !activeBranches.has(assignment.branch_id)
     ) return [];
