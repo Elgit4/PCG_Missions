@@ -20,6 +20,14 @@ export type PastoralReadParseResult =
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const OVERSIGHT_REASON_CODES = new Set([
+  "pastoral_review",
+  "continuity_of_care",
+  "safeguarding_concern",
+  "complaint_review",
+  "administrative_review",
+]);
+
 export function isUuid(value: string): boolean {
   return UUID_PATTERN.test(value);
 }
@@ -73,10 +81,10 @@ export function parsePastoralReadInput(
   }
 
   if (input.access_mode === "assigned") {
-    if (input.reason !== undefined && input.reason !== null) {
+    if (input.reason_code !== undefined && input.reason_code !== null) {
       return {
         ok: false,
-        error: "Assigned reads must not include an oversight reason.",
+        error: "Assigned reads must not include an oversight reason_code.",
       };
     }
     return {
@@ -89,21 +97,9 @@ export function parsePastoralReadInput(
     };
   }
 
-  if (typeof input.reason !== "string") {
-    return { ok: false, error: "An oversight reason is required." };
-  }
-
-  const reasonCode = input.reason_code;
-  const allowedReasons = new Set([
-    "pastoral_review",
-    "continuity_of_care",
-    "safeguarding_concern",
-    "complaint_review",
-    "administrative_review",
-  ]);
   if (
-    typeof reasonCode !== "string" ||
-    !allowedReasons.has(reasonCode)
+    typeof input.reason_code !== "string" ||
+    !OVERSIGHT_REASON_CODES.has(input.reason_code)
   ) {
     return {
       ok: false,
@@ -116,7 +112,7 @@ export function parsePastoralReadInput(
     value: {
       branch_id: input.branch_id,
       access_mode: "oversight",
-      reason,
+      reason_code: input.reason_code,
     },
   };
 }
