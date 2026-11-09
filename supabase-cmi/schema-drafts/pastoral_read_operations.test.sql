@@ -590,7 +590,8 @@ select extensions.throws_ok(
   'Care record reads require an active role assignment in that branch'
 );
 update public.staff_profile
-set account_status = 'inactive'
+set account_status = 'inactive',
+    deactivated_at = now()
 where auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002';
 select extensions.throws_ok(
   $q$ select public.cmi_read_prayer_request(
@@ -603,7 +604,8 @@ select extensions.throws_ok(
   'Inactive staff cannot read prayer narratives even with an oversight grant'
 );
 update public.staff_profile
-set account_status = 'active'
+set account_status = 'active',
+    deactivated_at = null
 where auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002';
 reset role;
 
