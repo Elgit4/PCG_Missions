@@ -146,7 +146,11 @@ Deno.test("validates calendar title length and entry type", () => {
     { ok: false, error: "Invalid title." },
   );
   assertEquals(
-    parseCalendarCreate({ ...base, title: "Valid title", entry_type: "unknown" }),
+    parseCalendarCreate({
+      ...base,
+      title: "Valid title",
+      entry_type: "unknown",
+    }),
     {
       ok: false,
       error: "entry_type must be service, event or other.",
