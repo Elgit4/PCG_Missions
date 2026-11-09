@@ -4,7 +4,7 @@ import {
   parsePathUuid,
   parseRoleAssignment,
 } from "./validation.ts";
-const URL = Deno.env.get("SUPABASE_URL") ?? "",
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "",
   SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   PUBLIC = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
     Deno.env.get("SUPABASE_ANON_KEY") ?? "";
@@ -51,7 +51,7 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") {
     return fail("METHOD_NOT_ALLOWED", "Method not allowed.", 405, origin, id);
   }
-  if (!URL || !SERVICE || !PUBLIC) {
+  if (!SUPABASE_URL || !SERVICE || !PUBLIC) {
     return fail(
       "SERVICE_NOT_CONFIGURED",
       "Staff access service is not configured.",
@@ -86,14 +86,14 @@ Deno.serve(async (req: Request) => {
     );
   }
   try {
-    const authClient = createClient(URL, PUBLIC, {
+    const authClient = createClient(SUPABASE_URL, PUBLIC, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
         detectSessionInUrl: false,
       },
     });
-    const service = createClient(URL, SERVICE, {
+    const service = createClient(SUPABASE_URL, SERVICE, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
