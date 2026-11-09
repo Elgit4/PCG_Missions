@@ -156,7 +156,7 @@ values (
   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba201',
   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
   'Synthetic Restricted Contact',
-  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb101'
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001'
 );
 
 insert into public.prayer_request(
