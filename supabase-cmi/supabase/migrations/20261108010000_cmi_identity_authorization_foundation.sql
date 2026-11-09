@@ -249,6 +249,19 @@ $$;
 -- Edge Functions use service_role through PostgREST, so grant only the
 -- server-side identity lookups they require. Browser roles stay closed.
 grant usage on schema public to service_role;
+revoke all on table
+  public.church,
+  public.branch,
+  public.staff_profile,
+  public.role,
+  public.capability,
+  public.role_capability,
+  public.staff_role_assignment,
+  public.team,
+  public.staff_team_membership,
+  public.service_area,
+  public.staff_area_coverage
+from service_role;
 grant select on table
   public.church,
   public.branch,
