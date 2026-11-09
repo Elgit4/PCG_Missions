@@ -243,9 +243,7 @@ async function resolveBranchScope(
 function parseResource(
   value: string,
 ): ContentResource | null {
-  return value === "sermons" || value === "welcome-messages"
-    ? value
-    : null;
+  return value === "sermons" || value === "welcome-messages" ? value : null;
 }
 
 function hasSingleBranchParameter(url: URL): string | null {
@@ -386,9 +384,7 @@ Deno.serve(async (request: Request) => {
       }
 
       const table = resource === "sermons" ? "sermon" : "welcome_message";
-      const columns = resource === "sermons"
-        ? SERMON_COLUMNS
-        : WELCOME_COLUMNS;
+      const columns = resource === "sermons" ? SERMON_COLUMNS : WELCOME_COLUMNS;
 
       const { data, error } = await auth.service
         .from(table)
