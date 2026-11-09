@@ -63,10 +63,12 @@ Deno.test(
       calls++;
       return new Response("{}");
     });
-    for (const input of [
-      { toE164: "0241234567", content: "Test" },
-      { toE164: "+233241234567", content: " " },
-    ]) {
+    for (
+      const input of [
+        { toE164: "0241234567", content: "Test" },
+        { toE164: "+233241234567", content: " " },
+      ]
+    ) {
       let rejected = false;
       try {
         await provider.send(input);
@@ -136,8 +138,9 @@ Deno.test("Hubtel status lookup maps delivery states", async () => {
     ["new-provider-state", "unknown"],
   ] as const;
   for (const [providerStatus, expected] of statuses) {
-    const provider = createHubtelSmsProvider(config, async () =>
-      Response.json({ status: providerStatus })
+    const provider = createHubtelSmsProvider(
+      config,
+      async () => Response.json({ status: providerStatus }),
     );
     const result = await provider.getStatus(
       "fab43849-6c5b-4334-a88b-d06520b1ace8",
@@ -177,8 +180,9 @@ Deno.test(
         [401, false],
       ] as const
     ) {
-      const provider = createHubtelSmsProvider(config, async () =>
-        new Response("{}", { status })
+      const provider = createHubtelSmsProvider(
+        config,
+        async () => new Response("{}", { status }),
       );
       let actual: boolean | null = null;
       try {
@@ -212,6 +216,9 @@ Deno.test(
       actual?.code === "HUBTEL_SMS_SUBMISSION_UNCERTAIN",
       "Ambiguous send must be marked uncertain.",
     );
-    assert(actual.retryable === false, "Ambiguous send must not be auto-retried.");
+    assert(
+      actual.retryable === false,
+      "Ambiguous send must not be auto-retried.",
+    );
   },
 );
