@@ -113,7 +113,8 @@ Deno.test("enforces sermon field lengths and slug grammar", () => {
     parseSermonCreate({ ...base, public_slug: "Faith & Service" }),
     {
       ok: false,
-      error: "public_slug must contain lowercase letters, numbers and single hyphens.",
+      error:
+        "public_slug must contain lowercase letters, numbers and single hyphens.",
     },
   );
 });
