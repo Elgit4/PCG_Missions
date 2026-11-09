@@ -520,9 +520,9 @@ select extensions.ok(
       and actor_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002'
       and action = 'oversight'
       and reason = 'continuity_of_care'
-      and (safe_metadata->>'interaction_count')::integer = 1
+      and (safe_metadata->>'interaction_count')::integer = 100
   ),
-  'Care oversight audit records reason and safe interaction count'
+  'Care oversight audit records reason and the bounded returned interaction count'
 );
 select extensions.ok(
   not exists (
