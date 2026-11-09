@@ -5,7 +5,7 @@
 
 ## Security model
 
-The six roles remain the only role catalogue. Multiple roles contribute only explicitly granted capabilities; branch, team, event, contact-assignment and sensitive-record predicates remain mandatory. This API accepts no actor IDs, caller role claims, capability claims or authoritative account status values. It derives the actor from a Supabase Auth-verified bearer token and delegates final authorization and writes to service-role-only SECURITY INVOKER database transactions.
+The six roles remain the only role catalogue. Multiple roles contribute only explicitly granted capabilities; branch, team, event, contact-assignment and sensitive-record predicates remain mandatory. This API accepts no actor IDs, caller role claims, capability claims or authoritative account status values. It derives the actor from a Supabase Auth-verified bearer token and delegates final authorization and writes to service-role-only SECURITY DEFINER database transactions.
 
 ## Endpoints
 
@@ -18,7 +18,7 @@ All operations require an authenticated active staff account. Branch and role st
 
 ## Database and audit
 
-staff_access_audit is an append-only branch-scoped audit ledger. It records actor, target, action, reason, safe metadata and timestamp. Browser roles receive no access. Role assignment/revocation, account status mutation and their audit inserts occur in one SQL transaction. The RPCs use a fixed search_path, SECURITY INVOKER and execute privileges limited to service_role.
+staff_access_audit is an append-only branch-scoped audit ledger. It records actor, target, action, reason, safe metadata and timestamp. Browser roles receive no access. Role assignment/revocation, account status mutation and their audit inserts occur in one SQL transaction. The RPCs use a fixed search_path, SECURITY DEFINER and execute privileges limited to service_role.
 
 ## Explicit exclusions and approval gates
 

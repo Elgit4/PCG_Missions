@@ -12,13 +12,13 @@ PR #10 merged the `feat/cmi-staff-session-api` implementation into `main` as sou
 - `staff-operations` provides scoped contact list/detail, atomic contact capture and ordinary-field update routes.
 - `staff-operations` also provides scoped follow-up task list/detail, idempotent creation and atomic ordinary-field/status updates. Visibility is filtered by branch, active team membership, direct assignment or task creator; unsupported scope modes do not broaden access.
 - Follow-up task reassignment is a separate branch-authorized transaction. It can target one active same-branch staff member or team, rejects completed/cancelled tasks, appends old/new target metadata and is a no-op for an unchanged target.
-- Task creation enforces exactly one primary assignee (staff member OR team), active same-branch contact/list references, assignment-scope rules and a branch-scoped versioned HMAC idempotency receipt. Task create/update RPCs are service-role-only `SECURITY INVOKER` functions.
+- Task creation enforces exactly one primary assignee (staff member OR team), active same-branch contact/list references, assignment-scope rules and a branch-scoped versioned HMAC idempotency receipt. Task create/update RPCs are service-role-only `SECURITY DEFINER` functions.
 - A new task may reference only an `active` contact; archived or merged contacts are rejected. Task RPC responses use an allowlisted projection and never return the idempotency key or HMAC digest fields.
 - Task updates validate status transitions and append lifecycle history in the same transaction. Database triggers reject UPDATE, DELETE and TRUNCATE on the task event ledger; task-note text is not copied into event metadata.
 - Capability definitions are populated from the proposed action catalogue, but no `role_capability` rows are seeded. Until R-01–R-12 and D-01 are approved, staff sessions return no business capabilities and business operations remain denied.
 - Contact phone/email capture, read and update are separately capability-gated to preserve field-level privacy.
 - Contact creation is one database transaction: validate the actor, branch and capability; enforce the request idempotency key; write the contact and capture provenance; and create the required self/team assignment.
-- The contact RPC uses `SECURITY INVOKER`, a pinned `pg_catalog` search path and `EXECUTE` permission for `service_role` only. CI invokes it as `service_role`, proving it does not need migration-owner privilege elevation.
+- The contact RPC uses `SECURITY DEFINER`, a pinned `pg_catalog` search path and `EXECUTE` permission for `service_role` only. CI invokes it as `service_role`, proving it does not need migration-owner privilege elevation.
 - Both staff Edge Functions require JWT verification at the Supabase gateway and independently validate the bearer token with Supabase Auth.
 - The CI workflow type-checks/tests the staff functions and applies the capability/contact transaction draft to the isolated local CMI database for pgTAP validation.
 
@@ -97,7 +97,7 @@ The function deliberately does not implement public event publication, registrat
 
 PR #10 increased the verified database total to **178 assertions across six files**. PR #11 initially added the audited prayer/care read transactions and a 30-assertion suite. Subsequent security hardening expanded it to 46 assertions (224 total) in [CI run #177](https://github.com/Elgit4/PCG_Missions/actions/runs/42596909576). PR #13 added three tests for the 100-interaction response cap and denied-read audit behavior; its exact-head run [42600705230](https://github.com/Elgit4/PCG_Missions/actions/runs/42600705230) passed **227 database assertions across seven files**, with all Deno formatting, lint, type-check and unit-test steps also passing. The follow-on `main` run [42601107555](https://github.com/Elgit4/PCG_Missions/actions/runs/42601107555) also passed.
 
-The new task suite validates service-role-only function execution, `SECURITY INVOKER`, idempotent creation/replay/conflict, assigned-task creation, scoped task updates, status transitions, completion timestamps and append-only event history (UPDATE/DELETE/TRUNCATE rejected). CI generates temporary migration names with the Supabase CLI, applies the reviewed draft SQL only to the disposable local CMI stack, runs pgTAP and removes temporary migration/test files afterward.
+The new task suite validates service-role-only function execution, `SECURITY DEFINER`, idempotent creation/replay/conflict, assigned-task creation, scoped task updates, status transitions, completion timestamps and append-only event history (UPDATE/DELETE/TRUNCATE rejected). CI generates temporary migration names with the Supabase CLI, applies the reviewed draft SQL only to the disposable local CMI stack, runs pgTAP and removes temporary migration/test files afterward.
 
 PRs #10–#13 merged to `main` on 2026-11-09. No role-capability grants have been seeded; R-01–R-12 and D-01 remain approval gates, and business operations therefore remain denied until approved grants are provisioned. Draft SQL has not been promoted into permanent migration history. No hosted Supabase project, production schema or Edge Function has been changed or deployed.
 
@@ -143,7 +143,7 @@ The event pgTAP suite has **71 assertions**, including the trigger-function priv
 
 - Added `pastoral-operations` Edge Function with authenticated POST read routes for individual prayer requests and care records.
 - The Edge Function validates the bearer token with Supabase Auth. The actor ID comes only from the verified Auth user and is passed to a server-only database transaction.
-- Added `cmi_read_prayer_request` and `cmi_read_care_record` as `SECURITY INVOKER` transactions with fixed `pg_catalog` search paths and service-role-only execution.
+- Added `cmi_read_prayer_request` and `cmi_read_care_record` as `SECURITY DEFINER` transactions with fixed `pg_catalog` search paths and service-role-only execution.
 - Both transactions validate the active staff profile, active branch, active role assignment, exact capability and scope. Assigned reads additionally require a current, non-revoked assignment to that actor.
 - Oversight reads require the separate oversight capability and `oversight` scope. The accepted audit reason is an allowlisted category code, not free text.
 - The audit row is inserted in the same transaction as the read. Both audit ledgers reject UPDATE, DELETE and TRUNCATE.

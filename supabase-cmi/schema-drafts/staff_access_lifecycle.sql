@@ -14,16 +14,13 @@ create index staff_access_audit_branch_created_idx on public.staff_access_audit(
 create index staff_access_audit_target_created_idx on public.staff_access_audit(target_profile_id,created_at desc);
 alter table public.staff_access_audit enable row level security;
 revoke all on table public.staff_access_audit from public,anon,authenticated;
-grant insert,select on table public.staff_access_audit to service_role;
-grant insert,update on table public.staff_role_assignment to service_role;
-grant update on table public.staff_profile to service_role;
 create or replace function private.reject_staff_access_audit_mutation() returns trigger language plpgsql set search_path=pg_catalog as $$begin raise exception using errcode='55000',message='staff access audit is append-only';end;$$;
 revoke all on function private.reject_staff_access_audit_mutation() from public,anon,authenticated;
 create trigger staff_access_audit_no_update_delete before update or delete on public.staff_access_audit for each row execute function private.reject_staff_access_audit_mutation();
 create trigger staff_access_audit_no_truncate before truncate on public.staff_access_audit for each statement execute function private.reject_staff_access_audit_mutation();
 
 create or replace function public.cmi_assign_staff_role(p_actor_auth_user_id uuid,p_target_profile_id uuid,p_branch_id uuid,p_role_code text,p_starts_at timestamptz,p_ends_at timestamptz,p_reason text)
-returns jsonb language plpgsql security invoker set search_path=pg_catalog as $$
+returns jsonb language plpgsql security definer set search_path=pg_catalog as $$
 declare v_actor uuid;v_role uuid;v_assignment uuid;
 begin
  if p_actor_auth_user_id is null or p_target_profile_id is null or p_branch_id is null or p_role_code is null or p_starts_at is null or(p_ends_at is not null and p_ends_at<=p_starts_at) or length(btrim(coalesce(p_reason,''))) not between 10 and 500 then raise exception using errcode='22023',message='invalid role assignment';end if;
@@ -42,7 +39,7 @@ begin
 end;$$;
 
 create or replace function public.cmi_revoke_staff_role(p_actor_auth_user_id uuid,p_assignment_id uuid,p_branch_id uuid,p_reason text)
-returns jsonb language plpgsql security invoker set search_path=pg_catalog as $$
+returns jsonb language plpgsql security definer set search_path=pg_catalog as $$
 declare v_actor uuid;v_target uuid;v_code text;
 begin
  if p_actor_auth_user_id is null or p_assignment_id is null or p_branch_id is null or length(btrim(coalesce(p_reason,''))) not between 10 and 500 then raise exception using errcode='22023',message='invalid role revocation';end if;
@@ -56,7 +53,7 @@ begin
 end;$$;
 
 create or replace function public.cmi_set_staff_account_status(p_actor_auth_user_id uuid,p_target_profile_id uuid,p_branch_id uuid,p_target_status text,p_reason text)
-returns jsonb language plpgsql security invoker set search_path=pg_catalog as $$
+returns jsonb language plpgsql security definer set search_path=pg_catalog as $$
 declare v_actor uuid;v_current text;
 begin
  if p_actor_auth_user_id is null or p_target_profile_id is null or p_branch_id is null or p_target_status not in('active','inactive') or length(btrim(coalesce(p_reason,''))) not between 10 and 500 then raise exception using errcode='22023',message='invalid account status request';end if;

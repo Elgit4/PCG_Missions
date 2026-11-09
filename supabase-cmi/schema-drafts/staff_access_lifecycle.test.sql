@@ -1,17 +1,19 @@
 begin;
-select plan(19);
+select plan(21);
 select has_table('public','staff_access_audit','Staff access audit exists');
 select ok((select relrowsecurity from pg_class where oid='public.staff_access_audit'::regclass),'Audit RLS enabled');
 select ok(not has_table_privilege('anon','public.staff_access_audit','SELECT'),'Anon cannot read access audit');
 select ok(not has_table_privilege('authenticated','public.staff_access_audit','SELECT'),'Browser cannot read access audit');
-select ok(has_table_privilege('service_role','public.staff_access_audit','INSERT'),'Service role can append audit');
+select ok(not has_table_privilege('service_role','public.staff_access_audit','INSERT'),'Service role cannot directly append audit');
 select ok(not has_function_privilege('anon','public.cmi_assign_staff_role(uuid,uuid,uuid,text,timestamptz,timestamptz,text)','EXECUTE'),'Anon cannot assign roles');
 select ok(not has_function_privilege('authenticated','public.cmi_assign_staff_role(uuid,uuid,uuid,text,timestamptz,timestamptz,text)','EXECUTE'),'Browser cannot assign roles directly');
 select ok(has_function_privilege('service_role','public.cmi_assign_staff_role(uuid,uuid,uuid,text,timestamptz,timestamptz,text)','EXECUTE'),'Service role can call guarded assignment');
 select ok(has_function_privilege('service_role','public.cmi_revoke_staff_role(uuid,uuid,uuid,text)','EXECUTE'),'Service role can call guarded revocation');
 select ok(not has_function_privilege('authenticated','public.cmi_set_staff_account_status(uuid,uuid,uuid,text,text)','EXECUTE'),'Browser cannot mutate account state');
 select ok(has_function_privilege('service_role','public.cmi_set_staff_account_status(uuid,uuid,uuid,text,text)','EXECUTE'),'Service role can call guarded account mutation');
-select ok(not(select prosecdef from pg_proc where oid='public.cmi_assign_staff_role(uuid,uuid,uuid,text,timestamptz,timestamptz,text)'::regprocedure),'Assignment RPC is SECURITY INVOKER');
+select ok((select prosecdef from pg_proc where oid='public.cmi_assign_staff_role(uuid,uuid,uuid,text,timestamptz,timestamptz,text)'::regprocedure),'Assignment RPC is SECURITY DEFINER');
+select ok(not has_table_privilege('service_role','public.staff_profile','UPDATE'),'Service role cannot directly update staff profiles');
+select ok(not has_table_privilege('service_role','public.staff_role_assignment','INSERT,UPDATE'),'Service role cannot directly mutate role assignments');
 select ok((select coalesce(array_to_string(proconfig,','),'') like '%search_path=pg_catalog%' from pg_proc where oid='public.cmi_assign_staff_role(uuid,uuid,uuid,text,timestamptz,timestamptz,text)'::regprocedure),'Assignment pins search_path');
 select is((select count(*)::integer from public.role_capability),0,'No production role grants are seeded');
 insert into auth.users(instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
