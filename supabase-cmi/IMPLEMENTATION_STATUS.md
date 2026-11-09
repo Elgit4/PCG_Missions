@@ -67,6 +67,24 @@ The function uses a server-side service-role key because public base-table grant
 
 A Deno validation suite covers supported resources, pagination, slug validation, unknown and duplicate query parameters, inherited object-property resource names, and public-profile request shape. CI runs that suite before the local Supabase database suite. Deno type-check and request-validation tests passed in the PR #8 exact-head workflow [run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750). That run also executed the idempotency helper tests and passed all 129 database assertions.
 
+## Event draft operations — PR #15
+
+**Branch:** `feat/cmi-event-draft-operations`  
+**Status:** Draft PR; exact-head CI run [42611211003](https://github.com/Elgit4/PCG_Missions/actions/runs/42611211003) passed on 2026-11-09.
+
+The feature adds a separate `event-operations` Edge Function for:
+- Branch-scoped event list/detail reads using `event.read.scoped` with branch or current direct staff event assignment scope.
+- Private draft event creation using `event.manage.scoped` with branch scope.
+- Private draft event editing while registration remains closed.
+
+Creation is forced to `draft`, `private` and `registration_state='closed'`. The request allowlist excludes capacity, publication state, registration state, creator/actor, transport and event assignment fields. Updates cannot change branch, lifecycle state or capacity and are conditionally restricted in the database update statement to private draft events with registration closed.
+
+The validation suite contains 12 Deno tests for UUIDs, strict input fields, caller-controlled lifecycle-field rejection, explicit-offset timestamps, temporal ordering, IANA timezone validation, patch allowlists and bounded pagination. The CI run passed formatting, lint, all Edge Function type checks, all Deno unit tests and the isolated local CMI migration/pgTAP test job. The existing database schema was not changed; the verified database baseline remains 227 pgTAP assertions. The Deno CI now includes 70 tests (58 existing + 12 event validation tests).
+
+**Not included:** registration, capacity/cancellation, transport, event assignments, check-in, offline sync, closeout or public publication. Those remain gated by document 11 and the acceptance gate in document 17. No capability grants are seeded; the API remains inaccessible until approved grants are provisioned. No hosted Supabase project was linked or modified, and the Edge Function has not been deployed.
+
+See [document 20 — Event Draft Operations API Contract](../docs/20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md) and [PR #15](https://github.com/Elgit4/PCG_Missions/pull/15).
+
 ## Deliberately not implemented
 
 - Full six-role capability grants and role/scope RLS policies; R-01–R-12 and D-01 remain approval gates.
