@@ -66,7 +66,9 @@ export function buildStaffSession(
   now: Date = new Date(),
 ): StaffSession {
   const activeBranches = new Map(
-    branches.filter((branch) => branch.is_active).map((branch) => [branch.id, branch]),
+    branches
+      .filter((branch) => branch.is_active)
+      .map((branch) => [branch.id, branch]),
   );
 
   const nowMs = now.getTime();
@@ -126,7 +128,9 @@ export function buildStaffSession(
       account_status: "active",
     },
     branches: [...activeBranches.values()]
-      .filter((branch) => activeAssignments.some((item) => item.branch_id === branch.id))
+      .filter((branch) =>
+        activeAssignments.some((item) => item.branch_id === branch.id)
+      )
       .map(({ id, name, timezone }) => ({ id, name, timezone }))
       .sort((a, b) => a.name.localeCompare(b.name)),
     roles: [...uniqueRoles.values()].sort((a, b) =>
