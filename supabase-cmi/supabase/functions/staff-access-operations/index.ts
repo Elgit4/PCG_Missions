@@ -215,26 +215,6 @@ Deno.serve(async (req: Request) => {
     if (profileId && mode) {
       const p = parseAccessMutation(body);
       if (!p.ok) return fail("INVALID_REQUEST", p.error, 400, origin, id);
-      const { data: target, error: lookupErr } = await service.from(
-        "staff_profile",
-      ).select("id,auth_user_id,account_status").eq("id", profileId)
-        .maybeSingle();
-      if (lookupErr) throw new Error("TARGET_LOOKUP_FAILED");
-      if (!target) {
-        return fail("NOT_FOUND", "Staff account not found.", 404, origin, id);
-      }
-      if (
-        target.account_status === "invited" ||
-        target.account_status === "suspended"
-      ) {
-        return fail(
-          "INVALID_STATE",
-          "Invited or suspended accounts require their dedicated lifecycle workflow.",
-          409,
-          origin,
-          id,
-        );
-      }
       const desired = mode === "deactivate" ? "inactive" : "active";
       const { data, error } = await service.rpc(
         "cmi_set_staff_account_status",
@@ -276,8 +256,12 @@ Deno.serve(async (req: Request) => {
         }
         throw new Error("ACCOUNT_STATUS_UPDATE_FAILED");
       }
+      if (!data || typeof data !== "object" || typeof data.auth_user_id !== "string") {
+        throw new Error("ACCOUNT_AUTH_REFERENCE_MISSING");
+      }
+      const { auth_user_id: authUserId, ...publicData } = data;
       const { error: banErr } = await service.auth.admin.updateUserById(
-        target.auth_user_id,
+        authUserId,
         { ban_duration: desired === "inactive" ? "876000h" : "none" },
       );
       if (banErr) {
@@ -293,7 +277,7 @@ Deno.serve(async (req: Request) => {
           id,
         );
       }
-      return res({ data, request_id: id }, 200, origin, id);
+      return res({ data: publicData, request_id: id }, 200, origin, id);
     }
     return fail(
       "NOT_FOUND",
