@@ -2,7 +2,7 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status (2026-11-09):** PRs #3–#11 are merged to `main`. PR #10 merged at `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged at `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`. PR #11's exact-head [CI run #176](https://github.com/Elgit4/PCG_Missions/actions/runs/42594351467) passed **208 pgTAP assertions across seven files**, plus all CMI formatting, lint, type-check and Deno validation steps (58 Deno unit tests). The branch `test/cmi-pastoral-read-hardening` adds 16 database assertions for audit-ledger access, inactive staff, missing grants, expired/revoked assignments and audit metadata minimization; it is not yet CI-verified. R-01, R-10, R-11 and D-07 remain pending, so no role grants are seeded. No hosted CMI database was linked, queried or modified, and no Edge Function has been deployed.
+**Status (2026-11-09):** PRs #3–#11 are merged to `main`. PR #10 merged at `5487debe93b9a556bfa9fc70d21a6131204682bd`; PR #11 merged at `edd8b155c20ffd13aa3e6b071b0e7fe342039b4b`. The current `main` head is `9269b11fd974159292be5f9951efdbbc27581f8a`. Its push [CI run #177](https://github.com/Elgit4/PCG_Missions/actions/runs/42596909576) passed **224 pgTAP assertions across seven files**, including the expanded 46-assertion pastoral-read suite, plus all CMI formatting, lint, type-check and Deno validation steps (58 Deno unit tests). R-01, R-10, R-11 and D-07 remain pending, so no role grants are seeded. No hosted CMI database was linked, queried or modified, and no Edge Function has been deployed.
 
 ## Staff API implementation merged to main
 
@@ -72,7 +72,7 @@ A Deno validation suite covers supported resources, pagination, slug validation,
 - Full six-role capability grants and role/scope RLS policies; R-01–R-12 and D-01 remain approval gates.
 - Staff credential activation/reset implementation; Supabase Auth remains the credential authority.
 - Trusted transactional contact merge/reversal.
-- Prayer/care list endpoints, request creation, restricted update/assignment workflows, archival/deletion and retention automation. Individual-record audited reads are added on `feat/cmi-audited-pastoral-reads` but remain under review and approval-gated.
+- Prayer/care list endpoints, request creation, restricted update/assignment workflows, archival/deletion and retention automation. Individual-record audited reads are implemented in `main` but remain approval-gated and undeployed.
 - Trusted registration, capacity reservation, transport-seat allocation and check-in endpoints.
 - Public content Edge Function deployment and production-origin/rate-limit configuration.
 - SMS provider adapter, consent/suppression, callback verification, dispatch budget and automation.
@@ -81,7 +81,7 @@ A Deno validation suite covers supported resources, pagination, slug validation,
 
 ## Verification boundary
 
-PR #10 increased the verified database total to **178 assertions across six files**. PR #11 adds the audited prayer/care read transactions and 30 pgTAP assertions. Its exact head passed [CI run 42594351467](https://github.com/Elgit4/PCG_Missions/actions/runs/42594351467): **208 database assertions across seven files**, with all Deno formatting, lint, type-check and unit-test steps also passing.
+PR #10 increased the verified database total to **178 assertions across six files**. PR #11 initially added the audited prayer/care read transactions and a 30-assertion suite. The additional 16 security-hardening assertions expanded that suite to 46; current `main` passed [CI run #177](https://github.com/Elgit4/PCG_Missions/actions/runs/42596909576): **224 database assertions across seven files**, with all Deno formatting, lint, type-check and unit-test steps also passing.
 
 The new task suite validates service-role-only function execution, `SECURITY INVOKER`, idempotent creation/replay/conflict, assigned-task creation, scoped task updates, status transitions, completion timestamps and append-only event history (UPDATE/DELETE/TRUNCATE rejected). CI generates temporary migration names with the Supabase CLI, applies the reviewed draft SQL only to the disposable local CMI stack, runs pgTAP and removes temporary migration/test files afterward.
 
@@ -138,9 +138,9 @@ The event pgTAP suite has **71 assertions**, including the trigger-function priv
 
 ### Added verification
 
-- A new 30-assertion pgTAP suite checks function security, assigned and oversight authorization, branch isolation, audit atomicity, response minimization and append-only audit protection.
+- The 46-assertion pgTAP suite checks function security, direct browser-role restrictions, assigned and oversight authorization, branch isolation, inactive staff, missing grants, expired/revoked assignments, audit atomicity, response minimization and append-only audit protection.
 - A Deno unit-test suite covers route and request validation, including the controlled oversight reason codes.
-- The CI workflow type-checks the function, tests validation, and applies the SQL/test files only as temporary CLI-generated migrations and tests on the disposable local CMI stack. Run #176 passed all seven pgTAP suites (208 assertions) and all Deno checks.
+- The CI workflow type-checks the function, tests validation, and applies the SQL/test files only as temporary CLI-generated migrations and tests on the disposable local CMI stack. PR #11's initial run #176 passed 208 assertions; the expanded suite passed current-main run #177 with 224 assertions and all Deno checks.
 
 ### Approval and deployment boundary
 
