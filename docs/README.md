@@ -100,3 +100,9 @@ The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role sche
 ## Requirements-driven engineering baseline
 
 - [25 — CMI Requirements-Driven Engineering Baseline](25_CMI_REQUIREMENTS_DRIVEN_ENGINEERING_BASELINE.md): selected technical defaults and implementation gates traced to the v2.1 specification, security model, role matrix, schema proposal and decision register. This does not mark pending church decisions as approved.
+
+
+## Frontend and provider integration
+
+- [26 — Frontend Integration Handoff](26_CMI_FRONTEND_INTEGRATION_HANDOFF.md) — exact current Edge Function surface, auth headers, capability/scope behaviour, response handling, available versus gated screens and integration acceptance checks.
+- [Hubtel SMS integration runbook](../supabase-cmi/supabase/functions/_shared/sms/README.md) — selected Ghana business SMS provider, API contract, server-only secrets, delivery-status polling and live activation gates.
