@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(24);
+select plan(27);
 
 select has_column('public', 'followup_task', 'client_request_id', 'task create idempotency key is stored');
 select has_column('public', 'followup_task', 'digest_key_version', 'task digest key version is stored');
@@ -15,6 +15,11 @@ select has_function(
   array['uuid','uuid','uuid','jsonb'],
   'trusted follow-up task update function exists'
 );
+select has_function(
+  'public', 'cmi_reassign_followup_task',
+  array['uuid','uuid','uuid','uuid','uuid'],
+  'trusted follow-up task reassignment function exists'
+);
 select ok(
   not has_function_privilege(
     'anon',
@@ -25,8 +30,18 @@ select ok(
     'authenticated',
     'public.cmi_create_followup_task(uuid,uuid,uuid,smallint,bytea,uuid,uuid,uuid,uuid,smallint,timestamptz,text)',
     'EXECUTE'
+  )
+  and not has_function_privilege(
+    'anon',
+    'public.cmi_reassign_followup_task(uuid,uuid,uuid,uuid,uuid)',
+    'EXECUTE'
+  )
+  and not has_function_privilege(
+    'authenticated',
+    'public.cmi_reassign_followup_task(uuid,uuid,uuid,uuid,uuid)',
+    'EXECUTE'
   ),
-  'browser roles cannot execute the task create transaction'
+  'browser roles cannot execute create or reassignment transactions'
 );
 select ok(
   not has_function_privilege(
@@ -51,12 +66,18 @@ select ok(
     'service_role',
     'public.cmi_update_followup_task(uuid,uuid,uuid,jsonb)',
     'EXECUTE'
+  )
+  and has_function_privilege(
+    'service_role',
+    'public.cmi_reassign_followup_task(uuid,uuid,uuid,uuid,uuid)',
+    'EXECUTE'
   ),
-  'the server service role can execute both task transactions'
+  'the server service role can execute all task transactions'
 );
 select ok(
   not (select prosecdef from pg_proc where oid = 'public.cmi_create_followup_task(uuid,uuid,uuid,smallint,bytea,uuid,uuid,uuid,uuid,smallint,timestamptz,text)'::regprocedure)
-  and not (select prosecdef from pg_proc where oid = 'public.cmi_update_followup_task(uuid,uuid,uuid,jsonb)'::regprocedure),
+  and not (select prosecdef from pg_proc where oid = 'public.cmi_update_followup_task(uuid,uuid,uuid,jsonb)'::regprocedure)
+  and not (select prosecdef from pg_proc where oid = 'public.cmi_reassign_followup_task(uuid,uuid,uuid,uuid,uuid)'::regprocedure),
   'task transactions use caller privileges and do not elevate to the migration owner'
 );
 select ok(
@@ -76,11 +97,30 @@ insert into auth.users (
   '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()
 );
 
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at
+) values (
+  '00000000-0000-0000-0000-000000000000',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
+  'authenticated', 'authenticated', 'cmi-task-target@example.invalid',
+  'not-a-real-password-hash', now(),
+  '{"provider":"email","providers":["email"]}'::jsonb, '{}'::jsonb, now(), now()
+);
+
 insert into public.staff_profile(id, auth_user_id, full_name, account_status)
 values (
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21',
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
   'Synthetic Task Worker',
+  'active'
+);
+
+insert into public.staff_profile(id, auth_user_id, full_name, account_status)
+values (
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
+  'Synthetic Task Target',
   'active'
 );
 
@@ -116,12 +156,32 @@ select
 from public.role r
 where r.code = 'field_worker';
 
+insert into public.staff_role_assignment(
+  staff_profile_id, role_id, branch_id, assigned_by, starts_at, ends_at
+)
+select
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23',
+  r.id,
+  '20000000-0000-4000-8000-000000000020',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21',
+  now() - interval '1 day',
+  now() + interval '1 day'
+from public.role r
+where r.code = 'field_worker';
+
 insert into public.role_capability(role_id, capability_id, scope_mode)
 select r.id, c.id, 'assigned'
 from public.role r
 cross join public.capability c
 where r.code = 'field_worker'
   and c.code in ('followup.task.create', 'followup.task.update.scoped');
+
+insert into public.role_capability(role_id, capability_id, scope_mode)
+select r.id, c.id, 'branch'
+from public.role r
+cross join public.capability c
+where r.code = 'field_worker'
+  and c.code = 'followup.task.assign.scoped';
 
 set local role service_role;
 select extensions.ok(
@@ -180,8 +240,53 @@ select throws_ok(
 );
 
 select extensions.ok(
+  (
+    public.cmi_reassign_followup_task(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+      '20000000-0000-4000-8000-000000000020',
+      (select id from public.followup_task
+       where client_request_id = '50000000-0000-4000-8000-000000000020'),
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
+      null
+    )->'task'->>'assignee_user_id' = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22'
+  )
+  and exists (
+    select 1
+    from public.followup_task_event event
+    where event.task_id = (
+      select id from public.followup_task
+      where client_request_id = '50000000-0000-4000-8000-000000000020'
+    )
+      and event.event_type = 'reassigned'
+      and event.details->>'from_assignee_user_id' = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'
+      and event.details->>'to_assignee_user_id' = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22'
+  ),
+  'branch assignment grant changes the one primary target and records old/new target IDs'
+);
+
+select extensions.ok(
+  (
+    public.cmi_reassign_followup_task(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+      '20000000-0000-4000-8000-000000000020',
+      (select id from public.followup_task
+       where client_request_id = '50000000-0000-4000-8000-000000000020'),
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
+      null
+    )->>'changed'
+  )::boolean = false
+  and (
+    select count(*) = 2
+    from public.followup_task_event event
+    join public.followup_task task on task.id = event.task_id
+    where task.client_request_id = '50000000-0000-4000-8000-000000000020'
+  ),
+  'repeating the existing assignment is a no-op and does not append another event'
+);
+
+select extensions.ok(
   (public.cmi_update_followup_task(
-    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',
     '20000000-0000-4000-8000-000000000020',
     (select id from public.followup_task
      where client_request_id = '50000000-0000-4000-8000-000000000020'),
@@ -226,8 +331,8 @@ select is(
   (select count(*)::integer from public.followup_task_event event
    join public.followup_task task on task.id = event.task_id
    where task.branch_id = '20000000-0000-4000-8000-000000000020'),
-  2,
-  'create and completion each append one lifecycle event'
+  3,
+  'create, reassignment and completion each append one lifecycle event'
 );
 
 select ok(
@@ -238,7 +343,7 @@ select ok(
 );
 
 select ok(
-  (select bool_and(event_type in ('created', 'completed'))
+  (select bool_and(event_type in ('created', 'reassigned', 'completed'))
    from public.followup_task_event event
    join public.followup_task task on task.id = event.task_id
    where task.branch_id = '20000000-0000-4000-8000-000000000020'),
