@@ -46,8 +46,8 @@ select ok(
   'Only the trusted service role can execute contact capture'
 );
 select ok(
-  (select prosecdef from pg_proc where oid = 'public.cmi_create_contact(uuid,uuid,uuid,smallint,bytea,text,text,text,text,text,text,text,text,uuid,uuid,jsonb)'::regprocedure),
-  'Contact capture runs as a controlled definer function'
+  not (select prosecdef from pg_proc where oid = 'public.cmi_create_contact(uuid,uuid,uuid,smallint,bytea,text,text,text,text,text,text,text,text,uuid,uuid,jsonb)'::regprocedure),
+  'Contact capture uses caller privileges instead of elevated definer privileges'
 );
 select ok(
   (select coalesce(array_to_string(proconfig, ','), '') like '%search_path=pg_catalog%'
@@ -117,26 +117,40 @@ select
 from public.role r
 where r.code = 'field_worker';
 
+-- Exercise the RPC as the exact role permitted to execute it. The test
+-- owner verifies the committed-in-transaction result after returning to its
+-- normal role; the function itself must not need elevated definer privileges.
+set local role service_role;
+select public.cmi_create_contact(
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
+  '20000000-0000-4000-8000-000000000010',
+  '50000000-0000-4000-8000-000000000010',
+  1::smallint,
+  decode(repeat('11', 32), 'hex'),
+  'Ama',
+  'Mensah',
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  null,
+  '{}'::jsonb
+);
+reset role;
+
 select extensions.ok(
-  (public.cmi_create_contact(
-    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa10',
-    '20000000-0000-4000-8000-000000000010',
-    '50000000-0000-4000-8000-000000000010',
-    1::smallint,
-    decode(repeat('11', 32), 'hex'),
-    'Ama',
-    'Mensah',
-    null,
-    null,
-    null,
-    null,
-    null,
-    null,
-    null,
-    null,
-    '{}'::jsonb
-  )->>'replayed')::boolean = false,
-  'contact capture stores contact, provenance and self assignment atomically'
+  exists (
+    select 1
+    from public.contact c
+    join public.contact_capture cc
+      on cc.contact_id = c.id and cc.branch_id = c.branch_id
+    where c.branch_id = '20000000-0000-4000-8000-000000000010'
+      and cc.client_request_id = '50000000-0000-4000-8000-000000000010'
+  ),
+  'service_role executes the contact transaction and stores provenance'
 );
 
 select extensions.is(
