@@ -367,7 +367,9 @@ Deno.serve(async (request: Request) => {
           .or(`ends_at.is.null,ends_at.gt.${now}`)
           .is("revoked_at", null);
         if (assignmentError) throw new Error("EVENT_ASSIGNMENT_LIST_FAILED");
-        const eventIds = [...new Set((assignments ?? []).map((row) => row.event_id))];
+        const eventIds = [
+          ...new Set((assignments ?? []).map((row) => row.event_id)),
+        ];
         if (eventIds.length === 0) {
           return response({ data: [], request_id: id }, 200, origin, id);
         }
@@ -383,9 +385,11 @@ Deno.serve(async (request: Request) => {
 
     if (request.method === "GET" && isItem) {
       const branchId = url.searchParams.get("branch_id") ?? "";
-      if (!isUuid(branchId) || [...url.searchParams.keys()].some((key) =>
-        key !== "branch_id"
-      ) || url.searchParams.getAll("branch_id").length !== 1) {
+      if (
+        !isUuid(branchId) || [...url.searchParams.keys()].some((key) =>
+          key !== "branch_id"
+        ) || url.searchParams.getAll("branch_id").length !== 1
+      ) {
         return fail(
           "INVALID_QUERY",
           "A single valid branch_id is required.",
