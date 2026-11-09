@@ -2,7 +2,7 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status (2026-11-09):** PRs #3–#16 are merged to `main`. PR #16 is merged at `25db35dbf42a66fb405f77f0203e246591a4d34e`; its CMI backend CI run [#42619630282](https://github.com/Elgit4/PCG_Missions/actions/runs/42619630282) passed all 29 workflow steps. This report previously tracked an older `main` head; the repository baseline is now the PR #16 merge commit above. R-01–R-12, D-01–D-13 and the separate authentication/SMS/offline/audit approvals remain pending. No role grants are seeded. No hosted CMI database has been linked or modified, and no Edge Function has been deployed.
+**Status (2026-11-09):** PRs #3–#17 are merged to `main`. PR #16's CMI backend CI passed all 29 workflow steps; PR #17's exact-head [CI run #42666252894](https://github.com/Elgit4/PCG_Missions/actions/runs/42666252894) passed the complete CMI backend workflow after adding the staff directory. Current `main` includes the PR #17 merge commit `cd13aa331a08c8bad86f2725e147074bc7954906`. R-01–R-12, D-01–D-13 and the separate authentication/SMS/offline/audit approvals remain pending. No role grants are seeded. No hosted CMI database has been linked or modified, and no Edge Function has been deployed.
 
 ## Staff API implementation merged to main
 
@@ -66,6 +66,10 @@ The read-only Edge Function exposes fixed, allowlisted projections for the churc
 The function uses a server-side service-role key because public base-table grants remain closed. This key bypasses RLS, so the implementation is deliberately limited to fixed table/column/filter combinations and must never be reused for staff APIs. It fails closed when secrets are missing. It exposes only church-wide welcome messages (not branch-specific messages) and omits event capacity from the public event projection. Rate limiting and abuse controls must be configured at the platform/gateway layer; CORS is not a security boundary. The function is source-only and has not been deployed.
 
 A Deno validation suite covers supported resources, pagination, slug validation, unknown and duplicate query parameters, inherited object-property resource names, and public-profile request shape. CI runs that suite before the local Supabase database suite. Deno type-check and request-validation tests passed in the PR #8 exact-head workflow [run 42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750). That run also executed the idempotency helper tests and passed all 129 database assertions.
+
+## Draft content, announcement and calendar operations — merged to main in PR #16
+
+PR #16 added source-controlled branch-scoped operations for announcement drafts, sermon/welcome-message drafts and branch calendar entries. The APIs enforce creator/branch restrictions and force new content/announcements to private draft states; publication, scheduling, delivery, branch-global authoring and broader calendar scopes remain excluded. The functions have no role grants and are not deployed. See documents 21–23 for the individual contracts.
 
 ## Event draft operations — merged to main in PR #15
 
@@ -156,9 +160,9 @@ The event pgTAP suite has **71 assertions**, including the trigger-function priv
 
 The stakeholder decision register still marks R-01, R-10, R-11 and D-07 pending. The new routes deny access unless explicit grants are eventually approved and provisioned. The SQL remains in `schema-drafts/`; it is not permanent migration history. No hosted Supabase project, production schema, SMS provider or Edge Function has been touched.
 
-## Staff directory read-only slice — unmerged feature branch
+## Staff directory read-only slice — merged to main in PR #17
 
-The feature branch `feat/cmi-backend-completion` adds `GET /staff-operations/staff` as a minimized branch directory. It requires `staff.directory.read` with branch scope, returns active assigned staff with distinct role labels, and excludes Auth IDs, email, phone and credential data. Request validation covers branch UUID, duplicate/unknown query parameters, bounded pagination and search length. Projection tests verify role de-duplication, inactive-profile exclusion and response minimization.
+The branch-scoped `GET /staff-operations/staff` endpoint requires `staff.directory.read` with branch scope. It returns active assigned staff with distinct role labels and excludes Auth IDs, email, phone and credential data. Validation covers branch UUID, duplicate/unknown query parameters, bounded pagination and search length. Projection tests verify role de-duplication, inactive-profile exclusion and response minimization.
 
-This does not implement account provisioning, invitation/activation, private PIN setup or reset/reissue, deactivation/reactivation, or role assignment/revocation. Those operations remain blocked by the pending authentication and authorization approvals; no role grants or credential behavior are inferred from recommendations. The feature remains source-only and undeployed.
+Account provisioning, invitation/activation, private PIN setup or reset/reissue, deactivation/reactivation, and role assignment/revocation remain blocked by the pending authentication and authorization approvals. No role grants or credential behavior are inferred from recommendations. The function remains source-only and undeployed.
 

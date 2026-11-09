@@ -1,7 +1,7 @@
 # PCG Missions — CMI Staff API Contract
 
 **Baseline:** CMI Follow-up v2.1  
-**Status:** Staff session, contacts, follow-up task APIs and audited pastoral record reads are merged to `main`. These Edge Functions and SQL transaction drafts are source-controlled but not deployed; pastoral access remains approval-gated.  
+**Status:** Staff session, contacts, follow-up task APIs, audited pastoral record reads, event drafts, announcement drafts, visitor-content drafts, branch calendar operations and the staff directory are merged to `main`. These Edge Functions and SQL transaction drafts are source-controlled but not deployed; business access remains fail-closed pending approved grants.  
 **Backend workspace:** `supabase-cmi/`  
 **Security rule:** Browser clients use a user access token and publishable/anon key only. A service-role key is never shipped to the browser.
 
@@ -261,7 +261,7 @@ The separate `event-operations` function implements a limited authoring API for 
 
 The exact request fields, validation and error contract are in [document 20 — Event Draft Operations API Contract](20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md). No `role_capability` grants are seeded, so these endpoints remain denied until approved grants are provisioned. This slice does not satisfy or bypass the event transaction approval gate in document 17.
 
-## 7B. Announcement draft operations (feature branch)
+## 7B. Announcement draft operations (merged to main in PR #16)
 
 The separate `announcement-operations` function supports:
 - `GET /announcement-operations/announcements` and `GET /announcement-operations/announcements/{announcementId}` for branch-scoped draft reads.
@@ -272,7 +272,7 @@ List/detail requires `announcement.read.scoped` with branch scope. Create/edit r
 
 The full request and error contract is in [document 21 — Announcement Draft Operations API Contract](21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this feature remains fail-closed until applicable church decisions and grants are approved. It has not been deployed.
 
-## 7C. Visitor content draft operations (feature branch)
+## 7C. Visitor content draft operations (merged to main in PR #16)
 
 The `content-operations` function adds branch-scoped draft list/detail/create/edit for `sermon` and `welcome_message` only. It requires `content.manage.draft` with branch scope. Draft list/detail and mutation are restricted to the authenticated creator's rows; all create/update SQL requests also constrain branch and `status='draft'`.
 
@@ -280,7 +280,7 @@ The API never accepts caller-supplied creator, status or publication fields and 
 
 See [document 22 — Visitor Content Draft Operations API Contract](22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this function remains fail-closed until the applicable decisions and grants are approved. It has not been deployed.
 
-## 7D. Branch calendar operations (feature branch)
+## 7D. Branch calendar operations (merged to main in PR #16)
 
 The `calendar-operations` function provides branch-only `calendar_entry` list/detail/create/update. Reads require `calendar.read.scoped` with branch scope; mutations require `calendar.manage.scoped` with branch scope. New rows have server-forced `scope_type='branch'`, null team/event/owner fields and an authenticated creator. Updates use an `updated_at` concurrency predicate.
 
@@ -327,8 +327,9 @@ The following API families remain backend work and must not be represented as av
 - Follow-up list administration, bulk task operations and richer follow-up workflow automation.
 - Prayer/care list endpoints, request creation, restricted update/assignment workflows, archival/deletion and retention automation. Individual-record audited reads are implemented in `main`, but remain approval-gated and undeployed.
 - Event registration, serialized capacity reservation, transport reservation, check-in, idempotent replay/conflict handling and closeout submission/review.
-- Calendar and announcement staff management.
-- Sermon, daily-word, tract and church-profile administration/publication operations.
+- Announcement publication, audience expansion, scheduling, delivery and moderation workflows.
+- Sermon/welcome-message draft editing is available; Daily Word, Digital Tracts and church-profile administration/publication remain unimplemented pending approved global authoring scope.
+- Calendar team/event/own scopes, follow-up/prayer-schedule entry types and deletion.
 - Typed ministry reporting, review workflow and scoped exports.
 - SMS consent/suppression, campaign approval, outbox dispatch, provider adapter, signed callbacks, budget controls and automations.
 - Offline device registration, encrypted queue enrolment and authenticated sync reconciliation.
@@ -342,6 +343,8 @@ The first integration surface is now defined:
 - Authenticated shell can call `staff-session` after obtaining a Supabase Auth access token.
 - Contact list, detail, capture and ordinary-field update screens can integrate with `staff-operations`.
 - Follow-up task list, detail, create and ordinary-field/status update screens can integrate with `staff-operations`; assignment changes use the separate branch-scoped reassignment endpoint.
+- A branch-scoped, minimized staff directory can integrate with `GET /staff-operations/staff`; it is read-only and does not expose email, phone, account credentials or role-management actions.
+- Announcement drafts, sermon/welcome-message drafts and branch calendar entries have limited authoring endpoints, but remain unavailable to users until the corresponding approved capability grants exist.
 - The pastoral read routes must remain unavailable in navigation and be denied by the server until the required decisions are approved and specific capability grants are provisioned. Oversight access requires the separate oversight capability and a supported reason code.
 - The UI must treat an empty capability list as no business permissions, not as an Admin default.
 - Phone/email controls must follow the identity capability flags and stay hidden/redacted when unavailable.
