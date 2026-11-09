@@ -165,7 +165,7 @@ export function parseContactCreate(
     teamId = value.team_id;
   }
 
-  let metadata: Record<string, string> = {};
+  const metadata: Record<string, string> = {};
   if (value.source_metadata !== undefined) {
     if (!isRecord(value.source_metadata)) {
       return { ok: false, error: "source_metadata must be an object." };
