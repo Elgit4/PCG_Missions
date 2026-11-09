@@ -251,7 +251,7 @@ The existing `GET /public-content` function remains a read-only, allowlisted pro
 
 Public registration is not enabled by this contract. D-05/D-06/D-13 and consent-evidence/retention requirements must be approved first.
 
-## 7. Not yet implemented
+## 8. Not yet implemented
 
 The following API families remain backend work and must not be represented as available frontend functionality:
 - Follow-up list administration, bulk task operations and richer follow-up workflow automation.
@@ -266,7 +266,7 @@ The following API families remain backend work and must not be represented as av
 
 The blocked paths remain disabled until the required policy decisions, security review and integration prerequisites are recorded.
 
-## 8. Frontend integration readiness
+## 9. Frontend integration readiness
 
 The first integration surface is now defined:
 - Authenticated shell can call `staff-session` after obtaining a Supabase Auth access token.
