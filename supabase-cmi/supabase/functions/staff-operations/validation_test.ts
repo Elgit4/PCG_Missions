@@ -222,33 +222,6 @@ Deno.test("follow-up task reassignment accepts one team target", () => {
   }
 });
 
-Deno.test("follow-up task reassignment accepts one staff target", () => {
-  const parsed = parseFollowupTaskAssignment({
-    assignee_user_id: "10000000-0000-4000-8000-000000000015",
-  });
-  if (!parsed.ok) throw new Error(parsed.error);
-  if (
-    parsed.value.assignee_user_id !==
-      "10000000-0000-4000-8000-000000000015" ||
-    parsed.value.team_id !== null
-  ) {
-    throw new Error("Staff reassignment target was not normalized.");
-  }
-});
-
-Deno.test("follow-up task reassignment accepts one team target", () => {
-  const parsed = parseFollowupTaskAssignment({
-    team_id: "10000000-0000-4000-8000-000000000016",
-  });
-  if (!parsed.ok) throw new Error(parsed.error);
-  if (
-    parsed.value.team_id !== "10000000-0000-4000-8000-000000000016" ||
-    parsed.value.assignee_user_id !== null
-  ) {
-    throw new Error("Team reassignment target was not normalized.");
-  }
-});
-
 Deno.test("follow-up task reassignment rejects missing, dual or invalid targets", () => {
   for (
     const input of [
