@@ -1,74 +1,62 @@
-# PCG Missions frontend integration notes
+# PCG Missions frontend integration and release boundary
 
-## Current implementation boundary
+## Live frontend implementation
 
-The existing React workspace is retained as a **local design preview**. It contains synthetic records and in-memory interactions. It is not an authenticated production workspace.
+The production entry point now renders an authenticated staff workspace rather than the old design-preview dashboard. It uses live staff-session, contacts and follow-up endpoints only. The workspace does not use sample people, seeded role names or simulated record mutations.
 
-The preview is enabled only when all of the following are true:
-- Vite is running in development mode.
-- `VITE_CMI_PREVIEW_MODE=true` is set in the local environment.
+The current live frontend includes Supabase Auth email + private-PIN sign-in; tab-scoped session storage, access-token refresh and sign-out; server-verified staff-session bootstrap; explicit active-branch selection; capability-derived contacts and follow-up navigation; contact list and creation with identity fields gated by their separate capture capability; follow-up task list, self-assigned task creation where the access scope can be safely resolved, and task completion.
 
-Production builds render the PCG Missions staff sign-in screen instead of exposing demo people, demo prayer requests, simulated roles or preview mutations as real church records.
+The Auth client uses Supabase Auth's password grant with the staff PIN passed as the credential. Supabase Auth validates the credential and issues the JWT; the browser contains no custom PIN verifier, hashing scheme or service-role credential. Access and refresh tokens are stored only in sessionStorage for the current tab, refreshed before protected requests when necessary, and cleared locally on sign-out.
 
-## Staff sign-in screen
+## Authentication limitations
 
-`src/components/StaffLogin.tsx` provides the production-facing sign-in interface with an email address and password, password visibility control, password-recovery guidance, responsive layout and accessible status messaging. The page is a presentation layer only: the current backend does not yet provide the approved staff authentication and account recovery lifecycle.
+The frontend cannot create staff identities, send invitations, activate accounts, establish a new PIN, reset a PIN or complete account recovery. Those operations are not present in the current staff-access backend. Only accounts already provisioned in Supabase Auth and linked to an active staff_profile can enter the workspace.
 
-Until that lifecycle is implemented and reviewed, submitting the form displays a clear availability message. The component does not transmit, store or log credentials. The password-recovery control likewise explains that recovery is not connected and directs staff to their church administrator. Do not remove this boundary until the approved Auth client, invitation/activation process and recovery flow are connected and tested.
+The stakeholder decision register still marks PIN lifecycle controls and their security parameters as pending approval. Before production use, church leadership and the security reviewer must approve PIN requirements, activation/reissue, recovery, rate limits, session lifetime and shared-device policy. This frontend implementation does not substitute for those decisions.
 
 ## Browser configuration
 
-Copy `.env.example` to `.env.local` for local work. Only browser-safe values may use the `VITE_` prefix:
+Copy .env.example to .env.local for local development. Only browser-safe project values may use the VITE_ prefix:
 
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- VITE_SUPABASE_URL
+- VITE_SUPABASE_PUBLISHABLE_KEY
 
-Never put service-role keys, database passwords, Hubtel credentials, HMAC keys or other server secrets in a Vite environment variable.
+Never put a service-role key, secret key, database password, Hubtel credentials, HMAC key or webhook secret in a Vite environment variable. The frontend validates HTTPS outside local development.
 
-## API adapter
+## API adapter and authorization
 
-`src/lib/cmi-api.ts` is the typed browser adapter for the source-controlled CMI Edge Function contracts. It:
-- calls `/functions/v1/{function-name}`;
-- sends the publishable key and a Supabase Auth bearer token for staff operations;
-- uses `Cache-Control: no-store`;
-- parses the backend error envelope and preserves the request ID;
-- does not connect to Postgres or call provider APIs directly;
-- requires callers to supply stable `client_request_id` values for idempotent create operations.
+src/lib/cmi-api.ts is the typed browser adapter for CMI Edge Function contracts. It calls /functions/v1/{function-name}; sends the publishable key and current Supabase Auth bearer token; uses Cache-Control: no-store for staff data; preserves backend error codes and request correlation IDs; never connects directly to Postgres; validates exactly one task assignment target; and models contact_status in the returned contact projection.
 
-The adapter accepts an `AccessTokenProvider`. Connect that provider to the approved Supabase Auth client only after the church has approved and implemented the staff sign-in, invitation and activation lifecycle. Do not create a browser-side PIN verifier or a PIN-to-session bridge.
+src/lib/capabilities.ts requires an explicit branch ID present in the current session before a branch-scoped capability can expose a page or field. Role names never grant access. UI checks are convenience only; the Edge Function and database remain the authorization authority.
 
-Example:
+The backend has no role-capability grants at the current source baseline. An empty capability list is a valid authenticated state. The frontend displays the overview and permission explanations but does not create synthetic permissions or infer Admin access.
 
-```ts
-const api = createConfiguredCmiApiClient(async () => {
-  // Return the current access token from the approved Supabase Auth session.
-  // Return null when no authenticated session exists.
-  return approvedAuthSession.getAccessToken();
-});
+## Features not enabled as operational screens
 
-const session = await api.getStaffSession();
-```
+- Prayer/care endpoints provide audited individual reads only; they do not provide an approved list or mutation API.
+- Reports and exports have no approved API contract.
+- Event, announcement, visitor-content and calendar APIs are draft-only and approval-gated. They do not support publication, registration, capacity, check-in, closeout or message delivery.
+- Staff directory and role-management APIs do not provision Auth users or issue credentials.
+- Hubtel has a provider adapter only; there is no live outbox dispatcher or send API.
+- Offline data storage is intentionally not enabled.
 
-The `approvedAuthSession` above is an integration point, not an existing project module. Do not copy the placeholder as executable code.
+The frontend does not present these as working business modules.
 
-## Authorization and navigation
+## CI
 
-`src/lib/capabilities.ts` provides UI capability helpers. It uses only the capability codes and branch scopes returned by `staff-session`; role labels never grant access. Backend authorization remains authoritative for every request.
+.github/workflows/cmi-frontend-ci.yml runs locked dependency installation followed by TypeScript typecheck, ESLint, Vitest and the Vite production build for frontend changes and pull requests into main.
 
-The current source backend has no role-capability grants. Therefore, an authenticated staff session can legitimately have an empty capability array. The frontend must not infer Admin privileges or show protected modules based on role names.
+## Production release gates
 
-## Features intentionally not presented as live
+The frontend source is not equivalent to a deployable production system. The repository handoff records that CMI Edge Functions are source-only, domain SQL is still held in schema drafts, and the production Supabase project has not received the corresponding CMI deployment. Before a production launch, complete and verify all of the following:
 
-- Staff sign-in, invitation, PIN setup and recovery are not implemented by the current backend. The sign-in screen is not yet connected to an authentication provider.
-- Prayer/care APIs support audited individual reads only; there is no approved prayer/care list or editing API.
-- Reports and exports have no approved backend contract.
-- Event APIs support private drafts, not publication, registration, capacity, check-in or closeout.
-- Announcement APIs create private drafts; they do not publish or send messages.
-- Hubtel has a server-side provider adapter only. There is no outbox dispatcher or live SMS endpoint.
-- Staff access operations do not create identities or issue credentials.
+1. Obtain pending stakeholder approvals and security review for the PIN lifecycle, capability matrix, data policies and branch model.
+2. Implement and security-test staff provisioning, activation, PIN setup/reissue and account recovery using Supabase Auth; test first-login and recovery journeys.
+3. Promote only approved domain schema drafts into reviewed permanent migrations and apply them through the agreed deployment process.
+4. Deploy required Edge Functions with production secrets, exact CORS origin allowlists and request/rate limits.
+5. Provision the initial church, active branch, staff profiles and approved capability grants through a trusted administrative process.
+6. Configure the production Vite environment with the Supabase URL and publishable key; never deploy browser secrets.
+7. Run frontend and backend CI against the release commit, then execute end-to-end tests against a staging Supabase project with approved test identities and grants.
+8. Verify security, accessibility, mobile/responsive behaviour, session revocation, backup/restore and operational monitoring before production cutover.
 
-Do not convert any of these into optimistic local-only production workflows.
-
-## Backend deployment
-
-The backend handoff currently describes the Edge Functions as source-only and the domain SQL as schema drafts. Before enabling the live staff application, the approved database migration path, hosted project configuration, Edge Function deployment, CORS origins, Auth lifecycle and capability grants must be verified independently.
+Until those external backend and policy gates are complete, the frontend can be built and tested but must not be represented as ready for live church operations.

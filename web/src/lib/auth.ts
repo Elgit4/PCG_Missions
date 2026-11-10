@@ -1,5 +1,5 @@
 export interface SupabaseAuthConfig { supabaseUrl: string; publishableKey: string }
-export interface AuthUser { id: string; email?: string }
+export interface AuthUser { id: string; email?: string | null }
 export interface AuthSession {
   access_token: string; refresh_token: string; token_type: string; expires_at: number; user: AuthUser;
 }

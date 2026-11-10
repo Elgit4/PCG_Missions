@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/fraunces";
 import "./styles.css";
-import "./production.css";
+import "../production.css";
 import App from "./App";
 
 const rootElement = document.getElementById("root");
