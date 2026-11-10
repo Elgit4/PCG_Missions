@@ -308,6 +308,8 @@ begin
   join public.staff_profile admin_profile
     on admin_profile.id = admin_assignment.staff_profile_id
    and admin_profile.account_status = 'active'
+   and not admin_profile.must_change_password
+   and (admin_profile.password_setup_expires_at is null or admin_profile.password_setup_expires_at > pg_catalog.now())
   join public.role_capability rc
     on rc.role_id = admin_assignment.role_id
    and rc.scope_mode = 'branch'
@@ -391,7 +393,9 @@ begin
   select sp.id into v_actor_profile_id
   from public.staff_profile sp
   where sp.auth_user_id = p_actor_auth_user_id
-    and sp.account_status = 'active';
+    and sp.account_status = 'active'
+    and not sp.must_change_password
+    and (sp.password_setup_expires_at is null or sp.password_setup_expires_at > pg_catalog.now());
 
   if v_actor_profile_id is null or not exists (
     select 1
@@ -408,6 +412,18 @@ begin
   ) then
     raise exception using errcode = '42501', message = 'password reset administration not authorized';
   end if;
+
+  with expired_requests as (
+    update private.staff_password_reset_request
+    set status = 'expired'
+    where branch_id = p_branch_id
+      and status in ('pending', 'processing')
+      and expires_at <= pg_catalog.now()
+    returning id, branch_id
+  )
+  insert into private.staff_password_reset_audit(request_id, branch_id, event_type)
+  select id, branch_id, 'expired'
+  from expired_requests;
 
   select coalesce(pg_catalog.jsonb_agg(
     pg_catalog.jsonb_build_object(
@@ -448,7 +464,9 @@ begin
   select id into v_actor_profile_id
   from public.staff_profile
   where auth_user_id = p_actor_auth_user_id
-    and account_status = 'active';
+    and account_status = 'active'
+    and not must_change_password
+    and (password_setup_expires_at is null or password_setup_expires_at > pg_catalog.now());
 
   if v_actor_profile_id is null or not exists (
     select 1
@@ -519,7 +537,9 @@ begin
   select id into v_actor_profile_id
   from public.staff_profile
   where auth_user_id = p_actor_auth_user_id
-    and account_status = 'active';
+    and account_status = 'active'
+    and not must_change_password
+    and (password_setup_expires_at is null or password_setup_expires_at > pg_catalog.now());
 
   if v_actor_profile_id is null or not exists (
     select 1
@@ -538,6 +558,17 @@ begin
 
   if p_action not in ('approved', 'denied', 'pending') then
     raise exception using errcode = '22023', message = 'invalid password reset action';
+  end if;
+
+  if exists (
+    select 1
+    from private.staff_password_reset_request request
+    join public.staff_profile target on target.id = request.target_profile_id
+    where request.id = p_request_id
+      and request.branch_id = p_branch_id
+      and target.auth_user_id = p_actor_auth_user_id
+  ) then
+    raise exception using errcode = '42501', message = 'self-review is not permitted';
   end if;
 
   update private.staff_password_reset_request
