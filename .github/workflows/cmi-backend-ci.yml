@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: cmi-backend-ci-${{ github.event.pull_request.number || github.ref }}
@@ -59,8 +59,16 @@ jobs:
           fi
 
           while IFS= read -r file; do
-            deno fmt --check "$file"
+            deno fmt "$file"
           done <<< "$changed_files"
+
+          if ! git diff --quiet -- supabase-cmi/supabase/functions; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add supabase-cmi/supabase/functions
+            git commit -m "style: apply Deno formatting to CMI Edge Functions"
+            git push origin "HEAD:$GITHUB_HEAD_REF"
+          fi
 
       - name: Lint CMI Edge Functions
         run: deno lint supabase-cmi/supabase/functions
