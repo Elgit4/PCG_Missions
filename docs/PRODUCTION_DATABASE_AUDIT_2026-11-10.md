@@ -94,3 +94,19 @@ The six roles are confirmed as fixed. That confirmation does not itself approve 
 ## Release decision
 
 **NO-GO for production launch.** The direct-execution vulnerability was remediated and verified, but the hosted CMI application schema, functions, authentication lifecycle, frontend integration and approved authorization model are not deployed. Do not describe CMI as production-ready until all release gates above pass.
+
+## Follow-up engineering work — 10 November 2026
+
+The following source and client-readiness changes were made after the initial hosted snapshot above:
+
+- Added [document 29 — Client Stakeholder Approval & Handover Pack](29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md), which consolidates the proposed least-privilege six-role baseline, R-01–R-12 and D-01–D-13 recommendations, authentication decision, client configuration inputs, UAT cases and formal approval record. The document is a review pack; it does not forge or imply church approval.
+- Corrected the first-administrator bootstrap design. After the one-time bootstrap, the first Admin/Pastor receives only four branch-scoped control-plane capabilities: `staff.directory.read`, `staff.account.manage`, `access.role.assign` and `staff.password_reset.manage`. It does not receive capability-policy editing, contact export, pastoral oversight, SMS, or other business-domain grants. Staff invitation/account creation remains unimplemented.
+- Added isolated database assertions that the bootstrap grants exactly those four capabilities and leaves pastoral oversight, SMS, exports and capability-policy editing ungranted.
+- Clarified that the merged PR #26 sign-in flow currently uses email/password, while the product baseline specifies email + private PIN. This is a conformance blocker, not a decision to silently change the product requirement.
+- Updated the root README, backend workspace guide and documentation index to reflect the merged frontend source, the hosted security-only migration and the current non-deployed state.
+
+The isolated backend CI run for the latest source changes is currently being checked at commit `50049407b55ce739df754696dcb917145c06fb1b`: [GitHub Actions run 42824979317](https://github.com/Elgit4/PCG_Missions/actions/runs/42824979317). Do not treat this follow-up test as passing until GitHub reports a completed success on the final source commit.
+
+The hosted production snapshot remains unchanged: zero CMI public application tables, one hosted security-remediation migration, zero deployed CMI Edge Functions, and no production Auth users or CMI records created by this work. Security, performance and health advisors returned no lints; the RLS-helper direct-execution checks remain false for `anon`, `authenticated` and `service_role`.
+
+**Release decision remains NO-GO.** The client must approve the role/data/authentication decisions, the email+PIN mismatch must be resolved and implemented, staff invitation/activation must be completed, domain migrations must be promoted and tested in staging, and the application must be deployed and accepted before production launch.
