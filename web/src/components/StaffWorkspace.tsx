@@ -464,7 +464,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               <div>
                 <p className="cmi-eyebrow">ACCOUNT SECURITY</p>
                 <h3>Password reset requests</h3>
-                <p>Review staff requests before issuing a single-use recovery link. You will never see or set another staff member’s password.</p>
+                <p>Review staff requests and issue a one-time temporary password by email. The staff member must replace it at first sign-in.</p>
               </div>
               <span className="cmi-reset-count">{resetRequests.length} pending</span>
             </div>
@@ -510,7 +510,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                       disabled={processingResetId !== null}
                     >
                       <CheckCircle2 size={15} />
-                      {processingResetId === request.id ? "Processing…" : "Approve & send link"}
+                      {processingResetId === request.id ? "Processing…" : "Approve & email temporary password"}
                     </button>
                   </div>
                 </article>
