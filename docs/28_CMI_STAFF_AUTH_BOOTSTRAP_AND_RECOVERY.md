@@ -1,6 +1,6 @@
 # CMI staff authentication — bootstrap and recovery runbook
 
-**Status:** Implemented in source; not deployed to the hosted Supabase project.
+**Status:** Merged into `main` in PR #26; implemented in source but not deployed to the hosted Supabase project.
 **Scope:** First administrator bootstrap, first-login password replacement, and administrator-approved staff password recovery.
 
 ## Security model
@@ -71,4 +71,4 @@ The bootstrap endpoint does not return the temporary password in its response. I
 
 ## Current release boundary
 
-This runbook and code are in a draft pull request. No hosted CMI migration, function, secret, user, church, branch or production record has been created or modified by this implementation work.
+This runbook and code are merged into `main` (PR #26), but remain undeployed. The hosted project currently records only the RLS-helper privilege-remediation migration; it has zero CMI public application tables and zero deployed CMI Edge Functions. No production Auth configuration, Edge Function secret, administrator user, church, branch or CMI production record has been created by the authentication implementation. The separate RLS-helper remediation is documented in `docs/27_CMI_HOSTED_DATABASE_PRIVILEGE_REMEDIATION.md` and the production audit.
