@@ -1,5 +1,6 @@
 -- Staff access lifecycle proposal based on docs 00,02,07,08,11,12.
--- No role_capability grants are seeded; R-01..R-12 and D-01..D-13 remain pending.
+-- The visitor MVP authorization migration seeds the reviewed six-role baseline.
+-- This lifecycle draft adds no permissions beyond that reviewed baseline.
 -- CI-only draft; do not promote to permanent migration until approved.
 begin;
 create table public.staff_access_audit(
