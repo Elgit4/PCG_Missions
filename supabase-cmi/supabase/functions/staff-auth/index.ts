@@ -153,9 +153,7 @@ async function hmacFingerprint(value: string): Promise<string> {
 function clientIp(request: Request): string {
   const cloudflareIp = request.headers.get("cf-connecting-ip")?.trim();
   if (cloudflareIp) return cloudflareIp.slice(0, 80);
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]
-    ?.trim();
-  return forwarded ? forwarded.slice(0, 80) : "unknown";
+  return "unknown";
 }
 
 async function jsonBody(request: Request): Promise<JsonObject | null> {
@@ -273,10 +271,8 @@ async function requireStaff(
     };
   }
   if (profile.must_change_password) {
-    if (
-      profile.password_setup_expires_at &&
-      Date.parse(profile.password_setup_expires_at) <= Date.now()
-    ) {
+    const setupExpiresAt = Date.parse(profile.password_setup_expires_at ?? "");
+    if (!Number.isFinite(setupExpiresAt) || setupExpiresAt <= Date.now()) {
       return {
         error: fail(
           "PASSWORD_SETUP_EXPIRED",
@@ -689,10 +685,8 @@ Deno.serve(async (request: Request) => {
           id,
         );
       }
-      if (
-        profile.password_setup_expires_at &&
-        Date.parse(profile.password_setup_expires_at) <= Date.now()
-      ) {
+      const setupExpiresAt = Date.parse(profile.password_setup_expires_at ?? "");
+      if (!Number.isFinite(setupExpiresAt) || setupExpiresAt <= Date.now()) {
         return fail(
           "PASSWORD_SETUP_EXPIRED",
           "The temporary password or recovery link has expired. Request an administrator-assisted reset.",
