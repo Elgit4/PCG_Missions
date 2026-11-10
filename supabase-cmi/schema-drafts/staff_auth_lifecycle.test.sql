@@ -126,16 +126,64 @@ select is(
   'bootstrap does not grant any unapproved business capabilities'
 );
 select throws_ok(
-  $select public.cmi_bootstrap_first_admin(
-    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
-    'first-admin@example.test',
-    'First Administrator',
-    'PCG Missions Test Church',
-    'Main Test Branch'
-  )$,
+  'select public.cmi_bootstrap_first_admin(''aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'', ''first-admin@example.test'', ''First Administrator'', ''PCG Missions Test Church'', ''Main Test Branch'')',
   '55000',
   'first-admin bootstrap is already used',
   'the first-administrator bootstrap cannot be repeated'
+);
+
+select lives_ok(
+  'select public.cmi_complete_staff_password_change(''aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'')',
+  'staff completes the first-login password change through the trusted server boundary'
+);
+select is(
+  (select must_change_password from public.staff_profile where auth_user_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'),
+  false,
+  'the forced password-change flag is cleared after password setup'
+);
+select is(
+  (select password_setup_expires_at from public.staff_profile where auth_user_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'),
+  null,
+  'the one-time password expiry is cleared after setup'
+);
+
+insert into private.staff_password_reset_request(
+  target_profile_id, branch_id, email_normalized,
+  email_fingerprint, ip_fingerprint, status
+)
+select
+  sp.id, sra.branch_id, sp.email,
+  repeat('c',64), repeat('d',64), 'pending'
+from public.staff_profile sp
+join public.staff_role_assignment sra on sra.staff_profile_id=sp.id
+where sp.auth_user_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20';
+
+select is(
+  jsonb_array_length(public.cmi_list_staff_password_reset_requests(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    (select branch_id from public.staff_role_assignment sra
+     join public.staff_profile sp on sp.id=sra.staff_profile_id
+     where sp.auth_user_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20' limit 1)
+  )),
+  1,
+  'an authorised administrator can list a branch password reset request'
+);
+select throws_ok(
+  'select public.cmi_claim_staff_password_reset_request(''aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'', (select branch_id from public.staff_role_assignment sra join public.staff_profile sp on sp.id=sra.staff_profile_id where sp.auth_user_id=''aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'' limit 1), (select id from private.staff_password_reset_request where email_fingerprint=repeat(''c'',64)))',
+  '42501',
+  'self-approval is not permitted',
+  'an administrator cannot approve their own password-reset request'
+);
+select throws_ok(
+  'select public.cmi_finish_staff_password_reset_request(''aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'', (select branch_id from public.staff_role_assignment sra join public.staff_profile sp on sp.id=sra.staff_profile_id where sp.auth_user_id=''aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'' limit 1), (select id from private.staff_password_reset_request where email_fingerprint=repeat(''c'',64)), ''denied'', ''Self-review should be blocked for this test.'')',
+  '42501',
+  'self-review is not permitted',
+  'an administrator cannot deny or review their own reset request'
+);
+select is(
+  (select status from private.staff_password_reset_request where email_fingerprint=repeat('c',64)),
+  'pending',
+  'self-review attempts leave the password-reset request pending'
 );
 
 insert into private.staff_password_reset_request(
