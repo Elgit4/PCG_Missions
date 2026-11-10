@@ -237,6 +237,15 @@ begin
     raise exception using errcode = '22023', message = 'invalid reset request';
   end if;
 
+  -- Serialize requests by both account and source fingerprint so concurrent
+  -- bursts cannot race past the hourly counters.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('cmi-reset-email:' || p_email_fingerprint, 0)
+  );
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('cmi-reset-ip:' || p_ip_fingerprint, 0)
+  );
+
   if (
     select count(*) from private.staff_password_reset_request
     where email_fingerprint = p_email_fingerprint
@@ -487,7 +496,11 @@ begin
   from private.staff_password_reset_request
   where id = p_request_id
     and branch_id = p_branch_id
-    and status = 'pending'
+    and status in ('pending', 'processing')
+    and (
+      status = 'pending'
+      or reviewed_at < pg_catalog.now() - interval '10 minutes'
+    )
     and expires_at > pg_catalog.now()
   for update;
 
