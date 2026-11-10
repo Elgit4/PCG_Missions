@@ -50,7 +50,7 @@ The bootstrap function has been amended so the first Admin/Pastor receives only 
 | Capability | Why it is needed |
 |---|---|
 | `staff.directory.read` | Read the minimum staff directory projection required to administer accounts and role assignments |
-| `staff.account.manage` | Provision, activate/deactivate and administer staff account lifecycle |
+| `staff.account.manage` | Manage existing provisioned staff account status and administer approved recovery workflow |
 | `access.role.assign` | Assign and revoke only the six defined staff roles |
 | `staff.password_reset.manage` | Review reset requests and initiate a one-time recovery link |
 
