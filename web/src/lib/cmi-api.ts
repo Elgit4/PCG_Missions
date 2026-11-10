@@ -279,7 +279,7 @@ export class CmiApiClient {
     );
   }
   approveStaffPasswordResetRequest(branchId: string, requestId: string, reason: string) {
-    return this.request<{ status: string; recovery_email_sent: boolean }>(
+    return this.request<{ status: string; temporary_password_sent: boolean; must_change_password: boolean }>(
       "staff-auth",
       `/admin/password-reset-requests/${encodeURIComponent(requestId)}/approve`,
       { method: "POST", body: { branch_id: branchId, reason } },
