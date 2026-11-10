@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AuthClientError, PcgAuthClient } from "./auth";
+import { PcgAuthClient } from "./auth";
 
 function createMemoryStorage() {
   const values = new Map<string, string>();
