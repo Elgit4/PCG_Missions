@@ -1,5 +1,5 @@
 export type AuthUserPage<T> = {
-  users: T[];
+  users: unknown;
   error: unknown;
 };
 
@@ -32,7 +32,7 @@ export async function listAllAuthUsers<T>(
     if (!Array.isArray(result.users) || result.users.length > perPage) {
       throw new Error("BOOTSTRAP_AUTH_USER_LOOKUP_FAILED");
     }
-    users.push(...result.users);
+    users.push(...result.users as T[]);
     if (result.users.length < perPage) return users;
   }
 
