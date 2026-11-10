@@ -6,7 +6,7 @@ export type AuthUserPage<T> = {
 export type AuthUserPageLoader<T> = (
   page: number,
   perPage: number,
-) => Promise<AuthUserPage<T>>;
+) => Promise<AuthUserPage<T>> | AuthUserPage<T>;
 
 /**
  * Read every Auth user page before deciding whether first-admin bootstrap is
