@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(31);
+select plan(41);
 
 select has_column(
   'public', 'staff_profile', 'must_change_password',
@@ -178,6 +178,132 @@ select is(
   (select status from private.staff_password_reset_request where email_fingerprint=repeat('c',64)),
   'pending',
   'self-review attempts leave the password-reset request pending'
+);
+
+insert into auth.users(
+  instance_id, id, aud, role, email, encrypted_password,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+  created_at, updated_at
+)
+values (
+  '00000000-0000-0000-0000-000000000000',
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+  'authenticated', 'authenticated', 'staff-member@example.test',
+  'not-a-real-password-hash', pg_catalog.now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{}'::jsonb, pg_catalog.now(), pg_catalog.now()
+);
+
+insert into public.staff_profile(auth_user_id, full_name, email, account_status)
+values (
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+  'Staff Member',
+  'staff-member@example.test',
+  'active'
+);
+
+insert into private.staff_password_reset_request(
+  id, target_profile_id, branch_id, email_normalized,
+  email_fingerprint, ip_fingerprint, status,
+  reviewed_by_profile_id, reviewed_at
+)
+select
+  'cccccccc-cccc-4ccc-8ccc-ccccccccccc1',
+  target.id,
+  assignment.branch_id,
+  lower(target.email),
+  repeat('e', 64),
+  repeat('f', 64),
+  'pending',
+  null,
+  null
+from public.staff_profile target
+cross join public.staff_profile administrator
+join public.staff_role_assignment assignment
+  on assignment.staff_profile_id = administrator.id
+where target.auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'
+  and administrator.auth_user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'
+limit 1;
+
+select lives_ok(
+  $select public.cmi_claim_staff_password_reset_request(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    (select branch_id from public.staff_role_assignment assignment
+     join public.staff_profile administrator
+       on administrator.id = assignment.staff_profile_id
+     where administrator.auth_user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'
+     limit 1),
+    'cccccccc-cccc-4ccc-8ccc-ccccccccccc1'
+  )$,
+  'an authorised administrator can claim another staff member reset request'
+);
+select is(
+  (select status from private.staff_password_reset_request
+   where id = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1'),
+  'processing',
+  'claiming a reset request records the processing state'
+);
+select lives_ok(
+  $select public.cmi_finish_staff_password_reset_request(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    (select branch_id from public.staff_role_assignment assignment
+     join public.staff_profile administrator
+       on administrator.id = assignment.staff_profile_id
+     where administrator.auth_user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'
+     limit 1),
+    'cccccccc-cccc-4ccc-8ccc-ccccccccccc1',
+    'approved',
+    'Verified the request with the staff member.'
+  )$,
+  'an authorised administrator can approve another staff member reset request'
+);
+select is(
+  (select status from private.staff_password_reset_request
+   where id = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1'),
+  'approved',
+  'approval is recorded on the reset request'
+);
+select ok(
+  (select must_change_password
+     and password_setup_expires_at > pg_catalog.now()
+   from public.staff_profile
+   where auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'),
+  'approval gates the staff account until a new password is saved'
+);
+select is(
+  (select reviewed_by_profile_id
+   from private.staff_password_reset_request
+   where id = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1'),
+  (select id from public.staff_profile
+   where auth_user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'),
+  'the approving administrator is recorded on the request'
+);
+select lives_ok(
+  $select public.cmi_complete_staff_password_change(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'
+  )$,
+  'the staff member can complete the approved password recovery'
+);
+select is(
+  (select must_change_password
+   from public.staff_profile
+   where auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'),
+  false,
+  'successful recovery clears the forced password-change gate'
+);
+select is(
+  (select status from private.staff_password_reset_request
+   where id = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1'),
+  'completed',
+  'successful recovery completes the reset request'
+);
+select is(
+  (select count(*)::integer
+   from private.staff_password_reset_audit
+   where request_id = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1'
+     and event_type = 'reset_completed'),
+  1,
+  'successful recovery is recorded in the append-only audit'
 );
 
 insert into private.staff_password_reset_request(
