@@ -9,9 +9,7 @@ Deno.test(
         calls.push(page);
         if (perPage !== 2) throw new Error("unexpected page size");
         return {
-          users: page === 1
-            ? ["admin@example.test", "staff@example.test"]
-            : [],
+          users: page === 1 ? ["admin@example.test", "staff@example.test"] : [],
           error: null,
         };
       },
