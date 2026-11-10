@@ -1,10 +1,14 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(14);
+select plan(15);
 
 select has_column(
   'public', 'staff_profile', 'must_change_password',
   'staff profiles carry a mandatory first-login password-change flag'
+);
+select has_column(
+  'public', 'staff_profile', 'password_setup_expires_at',
+  'bootstrap password has a finite setup window'
 );
 select has_column(
   'public', 'staff_profile', 'password_changed_at',
