@@ -683,7 +683,7 @@ begin
         select 1
         from private.staff_password_reset_request req
         where req.target_profile_id = sp.id
-          and req.status = 'approved'
+          and req.status in ('approved', 'processing')
           and req.expires_at > pg_catalog.now()
       )
     )
@@ -697,7 +697,7 @@ begin
     update private.staff_password_reset_request
     set status = 'completed', completed_at = pg_catalog.now()
     where target_profile_id = v_profile_id
-      and status = 'approved'
+      and status in ('approved', 'processing')
     returning id, branch_id
   )
   insert into private.staff_password_reset_audit(
