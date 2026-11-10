@@ -81,27 +81,21 @@ describe("PcgAuthClient", () => {
     expect(JSON.parse(String(init.body))).toEqual({ email: "staff@example.test" });
   });
 
-  it("updates the current user's password and confirms the forced-change flag server-side", async () => {
+  it("changes the Auth password and clears the forced-change gate through one authenticated server operation", async () => {
     const storage = createMemoryStorage();
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify(sessionPayload()), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ id: "auth-user-1" }), { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ data: { password_change_required: false } }), { status: 200 }));
     const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
 
     await client.signIn("staff@example.test", "temporary-password");
-    await client.updatePassword("A-strong-New-Password-2026!");
-    await client.completePasswordChange();
+    await client.completePasswordChange("A-strong-New-Password-2026!");
 
-    const [passwordUrl, passwordInit] = fetcher.mock.calls[1] as unknown as [string, RequestInit];
-    expect(passwordUrl).toBe("https://pcg-test.supabase.co/auth/v1/user");
-    expect(passwordInit.method).toBe("PUT");
-    expect(new Headers(passwordInit.headers).get("Authorization")).toBe("Bearer access-test");
-    expect(JSON.parse(String(passwordInit.body))).toEqual({ password: "A-strong-New-Password-2026!" });
-
-    const [completeUrl, completeInit] = fetcher.mock.calls[2] as unknown as [string, RequestInit];
-    expect(completeUrl).toBe("https://pcg-test.supabase.co/functions/v1/staff-auth/complete-password-change");
-    expect(new Headers(completeInit.headers).get("Authorization")).toBe("Bearer access-test");
+    const [url, init] = fetcher.mock.calls[1] as unknown as [string, RequestInit];
+    expect(url).toBe("https://pcg-test.supabase.co/functions/v1/staff-auth/complete-password-change");
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-test");
+    expect(JSON.parse(String(init.body))).toEqual({ password: "A-strong-New-Password-2026!" });
   });
 
   it("rejects weak passwords before making an Auth request", async () => {
