@@ -6,6 +6,8 @@ export interface StaffProfile {
   full_name: string;
   email: string | null;
   account_status: "invited" | "active" | "inactive" | "suspended";
+  must_change_password?: boolean;
+  password_setup_expires_at?: string | null;
 }
 
 export interface RoleAssignmentRow {
@@ -31,6 +33,8 @@ export interface BranchRow {
 }
 
 export interface StaffSession {
+  must_change_password: boolean;
+  password_setup_expires_at: string | null;
   staff: {
     id: string;
     auth_user_id: string;
@@ -114,7 +118,11 @@ export function buildStaffSession(
     ]),
   );
 
+  const passwordChangeRequired = profile.must_change_password === true;
+
   return {
+    must_change_password: passwordChangeRequired,
+    password_setup_expires_at: profile.password_setup_expires_at ?? null,
     staff: {
       id: profile.id,
       auth_user_id: profile.auth_user_id,
@@ -122,19 +130,23 @@ export function buildStaffSession(
       email: profile.email,
       account_status: "active",
     },
-    branches: [...activeBranches.values()]
+    branches: passwordChangeRequired ? [] : [...activeBranches.values()]
       .filter((branch) =>
         activeAssignments.some((item) => item.branch_id === branch.id)
       )
       .map(({ id, name, timezone }) => ({ id, name, timezone }))
       .sort((a, b) => a.name.localeCompare(b.name)),
-    roles: [...uniqueRoles.values()].sort((a, b) =>
-      a.branch_id.localeCompare(b.branch_id) || a.code.localeCompare(b.code)
-    ),
-    capabilities: [...uniqueCapabilities.values()].sort((a, b) =>
-      a.branch_id.localeCompare(b.branch_id) ||
-      a.code.localeCompare(b.code) ||
-      a.scope_mode.localeCompare(b.scope_mode)
-    ),
+    roles: passwordChangeRequired
+      ? []
+      : [...uniqueRoles.values()].sort((a, b) =>
+        a.branch_id.localeCompare(b.branch_id) || a.code.localeCompare(b.code)
+      ),
+    capabilities: passwordChangeRequired
+      ? []
+      : [...uniqueCapabilities.values()].sort((a, b) =>
+        a.branch_id.localeCompare(b.branch_id) ||
+        a.code.localeCompare(b.code) ||
+        a.scope_mode.localeCompare(b.scope_mode)
+      ),
   };
 }

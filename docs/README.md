@@ -107,3 +107,7 @@ The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role sche
 
 - [26 — Frontend Integration Handoff](26_CMI_FRONTEND_INTEGRATION_HANDOFF.md) — exact current Edge Function surface, auth headers, capability/scope behaviour, response handling, available versus gated screens and integration acceptance checks.
 - [Hubtel SMS integration runbook](../supabase-cmi/supabase/functions/_shared/sms/README.md) — selected Ghana business SMS provider, API contract, server-only secrets, delivery-status polling and live activation gates.
+
+## Staff authentication
+
+- [CMI staff authentication — bootstrap and recovery runbook](28_CMI_STAFF_AUTH_BOOTSTRAP_AND_RECOVERY.md)

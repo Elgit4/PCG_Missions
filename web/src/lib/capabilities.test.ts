@@ -14,6 +14,8 @@ const baseSession: StaffSession = {
   branches: [{ id: "branch-a", name: "Main Branch", timezone: "Africa/Accra" }],
   roles: [{ code: "coordinator", name: "Coordinator", branch_id: "branch-a" }],
   capabilities: [],
+  must_change_password: false,
+  password_setup_expires_at: null,
 };
 
 describe("capability-driven staff navigation", () => {
