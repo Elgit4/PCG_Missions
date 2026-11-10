@@ -114,9 +114,12 @@ Deno.serve(async (req: Request) => {
       );
     }
     const { data: actor, error: actorErr } = await service.from("staff_profile")
-      .select("id,account_status").eq("auth_user_id", auth.user.id)
+      .select("id,account_status,must_change_password").eq("auth_user_id", auth.user.id)
       .maybeSingle();
     if (actorErr) throw new Error("ACTOR_LOOKUP_FAILED");
+    if (actor?.must_change_password) {
+      return fail("PASSWORD_CHANGE_REQUIRED", "Change the temporary password before using staff operations.", 403, origin, id);
+    }
     if (!actor || actor.account_status !== "active") {
       return fail(
         "STAFF_ACCOUNT_NOT_ACTIVE",
