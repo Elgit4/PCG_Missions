@@ -1,9 +1,9 @@
 # CMI staff authentication — bootstrap and recovery runbook
 
-**Status:** Merged into `main` in PR #26; implemented in source but not deployed to the hosted Supabase project.
+**Status:** PR #26 is merged, but this implementation is **on hold and must not be deployed**. It currently implements Supabase email/password authentication, while the confirmed product requirement is email + private PIN with one-time staff activation; the staff member establishes and alone knows the private PIN. The merged password lifecycle is therefore not production-conformant.
 **Scope:** First administrator bootstrap, first-login password replacement, and administrator-approved staff password recovery.
 
-## Security model
+## Mandatory conformance hold\n\nThe current source uses Supabase passwords, temporary passwords and password-recovery links. This does not satisfy the confirmed email + private PIN requirement. Do not deploy `staff-auth`, configure bootstrap secrets, create the first administrator or represent Forgot Password as complete until the authentication design is replaced with a reviewed PIN-verification and supported session-issuance flow. A short PIN must not simply be passed to Supabase `signInWithPassword` as if it were a strong password. The reset/forgot-PIN workflow must be explicitly approved, rate-limited, audited and designed without an administrator learning the staff member's private PIN.\n\n## Security model
 
 - Supabase Auth remains the credential authority. Staff accounts use email and password.
 - The first administrator receives a cryptographically random, one-time temporary password by email. No fixed password exists in source control.
