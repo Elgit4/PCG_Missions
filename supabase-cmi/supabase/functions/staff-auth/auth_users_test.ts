@@ -121,3 +121,21 @@ Deno.test(
     if (!rejected) throw new Error("invalid pagination limit was accepted");
   },
 );
+
+
+Deno.test(
+  "Auth user scan fails closed when the provider omits its user array",
+  async () => {
+    let rejected = false;
+    try {
+      await listAllAuthUsers(
+        () => ({ users: undefined, error: null }),
+        2,
+        2,
+      );
+    } catch {
+      rejected = true;
+    }
+    if (!rejected) throw new Error("missing Auth user array was accepted");
+  },
+);
