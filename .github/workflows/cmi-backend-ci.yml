@@ -83,6 +83,9 @@ jobs:
       - name: Test staff access request validation
         run: deno test supabase-cmi/supabase/functions/staff-access-operations/validation_test.ts
 
+      - name: Test staff access CORS preflight response
+        run: deno test supabase-cmi/supabase/functions/staff-access-operations/http_test.ts
+
       - name: Type-check staff operations Edge Function
         run: deno check supabase-cmi/supabase/functions/staff-operations/index.ts
 

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
+import { createPreflightResponse } from "./http.ts";
 import {
   parseAccessMutation,
   parsePathUuid,
@@ -47,7 +48,7 @@ Deno.serve(async (req: Request) => {
   if (origin && !origins.has(origin)) {
     return fail("ORIGIN_NOT_ALLOWED", "Origin not allowed.", 403, null, id);
   }
-  if (req.method === "OPTIONS") return res({}, 204, origin, id);
+  if (req.method === "OPTIONS") return createPreflightResponse(origin, origins, id);
   if (req.method !== "POST") {
     return fail("METHOD_NOT_ALLOWED", "Method not allowed.", 405, origin, id);
   }
