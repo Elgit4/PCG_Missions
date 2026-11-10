@@ -155,8 +155,7 @@ export default function App() {
     setError("");
     setNotice("");
     try {
-      await auth.updatePassword(password);
-      await auth.completePasswordChange();
+      await auth.completePasswordChange(password);
       await loadStaffSession();
     } catch (cause) {
       setError(messageFor(cause));
