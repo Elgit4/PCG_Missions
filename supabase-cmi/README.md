@@ -37,11 +37,11 @@ The product owner confirmed Supabase email/password authentication on 10 Novembe
 1. `contacts_followup_domain.sql` and matching test.
 2. `restricted_pastoral_domain.sql` and matching test.
 3. `events_attendance_public_content.sql` and matching test.
-4. `backend_capability_catalogue.sql` and matching security test; it seeds capability metadata only and does not create role grants.
+4. `backend_capability_catalogue.sql` and matching security test; it seeds capability metadata only. The separate permanent visitor MVP authorization migration seeds 65 explicit role-capability grants for visitor/follow-up operations.
 
 The third slice covers event lifecycle, typed event staff/team assignments, registration, transport, check-in, closeout, typed calendar scope, typed announcement audiences, church public profile, welcome messages, sermons, daily word, digital tracts and typed external document links.
 
-All domain drafts preserve branch-consistent foreign keys, RLS and closed browser grants. No client policies or role-capability grants are created while stakeholder approvals remain pending. The event draft removes the unapproved waitlist state, requires idempotency for public registrations and check-ins, and avoids polymorphic scope/audience/content references.
+All domain drafts preserve branch-consistent foreign keys, RLS and closed browser grants. No client table policies are created. The visitor MVP authorization migration is the explicit product-owner-approved implementation baseline for 65 visitor/follow-up role grants; pastoral oversight, exports, SMS, capability-policy editing and other policy-gated grants remain absent pending church approval. The event draft removes the unapproved waitlist state, requires idempotency for public registrations and check-ins, and avoids polymorphic scope/audience/content references.
 
 ## Validation
 
