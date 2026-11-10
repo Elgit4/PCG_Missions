@@ -382,7 +382,7 @@ select lives_ok(
      limit 1),
     'field_worker',
     'Approved staff appointment for field ministry.'
-  )$,
+  )$sql$,
   'an authorised Admin/Pastor can provision a staff account and assign a role'
 );
 select ok(
