@@ -18,6 +18,14 @@ supabase --workdir supabase-cmi test db
 
 Supabase CLI v3 is local-first. Do not add `--remote`, hosted credentials or `--yes` for a hosted mutation without explicit approval.
 
+## Hosted production status — verified 10 November 2026
+
+The hosted Supabase project `cgwffpxlwgbnlinzwfoj` has the 11-table identity/authorization foundation and three recorded migrations (RLS-helper privilege remediation, identity/authorization foundation and supporting foreign-key indexes). All 11 tables have RLS enabled; anonymous and authenticated clients cannot SELECT staff profiles. The six approved roles are seeded, while `role_capability` remains empty. No church, branch, staff or team records have been provisioned, and no CMI Edge Functions are deployed.
+
+The 11 informational `rls_enabled_no_policy` security-advisor notices are intentional fail-closed behavior pending approved policies. The performance advisor no longer reports unindexed foreign keys; unused-index notices are expected before application data and query traffic exist. This is an initial foundation migration only, not a complete application schema or production launch.
+
+The current email/password authentication source is non-conformant with the confirmed email + private PIN requirement and must not be deployed. See [the PIN authentication architecture proposal](../docs/30_CMI_PIN_AUTHENTICATION_ARCHITECTURE_PROPOSAL.md) and [bootstrap/recovery hold](../docs/28_CMI_STAFF_AUTH_BOOTSTRAP_AND_RECOVERY.md). Stakeholder decisions R-01–R-12 and D-01–D-13 remain pending. Production remains NO-GO.
+
 ## Current source layout
 
 - `supabase/migrations/`: permanent CMI identity/authorization foundation and hosted RLS-helper privilege-remediation migrations. Domain schemas remain in `schema-drafts/`.
