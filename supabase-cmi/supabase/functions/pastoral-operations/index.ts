@@ -232,6 +232,31 @@ Deno.serve(async (request: Request) => {
       );
     }
 
+    const { data: staffProfile, error: staffProfileError } = await service
+      .from("staff_profile")
+      .select("account_status,must_change_password")
+      .eq("auth_user_id", authData.user.id)
+      .maybeSingle();
+    if (staffProfileError) throw new Error("STAFF_PROFILE_LOOKUP_FAILED");
+    if (!staffProfile || staffProfile.account_status !== "active") {
+      return fail(
+        "STAFF_ACCOUNT_NOT_ACTIVE",
+        "An active staff account is required.",
+        403,
+        origin,
+        id,
+      );
+    }
+    if (staffProfile.must_change_password) {
+      return fail(
+        "PASSWORD_CHANGE_REQUIRED",
+        "Change the temporary password before using staff operations.",
+        403,
+        origin,
+        id,
+      );
+    }
+
     const rpcName = route.kind === "prayer_request"
       ? "cmi_read_prayer_request"
       : "cmi_read_care_record";
