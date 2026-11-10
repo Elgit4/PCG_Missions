@@ -29,6 +29,7 @@ These artifacts are committed on `main` and are **proposals for review**, not ap
 - [Database Design Validation Report](09_DATABASE_DESIGN_VALIDATION_REPORT.md) — cross-document consistency review, design risks, corrections and outstanding approval gates.
 - [ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md) — maps all 53 ERD entities to proposed physical tables and lists remaining reconciliation work.
 - [Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md) — consolidated approval worksheet for R-01–R-12, D-01–D-13 and authentication/SMS/offline governance decisions.
+- [29 — Client Stakeholder Approval & Handover Pack](29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md) — client-facing recommended least-privilege role matrix, decision schedule, configuration inputs, UAT and sign-off record.
 - [RLS Policy & Security Test Plan](12_RLS_POLICY_AND_SECURITY_TEST_PLAN.md) — table/domain policy expectations, threat scenarios and positive/negative security test catalogue; not executed.
 - [Foundation, Contacts & Follow-up Data Dictionary](13_FOUNDATION_CONTACT_FOLLOWUP_DATA_DICTIONARY.md) — typed column definitions, nullability, keys, branch-consistent foreign keys and unresolved physical-design refinements for the first schema slice.
 - [Restricted Pastoral, Events & Public Content Data Dictionary](14_PASTORAL_EVENTS_PUBLIC_CONTENT_DATA_DICTIONARY.md) — typed definitions for prayer/care, event registration, transport, attendance, announcements and public content.
@@ -36,7 +37,7 @@ These artifacts are committed on `main` and are **proposals for review**, not ap
 
 ## Backend implementation
 
-The CMI-only backend is developed in `../supabase-cmi/`, isolated from the historical ChurchConnect workspace. The identity/authorization foundation migration is committed for isolated local review. Contacts/follow-up, follow-up task, restricted-pastoral, event/public-content and capability SQL/pgTAP drafts remain under `schema-drafts/`. CI validates them on an isolated local Supabase stack; they must not be promoted to permanent migrations until the relevant physical-design and stakeholder decisions are approved.
+The CMI-only backend is developed in `../supabase-cmi/`, isolated from the historical ChurchConnect workspace. The permanent migrations contain the identity/authorization foundation and the hosted RLS-helper privilege remediation. Domain SQL/pgTAP drafts remain under `schema-drafts/` and CI validates them on an isolated local Supabase stack; they must not be promoted to permanent domain migrations until the relevant physical-design and stakeholder decisions are approved. The integrated frontend is source-controlled under `../web/`, and PRs #24–#26 are merged; source presence is not deployment evidence. The hosted Supabase project currently has zero CMI public application tables and zero deployed CMI Edge Functions.
 
 - [16 — Schema Reconciliation & Decision Crosswalk](16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) — tracks DD-01–DD-25, their proposed dispositions and approval dependencies.
 - [Isolated CMI Supabase workspace](../supabase-cmi/README.md) — separate CLI configuration, migration history and test workspace.
@@ -111,3 +112,5 @@ The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role sche
 ## Staff authentication
 
 - [CMI staff authentication — bootstrap and recovery runbook](28_CMI_STAFF_AUTH_BOOTSTRAP_AND_RECOVERY.md)
+
+The current authentication implementation uses email/password and does not yet conform to the email + private PIN product requirement. The client must confirm the credential model before the authentication slice is approved for release.
