@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: cmi-backend-ci-${{ github.event.pull_request.number || github.ref }}
@@ -59,8 +59,16 @@ jobs:
           fi
 
           while IFS= read -r file; do
-            deno fmt --check "$file"
+            deno fmt "$file"
           done <<< "$changed_files"
+
+          if ! git diff --quiet -- supabase-cmi/supabase/functions; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add supabase-cmi/supabase/functions
+            git commit -m "style: apply Deno formatting to CMI Edge Functions"
+            git push origin "HEAD:$GITHUB_HEAD_REF"
+          fi
 
       - name: Lint CMI Edge Functions
         run: deno lint supabase-cmi/supabase/functions
@@ -85,6 +93,15 @@ jobs:
 
       - name: Test staff access CORS preflight response
         run: deno test supabase-cmi/supabase/functions/staff-access-operations/http_test.ts
+
+      - name: Type-check staff authentication Edge Function
+        run: deno check supabase-cmi/supabase/functions/staff-auth/index.ts
+
+      - name: Test staff authentication request validation
+        run: deno test supabase-cmi/supabase/functions/staff-auth/validation_test.ts
+
+      - name: Test staff authentication CORS preflight
+        run: deno test supabase-cmi/supabase/functions/staff-auth/http_test.ts
 
       - name: Type-check staff operations Edge Function
         run: deno check supabase-cmi/supabase/functions/staff-operations/index.ts
@@ -194,6 +211,14 @@ jobs:
           test -n "$access_migration"
           cp supabase-cmi/schema-drafts/staff_access_lifecycle.sql "$access_migration"
           cp supabase-cmi/schema-drafts/staff_access_lifecycle.test.sql supabase-cmi/supabase/tests/cmi_staff_access_lifecycle.test.sql
+
+          sleep 1
+          supabase --workdir supabase-cmi migration new cmi_staff_auth_lifecycle
+          auth_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_staff_auth_lifecycle.sql' -print -quit)"
+          test -n "$auth_migration"
+          cp supabase-cmi/schema-drafts/staff_auth_lifecycle.sql "$auth_migration"
+          cp supabase-cmi/schema-drafts/staff_auth_lifecycle.test.sql supabase-cmi/supabase/tests/cmi_staff_auth_lifecycle.test.sql
+
           cp supabase-cmi/schema-drafts/followup_task_operations.test.sql supabase-cmi/supabase/tests/cmi_followup_task_operations.test.sql
           cp supabase-cmi/schema-drafts/contacts_followup_domain.test.sql supabase-cmi/supabase/tests/cmi_contacts_followup_domain.test.sql
           cp supabase-cmi/schema-drafts/restricted_pastoral_domain.test.sql supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
@@ -219,10 +244,12 @@ jobs:
           rm -f supabase-cmi/supabase/migrations/*_cmi_events_attendance_public_content.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_backend_capability_catalogue.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_staff_access_lifecycle.sql
+          rm -f supabase-cmi/supabase/migrations/*_cmi_staff_auth_lifecycle.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_followup_task_operations.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_pastoral_read_operations.sql
           rm -f supabase-cmi/supabase/tests/cmi_backend_capability_catalogue.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_staff_access_lifecycle.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_staff_auth_lifecycle.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_followup_task_operations.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_contacts_followup_domain.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql

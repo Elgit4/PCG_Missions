@@ -154,7 +154,7 @@ async function resolveStaff(token: string): Promise<StaffResult> {
 
   const { data: profile, error } = await service
     .from("staff_profile")
-    .select("id,account_status")
+    .select("id,account_status,must_change_password")
     .eq("auth_user_id", auth.user.id)
     .maybeSingle();
 
@@ -165,6 +165,14 @@ async function resolveStaff(token: string): Promise<StaffResult> {
       status: 403,
       code: "STAFF_PROFILE_NOT_FOUND",
       message: "This account is not provisioned as staff.",
+    };
+  }
+  if (profile.must_change_password) {
+    return {
+      ok: false,
+      status: 403,
+      code: "PASSWORD_CHANGE_REQUIRED",
+      message: "Change the temporary password before using staff operations.",
     };
   }
   if (profile.account_status !== "active") {

@@ -63,3 +63,9 @@ verify_jwt = true
 [functions.calendar-operations]
 # Branch-scoped calendar operations.
 verify_jwt = true
+
+
+[functions.staff-auth]
+# Public recovery request + one-time bootstrap routes use dedicated abuse controls
+# and a server-only bootstrap token. Authenticated admin routes validate JWTs in code.
+verify_jwt = false
