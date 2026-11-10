@@ -543,6 +543,14 @@ begin
       reviewed_at = pg_catalog.now()
   where id = p_request_id;
 
+  -- Lock the target out of ordinary staff operations immediately, before any
+  -- external email or Auth password operation is attempted. A failed delivery
+  -- remains retryable after the processing lease expires.
+  update public.staff_profile
+  set must_change_password = true,
+      password_setup_expires_at = v_request.expires_at
+  where id = v_request.target_profile_id;
+
   return pg_catalog.jsonb_build_object(
     'request_id', v_request.id,
     'target_auth_user_id', v_target_auth_user_id,
