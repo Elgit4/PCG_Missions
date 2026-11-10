@@ -276,14 +276,35 @@ async function bootstrapAdmin(
       .select("id,must_change_password,account_status")
       .eq("auth_user_id", authUserId)
       .maybeSingle();
-    if (profileError || !profile || !profile.must_change_password || profile.account_status !== "active") {
-      return fail("BOOTSTRAP_ALREADY_USED", "First-administrator bootstrap has already been completed.", 409, origin, requestId);
+    if (profileError) throw new Error("BOOTSTRAP_PROFILE_LOOKUP_FAILED");
+
+    if (!profile) {
+      // Recover only the narrowly defined partial state: one confirmed Auth
+      // user and no CMI profile/church/branch. The database transaction performs
+      // the authoritative empty-project check before creating any records.
+      const { error: bootstrapError } = await service.rpc("cmi_bootstrap_first_admin", {
+        p_auth_user_id: authUserId,
+        p_email: email,
+        p_full_name: fullName,
+        p_church_name: churchName,
+        p_branch_name: branchName,
+      });
+      if (bootstrapError) throw new Error("BOOTSTRAP_DATABASE_PROVISION_FAILED");
+      const { error: passwordError } = await service.auth.admin.updateUserById(authUserId, {
+        password: temporaryPassword,
+      });
+      if (passwordError) throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
+      retry = true;
+    } else {
+      if (!profile.must_change_password || profile.account_status !== "active") {
+        return fail("BOOTSTRAP_ALREADY_USED", "First-administrator bootstrap has already been completed.", 409, origin, requestId);
+      }
+      retry = true;
+      const { error: passwordError } = await service.auth.admin.updateUserById(authUserId, {
+        password: temporaryPassword,
+      });
+      if (passwordError) throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
     }
-    retry = true;
-    const { error: passwordError } = await service.auth.admin.updateUserById(authUserId, {
-      password: temporaryPassword,
-    });
-    if (passwordError) throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
   } else {
     return fail("BOOTSTRAP_ALREADY_USED", "First-administrator bootstrap is only available on an empty Auth project.", 409, origin, requestId);
   }
