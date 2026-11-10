@@ -142,18 +142,20 @@ For each item, the client should approve the recommended default or enter an alt
 
 ## 8. Authentication and account recovery decision
 
-**Current source conformance issue:** the merged implementation currently uses Supabase email/password sign-in and password recovery. The requirements register says email + private PIN. These are not equivalent; do not deploy the current password implementation as if it satisfied the PIN requirement.
+**Product baseline:** Staff sign in using **email + private PIN**. This is the recorded product requirement in document 11 and is not an open choice in this handover pack. The merged PR #26 email/password implementation is non-conformant and remains on hold; do not deploy it as the staff authentication flow.
 
-### Recommended client decision
+### Required PIN lifecycle
 
-- Confirm whether the required staff credential is **email + private PIN** or **email + strong password**. Select one; do not mix both flows.
-- If email + PIN is selected, do not store a plaintext PIN or send it to logs. Use a server-side verification design with keyed derivation, per-account and per-IP throttling, lockout/backoff, secure session issuance and recovery controls. A short PIN alone is not a strong password.
-- If email + strong password is selected, retain the existing minimum 12-character password policy and Supabase Auth password flow.
-- Admin creates staff accounts and assigns one or more of the six roles. The staff member sets their own private credential during activation.
-- Forgot password creates a generic-response request; the authorised administrator receives a notification and approves or denies it with a reason. Approval initiates a one-time recovery link. The administrator never receives or sets the user's permanent secret.
+- An administrator provisions an account and assigns one or more of the six approved roles; the administrator does not set or learn the staff member's permanent PIN.
+- The staff member receives a one-time activation invitation through a verified channel and establishes their own private PIN.
+- Never store a plaintext PIN, send it in email/SMS, or include it in logs, analytics, browser storage or audit metadata.
+- PIN verification must be server-side, use a per-user salted memory-hard verifier with a separately managed pepper/key, constant-time comparison, per-account and per-IP throttling, escalating delay/lockout, generic failure responses, and security-event audit records.
+- A short numeric PIN has low entropy. The final PIN length and retry policy must be explicitly approved by the product/security owner. Prefer a device-bound passkey or a stronger secret if the client cannot accept the residual risk of a short PIN.
+- Supabase session issuance must use a supported, reviewed mechanism. Do not invent a JWT signing endpoint or expose the Supabase service-role key to the browser.
+- Forgot PIN creates a generic-response request. The authorised administrator receives a notification and approves/denies with a reason. Approval sends a one-time activation/recovery challenge; the staff member establishes a new PIN. The administrator never receives or sets it.
 - Existing accounts must be reconciled, not bulk-deleted. No account deletion or credential reset is performed as part of this handover.
 
-**Client selection:** Pending.
+**Client approval still required:** PIN length, retry/lockout thresholds, activation channel, recovery identity-verification procedure, session lifetime and device/session revocation policy. These are security parameters within the agreed email + private PIN model, not permission to switch to email/password.
 
 ## 9. Client configuration and operational inputs
 
@@ -164,7 +166,7 @@ The client must supply or approve these before staging/production configuration:
 | Authorised church approver and pastoral data owner | Name, role, approval date |
 | Canonical church name and initial branch name | Exact display names |
 | Initial Admin/Pastor mailbox | Verified email controlled by the client |
-| Approved staff login model | Email + PIN or email + strong password |
+| Staff login model | Email + private PIN (confirmed product baseline); approve PIN/security parameters |
 | Production domain and hosting owner | HTTPS domain and DNS access |
 | Verified transactional email sender | Domain/sender approval and delivery owner |
 | SMS provider account | Provider account owner, sender ID approval, consent and budget |
@@ -241,7 +243,7 @@ The client handover is complete only when the following evidence is attached:
 | Meeting date | Pending |
 | Approved R-01–R-12 | Pending |
 | Approved D-01–D-13 | Pending |
-| Authentication model selected | Pending |
+| Authentication model | Email + private PIN (product baseline); security parameters pending approval |
 | Approved role matrix revision | Pending |
 | Approved retention schedule | Pending |
 | Exceptions and conditions | Pending |
