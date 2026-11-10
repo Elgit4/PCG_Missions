@@ -373,7 +373,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             </form>}
             {canReadContacts && <>
               <div className="cmi-table-wrap"><table className="cmi-table"><thead><tr><th>CONTACT</th><th>STATUS</th><th>LANGUAGE</th><th>IDENTITY</th></tr></thead><tbody>
-                {visibleContacts.map((contact) => <tr key={contact.id}><td><strong>{displayName(contact)}</strong><small>{contact.id}</small></td><td><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td>{contact.preferred_language || "Not recorded"}</td><td>{canReadIdentity ? (contact.phone_display || contact.phone_e164 || "Restricted / not recorded") : "Restricted"}</td></tr>)}
+                {visibleContacts.map((contact) => <tr key={contact.id}><td><strong>{displayName(contact)}</strong><small>{contact.id}</small></td><td><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td>{contact.preferred_language || "Not recorded"}</td><td>{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
               </tbody></table>{!visibleContacts.length && !loading && <p className="cmi-empty-row">No contacts are available for this search and access scope.</p>}</div>
               {contactsHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreContacts()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more contacts"}</button></div>}
             </>}
