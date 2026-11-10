@@ -61,3 +61,25 @@ export function parseResetReview(
 export function parseResetRequestId(value: string): string | null {
   return UUID.test(value) ? value : null;
 }
+
+export function parsePasswordChange(
+  value: unknown,
+): { ok: true; password: string } | { ok: false; error: string } {
+  if (!object(value) || Object.keys(value).length !== 1 || !("password" in value)) {
+    return { ok: false, error: "A new password is required." };
+  }
+  if (
+    typeof value.password !== "string" ||
+    value.password.length < 12 ||
+    value.password.length > 128 ||
+    !/[a-z]/.test(value.password) ||
+    !/[A-Z]/.test(value.password) ||
+    !/[0-9]/.test(value.password)
+  ) {
+    return {
+      ok: false,
+      error: "Use 12–128 characters with uppercase, lowercase and a number.",
+    };
+  }
+  return { ok: true, password: value.password };
+}
