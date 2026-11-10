@@ -508,9 +508,19 @@ begin
     raise exception using errcode = 'P0002', message = 'pending password reset request not found';
   end if;
 
-  select auth_user_id into v_target_auth_user_id
-  from public.staff_profile
-  where id = v_request.target_profile_id;
+  select sp.auth_user_id into v_target_auth_user_id
+  from public.staff_profile sp
+  join auth.users u
+    on u.id = sp.auth_user_id
+   and lower(u.email) = lower(sp.email)
+   and u.email_confirmed_at is not null
+  where sp.id = v_request.target_profile_id
+    and sp.account_status = 'active'
+    and lower(sp.email) = v_request.email_normalized;
+
+  if v_target_auth_user_id is null then
+    raise exception using errcode = 'P0002', message = 'active verified staff account not found';
+  end if;
 
   if v_target_auth_user_id = p_actor_auth_user_id then
     raise exception using errcode = '42501', message = 'self-approval is not permitted';
@@ -620,13 +630,23 @@ as $$
 declare
   v_profile_id uuid;
 begin
-  update public.staff_profile
+  update public.staff_profile sp
   set must_change_password = false,
       password_setup_expires_at = null,
       password_changed_at = pg_catalog.now()
-  where auth_user_id = p_auth_user_id
-    and account_status = 'active'
-  returning id into v_profile_id;
+  where sp.auth_user_id = p_auth_user_id
+    and sp.account_status = 'active'
+    and (
+      sp.must_change_password
+      or exists (
+        select 1
+        from private.staff_password_reset_request req
+        where req.target_profile_id = sp.id
+          and req.status = 'approved'
+          and req.expires_at > pg_catalog.now()
+      )
+    )
+  returning sp.id into v_profile_id;
 
   if v_profile_id is null then
     raise exception using errcode = 'P0002', message = 'active staff profile not found';
