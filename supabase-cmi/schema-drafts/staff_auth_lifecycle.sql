@@ -192,11 +192,21 @@ begin
     pg_catalog.now(), 'Initial one-time PCG Missions administrator bootstrap'
   );
 
+  -- The first administrator receives only the minimum control-plane
+  -- capabilities needed to provision staff, assign the six approved roles,
+  -- and review account recovery. Business-domain capabilities (contacts,
+  -- events, prayer/care, SMS, reports, exports and oversight) remain empty
+  -- until the client signs off the role matrix. Capability-policy editing is
+  -- deliberately excluded to prevent self-escalation.
   insert into public.role_capability(role_id, capability_id, scope_mode)
-  select v_role_id, id, 'branch'
-  from public.capability
-  where code = 'staff.password_reset.manage'
-    and is_active
+  select v_role_id, cap.id, 'branch'
+  from public.capability cap
+  where cap.code in (
+    'staff.account.manage',
+    'access.role.assign',
+    'staff.password_reset.manage'
+  )
+    and cap.is_active
   on conflict do nothing;
 
   return pg_catalog.jsonb_build_object(
