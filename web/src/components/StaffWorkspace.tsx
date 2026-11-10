@@ -12,6 +12,10 @@ function messageFor(error: unknown): string {
     if (error.status === 401) return "Your staff session has expired. Sign in again.";
     if (error.status === 403) return "Your account is signed in, but it does not have permission for this operation.";
     if (error.status === 404) return "The requested record is unavailable or outside your access scope.";
+    if (error.status === 409) return "This operation conflicts with an existing request or a recent record change. Refresh the data before trying again.";
+    if (error.status === 422) return "Some submitted fields need correction. Review the form and try again.";
+    if (error.status === 429) return "Too many requests were made. Wait a moment before trying again.";
+    if (error.status === 503) return "This service is temporarily unavailable. Try again later.";
     if (error.status === 0) return error.message;
     return `${error.message}${error.requestId ? ` (Reference: ${error.requestId})` : ""}`;
   }
@@ -125,7 +129,11 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             setTasksHasMore(result.data.length === 50);
           }
         })
-        .catch((error: unknown) => { if (current) setLoadError(messageFor(error)); }));
+        .catch((error: unknown) => {
+          if (!current) return;
+          if (error instanceof CmiApiError && error.status === 401) expireSession();
+          else setLoadError(messageFor(error));
+        }));
     } else {
       setTasks([]);
       setTasksHasMore(false);
@@ -365,7 +373,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             </form>}
             {canReadContacts && <>
               <div className="cmi-table-wrap"><table className="cmi-table"><thead><tr><th>CONTACT</th><th>STATUS</th><th>LANGUAGE</th><th>IDENTITY</th></tr></thead><tbody>
-                {visibleContacts.map((contact) => <tr key={contact.id}><td><strong>{displayName(contact)}</strong><small>{contact.id}</small></td><td><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td>{contact.preferred_language || "Not recorded"}</td><td>{contact.phone_display || contact.phone_e164 || "Restricted / not recorded"}</td></tr>)}
+                {visibleContacts.map((contact) => <tr key={contact.id}><td><strong>{displayName(contact)}</strong><small>{contact.id}</small></td><td><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td>{contact.preferred_language || "Not recorded"}</td><td>{canReadIdentity ? (contact.phone_display || contact.phone_e164 || "Restricted / not recorded") : "Restricted"}</td></tr>)}
               </tbody></table>{!visibleContacts.length && !loading && <p className="cmi-empty-row">No contacts are available for this search and access scope.</p>}</div>
               {contactsHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreContacts()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more contacts"}</button></div>}
             </>}
@@ -394,7 +402,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             {tasksHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreTasks()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more tasks"}</button></div>}
           </div>}
 
-          {!canReadContacts && page === "Contacts" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Contact access is not granted</h3><p>Your assigned role has no contact-read capability for this branch.</p></div>}
+          {!canReadContacts && !canCreateContacts && page === "Contacts" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Contact access is not granted</h3><p>Your assigned role has no contact-read capability for this branch.</p></div>}
           {!canReadTasks && page === "Follow-up" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Follow-up access is not granted</h3><p>Your assigned role has no follow-up-read capability for this branch.</p></div>}
           {!availablePages.includes(page) && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>This section is unavailable</h3><p>Your session does not contain an active permission for this section.</p></div>}
         </section>
