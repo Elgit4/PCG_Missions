@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Activity, CalendarClock, CheckCircle2, ClipboardList, LogOut, Plus, Search, ShieldCheck, Users } from "lucide-react";
+import { Activity, CalendarClock, CheckCircle2, ClipboardList, KeyRound, LogOut, Plus, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
-import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffSession, TaskCreateInput } from "../lib/cmi-api";
+import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 
-type Page = "Overview" | "Contacts" | "Follow-up";
+type Page = "Overview" | "Contacts" | "Follow-up" | "Access requests";
 interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void> }
 
 function messageFor(error: unknown): string {
@@ -38,6 +38,9 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [page, setPage] = useState<Page>("Overview");
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [tasks, setTasks] = useState<FollowUpTask[]>([]);
+  const [resetRequests, setResetRequests] = useState<StaffPasswordResetRequest[]>([]);
+  const [resetReasons, setResetReasons] = useState<Record<string, string>>({});
+  const [processingResetId, setProcessingResetId] = useState<string | null>(null);
   const [contactsHasMore, setContactsHasMore] = useState(false);
   const [tasksHasMore, setTasksHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -63,14 +66,16 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canSelfAssignTask = !!taskCreateGrant &&
     (taskCreateGrant.scope_mode === "assigned" || taskCreateGrant.scope_mode === "branch");
   const canUpdateTasks = hasCapability(session, "followup.task.update.scoped", branchId);
+  const canManagePasswordResets = hasCapability(session, "staff.password_reset.manage", branchId);
   const availablePages = useMemo(() => {
     const pages = getAvailableStaffPages(session, branchId)
       .filter((candidate): candidate is Page =>
         candidate === "Overview" || candidate === "Contacts" || candidate === "Follow-up"
       );
     if (canCreateContacts && !pages.includes("Contacts")) pages.push("Contacts");
+    if (canManagePasswordResets) pages.push("Access requests");
     return pages;
-  }, [session, branchId, canCreateContacts]);
+  }, [session, branchId, canCreateContacts, canManagePasswordResets]);
   const canCaptureIdentity = hasIdentityCapture(session, branchId);
   const canReadIdentity = hasIdentityRead(session, branchId);
   const activeBranch = session.branches.find((branch) => branch.id === branchId);
@@ -81,6 +86,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setTasks([]);
     setContactsHasMore(false);
     setTasksHasMore(false);
+    setResetRequests([]);
+    setResetReasons({});
     setLoadError("Your staff session has expired. Please sign in again.");
     setActionError("");
     void onSignOut();
@@ -97,7 +104,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   useEffect(() => {
     let current = true;
     if (!branchId) {
-      setContacts([]); setTasks([]);
+      setContacts([]); setTasks([]); setResetRequests([]); setResetReasons({});
       setContactsHasMore(false); setTasksHasMore(false);
       setLoading(false); setLoadError("");
       return () => { current = false; };
@@ -138,9 +145,21 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       setTasks([]);
       setTasksHasMore(false);
     }
+    if (canManagePasswordResets) {
+      requests.push(api.listStaffPasswordResetRequests(branchId)
+        .then((result) => { if (current) setResetRequests(result.data); })
+        .catch((error: unknown) => {
+          if (!current) return;
+          if (error instanceof CmiApiError && error.status === 401) expireSession();
+          else setLoadError(messageFor(error));
+        }));
+    } else {
+      setResetRequests([]);
+      setResetReasons({});
+    }
     void Promise.all(requests).finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
-  }, [api, branchId, canReadContacts, canReadTasks, query, expireSession]);
+  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, query, expireSession]);
 
   const visibleContacts = contacts;
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
@@ -151,9 +170,10 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     if (!branchId) return;
     setRefreshing(true); setActionError("");
     try {
-      const [contactResult, taskResult] = await Promise.all([
+      const [contactResult, taskResult, resetResult] = await Promise.all([
         canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0, search: query.trim() || undefined }) : Promise.resolve(null),
         canReadTasks ? api.listFollowUpTasks(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
+        canManagePasswordResets ? api.listStaffPasswordResetRequests(branchId) : Promise.resolve(null),
       ]);
       if (contactResult) {
         setContacts(contactResult.data);
@@ -163,8 +183,34 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         setTasks(taskResult.data);
         setTasksHasMore(taskResult.data.length === 50);
       }
+      if (resetResult) setResetRequests(resetResult.data);
     } catch (error) { handleActionError(error); }
     finally { setRefreshing(false); }
+  };
+
+  const reviewPasswordReset = async (request: StaffPasswordResetRequest, action: "approve" | "deny") => {
+    if (!canManagePasswordResets || !branchId || processingResetId) return;
+    const reason = (resetReasons[request.id] ?? "").trim();
+    if (reason.length < 10 || reason.length > 300) {
+      setActionError("Enter a review reason between 10 and 300 characters before taking action.");
+      return;
+    }
+    setProcessingResetId(request.id);
+    setActionError("");
+    try {
+      if (action === "approve") {
+        await api.approveStaffPasswordResetRequest(branchId, request.id, reason);
+      } else {
+        await api.denyStaffPasswordResetRequest(branchId, request.id, reason);
+      }
+      setResetRequests((current) => current.filter((item) => item.id !== request.id));
+      setResetReasons((current) => {
+        const next = { ...current };
+        delete next[request.id];
+        return next;
+      });
+    } catch (error) { handleActionError(error); }
+    finally { setProcessingResetId(null); }
   };
 
   const loadMoreContacts = async () => {
@@ -301,9 +347,9 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         <div className="cmi-sidebar-label">WORKSPACE</div>
         <nav className="cmi-nav" aria-label="Staff workspace">
           {availablePages.map((item) => <button key={item} type="button" className={page === item ? "active" : ""} aria-current={page === item ? "page" : undefined} onClick={() => setPage(item)}>
-            {item === "Overview" ? <Activity size={19} /> : item === "Contacts" ? <Users size={19} /> : <ClipboardList size={19} />}
+            {item === "Overview" ? <Activity size={19} /> : item === "Contacts" ? <Users size={19} /> : item === "Access requests" ? <KeyRound size={19} /> : <ClipboardList size={19} />}
             <span className="cmi-nav-desktop-label">{item === "Follow-up" ? "Follow-up tasks" : item}</span>
-            <span className="cmi-nav-mobile-label">{item === "Overview" ? "Home" : item === "Contacts" ? "People" : "Tasks"}</span>
+            <span className="cmi-nav-mobile-label">{item === "Overview" ? "Home" : item === "Contacts" ? "People" : item === "Access requests" ? "Access" : "Tasks"}</span>
             {item === "Follow-up" && openTasks.length > 0 ? <em>{openTasks.length}</em> : null}
           </button>)}
         </nav>
@@ -321,13 +367,15 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         <header className="cmi-topbar">
           <div className="cmi-topbar-heading">
             <div className="cmi-mobile-brand"><img src="/logo.svg" alt="" /><span><strong>PCG Missions</strong><small>STAFF WORKSPACE</small></span></div>
-            <span className="cmi-breadcrumb">PCG MISSIONS / {activeBranch.name.toUpperCase()}</span>
+            <span className="cmi-breadcrumb">PCG MISSIONS / {(activeBranch?.name ?? "NO ACTIVE BRANCH").toUpperCase()}</span>
             <h1>{page === "Follow-up" ? "Follow-up tasks" : page}</h1>
           </div>
           <div className="cmi-topbar-actions">
             <label className="cmi-branch-picker"><span>BRANCH</span><select aria-label="Active branch" value={branchId} onChange={(event) => {
                 setContacts([]);
                 setTasks([]);
+                setResetRequests([]);
+                setResetReasons({});
                 setContactsHasMore(false);
                 setTasksHasMore(false);
                 setQuery("");
@@ -348,7 +396,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
           {page === "Overview" && (
             <>
-              <div className="cmi-welcome"><div><p className="cmi-eyebrow">YOUR MINISTRY WORKSPACE</p><h2>Welcome, {session.staff.full_name.split(/\s+/)[0]}.</h2><p>Here is the current activity available to your account in {activeBranch.name}.</p></div><div className="cmi-welcome-mark"><ShieldCheck size={30} /></div></div>
+              <div className="cmi-welcome"><div><p className="cmi-eyebrow">YOUR MINISTRY WORKSPACE</p><h2>Welcome, {session.staff.full_name.split(/\s+/)[0]}.</h2><p>Here is the current activity available to your account in {activeBranch?.name ?? "your branch"}.</p></div><div className="cmi-welcome-mark"><ShieldCheck size={30} /></div></div>
               <div className="cmi-stat-grid">
                 <article className="cmi-stat-card"><span>VISIBLE CONTACTS</span><strong>{canReadContacts ? contacts.length : "—"}</strong><small>{canReadContacts ? "Records within your access scope" : "Contact access not granted"}</small></article>
                 <article className="cmi-stat-card"><span>OPEN FOLLOW-UPS</span><strong>{canReadTasks ? openTasks.length : "—"}</strong><small>{canReadTasks ? "Open or in-progress tasks" : "Task access not granted"}</small></article>
@@ -406,6 +454,72 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               </article>;
             })}{!tasks.length && !loading && <p className="cmi-empty-row">No follow-up tasks are visible in this branch scope.</p>}</div>
             {tasksHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreTasks()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more tasks"}</button></div>}
+          </div>}
+
+          {page === "Access requests" && canManagePasswordResets && <div className="cmi-panel">
+            <div className="cmi-panel-heading">
+              <div>
+                <p className="cmi-eyebrow">ACCOUNT SECURITY</p>
+                <h3>Password reset requests</h3>
+                <p>Review staff requests before issuing a single-use recovery link. You will never see or set another staff member’s password.</p>
+              </div>
+              <span className="cmi-reset-count">{resetRequests.length} pending</span>
+            </div>
+            <div className="cmi-reset-list">
+              {resetRequests.map((request) => (
+                <article className="cmi-reset-card" key={request.id}>
+                  <div className="cmi-reset-card-top">
+                    <div className="cmi-reset-avatar"><KeyRound size={18} /></div>
+                    <div className="cmi-reset-person">
+                      <strong>{request.full_name}</strong>
+                      <span>{request.email}</span>
+                    </div>
+                    <span className="cmi-task-status status-open">Pending</span>
+                  </div>
+                  <div className="cmi-reset-meta">
+                    <span>Requested {formatDate(request.requested_at, branchTimeZone)}</span>
+                    <span>Expires {formatDate(request.expires_at, branchTimeZone)}</span>
+                  </div>
+                  <label className="cmi-reset-reason">
+                    <span>Review reason</span>
+                    <textarea
+                      rows={2}
+                      maxLength={300}
+                      value={resetReasons[request.id] ?? ""}
+                      onChange={(event) => setResetReasons((current) => ({ ...current, [request.id]: event.target.value }))}
+                      placeholder="Record how the request was verified (10–300 characters)"
+                      disabled={processingResetId === request.id}
+                    />
+                  </label>
+                  <div className="cmi-reset-actions">
+                    <button
+                      className="cmi-button cmi-button-secondary"
+                      type="button"
+                      onClick={() => void reviewPasswordReset(request, "deny")}
+                      disabled={processingResetId !== null}
+                    >
+                      <XCircle size={15} /> Deny
+                    </button>
+                    <button
+                      className="cmi-button cmi-button-primary"
+                      type="button"
+                      onClick={() => void reviewPasswordReset(request, "approve")}
+                      disabled={processingResetId !== null}
+                    >
+                      <CheckCircle2 size={15} />
+                      {processingResetId === request.id ? "Processing…" : "Approve & send link"}
+                    </button>
+                  </div>
+                </article>
+              ))}
+              {!resetRequests.length && !loading && (
+                <div className="cmi-reset-empty">
+                  <ShieldCheck size={22} />
+                  <strong>No pending password-reset requests</strong>
+                  <p>New staff requests will appear here after the notification is sent to administrators.</p>
+                </div>
+              )}
+            </div>
           </div>}
 
           {!canReadContacts && !canCreateContacts && page === "Contacts" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Contact access is not granted</h3><p>Your assigned role has no contact-read capability for this branch.</p></div>}
