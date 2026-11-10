@@ -39,8 +39,8 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  0,
-  'no role permissions are granted before the one-time bootstrap is run'
+  65,
+  'the reviewed visitor MVP role baseline exists before first-admin bootstrap'
 );
 select ok(
   exists(select 1 from public.capability where code='staff.password_reset.manage' and is_active),
@@ -133,7 +133,7 @@ select is(
    from public.role_capability rc
    join public.capability cap on cap.id=rc.capability_id
    where cap.code in (
-     'contact.capture.create','prayer.oversight.read','care.oversight.read',
+     'prayer.oversight.read','care.oversight.read',
      'sms.campaign.send.scoped','report.export.scoped','access.capability.manage'
    )),
   0,
