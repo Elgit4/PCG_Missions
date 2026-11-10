@@ -66,8 +66,8 @@ select extensions.ok(
   ),
   'no client policies exist before trusted public projections and reviewed role grants'
 );
-select extensions.is((select count(*)::integer from public.role_capability),0,
-  'no unapproved role-capability grants exist');
+select extensions.is((select count(*)::integer from public.role_capability),65,
+  'the reviewed visitor MVP role baseline remains present');
 
 select extensions.ok(
   has_table_privilege('service_role','public.event','SELECT')
