@@ -55,7 +55,7 @@ select ok(
 create sequence public.cmi_default_acl_probe_seq;
 create table public.cmi_default_acl_probe(id bigint);
 create function public.cmi_default_acl_probe_fn()
-returns integer language sql as $ select 1 $;
+returns integer language sql as 'select 1';
 
 select ok(
   (select relrowsecurity from pg_class where oid='public.cmi_default_acl_probe'::regclass),
