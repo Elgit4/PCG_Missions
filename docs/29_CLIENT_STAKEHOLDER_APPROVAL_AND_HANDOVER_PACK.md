@@ -45,10 +45,11 @@ The database role catalogue already constrains role codes to these six values. T
 
 ## 4. Implemented first-administrator baseline
 
-The bootstrap function has been amended so the first Admin/Pastor receives only these branch-scoped control-plane grants:
+The bootstrap function has been amended so the first Admin/Pastor receives only these four branch-scoped control-plane grants:
 
 | Capability | Why it is needed |
 |---|---|
+| `staff.directory.read` | Read the minimum staff directory projection required to administer accounts and role assignments |
 | `staff.account.manage` | Provision, activate/deactivate and administer staff account lifecycle |
 | `access.role.assign` | Assign and revoke only the six defined staff roles |
 | `staff.password_reset.manage` | Review reset requests and initiate a one-time recovery link |
@@ -60,7 +61,7 @@ The bootstrap explicitly does **not** grant:
 - SMS provider configuration, campaign approval, campaign sending or automation;
 - any unapproved business-domain permission.
 
-The updated isolated database test asserts exactly these three grants and asserts that pastoral oversight, SMS, export and capability-policy editing remain absent. This is a narrow technical bootstrap rule, not a substitute for client sign-off of the operational role matrix.
+The updated isolated database test asserts exactly these four grants and asserts that pastoral oversight, SMS, export and capability-policy editing remain absent. This is a narrow technical bootstrap rule, not a substitute for client sign-off of the operational role matrix.
 
 ## 5. Recommended role permission baseline for client approval
 
