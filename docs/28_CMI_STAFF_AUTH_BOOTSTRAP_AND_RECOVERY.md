@@ -100,3 +100,17 @@ These do not grant pastoral oversight, contact/export, SMS or business-module pe
 - The current password-based authentication source and password-specific lifecycle SQL are drafts only and are not deployed.
 - Domain migrations, business grants, staff provisioning and production launch remain blocked pending stakeholder approval and staging verification.
 - The 11 informational RLS-enabled/no-policy advisor findings are intentional fail-closed behavior, not an authorization grant.
+
+
+## Bootstrap email-delivery failure — operator recovery boundary
+
+The one-time bootstrap endpoint is deliberately not a credential re-issuance endpoint. If the Auth identity and CMI first-admin profile have been provisioned but the temporary-credential email fails or its delivery is uncertain:
+
+1. Stop. Do not call `bootstrap-admin` again and do not delete the Auth user, staff profile, church or branch to make bootstrap appear unused.
+2. Treat the bootstrap as **consumed** once the first-admin profile exists, even if the email provider reports a failure. A provider timeout is not proof that the message was not delivered.
+3. Preserve the request/correlation ID and the email-provider delivery/error evidence in the restricted operational incident record. Do not record the temporary credential, bootstrap token, service-role key or recovery link.
+4. An authorised deployment operator must verify the configured administrator identity out-of-band against the approved stakeholder record and inspect the existing Auth user/profile linkage and initial branch scope. If any identity or provisioning state is ambiguous, stop and escalate; do not guess or overwrite.
+5. The current implementation has **no automated or self-service recovery route** for this partial-delivery state. Before any future deployment, implement and security-test a separate operator-controlled recovery process that issues a fresh single-use credential/recovery challenge to the already-verified mailbox, records an audit event, and cannot change the account identity, branch scope or permissions. The operator must not disclose or choose the administrator's permanent PIN.
+6. Until that separate recovery process exists and has been tested, this failure state is a release blocker. Do not deploy the current password-based draft or claim bootstrap delivery recovery is supported.
+
+The operator must not re-run bootstrap merely to obtain another email. The Edge Function cannot remove its own deployed secret; after a successful, verified first-admin credential setup, the deployment operator must remove `CMI_BOOTSTRAP_TOKEN` from the deployed function configuration and verify that it is no longer configured. The PIN authentication flow is not implemented, so this runbook does not authorise a production bootstrap today.
