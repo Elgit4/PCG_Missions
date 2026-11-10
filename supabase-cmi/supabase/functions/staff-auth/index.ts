@@ -859,7 +859,7 @@ Deno.serve(async (request: Request) => {
             `One-time temporary password: ${temporaryPassword}`,
             "Sign in with this email and temporary password. You must choose a new private password immediately after first sign-in. This temporary password expires in 24 hours.",
             "Do not forward this email. If you were not expecting this account, contact your church administrator.",
-          ].join("\\n"),
+          ].join("\n"),
         );
       } catch {
         console.error("staff invitation email delivery failed", {
