@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(48);
+select plan(49);
 
 select has_column(
   'public', 'staff_profile', 'must_change_password',
@@ -384,6 +384,23 @@ select lives_ok(
     'Approved staff appointment for field ministry.'
   )$sql$,
   'an authorised Admin/Pastor can provision a staff account and assign a role'
+);
+select throws_ok(
+  $sql$select public.cmi_create_staff_account(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    'Unauthorised Staff',
+    'unauthorised-staff@example.test',
+    (select branch_id from public.staff_role_assignment assignment
+     join public.staff_profile actor on actor.id = assignment.staff_profile_id
+     where actor.auth_user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'
+     limit 1),
+    'field_worker',
+    'Attempted account creation by a field worker.'
+  )$sql$,
+  '42501',
+  'staff provisioning is not authorised',
+  'a Field Worker cannot create staff accounts or assign roles'
 );
 select ok(
   (select must_change_password
