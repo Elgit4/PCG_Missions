@@ -116,17 +116,17 @@ select is(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  3,
+  4,
   'bootstrap grants only the minimum Admin/Pastor control-plane capabilities'
 );
 select is(
   (select count(*)::integer
    from public.role_capability rc
    join public.capability cap on cap.id=rc.capability_id
-   where cap.code in ('staff.account.manage','access.role.assign','staff.password_reset.manage')
+   where cap.code in ('staff.directory.read','staff.account.manage','access.role.assign','staff.password_reset.manage')
      and rc.scope_mode='branch'),
-  3,
-  'the first administrator can manage staff accounts, assign roles and review reset requests'
+  4,
+  'the first administrator can view the staff directory, manage staff accounts, assign roles and review reset requests'
 );
 select is(
   (select count(*)::integer
