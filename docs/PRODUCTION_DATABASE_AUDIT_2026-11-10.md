@@ -105,7 +105,7 @@ The following source and client-readiness changes were made after the initial ho
 - Clarified that the merged PR #26 sign-in flow currently uses email/password, while the product baseline specifies email + private PIN. This is a conformance blocker, not a decision to silently change the product requirement.
 - Updated the root README, backend workspace guide and documentation index to reflect the merged frontend source, the hosted security-only migration and the current non-deployed state.
 
-The isolated backend CI run for the latest source changes is currently being checked at commit `50049407b55ce739df754696dcb917145c06fb1b`: [GitHub Actions run 42824979317](https://github.com/Elgit4/PCG_Missions/actions/runs/42824979317). Do not treat this follow-up test as passing until GitHub reports a completed success on the final source commit.
+The isolated backend CI run for the latest source and test changes is currently in progress at commit `6b7aa14c50467989dbeafa0244c15596e8f0071c` (including the source changes through `50049407b55ce739df754696dcb917145c06fb1b`): [GitHub Actions run 42825105544](https://github.com/Elgit4/PCG_Missions/actions/runs/42825105544). Earlier attempts were cancelled by newer commits. Do not treat this follow-up test as passing until GitHub reports a completed success on the final source commit.
 
 The hosted production snapshot remains unchanged: zero CMI public application tables, one hosted security-remediation migration, zero deployed CMI Edge Functions, and no production Auth users or CMI records created by this work. Security, performance and health advisors returned no lints; the RLS-helper direct-execution checks remain false for `anon`, `authenticated` and `service_role`.
 
