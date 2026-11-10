@@ -142,21 +142,20 @@ For each item, the client should approve the recommended default or enter an alt
 
 ## 8. Authentication and account recovery decision
 
-**Product baseline:** Staff sign in using **email + private PIN**. This is the recorded product requirement in document 11 and is not an open choice in this handover pack. The merged PR #26 email/password implementation is non-conformant and remains on hold; do not deploy it as the staff authentication flow.
+**Product-owner decision (10 November 2026):** Staff sign in using **email + password** through Supabase Auth. This supersedes the earlier email + private PIN proposal in documents 11 and 30. The current password-based implementation is the selected direction for PCG Missions; do not build a custom PIN verifier or custom password store.
 
-### Required PIN lifecycle
+### Required password lifecycle
 
-- An administrator provisions an account and assigns one or more of the six approved roles; the administrator does not set or learn the staff member's permanent PIN.
-- The staff member receives a one-time activation invitation through a verified channel and establishes their own private PIN.
-- Never store a plaintext PIN, send it in email/SMS, or include it in logs, analytics, browser storage or audit metadata.
-- PIN verification must be server-side, use a per-user salted memory-hard verifier with a separately managed pepper/key, constant-time comparison, per-account and per-IP throttling, escalating delay/lockout, generic failure responses, and security-event audit records.
-- A short numeric PIN has low entropy. The final PIN length and retry policy must be explicitly approved by the product/security owner. Prefer a device-bound passkey or a stronger secret if the client cannot accept the residual risk of a short PIN.
-- Supabase session issuance must use a supported, reviewed mechanism. Do not invent a JWT signing endpoint or expose the Supabase service-role key to the browser.
-- Forgot PIN creates a generic-response request. The authorised administrator receives a notification and approves/denies with a reason. Approval sends a one-time activation/recovery challenge; the staff member establishes a new PIN. The administrator never receives or sets it.
-- Existing accounts must be reconciled, not bulk-deleted. No account deletion or credential reset is performed as part of this handover.
+- Admin/Pastor provisions the first administrator and subsequent staff accounts through protected server-side operations.
+- The system generates a cryptographically random, short-lived temporary password and emails it only to the verified account address.
+- The user signs in with the temporary password and must set a new private password before accessing the workspace.
+- Administrators may create accounts, deactivate/reactivate accounts, assign approved roles/scopes and review reset requests. They must never see or choose a user's permanent password.
+- Forgot password creates a generic-response, rate-limited request and notifies the authorised Admin/Pastor. The administrator approves or denies with a reason; approval issues a fresh temporary password by email and forces password replacement.
+- Temporary passwords must never be stored in plaintext, returned to the admin UI, written to logs or included in audit metadata. Supabase Auth manages password hashing and sessions.
+- Credential reset/deactivation must revoke other active sessions. Failed email delivery must leave access gated and provide a safe, audited retry path.
+- The one-time first-admin bootstrap must never be rerun to recover uncertain email delivery. A separate operator-controlled recovery mechanism is required before production launch.
 
-**Client approval still required:** PIN length, retry/lockout thresholds, activation channel, recovery identity-verification procedure, session lifetime and device/session revocation policy. These are security parameters within the agreed email + private PIN model, not permission to switch to email/password.
-
+**Production status:** The selected password flow has passing branch-level automated tests, but first-admin email-delivery recovery, production email configuration, deployment and staging/UAT remain release gates.
 ## 9. Client configuration and operational inputs
 
 The client must supply or approve these before staging/production configuration:
