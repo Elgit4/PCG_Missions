@@ -226,7 +226,7 @@ where target.auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'
 limit 1;
 
 select lives_ok(
-  $select public.cmi_claim_staff_password_reset_request(
+  $$select public.cmi_claim_staff_password_reset_request(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
     (select branch_id from public.staff_role_assignment assignment
      join public.staff_profile administrator
@@ -234,7 +234,7 @@ select lives_ok(
      where administrator.auth_user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'
      limit 1),
     'cccccccc-cccc-4ccc-8ccc-ccccccccccc1'
-  )$,
+  )$$,
   'an authorised administrator can claim another staff member reset request'
 );
 select is(
@@ -244,7 +244,7 @@ select is(
   'claiming a reset request records the processing state'
 );
 select lives_ok(
-  $select public.cmi_finish_staff_password_reset_request(
+  $$select public.cmi_finish_staff_password_reset_request(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
     (select branch_id from public.staff_role_assignment assignment
      join public.staff_profile administrator
@@ -254,7 +254,7 @@ select lives_ok(
     'cccccccc-cccc-4ccc-8ccc-ccccccccccc1',
     'approved',
     'Verified the request with the staff member.'
-  )$,
+  )$$,
   'an authorised administrator can approve another staff member reset request'
 );
 select is(
@@ -279,9 +279,9 @@ select is(
   'the approving administrator is recorded on the request'
 );
 select lives_ok(
-  $select public.cmi_complete_staff_password_change(
+  $$select public.cmi_complete_staff_password_change(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'
-  )$,
+  )$$,
   'the staff member can complete the approved password recovery'
 );
 select is(
