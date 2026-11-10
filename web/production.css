@@ -1118,3 +1118,203 @@ button, input, select, textarea { font: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .cmi-skip-link { transition: none; }
 }
+
+
+/* -------------------------------------------------------------------------- */
+/* Staff authentication and administrator password-reset review               */
+/* -------------------------------------------------------------------------- */
+.staff-login-auth-wrap { width: min(100%, 510px); }
+.staff-login-auth-form { display: grid; gap: 15px; margin-top: 4px; }
+.staff-login-auth-field { display: grid; gap: 8px; color: #cbd3e6; font-size: 11px; font-weight: 650; }
+.staff-login-auth-field > span { color: #b6c2db; font-size: 11px; }
+.staff-login-auth-field input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid #35425f;
+  border-radius: 12px;
+  outline: none;
+  background: #0b1425;
+  color: #f3f5ff;
+  font: 12px "DM Sans Variable", sans-serif;
+  color-scheme: dark;
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+.staff-login-auth-field input::placeholder { color: #73819f; }
+.staff-login-auth-field input:focus {
+  border-color: #8a91ff;
+  background: #0e182c;
+  box-shadow: 0 0 0 3px rgb(138 145 255 / 20%);
+}
+.staff-login-password-field { position: relative; }
+.staff-login-password-field input { padding-right: 48px; }
+.staff-login-password-toggle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #94a1bd;
+}
+.staff-login-password-toggle:hover { background: #1c2942; color: #f0f3ff; }
+.staff-login-submit {
+  min-height: 48px;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+  border: 1px solid #8e94ff;
+  border-radius: 12px;
+  background: #858cff;
+  color: #0a0e1e;
+  font: 760 12px "DM Sans Variable", sans-serif;
+  box-shadow: 0 7px 18px rgb(112 121 237 / 20%);
+  transition: transform .16s ease, background .16s ease, box-shadow .16s ease;
+}
+.staff-login-submit:hover:not(:disabled) { transform: translateY(-1px); background: #a0a5ff; box-shadow: 0 9px 24px rgb(112 121 237 / 27%); }
+.staff-login-submit:active:not(:disabled) { transform: scale(.99); }
+.staff-login-submit:disabled { cursor: not-allowed; opacity: .6; }
+.staff-login-auth-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  margin-top: 9px;
+}
+.staff-login-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  padding: 6px 0;
+  border: 0;
+  background: transparent;
+  color: #b4baff;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+}
+.staff-login-inline-link:hover { color: #e0e2ff; text-decoration: underline; text-underline-offset: 3px; }
+.staff-login-show-password { min-height: 34px; margin-top: -6px; }
+.staff-login-password-hint { margin: -2px 0 0; color: #8e9bb8; font-size: 10px; line-height: 1.65; }
+.staff-login-security-reminder { display: inline-flex; align-items: center; gap: 7px; color: #9eaacd; font-size: 10px; }
+.staff-login-auth-notice {
+  margin: 0 0 16px;
+  padding: 13px 14px;
+  border: 1px solid #285d50;
+  border-radius: 12px;
+  background: #12352f;
+  color: #a1e8cf;
+  font-size: 11px;
+  line-height: 1.65;
+}
+.cmi-auth-loading {
+  min-height: 100svh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 14px;
+  background: #090d18;
+  color: #9eabc4;
+  font: 11px "DM Sans Variable", sans-serif;
+}
+.cmi-auth-spinner {
+  width: 30px;
+  height: 30px;
+  border: 2px solid #2c3852;
+  border-top-color: #a3a9ff;
+  border-radius: 50%;
+  animation: cmi-auth-spin .75s linear infinite;
+}
+@keyframes cmi-auth-spin { to { transform: rotate(360deg); } }
+
+.cmi-reset-count {
+  padding: 7px 10px;
+  border: 1px solid #65502e;
+  border-radius: 999px;
+  background: #30271c;
+  color: #e8c67f;
+  font-size: 9px;
+  font-weight: 750;
+  white-space: nowrap;
+}
+.cmi-reset-list { display: grid; gap: 12px; }
+.cmi-reset-card {
+  display: grid;
+  gap: 14px;
+  padding: 17px;
+  border: 1px solid var(--cmi-border);
+  border-radius: 14px;
+  background: #101a2d;
+}
+.cmi-reset-card-top { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.cmi-reset-avatar {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  flex: 0 0 42px;
+  place-items: center;
+  border: 1px solid #4a527f;
+  border-radius: 13px;
+  background: #242d4c;
+  color: #b4baff;
+}
+.cmi-reset-person { display: grid; flex: 1; min-width: 0; gap: 4px; }
+.cmi-reset-person strong { overflow-wrap: anywhere; color: #f0f3ff; font-size: 12px; }
+.cmi-reset-person span { overflow-wrap: anywhere; color: #96a4c0; font-size: 10px; }
+.cmi-reset-meta { display: flex; flex-wrap: wrap; gap: 8px 16px; color: #8492af; font-size: 9px; }
+.cmi-reset-reason { display: grid; gap: 7px; color: #aebbd3; font-size: 10px; font-weight: 650; }
+.cmi-reset-reason textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  padding: 10px 12px;
+  border: 1px solid #35425f;
+  border-radius: 10px;
+  outline: none;
+  background: #0a1425;
+  color: #eef2ff;
+  font: 11px/1.5 "DM Sans Variable", sans-serif;
+}
+.cmi-reset-reason textarea::placeholder { color: #74819f; }
+.cmi-reset-reason textarea:focus { border-color: #858cff; box-shadow: 0 0 0 3px rgb(133 140 255 / 18%); }
+.cmi-reset-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 9px; }
+.cmi-reset-actions .cmi-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.cmi-reset-empty {
+  display: grid;
+  justify-items: center;
+  gap: 9px;
+  padding: 34px 18px;
+  border: 1px dashed #34415d;
+  border-radius: 13px;
+  text-align: center;
+}
+.cmi-reset-empty svg { color: #929bff; }
+.cmi-reset-empty strong { color: #e9edfa; font-size: 12px; }
+.cmi-reset-empty p { max-width: 390px; margin: 0; color: #8f9db9; font-size: 10px; line-height: 1.6; }
+
+@media (max-width: 680px) {
+  .staff-login-auth-wrap { padding: 20px 17px 18px; }
+  .staff-login-auth-form { gap: 13px; }
+  .staff-login-auth-field input { min-height: 48px; font-size: 13px; }
+  .staff-login-submit { min-height: 49px; }
+  .staff-login-auth-bottom { margin-top: 7px; }
+  .cmi-reset-card { padding: 14px 12px; }
+  .cmi-reset-card-top { flex-wrap: wrap; }
+  .cmi-reset-meta { display: grid; gap: 5px; }
+  .cmi-reset-actions { display: grid; grid-template-columns: 1fr 1.5fr; }
+  .cmi-reset-actions .cmi-button { padding: 0 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cmi-auth-spinner { animation-duration: 1.5s; }
+  .staff-login-auth-field input,
+  .staff-login-submit,
+  .staff-login-password-toggle { transition: none; }
+}
