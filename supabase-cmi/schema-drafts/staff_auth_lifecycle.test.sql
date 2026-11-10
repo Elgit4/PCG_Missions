@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(41);
+select plan(43);
 
 select has_column(
   'public', 'staff_profile', 'must_change_password',
@@ -116,8 +116,28 @@ select is(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  1,
-  'bootstrap does not grant any unapproved business capabilities'
+  3,
+  'bootstrap grants only the minimum Admin/Pastor control-plane capabilities'
+);
+select is(
+  (select count(*)::integer
+   from public.role_capability rc
+   join public.capability cap on cap.id=rc.capability_id
+   where cap.code in ('staff.account.manage','access.role.assign','staff.password_reset.manage')
+     and rc.scope_mode='branch'),
+  3,
+  'the first administrator can manage staff accounts, assign roles and review reset requests'
+);
+select is(
+  (select count(*)::integer
+   from public.role_capability rc
+   join public.capability cap on cap.id=rc.capability_id
+   where cap.code in (
+     'contact.capture.create','prayer.oversight.read','care.oversight.read',
+     'sms.campaign.send.scoped','report.export.scoped','access.capability.manage'
+   )),
+  0,
+  'bootstrap grants no business-domain, pastoral oversight, SMS, export or policy-editing privileges'
 );
 select throws_ok(
   'select public.cmi_bootstrap_first_admin(''aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'', ''first-admin@example.test'', ''First Administrator'', ''PCG Missions Test Church'', ''Main Test Branch'')',
