@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(43);
+select plan(44);
 
 select has_column(
   'public', 'staff_profile', 'must_change_password',
@@ -262,6 +262,13 @@ select is(
    where id = 'cccccccc-cccc-4ccc-8ccc-ccccccccccc1'),
   'processing',
   'claiming a reset request records the processing state'
+);
+select ok(
+  (select must_change_password
+      and password_setup_expires_at > pg_catalog.now()
+    from public.staff_profile
+    where auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'),
+  'the target account is gated immediately when an administrator claims the reset'
 );
 select lives_ok(
   $$select public.cmi_finish_staff_password_reset_request(
