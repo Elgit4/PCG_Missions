@@ -91,7 +91,7 @@ The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role sche
 
 - The CMI guide and master specification supersede conflicting earlier ChurchConnect requirements.
 - Six operational roles are defined; users may hold multiple roles, subject to record scope.
-- Staff sign in with administrator-issued email and PIN.
+- Staff sign in with email + password through Supabase Auth; temporary passwords are used only for first access/reset and must be replaced immediately.
 - Public visitor pages are separate from staff pages.
 - Offline support is limited to queued field capture, cached pickers and previously opened event check-in data.
 - Manual, bulk and automated SMS are in scope; WhatsApp automation is not included. SMS must remain disabled until provider, sender-ID, consent/opt-out and budget controls are configured and tested.
@@ -113,4 +113,4 @@ The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role sche
 
 - [CMI staff authentication — bootstrap and recovery runbook](28_CMI_STAFF_AUTH_BOOTSTRAP_AND_RECOVERY.md)
 
-The current authentication implementation uses email/password and does not yet conform to the email + private PIN product requirement. The client must confirm the credential model before the authentication slice is approved for release.
+The product owner confirmed email/password authentication on 10 November 2026. The earlier PIN proposal in document 30 is superseded. See documents 29 and 31 for the current credential lifecycle and remaining release gates.
