@@ -77,7 +77,7 @@ Prayer requests and care notes are sensitive pastoral information. Access must b
 
 ## 5. Authentication and account lifecycle
 
-- Staff sign in using the email and PIN issued by an administrator.
+- Staff sign in using email and password through Supabase Auth. Administrators issue only random, short-lived temporary passwords; users set and retain their own permanent passwords.
 - PINs are private credentials and must never be shared or exposed in support requests.
 - Administrators provision and manage staff access according to their authority.
 - Sign-out is required on shared devices; device locking is recommended.
@@ -91,7 +91,7 @@ The exact PIN lifecycle (length, expiry, reset/reissue and recovery verification
 
 | Module | Core capability |
 |---|---|
-| Authentication | Staff email + PIN sign-in, sign-out and account access lifecycle |
+| Authentication | Staff email/password sign-in, sign-out and account access lifecycle |
 | Contacts | Contact records, capture, notes, history, duplicate merge and assignment |
 | Follow-up | Lists, assigned work, due dates, priorities, outcomes and overdue tracking |
 | Prayer | Restricted prayer requests, assignment, expiry, update and answered status |
@@ -181,7 +181,7 @@ Announcements may be delivered through in-app and SMS channels only where config
 
 The product is not ready for release until:
 1. All six roles and multi-role combinations have an approved capability/scope matrix.
-2. Email + PIN authentication and recovery/reissue controls pass security tests.
+2. Supabase email/password authentication, temporary-password onboarding, first-login replacement, administrator-reviewed recovery and session revocation pass security tests.
 3. Contact capture, duplicate merge and follow-up history work on mobile.
 4. Offline queue reliably syncs and reports failures without losing data.
 5. Prayer isolation is verified with positive and negative authorization tests.
