@@ -104,7 +104,7 @@ describe("PcgAuthClient", () => {
     const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
 
     await client.signIn("staff@example.test", "temporary-password");
-    await expect(client.updatePassword("password")).rejects.toMatchObject({
+    await expect(client.completePasswordChange("password")).rejects.toMatchObject({
       code: "WEAK_PASSWORD",
     });
     expect(fetcher).toHaveBeenCalledTimes(1);
