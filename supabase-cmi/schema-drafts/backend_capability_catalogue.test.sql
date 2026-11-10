@@ -204,6 +204,14 @@ select extensions.is(
 );
 
 
+-- Remove the baseline assigned identity grant only within this rollback-only
+-- test so the following assertion can prove that team scope alone is insufficient.
+delete from public.role_capability rc
+using public.role r, public.capability c
+where rc.role_id = r.id and rc.capability_id = c.id
+  and r.code = 'field_worker' and c.code = 'contact.identity.capture'
+  and rc.scope_mode = 'assigned';
+
 insert into public.role_capability(role_id, capability_id, scope_mode)
 select r.id, c.id, 'team'
 from public.role r
