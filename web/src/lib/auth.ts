@@ -264,26 +264,6 @@ export class PcgAuthClient {
     return token ? this.readSession() : null;
   }
 
-  async updatePassword(password: string): Promise<void> {
-    if (password.length < 12) {
-      throw new AuthClientError(400, "WEAK_PASSWORD", "Use at least 12 characters for your new password.");
-    }
-    if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
-      throw new AuthClientError(400, "WEAK_PASSWORD", "Use uppercase and lowercase letters, a number and a symbol.");
-    }
-    const token = await this.getAccessToken();
-    if (!token) throw new AuthClientError(401, "AUTH_REQUIRED", "Sign in again before changing your password.");
-    await this.requestAuth<AuthResponse>(
-      "user",
-      {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ password }),
-      },
-      "The new password could not be saved.",
-    );
-  }
-
   async completePasswordChange(password: string): Promise<void> {
     if (
       password.length < 12 || password.length > 128 ||
