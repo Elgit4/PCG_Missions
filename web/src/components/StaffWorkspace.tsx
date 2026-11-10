@@ -35,7 +35,10 @@ function statusLabel(status: string): string {
 
 export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps) {
   const [branchId, setBranchId] = useState(session.branches[0]?.id ?? "");
-  const [page, setPage] = useState<Page>("Overview");
+  const [page, setPage] = useState<Page>(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "access-requests") return "Access requests";
+    return "Overview";
+  });
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [tasks, setTasks] = useState<FollowUpTask[]>([]);
   const [resetRequests, setResetRequests] = useState<StaffPasswordResetRequest[]>([]);
