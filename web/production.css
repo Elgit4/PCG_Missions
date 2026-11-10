@@ -1053,3 +1053,34 @@ button, input, select, textarea { font: inherit; }
     transition-duration: .01ms !important;
   }
 }
+
+
+/* Keep microcopy readable on compact phones */
+.cmi-branch-picker span,
+.cmi-breadcrumb,
+.cmi-stat-card > span,
+.cmi-mobile-brand small,
+.cmi-table td::before,
+.cmi-table td small,
+.cmi-nav button,
+.cmi-nav button em,
+.cmi-footer,
+.staff-login-security-label,
+.staff-login-security-label i,
+.staff-login-lifecycle-state,
+.staff-login-step-copy small,
+.staff-login-steps li > em,
+.staff-login-brand-copy small {
+  font-size: 9px;
+}
+.staff-login-step-copy strong { font-size: 11px; }
+@media (max-width: 680px) {
+  .cmi-nav button { font-size: 10px; }
+  .cmi-nav button em { font-size: 9px; }
+  .cmi-breadcrumb, .cmi-mobile-brand small { font-size: 9px; }
+  .cmi-table td::before, .cmi-table td small { font-size: 9px; }
+  .cmi-footer { font-size: 9px; }
+}
+@media (max-width: 360px) {
+  .staff-login-security-label i { font-size: 9px; }
+}
