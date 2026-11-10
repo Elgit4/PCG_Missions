@@ -92,6 +92,16 @@ function clients() {
   return { auth, service };
 }
 
+function generateTemporaryPassword(): string {
+  // 256 bits of cryptographic randomness plus guaranteed character classes
+  // required by the frontend password policy. Never log or persist this value.
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
+  const random = btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_")
+    .replace(/=+$/g, "");
+  return `${random}A1a`;
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (character) =>
     ({
@@ -886,54 +896,23 @@ Deno.serve(async (request: Request) => {
       }
       if (claimError) throw new Error("PASSWORD_RESET_REQUEST_CLAIM_FAILED");
       const claimed = claim as
-        | { target_email?: string; target_name?: string }
+        | {
+          target_auth_user_id?: string;
+          target_email?: string;
+          target_name?: string;
+        }
         | null;
       const email = normalizeEmail(claimed?.target_email);
-      if (!email) throw new Error("PASSWORD_RESET_TARGET_INVALID");
-
-      try {
-        const redirectTo = `${APP_URL}/?auth=recovery`;
-        const { data: linkData, error: linkError } = await service.auth.admin
-          .generateLink({
-            type: "recovery",
-            email,
-            options: { redirectTo },
-          });
-        const actionLink = linkData?.properties?.action_link;
-        if (linkError || !actionLink || typeof actionLink !== "string") {
-          throw new Error("AUTH_RECOVERY_LINK_GENERATION_FAILED");
-        }
-        const safeName = escapeHtml(claimed?.target_name ?? "staff member");
-        const safeLink = escapeHtml(actionLink);
-        await sendEmail(
-          [email],
-          "PCG Missions — password reset approved",
-          `<p>Hello ${safeName},</p>
-           <p>Your password-reset request has been approved by a church administrator.</p>
-           <p><a href="${safeLink}">Set a new PCG Missions password</a></p>
-           <p>This is a single-use recovery link. Do not forward it. If you did not request this reset, contact your church administrator immediately.</p>`,
-          `Hello ${
-            claimed?.target_name ?? "staff member"
-          },\nYour password-reset request has been approved. Use this single-use link to set a new password:\n${actionLink}\nDo not forward the link. If you did not request this reset, contact your church administrator immediately.`,
-        );
-      } catch {
-        await service.rpc("cmi_finish_staff_password_reset_request", {
-          p_actor_auth_user_id: required.authUser.id,
-          p_branch_id: parsed.branch_id,
-          p_request_id: requestId,
-          p_action: "pending",
-          p_reason:
-            "Recovery email delivery failed; request returned to pending review.",
-        });
-        return fail(
-          "RESET_EMAIL_DELIVERY_FAILED",
-          "The recovery email could not be delivered. The request remains available for retry.",
-          503,
-          origin,
-          id,
-        );
+      const targetAuthUserId = parseResetRequestId(
+        claimed?.target_auth_user_id ?? "",
+      );
+      if (!email || !targetAuthUserId) {
+        throw new Error("PASSWORD_RESET_TARGET_INVALID");
       }
 
+      // Mark the profile as setup-required before replacing its Auth password.
+      // If password update or delivery fails, the request is returned to the
+      // pending queue while the account remains blocked from staff operations.
       const { error: finishError } = await service.rpc(
         "cmi_finish_staff_password_reset_request",
         {
@@ -945,11 +924,77 @@ Deno.serve(async (request: Request) => {
         },
       );
       if (finishError) {
+        await service.rpc("cmi_finish_staff_password_reset_request", {
+          p_actor_auth_user_id: required.authUser.id,
+          p_branch_id: parsed.branch_id,
+          p_request_id: requestId,
+          p_action: "pending",
+          p_reason: "Approval finalization failed; request returned for retry.",
+        });
         throw new Error("PASSWORD_RESET_REQUEST_APPROVAL_FAILED");
       }
+
+      const temporaryPassword = generateTemporaryPassword();
+      const { error: passwordError } = await service.auth.admin.updateUserById(
+        targetAuthUserId,
+        { password: temporaryPassword },
+      );
+      if (passwordError) {
+        await service.rpc("cmi_finish_staff_password_reset_request", {
+          p_actor_auth_user_id: required.authUser.id,
+          p_branch_id: parsed.branch_id,
+          p_request_id: requestId,
+          p_action: "pending",
+          p_reason: "Temporary credential update failed; request returned for retry.",
+        });
+        return fail(
+          "RESET_CREDENTIAL_UPDATE_FAILED",
+          "The temporary password could not be issued. The request remains available for administrator retry.",
+          503,
+          origin,
+          id,
+        );
+      }
+
+      try {
+        const safeName = escapeHtml(claimed?.target_name ?? "staff member");
+        const safePassword = escapeHtml(temporaryPassword);
+        await sendEmail(
+          [email],
+          "PCG Missions — temporary password issued",
+          `<p>Hello ${safeName},</p>
+           <p>Your password-reset request has been approved by a church administrator.</p>
+           <p>Your temporary password is:</p>
+           <p><strong><code>${safePassword}</code></strong></p>
+           <p>Sign in with your registered email address and this temporary password. You must create a new private password before accessing PCG Missions.</p>
+           <p>This temporary password expires within the reset request's validity window. Do not forward it. If you did not request this reset, contact your church administrator immediately.</p>`,
+          `Hello ${claimed?.target_name ?? "staff member"},\\nYour password-reset request has been approved. Your temporary password is: ${temporaryPassword}\\nSign in with your registered email address. You must create a new private password before accessing PCG Missions. Do not forward this message. If you did not request this reset, contact your church administrator immediately.`,
+        );
+      } catch {
+        await service.rpc("cmi_finish_staff_password_reset_request", {
+          p_actor_auth_user_id: required.authUser.id,
+          p_branch_id: parsed.branch_id,
+          p_request_id: requestId,
+          p_action: "pending",
+          p_reason:
+            "Temporary password email delivery failed; request returned to pending review.",
+        });
+        return fail(
+          "RESET_EMAIL_DELIVERY_FAILED",
+          "The temporary password could not be emailed. The account remains restricted and the request is available for administrator retry.",
+          503,
+          origin,
+          id,
+        );
+      }
+
       return response(
         {
-          data: { status: "approved", recovery_email_sent: true },
+          data: {
+            status: "approved",
+            temporary_password_sent: true,
+            must_change_password: true,
+          },
           request_id: id,
         },
         200,
