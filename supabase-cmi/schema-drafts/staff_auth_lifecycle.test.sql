@@ -371,7 +371,7 @@ values (
 );
 
 select lives_ok(
-  $select public.cmi_create_staff_account(
+  $sql$select public.cmi_create_staff_account(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
     'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
     'New Staff Member',
