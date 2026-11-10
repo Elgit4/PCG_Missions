@@ -24,15 +24,15 @@ The hosted Supabase project `cgwffpxlwgbnlinzwfoj` has the 11-table identity/aut
 
 The 11 informational `rls_enabled_no_policy` security-advisor notices are intentional fail-closed behavior pending approved policies. The performance advisor no longer reports unindexed foreign keys; unused-index notices are expected before application data and query traffic exist. This is an initial foundation migration only, not a complete application schema or production launch.
 
-The product owner confirmed Supabase email/password authentication on 10 November 2026. The earlier email + PIN proposal is superseded; see [the current authentication baseline](../docs/31_VISITOR_MVP_AUTHENTICATION_AUTHORIZATION_BASELINE.md) and [handover decision](../docs/29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md). The password lifecycle has passing branch-level tests, but first-admin delivery recovery, permanent domain migrations, production Edge Function deployment, email configuration, staging/UAT and remaining module workflows are not complete. Production remains NO-GO.
+The product owner confirmed Supabase email/password authentication on 10 November 2026. The earlier email + PIN proposal is superseded; see [the current authentication baseline](../docs/31_VISITOR_MVP_AUTHENTICATION_AUTHORIZATION_BASELINE.md) and [handover decision](../docs/29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md). The password lifecycle has passing branch-level unit/integration tests, but first-admin delivery recovery, production Edge Function deployment, email configuration, staging/UAT and remaining module workflows are not complete. The domain schema sources have now been promoted into permanent ordered migration files on the feature branch; they have not been applied to the hosted project. Production remains NO-GO.
 
 ## Current source layout
 
-- `supabase/migrations/`: permanent CMI identity/authorization foundation and hosted RLS-helper privilege-remediation migrations. Domain schemas remain in `schema-drafts/`.
-- `supabase/tests/`: foundation pgTAP suite.
-- `schema-drafts/`: reviewable domain SQL and pgTAP drafts, not yet permanent migration history. The capability catalogue/contact-capture and follow-up task transactions are also validated from this workspace.
+- `supabase/migrations/`: ordered permanent CMI migrations for the identity foundation, contacts/follow-up, restricted pastoral records, events/attendance/public content, capability catalogue, trusted follow-up/pastoral operations, staff access/auth lifecycle, visitor authorization and hosted RLS-helper privilege remediation.
+- `supabase/tests/`: foundation pgTAP suite; the backend CI stages matching domain pgTAP suites from `schema-drafts/` before running the complete migration/test sequence.
+- `schema-drafts/`: retained as reviewable source copies and test fixtures. The SQL now has matching permanent migration files; do not create temporary duplicate migrations in CI.
 
-### Domain drafts
+### Domain schema sources
 
 1. `contacts_followup_domain.sql` and matching test.
 2. `restricted_pastoral_domain.sql` and matching test.
