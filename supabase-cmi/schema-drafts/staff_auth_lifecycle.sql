@@ -556,6 +556,7 @@ as $$
 declare
   v_actor_profile_id uuid;
   v_target_profile_id uuid;
+  v_request_expires_at timestamptz;
 begin
   select id into v_actor_profile_id
   from public.staff_profile
