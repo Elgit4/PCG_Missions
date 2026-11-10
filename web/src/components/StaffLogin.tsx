@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   ArrowLeft,
   CalendarDays,
@@ -42,6 +42,14 @@ export function StaffLogin({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState("");
+
+  useEffect(() => {
+    setPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowPassword(false);
+    setLocalError("");
+  }, [view]);
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
