@@ -310,7 +310,7 @@ export class CmiApiClient {
       no_change?: boolean;
     }>(
       "staff-access-operations",
-      \`/staff/\${encodeURIComponent(staffProfileId)}/accounts/\${action}\`,
+      `/staff/${encodeURIComponent(staffProfileId)}/accounts/${action}`,
       { method: "POST", body: { branch_id: branchId, reason } },
     );
   }
