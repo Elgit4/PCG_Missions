@@ -13,6 +13,41 @@
 
 begin;
 
+create extension if not exists btree_gist with schema extensions;
+
+-- The browser application uses Edge Functions, not direct public-schema access.
+-- Remove Supabase's broad public-schema grants and default privileges for
+-- objects created by the migration owner. Trusted functions receive explicit
+-- grants in their reviewed schema slices.
+revoke usage on schema public from public, anon, authenticated;
+grant usage on schema public to service_role;
+
+alter default privileges for role postgres in schema public
+  revoke all on tables from public, anon, authenticated, service_role;
+alter default privileges for role postgres in schema public
+  revoke all on sequences from public, anon, authenticated, service_role;
+alter default privileges for role postgres in schema public
+  revoke execute on functions from public, anon, authenticated, service_role;
+
+-- PostgreSQL grants EXECUTE on newly created functions to PUBLIC by default.
+-- Schema-specific default ACLs cannot subtract that global default, so remove
+-- the global PUBLIC function default for objects created by postgres as well.
+-- Reviewed Edge Function paths receive only their explicit grants.
+alter default privileges for role postgres
+  revoke execute on functions from public;
+
+-- Supabase creates this SECURITY DEFINER event-trigger helper in hosted
+-- projects. Its trigger remains installed; remove only direct SQL/API execute
+-- rights. CI verifies that the event trigger still auto-enables RLS.
+do $cmi$
+begin
+  if to_regprocedure('public.rls_auto_enable()') is not null then
+    execute 'revoke all on function public.rls_auto_enable() from public, anon, authenticated, service_role';
+  end if;
+end;
+$cmi$;
+
+
 create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
 
@@ -149,6 +184,19 @@ create index staff_role_assignment_branch_active_idx
   on public.staff_role_assignment(branch_id, role_id, staff_profile_id)
   where ends_at is null and revoked_at is null;
 
+-- Prevent overlapping time-bounded assignments, including concurrent inserts.
+-- The unique partial index above handles the common open-ended case; this
+-- exclusion constraint closes the gap for finite, overlapping intervals.
+alter table public.staff_role_assignment
+  add constraint staff_role_assignment_no_overlap_excl
+  exclude using gist (
+    staff_profile_id with =,
+    role_id with =,
+    branch_id with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  )
+  where (revoked_at is null);
+
 create table public.team (
   id uuid primary key default gen_random_uuid(),
   branch_id uuid not null references public.branch(id) on delete restrict,
@@ -185,6 +233,15 @@ create unique index staff_team_membership_one_active_uq
   on public.staff_team_membership(staff_profile_id, team_id)
   where ends_at is null and revoked_at is null;
 
+alter table public.staff_team_membership
+  add constraint staff_team_membership_no_overlap_excl
+  exclude using gist (
+    staff_profile_id with =,
+    team_id with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  )
+  where (revoked_at is null);
+
 create table public.service_area (
   id uuid primary key default gen_random_uuid(),
   branch_id uuid not null references public.branch(id) on delete restrict,
@@ -214,6 +271,14 @@ create table public.staff_area_coverage (
 create unique index staff_area_coverage_one_active_uq
   on public.staff_area_coverage(staff_profile_id, service_area_id)
   where ends_at is null;
+
+alter table public.staff_area_coverage
+  add constraint staff_area_coverage_no_overlap_excl
+  exclude using gist (
+    staff_profile_id with =,
+    service_area_id with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  );
 
 -- Maintain timestamps on mutable catalogue/configuration rows.
 create trigger church_set_updated_at before update on public.church

@@ -5,7 +5,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(25);
+select plan(29);
 
 select has_table('public', 'contact', 'contact table exists');
 select has_table('public', 'contact_capture', 'contact capture table exists');
@@ -170,6 +170,55 @@ select extensions.throws_ok(
         'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
       ) $q$,
   '23514', null, 'contact assignment forbids simultaneous user and team targets'
+);
+
+select extensions.lives_ok(
+  $q$insert into public.contact_assignment(
+    contact_id,branch_id,assignee_user_id,assigned_by,starts_at,ends_at
+  ) values (
+    '40000000-0000-4000-8000-000000000001',
+    '20000000-0000-4000-8000-000000000001',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    now()-interval '1 day',now()+interval '5 days'
+  )$q$,
+  'finite contact assignment period is accepted'
+);
+select extensions.throws_ok(
+  $q$insert into public.contact_assignment(
+    contact_id,branch_id,assignee_user_id,assigned_by,starts_at,ends_at
+  ) values (
+    '40000000-0000-4000-8000-000000000001',
+    '20000000-0000-4000-8000-000000000001',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    now(),now()+interval '6 days'
+  )$q$,
+  '23P01',null,'overlapping assignments to the same contact and staff member are rejected'
+);
+select extensions.lives_ok(
+  $q$insert into public.contact_assignment(
+    contact_id,branch_id,team_id,assigned_by,starts_at,ends_at
+  ) values (
+    '40000000-0000-4000-8000-000000000001',
+    '20000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000001',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    now()-interval '1 day',now()+interval '5 days'
+  )$q$,
+  'finite contact team-assignment period is accepted'
+);
+select extensions.throws_ok(
+  $q$insert into public.contact_assignment(
+    contact_id,branch_id,team_id,assigned_by,starts_at,ends_at
+  ) values (
+    '40000000-0000-4000-8000-000000000001',
+    '20000000-0000-4000-8000-000000000001',
+    '30000000-0000-4000-8000-000000000001',
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    now(),now()+interval '6 days'
+  )$q$,
+  '23P01',null,'overlapping assignments to the same contact and team are rejected'
 );
 
 select extensions.throws_ok(

@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(72);
+select plan(76);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -192,6 +192,55 @@ select extensions.throws_ok(
  values ('51000000-0000-4000-8000-000000000001','21000000-0000-4000-8000-000000000001',
  '31000000-0000-4000-8000-000000000002','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb')$q$,
  '23503',null,'event team assignment cannot cross branches');
+
+select extensions.lives_ok(
+ $q$insert into public.event_staff_assignment(
+   event_id,branch_id,staff_auth_user_id,assignment_role,assigned_by,starts_at,ends_at
+ ) values (
+   '51000000-0000-4000-8000-000000000001',
+   '21000000-0000-4000-8000-000000000001',
+   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+   'support','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+   now()-interval '1 day',now()+interval '5 days'
+ )$q$,
+ 'finite event staff assignment period is accepted'
+);
+select extensions.throws_ok(
+ $q$insert into public.event_staff_assignment(
+   event_id,branch_id,staff_auth_user_id,assignment_role,assigned_by,starts_at,ends_at
+ ) values (
+   '51000000-0000-4000-8000-000000000001',
+   '21000000-0000-4000-8000-000000000001',
+   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+   'support','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+   now(),now()+interval '6 days'
+ )$q$,
+ '23P01',null,'overlapping event assignment for the same staff member and role is rejected'
+);
+select extensions.lives_ok(
+ $q$insert into public.event_team_assignment(
+   event_id,branch_id,team_id,assignment_role,assigned_by,starts_at,ends_at
+ ) values (
+   '51000000-0000-4000-8000-000000000001',
+   '21000000-0000-4000-8000-000000000001',
+   '31000000-0000-4000-8000-000000000001',
+   'support','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+   now()-interval '1 day',now()+interval '5 days'
+ )$q$,
+ 'finite event team assignment period is accepted'
+);
+select extensions.throws_ok(
+ $q$insert into public.event_team_assignment(
+   event_id,branch_id,team_id,assignment_role,assigned_by,starts_at,ends_at
+ ) values (
+   '51000000-0000-4000-8000-000000000001',
+   '21000000-0000-4000-8000-000000000001',
+   '31000000-0000-4000-8000-000000000001',
+   'support','bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+   now(),now()+interval '6 days'
+ )$q$,
+ '23P01',null,'overlapping event assignment for the same team and role is rejected'
+);
 
 insert into public.event_registration(
  id,event_id,branch_id,contact_id,attendee_name_snapshot,registration_source,client_request_id

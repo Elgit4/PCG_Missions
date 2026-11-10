@@ -1,0 +1,31 @@
+/**
+ * CORS preflight response for the staff-access-operations Edge Function.
+ *
+ * HTTP 204 responses must not contain a response body. Keep this helper
+ * separate from the JSON response envelope so OPTIONS handling cannot
+ * accidentally serialize an object into a no-content response.
+ */
+export function createPreflightResponse(
+  origin: string | null,
+  allowedOrigins: ReadonlySet<string>,
+  requestId: string,
+): Response {
+  const headers = new Headers({
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "Authorization, apikey, Content-Type, x-client-info",
+    "Access-Control-Max-Age": "600",
+    "Cache-Control": "no-store",
+    "Pragma": "no-cache",
+    "Vary": "Origin",
+    "X-Request-Id": requestId,
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+  });
+
+  if (origin && allowedOrigins.has(origin)) {
+    headers.set("Access-Control-Allow-Origin", origin);
+  }
+
+  return new Response(null, { status: 204, headers });
+}

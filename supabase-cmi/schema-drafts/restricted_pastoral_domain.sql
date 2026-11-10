@@ -70,6 +70,16 @@ create unique index prayer_assignment_one_active_user_request_idx
   where ends_at is null and revoked_at is null;
 create index prayer_assignment_request_idx
   on public.prayer_assignment(prayer_request_id, starts_at desc);
+
+alter table public.prayer_assignment
+  add constraint prayer_assignment_no_overlap_excl
+  exclude using gist (
+    intercessor_user_id with =,
+    prayer_request_id with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  )
+  where (revoked_at is null);
+
 create table public.prayer_access_audit (
   id uuid primary key default gen_random_uuid(),
   prayer_request_id uuid not null,
@@ -132,6 +142,15 @@ create index care_group_membership_contact_active_idx
   on public.care_group_membership(contact_id, care_group_id)
   where ends_at is null;
 
+alter table public.care_group_membership
+  add constraint care_group_membership_no_overlap_excl
+  exclude using gist (
+    care_group_id with =,
+    contact_id with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  );
+
+
 create table public.care_record (
   id uuid primary key default gen_random_uuid(),
   branch_id uuid not null references public.branch(id) on delete restrict,
@@ -180,6 +199,16 @@ create unique index care_assignment_one_active_assignee_record_idx
 create index care_assignment_record_idx
   on public.care_assignment(care_record_id, assignee_user_id)
   where ends_at is null and revoked_at is null;
+
+alter table public.care_assignment
+  add constraint care_assignment_no_overlap_excl
+  exclude using gist (
+    assignee_user_id with =,
+    care_record_id with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  )
+  where (revoked_at is null);
+
 
 create table public.care_interaction (
   id uuid primary key default gen_random_uuid(),

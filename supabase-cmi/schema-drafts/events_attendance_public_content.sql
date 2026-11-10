@@ -53,6 +53,16 @@ create table public.event_staff_assignment (
 create unique index event_staff_assignment_active_uq
   on public.event_staff_assignment(event_id, staff_auth_user_id, assignment_role)
   where ends_at is null and revoked_at is null;
+alter table public.event_staff_assignment
+  add constraint event_staff_assignment_no_overlap_excl
+  exclude using gist (
+    event_id with =,
+    staff_auth_user_id with =,
+    assignment_role with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  )
+  where (revoked_at is null);
+
 
 create table public.event_team_assignment (
   id uuid primary key default gen_random_uuid(),
@@ -74,6 +84,16 @@ create table public.event_team_assignment (
 create unique index event_team_assignment_active_uq
   on public.event_team_assignment(event_id, team_id, assignment_role)
   where ends_at is null and revoked_at is null;
+alter table public.event_team_assignment
+  add constraint event_team_assignment_no_overlap_excl
+  exclude using gist (
+    event_id with =,
+    team_id with =,
+    assignment_role with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  )
+  where (revoked_at is null);
+
 
 create table public.event_registration (
   id uuid primary key default gen_random_uuid(),

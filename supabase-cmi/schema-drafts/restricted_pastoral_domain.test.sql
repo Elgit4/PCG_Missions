@@ -5,7 +5,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(21);
+select plan(26);
 
 select has_table('public', 'prayer_request', 'prayer request table exists');
 select has_table('public', 'prayer_assignment', 'prayer assignment table exists');
@@ -127,6 +127,23 @@ select extensions.throws_ok(
   '23505', null, 'only one active assignment per intercessor/request pair'
 );
 
+update public.prayer_assignment
+set ends_at=now()+interval '5 days'
+where prayer_request_id='61000000-0000-4000-8000-000000000001'
+  and intercessor_user_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+select extensions.throws_ok(
+  $q$insert into public.prayer_assignment(
+    prayer_request_id,branch_id,intercessor_user_id,assigned_by,starts_at,ends_at
+  ) values (
+    '61000000-0000-4000-8000-000000000001',
+    '21000000-0000-4000-8000-000000000001',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    now(),now()+interval '6 days'
+  )$q$,
+  '23P01',null,'overlapping time-bounded assignments to the same prayer request and intercessor are rejected'
+);
+
 select extensions.throws_ok(
   $q$ insert into public.prayer_request(branch_id, request_text, status)
       values ('21000000-0000-4000-8000-000000000001', 'invalid status fixture', 'unknown') $q$,
@@ -192,6 +209,31 @@ select extensions.throws_ok(
   '23503', null, 'care group membership cannot cross branches'
 );
 
+select extensions.lives_ok(
+  $q$insert into public.care_group_membership(
+    care_group_id,contact_id,branch_id,starts_at,ends_at,created_by
+  ) values (
+    '71000000-0000-4000-8000-000000000001',
+    '41000000-0000-4000-8000-000000000001',
+    '21000000-0000-4000-8000-000000000001',
+    now()-interval '1 day',now()+interval '5 days',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  )$q$,
+  'finite care group membership period is accepted'
+);
+select extensions.throws_ok(
+  $q$insert into public.care_group_membership(
+    care_group_id,contact_id,branch_id,starts_at,ends_at,created_by
+  ) values (
+    '71000000-0000-4000-8000-000000000001',
+    '41000000-0000-4000-8000-000000000001',
+    '21000000-0000-4000-8000-000000000001',
+    now(),now()+interval '6 days',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  )$q$,
+  '23P01',null,'overlapping membership for the same contact and care group is rejected'
+);
+
 insert into public.care_record(
   id, branch_id, contact_id, created_by
 ) values (
@@ -199,6 +241,31 @@ insert into public.care_record(
   '21000000-0000-4000-8000-000000000001',
   '41000000-0000-4000-8000-000000000001',
   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+);
+
+select extensions.lives_ok(
+  $q$insert into public.care_assignment(
+    care_record_id,branch_id,assignee_user_id,assigned_by,starts_at,ends_at
+  ) values (
+    '81000000-0000-4000-8000-000000000001',
+    '21000000-0000-4000-8000-000000000001',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    now()-interval '1 day',now()+interval '5 days'
+  )$q$,
+  'finite care assignment period is accepted'
+);
+select extensions.throws_ok(
+  $q$insert into public.care_assignment(
+    care_record_id,branch_id,assignee_user_id,assigned_by,starts_at,ends_at
+  ) values (
+    '81000000-0000-4000-8000-000000000001',
+    '21000000-0000-4000-8000-000000000001',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    now(),now()+interval '6 days'
+  )$q$,
+  '23P01',null,'overlapping care assignments to the same record and worker are rejected'
 );
 
 insert into public.care_access_audit(
