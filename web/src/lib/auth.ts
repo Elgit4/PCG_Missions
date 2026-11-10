@@ -284,21 +284,39 @@ export class PcgAuthClient {
     );
   }
 
-  async completePasswordChange(): Promise<void> {
+  async completePasswordChange(password: string): Promise<void> {
+    if (
+      password.length < 12 || password.length > 128 ||
+      !/[a-z]/.test(password) || !/[A-Z]/.test(password) ||
+      !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)
+    ) {
+      throw new AuthClientError(400, "WEAK_PASSWORD", "Use 12–128 characters with uppercase and lowercase letters, a number and a symbol.");
+    }
     const token = await this.getAccessToken();
-    if (!token) throw new AuthClientError(401, "AUTH_REQUIRED", "Sign in again before completing password setup.");
-    const result = await this.fetcher(`${this.baseUrl}/functions/v1/staff-auth/complete-password-change`, {
-      method: "POST",
-      headers: {
-        apikey: this.publishableKey,
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: "{}",
-      cache: "no-store",
-    });
+    if (!token) throw new AuthClientError(401, "AUTH_REQUIRED", "Sign in again before changing your password.");
+    let result: Response;
+    try {
+      result = await this.fetcher(`${this.baseUrl}/functions/v1/staff-auth/complete-password-change`, {
+        method: "POST",
+        headers: {
+          apikey: this.publishableKey,
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ password }),
+        cache: "no-store",
+      });
+    } catch {
+      throw new AuthClientError(0, "NETWORK_ERROR", "Unable to save the new password.");
+    }
     if (!result.ok) {
-      throw new AuthClientError(result.status, "PASSWORD_CHANGE_COMPLETION_FAILED", "Your password was changed, but account setup could not be confirmed. Sign in again or contact an administrator.");
+      const payload = await result.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
+      throw new AuthClientError(
+        result.status,
+        payload?.error?.code ?? "PASSWORD_CHANGE_FAILED",
+        payload?.error?.message ?? "The new password could not be saved. Please try again.",
+      );
     }
   }
 
