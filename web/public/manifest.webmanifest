@@ -4,8 +4,8 @@
   "description": "PCG Missions staff workspace",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F5F6FA",
-  "theme_color": "#30358F",
+  "background_color": "#090D18",
+  "theme_color": "#090D18",
   "icons": [
     {
       "src": "/logo.svg",
