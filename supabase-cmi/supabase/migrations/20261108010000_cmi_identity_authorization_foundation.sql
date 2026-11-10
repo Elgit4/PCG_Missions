@@ -15,6 +15,32 @@ begin;
 
 create extension if not exists btree_gist with schema extensions;
 
+-- The browser application uses Edge Functions, not direct public-schema access.
+-- Remove Supabase's broad public-schema grants and default privileges for
+-- objects created by the migration owner. Trusted functions receive explicit
+-- grants in their reviewed schema slices.
+revoke usage on schema public from public, anon, authenticated;
+grant usage on schema public to service_role;
+
+alter default privileges for role postgres in schema public
+  revoke all on tables from public, anon, authenticated, service_role;
+alter default privileges for role postgres in schema public
+  revoke all on sequences from public, anon, authenticated, service_role;
+alter default privileges for role postgres in schema public
+  revoke execute on functions from public, anon, authenticated, service_role;
+
+-- Supabase creates this SECURITY DEFINER event-trigger helper in hosted
+-- projects. Its trigger remains installed; remove only direct SQL/API execute
+-- rights. CI verifies that the event trigger still auto-enables RLS.
+do $
+begin
+  if to_regprocedure('public.rls_auto_enable()') is not null then
+    execute 'revoke all on function public.rls_auto_enable() from public, anon, authenticated, service_role';
+  end if;
+end;
+$;
+
+
 create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
 
