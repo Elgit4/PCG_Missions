@@ -44,6 +44,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [resetRequests, setResetRequests] = useState<StaffPasswordResetRequest[]>([]);
   const [staffMembers, setStaffMembers] = useState<StaffDirectoryEntry[]>([]);
   const [showStaffForm, setShowStaffForm] = useState(false);
+  const [staffStatusEdit, setStaffStatusEdit] = useState<{ profileId: string; nextStatus: "active" | "inactive" } | null>(null);
+  const [staffStatusReason, setStaffStatusReason] = useState("");
   const [actionNotice, setActionNotice] = useState("");
   const [resetReasons, setResetReasons] = useState<Record<string, string>>({});
   const [processingResetId, setProcessingResetId] = useState<string | null>(null);
@@ -74,6 +76,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canUpdateTasks = hasCapability(session, "followup.task.update.scoped", branchId);
   const canManagePasswordResets = hasCapability(session, "staff.password_reset.manage", branchId);
   const canReadStaffDirectory = hasCapability(session, "staff.directory.read", branchId);
+  const canManageStaffAccounts = hasCapability(session, "staff.account.manage", branchId);
   const canCreateStaffAccounts = hasCapability(session, "staff.account.manage", branchId) && hasCapability(session, "access.role.assign", branchId);
   const availablePages = useMemo(() => {
     const pages: Page[] = getAvailableStaffPages(session, branchId)
@@ -98,6 +101,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setResetRequests([]);
     setStaffMembers([]);
     setShowStaffForm(false);
+    setStaffStatusEdit(null);
+    setStaffStatusReason("");
     setResetReasons({});
     setLoadError("Your staff session has expired. Please sign in again.");
     setActionError("");
@@ -230,6 +235,36 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       setShowStaffForm(false);
       const directory = await api.listStaffDirectory(branchId, { limit: 100, offset: 0 });
       setStaffMembers(directory.data);
+    } catch (error) { handleActionError(error); }
+    finally { setSaving(false); }
+  };
+
+  const updateStaffAccountStatus = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!staffStatusEdit || !branchId || !canManageStaffAccounts || saving) return;
+    const reason = staffStatusReason.trim();
+    if (reason.length < 10 || reason.length > 500) {
+      setActionError("Provide an audit reason between 10 and 500 characters.");
+      return;
+    }
+    setSaving(true); setActionError(""); setActionNotice("");
+    try {
+      const result = await api.setStaffAccountStatus(
+        staffStatusEdit.profileId,
+        branchId,
+        staffStatusEdit.nextStatus,
+        reason,
+      );
+      setStaffMembers((members) => members.map((member) =>
+        member.id === staffStatusEdit.profileId
+          ? { ...member, account_status: result.data.account_status }
+          : member
+      ));
+      setActionNotice(result.data.account_status === "inactive"
+        ? "Staff account deactivated. Their application access has been revoked."
+        : "Staff account reactivated. They can sign in again.");
+      setStaffStatusEdit(null);
+      setStaffStatusReason("");
     } catch (error) { handleActionError(error); }
     finally { setSaving(false); }
   };
@@ -477,8 +512,17 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               <p className="cmi-field-wide cmi-scope-note">A one-time temporary password is sent to the staff member's email. They must replace it immediately after signing in. The administrator never sees the permanent password.</p>
             </form>}
             <div className="cmi-task-list">
-              {staffMembers.map((member) => <article className="cmi-task-row" key={member.id}><div className="cmi-task-symbol"><Users size={18} /></div><div className="cmi-task-copy"><strong>{member.full_name}</strong><p>{member.roles.map((role) => role.name).join(" · ")}</p></div><span className="cmi-task-status status-open">Active</span></article>)}
-              {!staffMembers.length && !loading && <p className="cmi-empty-row">No active staff accounts are assigned to this branch yet.</p>}
+              {staffMembers.map((member) => <article className="cmi-task-row cmi-staff-directory-row" key={member.id}>
+                <div className="cmi-task-symbol"><Users size={18} /></div>
+                <div className="cmi-task-copy"><strong>{member.full_name}</strong><p>{member.roles.map((role) => role.name).join(" · ")}</p></div>
+                <span className={member.account_status === "active" ? "cmi-task-status status-open" : "cmi-task-status status-cancelled"}>{member.account_status === "active" ? "Active" : "Inactive"}</span>
+                {canManageStaffAccounts && member.id !== session.staff.id && <button type="button" className="cmi-button cmi-button-secondary cmi-staff-status-action" onClick={() => { setStaffStatusEdit({ profileId: member.id, nextStatus: member.account_status === "active" ? "inactive" : "active" }); setStaffStatusReason(""); setActionError(""); }}>{member.account_status === "active" ? "Deactivate" : "Reactivate"}</button>}
+                {staffStatusEdit?.profileId === member.id && <form className="cmi-staff-status-form" onSubmit={updateStaffAccountStatus}>
+                  <label>Reason for {staffStatusEdit.nextStatus === "inactive" ? "deactivation" : "reactivation"}<textarea value={staffStatusReason} onChange={(event) => setStaffStatusReason(event.target.value)} minLength={10} maxLength={500} rows={2} required placeholder="Enter the authorisation or operational reason (10–500 characters)." /></label>
+                  <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setStaffStatusEdit(null); setStaffStatusReason(""); }}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Confirm " + (staffStatusEdit.nextStatus === "inactive" ? "deactivation" : "reactivation")}</button></div>
+                </form>}
+              </article>)}
+              {!staffMembers.length && !loading && <p className="cmi-empty-row">No staff accounts are assigned to this branch yet.</p>}
             </div>
           </div>}
 
