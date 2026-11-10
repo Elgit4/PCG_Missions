@@ -330,10 +330,16 @@ Deno.test("staff directory projection deduplicates roles and includes account st
     },
   ]);
   if (projected.length !== 2) {
-    throw new Error("Active and inactive staff with active role assignments must be returned.");
+    throw new Error(
+      "Active and inactive staff with active role assignments must be returned.",
+    );
   }
-  if (projected.find((member) => member.id.endsWith("0001"))?.account_status !== "active" ||
-      projected.find((member) => member.id.endsWith("0002"))?.account_status !== "inactive") {
+  if (
+    projected.find((member) => member.id.endsWith("0001"))?.account_status !==
+      "active" ||
+    projected.find((member) => member.id.endsWith("0002"))?.account_status !==
+      "inactive"
+  ) {
     throw new Error("Staff account status was not projected accurately.");
   }
   if (
