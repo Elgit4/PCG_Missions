@@ -88,13 +88,7 @@ values (
 );
 
 select lives_ok(
-  $select public.cmi_bootstrap_first_admin(
-    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
-    'first-admin@example.test',
-    'First Administrator',
-    'PCG Missions Test Church',
-    'Main Test Branch'
-  )$,
+  'select public.cmi_bootstrap_first_admin(''aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'', ''first-admin@example.test'', ''First Administrator'', ''PCG Missions Test Church'', ''Main Test Branch'')',
   'one confirmed Auth user can bootstrap the first administrator'
 );
 select is(
