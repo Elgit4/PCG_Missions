@@ -596,7 +596,15 @@ begin
 
   update private.staff_password_reset_request
   set status = p_action,
-      review_reason = nullif(pg_catalog.btrim(coalesce(p_reason, '')), '')
+      review_reason = nullif(pg_catalog.btrim(coalesce(p_reason, '')), ''),
+      reviewed_by_profile_id = case
+        when p_action = 'pending' then reviewed_by_profile_id
+        else v_actor_profile_id
+      end,
+      reviewed_at = case
+        when p_action = 'pending' then reviewed_at
+        else pg_catalog.now()
+      end
   where id = p_request_id
     and branch_id = p_branch_id
     and status in ('processing', 'pending')
