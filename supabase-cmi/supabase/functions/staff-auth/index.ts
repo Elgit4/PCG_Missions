@@ -349,7 +349,10 @@ async function bootstrapAdmin(
 
   const { service } = clients();
   const temporaryPassword = randomTemporaryPassword();
-  const existingUsers = await listAllAuthUsers(async (page, perPage) => {
+  const existingUsers = await listAllAuthUsers<{
+    id: string;
+    email?: string | null;
+  }>(async (page, perPage) => {
     const { data, error } = await service.auth.admin.listUsers({
       page,
       perPage,
