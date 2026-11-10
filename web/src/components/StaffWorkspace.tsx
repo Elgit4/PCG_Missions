@@ -47,13 +47,24 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
-  const availablePages = useMemo(() => getAvailableStaffPages(session, branchId)
-    .filter((candidate): candidate is Page => candidate === "Overview" || candidate === "Contacts" || candidate === "Follow-up"), [session, branchId]);
   const canReadContacts = canOpenStaffPage(session, "Contacts", branchId);
   const canReadTasks = canOpenStaffPage(session, "Follow-up", branchId);
   const canCreateContacts = hasCapability(session, "contact.capture.create", branchId);
-  const canCreateTasks = hasCapability(session, "followup.task.create", branchId);
+  const taskCreateGrant = session.capabilities.find((grant) =>
+    grant.code === "followup.task.create" && grant.branch_id === branchId
+  );
+  const canCreateTasks = !!taskCreateGrant;
+  const canSelfAssignTask = !!taskCreateGrant &&
+    (taskCreateGrant.scope_mode === "assigned" || taskCreateGrant.scope_mode === "branch");
   const canUpdateTasks = hasCapability(session, "followup.task.update.scoped", branchId);
+  const availablePages = useMemo(() => {
+    const pages = getAvailableStaffPages(session, branchId)
+      .filter((candidate): candidate is Page =>
+        candidate === "Overview" || candidate === "Contacts" || candidate === "Follow-up"
+      );
+    if (canCreateContacts && !pages.includes("Contacts")) pages.push("Contacts");
+    return pages;
+  }, [session, branchId, canCreateContacts]);
   const canCaptureIdentity = hasIdentityCapture(session, branchId);
   const activeBranch = session.branches.find((branch) => branch.id === branchId);
   const branchTimeZone = activeBranch?.timezone || "Africa/Accra";
@@ -185,9 +196,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     const rawPriority = Number(form.get("priority") ?? 2);
     const dueInput = String(form.get("due_at") ?? "");
     if (!contactId || !contacts.some((contact) => contact.id === contactId)) { setActionError("Select a contact that is visible in this branch."); return; }
-    const grant = session.capabilities.find((item) => item.code === "followup.task.create" && item.branch_id === branchId);
     // Without membership/assignment projections, only self-assignment can be constructed safely.
-    if (!grant || !["assigned", "branch"].includes(grant.scope_mode)) {
+    if (!canSelfAssignTask) {
       setActionError("Task creation for this scope requires an authorised team or staff assignment target.");
       return;
     }
@@ -289,11 +299,12 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             </>
           )}
 
-          {page === "Contacts" && canReadContacts && <div className="cmi-panel">
+          {page === "Contacts" && (canReadContacts || canCreateContacts) && <div className="cmi-panel">
             <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">PEOPLE & CONNECTION</p><h3>Contacts</h3><p>Only contacts within your server-authorised scope are shown.</p></div>
               {canCreateContacts && <button className="cmi-button cmi-button-primary" onClick={() => setShowContactForm((value) => !value)}><Plus size={16} />Add contact</button>}
             </div>
-            <label className="cmi-search"><Search size={16} /><input aria-label="Search contacts in this branch" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contacts in this branch" /></label>
+            {canReadContacts && <label className="cmi-search"><Search size={16} /><input aria-label="Search contacts by first name" maxLength={80} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contacts by first name" /></label>}
+            {!canReadContacts && <p className="cmi-scope-note">You can capture new contacts, but your current access does not include browsing existing contact records.</p>}
             {showContactForm && canCreateContacts && <form className="cmi-form-grid" onSubmit={createContact}>
               <label>First name<input name="first_name" required maxLength={120} autoComplete="given-name" /></label>
               <label>Last name<input name="last_name" required maxLength={120} autoComplete="family-name" /></label>
@@ -301,15 +312,18 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               {canCaptureIdentity && <label>Phone number <span>Optional · restricted identity field</span><input name="phone" type="tel" autoComplete="tel" maxLength={40} /></label>}
               <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowContactForm(false)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Save contact"}</button></div>
             </form>}
-            <div className="cmi-table-wrap"><table className="cmi-table"><thead><tr><th>CONTACT</th><th>STATUS</th><th>LANGUAGE</th><th>IDENTITY</th></tr></thead><tbody>
-              {visibleContacts.map((contact) => <tr key={contact.id}><td><strong>{displayName(contact)}</strong><small>{contact.id}</small></td><td><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td>{contact.preferred_language || "Not recorded"}</td><td>{contact.phone_display || contact.phone_e164 || "Restricted / not recorded"}</td></tr>)}
-            </tbody></table>{!visibleContacts.length && !loading && <p className="cmi-empty-row">No contacts are available for this search and access scope.</p>}</div>
-            {contactsHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreContacts()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more contacts"}</button></div>}
+            {canReadContacts && <>
+              <div className="cmi-table-wrap"><table className="cmi-table"><thead><tr><th>CONTACT</th><th>STATUS</th><th>LANGUAGE</th><th>IDENTITY</th></tr></thead><tbody>
+                {visibleContacts.map((contact) => <tr key={contact.id}><td><strong>{displayName(contact)}</strong><small>{contact.id}</small></td><td><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td>{contact.preferred_language || "Not recorded"}</td><td>{contact.phone_display || contact.phone_e164 || "Restricted / not recorded"}</td></tr>)}
+              </tbody></table>{!visibleContacts.length && !loading && <p className="cmi-empty-row">No contacts are available for this search and access scope.</p>}</div>
+              {contactsHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreContacts()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more contacts"}</button></div>}
+            </>}
           </div>}
 
           {page === "Follow-up" && canReadTasks && <div className="cmi-panel">
             <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h3>Follow-up tasks</h3><p>Task records are filtered by the backend using your active branch and scope.</p></div>
-              {canCreateTasks && <button className="cmi-button cmi-button-primary" onClick={() => setShowTaskForm((value) => !value)} disabled={!canReadContacts || !contacts.length}><Plus size={16} />New task</button>}
+              {canSelfAssignTask && <button className="cmi-button cmi-button-primary" onClick={() => setShowTaskForm((value) => !value)} disabled={!canReadContacts || !contacts.length}><Plus size={16} />New task</button>}
+              {canCreateTasks && !canSelfAssignTask && <span className="cmi-scope-note">Task creation is granted, but a supported team assignment target is not available in this workspace.</span>}
             </div>
             {showTaskForm && canCreateTasks && <form className="cmi-form-grid" onSubmit={createTask}>
               <label className="cmi-field-wide">Contact<select name="contact_id" required defaultValue=""><option value="" disabled>Select a visible contact</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{displayName(contact)}</option>)}</select></label>
