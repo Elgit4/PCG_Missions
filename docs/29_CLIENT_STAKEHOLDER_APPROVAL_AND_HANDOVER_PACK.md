@@ -227,7 +227,7 @@ The client handover is complete only when the following evidence is attached:
 - The RLS-helper privilege-remediation migration is present in the hosted migration history.
 - Hosted Supabase currently reports zero CMI public application tables, one recorded migration and zero deployed CMI Edge Functions.
 - The RLS helper is not directly executable by `anon`, `authenticated` or `service_role`.
-- The corrected isolated CMI backend CI run passed at commit `0f1aaed1036649f67f367d4d6e51818fdf0395ad`; this verifies local migration/pgTAP and Edge Function checks at that SHA. Subsequent commits in this pack are documentation or source/test changes and require their own current-head checks before release.
+- The corrected isolated CMI backend CI run passed at commit `6b7aa14c50467989dbeafa0244c15596e8f0071c` in [GitHub Actions run 42825105544](https://github.com/Elgit4/PCG_Missions/actions/runs/42825105544). It validates local migration/pgTAP and Edge Function lint/type-check/request-validation at that exact SHA. Later commits are documentation-only; hosted production deployment remains separate and is not implied by CI.
 - No production staff accounts, church records, branch records, business role grants or Edge Functions have been provisioned/deployed.
 
 **Decision:** Production release remains **NO-GO** until all approval and technical release gates above are complete.
