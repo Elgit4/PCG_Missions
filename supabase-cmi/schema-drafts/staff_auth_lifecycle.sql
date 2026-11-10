@@ -94,7 +94,7 @@ create trigger staff_password_reset_audit_no_truncate
 insert into public.capability(code, description, sensitivity)
 values (
   'staff.password_reset.manage',
-  'Review staff password-reset requests and initiate a one-time recovery link.',
+  'Review staff password-reset requests and issue one-time temporary passwords by email.',
   'restricted'
 )
 on conflict (code) do update set
