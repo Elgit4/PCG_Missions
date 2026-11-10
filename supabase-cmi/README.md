@@ -85,7 +85,7 @@ PR #10 merged the `feat/cmi-staff-session-api` implementation into `main` on 202
 - `staff-session`: validates a Supabase Auth access token, checks the active staff profile and returns branch, role and approved capability projections.
 - `staff-operations`: scoped contact list/detail, idempotent contact capture and ordinary-field update endpoints.
 - The same Edge Function now provides scoped follow-up task list/detail, idempotent creation and atomic note/priority/due-date/status updates. It never changes assignment targets through PATCH.
-- Capability definitions are seeded as metadata only. Before first-administrator bootstrap, `role_capability` is empty. Bootstrap then grants only three branch-scoped Admin/Pastor control-plane capabilities: `staff.account.manage`, `access.role.assign` and `staff.password_reset.manage`. No business-domain, pastoral oversight, export, SMS or capability-policy-editing grants are seeded.
+- Capability definitions are seeded as metadata only. Before first-administrator bootstrap, `role_capability` is empty. Bootstrap then grants only four branch-scoped Admin/Pastor control-plane capabilities: `staff.directory.read`, `staff.account.manage`, `access.role.assign` and `staff.password_reset.manage`. No business-domain, pastoral oversight, export, SMS or capability-policy-editing grants are seeded.
 - Phone/email capture, read and update use separate identity capabilities. Without the appropriate grant, identity fields are not returned.
 - Team-scoped capture requires active team membership. Assigned-only capture creates an assignment to the capturing staff member in the same transaction.
 
