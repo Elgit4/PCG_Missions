@@ -98,17 +98,6 @@ on conflict (code) do update set
   description = excluded.description,
   sensitivity = excluded.sensitivity;
 
--- This is the only authentication-management grant created by this slice.
--- It permits Admin/Pastor users to review reset requests, not to read or set
--- another person's password. The user has explicitly chosen this workflow.
-insert into public.role_capability(role_id, capability_id, scope_mode)
-select r.id, c.id, 'branch'
-from public.role r
-cross join public.capability c
-where r.code = 'admin_pastor'
-  and c.code = 'staff.password_reset.manage'
-on conflict do nothing;
-
 create or replace function public.cmi_bootstrap_first_admin(
   p_auth_user_id uuid,
   p_email text,
@@ -160,6 +149,18 @@ begin
     raise exception using errcode = '55000', message = 'Admin/Pastor role catalogue is unavailable';
   end if;
 
+  if not exists (
+    select 1 from public.capability
+    where code = 'staff.password_reset.manage' and is_active
+  ) then
+    insert into public.capability(code, description, sensitivity)
+    values (
+      'staff.password_reset.manage',
+      'Review staff password-reset requests and initiate a one-time recovery link.',
+      'restricted'
+    );
+  end if;
+
   insert into public.church(name, timezone, is_configured_instance)
   values (btrim(p_church_name), 'Africa/Accra', true)
   returning id into v_church_id;
@@ -187,13 +188,12 @@ begin
     pg_catalog.now(), 'Initial one-time PCG Missions administrator bootstrap'
   );
 
-  insert into private.staff_password_reset_audit(
-    request_id, branch_id, actor_profile_id, event_type, metadata
-  )
-  values (
-    gen_random_uuid(), v_branch_id, v_profile_id, 'requested',
-    pg_catalog.jsonb_build_object('source', 'first_admin_bootstrap', 'must_change_password', true)
-  );
+  insert into public.role_capability(role_id, capability_id, scope_mode)
+  select v_role_id, capability_id, 'branch'
+  from public.capability
+  where code = 'staff.password_reset.manage'
+    and is_active
+  on conflict do nothing;
 
   return pg_catalog.jsonb_build_object(
     'church_id', v_church_id,
