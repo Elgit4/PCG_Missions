@@ -134,10 +134,39 @@ function clientIp(request: Request): string {
 }
 
 async function jsonBody(request: Request): Promise<JsonObject | null> {
-  if (!(request.headers.get("Content-Type") ?? "").toLowerCase().includes("application/json")) {
+  if (!/^application\\/json(?:\\s*;|$)/i.test(request.headers.get("Content-Type") ?? "")) {
     return null;
   }
-  const value: unknown = await request.json().catch(() => null);
+  const contentLength = Number(request.headers.get("Content-Length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > 4096) return null;
+  const reader = request.body?.getReader();
+  if (!reader) return null;
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > 4096) {
+        await reader.cancel();
+        return null;
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return null;
+  } finally {
+    reader.releaseLock();
+  }
+  if (totalBytes === 0) return null;
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as JsonObject
     : null;
@@ -228,13 +257,16 @@ async function bootstrapAdmin(
   const fullName = (Deno.env.get("CMI_BOOTSTRAP_ADMIN_NAME") ?? "").trim();
   const churchName = (Deno.env.get("CMI_BOOTSTRAP_CHURCH_NAME") ?? "").trim();
   const branchName = (Deno.env.get("CMI_BOOTSTRAP_BRANCH_NAME") ?? "").trim();
+  const fallbackAdmins = (Deno.env.get("CMI_AUTH_ADMIN_EMAILS") ?? "")
+    .split(",").map((value) => normalizeEmail(value)).filter((value): value is string => !!value);
   if (
     !SUPABASE_URL || !SERVICE_KEY || !email ||
     fullName.length < 2 || fullName.length > 180 ||
     churchName.length < 2 || churchName.length > 180 ||
     branchName.length < 2 || branchName.length > 160 ||
     !APP_URL.startsWith("https://") ||
-    !RESEND_API_KEY || !EMAIL_FROM
+    !RESEND_API_KEY || !EMAIL_FROM || AUTH_HMAC_KEY.length < 32 ||
+    !fallbackAdmins.some((address) => address !== email)
   ) {
     return fail("BOOTSTRAP_NOT_CONFIGURED", "The secure first-administrator setup is not fully configured.", 503, origin, requestId);
   }
