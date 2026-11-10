@@ -193,7 +193,7 @@ begin
   );
 
   insert into public.role_capability(role_id, capability_id, scope_mode)
-  select v_role_id, capability_id, 'branch'
+  select v_role_id, id, 'branch'
   from public.capability
   where code = 'staff.password_reset.manage'
     and is_active
