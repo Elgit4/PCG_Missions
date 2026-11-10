@@ -20,7 +20,7 @@ Supabase CLI v3 is local-first. Do not add `--remote`, hosted credentials or `--
 
 ## Current source layout
 
-- `supabase/migrations/`: permanent CMI identity/authorization foundation migration only.
+- `supabase/migrations/`: permanent CMI identity/authorization foundation and hosted RLS-helper privilege-remediation migrations. Domain schemas remain in `schema-drafts/`.
 - `supabase/tests/`: foundation pgTAP suite.
 - `schema-drafts/`: reviewable domain SQL and pgTAP drafts, not yet permanent migration history. The capability catalogue/contact-capture and follow-up task transactions are also validated from this workspace.
 
@@ -85,7 +85,7 @@ PR #10 merged the `feat/cmi-staff-session-api` implementation into `main` on 202
 - `staff-session`: validates a Supabase Auth access token, checks the active staff profile and returns branch, role and approved capability projections.
 - `staff-operations`: scoped contact list/detail, idempotent contact capture and ordinary-field update endpoints.
 - The same Edge Function now provides scoped follow-up task list/detail, idempotent creation and atomic note/priority/due-date/status updates. It never changes assignment targets through PATCH.
-- Capability definitions are seeded as metadata only. `role_capability` remains empty until R-01–R-12 and D-01 are approved.
+- Capability definitions are seeded as metadata only. Before first-administrator bootstrap, `role_capability` is empty. Bootstrap then grants only three branch-scoped Admin/Pastor control-plane capabilities: `staff.account.manage`, `access.role.assign` and `staff.password_reset.manage`. No business-domain, pastoral oversight, export, SMS or capability-policy-editing grants are seeded.
 - Phone/email capture, read and update use separate identity capabilities. Without the appropriate grant, identity fields are not returned.
 - Team-scoped capture requires active team membership. Assigned-only capture creates an assignment to the capturing staff member in the same transaction.
 
@@ -131,7 +131,7 @@ The three commits after the tested implementation commit changed status/contract
 
 Task due dates require an explicit timezone. RPC task responses omit the internal client request key and versioned HMAC digest. All temporary migration and test copies were removed after local verification.
 
-No `role_capability` rows are seeded; business access remains denied until R-01–R-12 and D-01 are approved. No hosted CMI project has been linked, queried, migrated or modified; no Edge Function has been deployed and no SMS has been sent.
+Business-domain `role_capability` grants are not seeded; operational access remains denied until R-01–R-12 and D-01 are approved. The hosted Supabase project has received only the RLS-helper privilege-remediation migration; it currently has zero CMI public application tables and zero deployed CMI Edge Functions. The frontend source is present in `../web/`, but has not been deployed. No production Auth configuration, first administrator, SMS credentials or live messaging has been activated.
 
 
 ## Audited pastoral reads — merged to main (2026-11-09)
@@ -165,7 +165,7 @@ The next unblocked engineering step is to restore a verifiable green CMI CI run 
 
 The staff-access-operations Edge Function implements guarded role assignment, role revocation, staff account deactivation and reactivation. It requires access.role.assign or staff.account.manage with branch scope and delegates final checks/writes to service-role-only SECURITY DEFINER RPCs. The append-only staff_access_audit table records role and account-state changes. No role grants are seeded, so these operations fail closed until the church approves R-01–R-12 and D-01 and approved grants are provisioned. See document 24.
 
-The email+PIN lifecycle, invitation/activation, private PIN setup, reset/reissue and recovery remain unimplemented because document 11 explicitly leaves the credential lifecycle and PIN security parameters pending and document 16 prohibits implementing a PIN verifier before approval/security review. No hosted Auth or database changes are made by this source-only branch.
+The merged PR #26 authentication slice currently implements Supabase email/password sign-in, temporary-password bootstrap and administrator-reviewed password recovery. This does not conform to the product's email + private PIN baseline. Staff invitation/activation and the PIN verifier/private PIN setup/reissue flow remain unimplemented. Do not deploy the password implementation as a substitute for PIN authentication; resolve the credential decision and security review in documents 11 and 29 first.
 
 
 ## Requirements-driven engineering baseline
