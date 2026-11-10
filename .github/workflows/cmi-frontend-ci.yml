@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: cmi-frontend-ci-${{ github.event.pull_request.number || github.ref }}
@@ -31,6 +31,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -87,3 +89,21 @@ jobs:
 
       - name: Build production assets
         run: npm run build
+
+      # Temporary one-time lockfile commit for this first-party remediation branch.
+      - name: Commit the tested dependency lockfile
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/cmi-frontend-production-integration'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git add web/package-lock.json
+          if git diff --cached --quiet; then
+            echo "The dependency lockfile is already committed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(web): commit audited dependency lockfile"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
