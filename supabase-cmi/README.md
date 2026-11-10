@@ -24,7 +24,7 @@ The hosted Supabase project `cgwffpxlwgbnlinzwfoj` has the 11-table identity/aut
 
 The 11 informational `rls_enabled_no_policy` security-advisor notices are intentional fail-closed behavior pending approved policies. The performance advisor no longer reports unindexed foreign keys; unused-index notices are expected before application data and query traffic exist. This is an initial foundation migration only, not a complete application schema or production launch.
 
-The current email/password authentication source is non-conformant with the confirmed email + private PIN requirement and must not be deployed. See [the PIN authentication architecture proposal](../docs/30_CMI_PIN_AUTHENTICATION_ARCHITECTURE_PROPOSAL.md) and [bootstrap/recovery hold](../docs/28_CMI_STAFF_AUTH_BOOTSTRAP_AND_RECOVERY.md). Stakeholder decisions R-01–R-12 and D-01–D-13 remain pending. Production remains NO-GO.
+The product owner confirmed Supabase email/password authentication on 10 November 2026. The earlier email + PIN proposal is superseded; see [the current authentication baseline](../docs/31_VISITOR_MVP_AUTHENTICATION_AUTHORIZATION_BASELINE.md) and [handover decision](../docs/29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md). The password lifecycle has passing branch-level tests, but first-admin delivery recovery, permanent domain migrations, production Edge Function deployment, email configuration, staging/UAT and remaining module workflows are not complete. Production remains NO-GO.
 
 ## Current source layout
 
