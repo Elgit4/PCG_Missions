@@ -299,9 +299,10 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         <div className="cmi-brand"><img src="/logo.svg" alt="" /><span><strong>PCG MISSIONS</strong><small>STAFF WORKSPACE</small></span></div>
         <div className="cmi-sidebar-label">WORKSPACE</div>
         <nav className="cmi-nav" aria-label="Staff workspace">
-          {availablePages.map((item) => <button key={item} className={page === item ? "active" : ""} onClick={() => setPage(item)}>
-            {item === "Overview" ? <Activity size={17} /> : item === "Contacts" ? <Users size={17} /> : <ClipboardList size={17} />}
-            <span>{item === "Follow-up" ? "Follow-up tasks" : item}</span>
+          {availablePages.map((item) => <button key={item} type="button" className={page === item ? "active" : ""} aria-current={page === item ? "page" : undefined} onClick={() => setPage(item)}>
+            {item === "Overview" ? <Activity size={19} /> : item === "Contacts" ? <Users size={19} /> : <ClipboardList size={19} />}
+            <span className="cmi-nav-desktop-label">{item === "Follow-up" ? "Follow-up tasks" : item}</span>
+            {item === "Follow-up" && <span className="cmi-nav-mobile-label">Tasks</span>}
             {item === "Follow-up" && openTasks.length > 0 ? <em>{openTasks.length}</em> : null}
           </button>)}
         </nav>
@@ -317,7 +318,11 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
       <main className="cmi-main">
         <header className="cmi-topbar">
-          <div><span className="cmi-breadcrumb">PCG MISSIONS / {activeBranch.name.toUpperCase()}</span><h1>{page === "Follow-up" ? "Follow-up tasks" : page}</h1></div>
+          <div className="cmi-topbar-heading">
+            <div className="cmi-mobile-brand"><img src="/logo.svg" alt="" /><span><strong>PCG Missions</strong><small>STAFF WORKSPACE</small></span></div>
+            <span className="cmi-breadcrumb">PCG MISSIONS / {activeBranch.name.toUpperCase()}</span>
+            <h1>{page === "Follow-up" ? "Follow-up tasks" : page}</h1>
+          </div>
           <div className="cmi-topbar-actions">
             <label className="cmi-branch-picker"><span>BRANCH</span><select aria-label="Active branch" value={branchId} onChange={(event) => {
                 setContacts([]);
@@ -373,7 +378,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             </form>}
             {canReadContacts && <>
               <div className="cmi-table-wrap"><table className="cmi-table"><thead><tr><th>CONTACT</th><th>STATUS</th><th>LANGUAGE</th><th>IDENTITY</th></tr></thead><tbody>
-                {visibleContacts.map((contact) => <tr key={contact.id}><td><strong>{displayName(contact)}</strong><small>{contact.id}</small></td><td><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td>{contact.preferred_language || "Not recorded"}</td><td>{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
+                {visibleContacts.map((contact) => <tr key={contact.id}><td data-label="Contact"><strong>{displayName(contact)}</strong><small>{contact.id}</small></td><td data-label="Status"><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td data-label="Language">{contact.preferred_language || "Not recorded"}</td><td data-label="Identity">{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
               </tbody></table>{!visibleContacts.length && !loading && <p className="cmi-empty-row">No contacts are available for this search and access scope.</p>}</div>
               {contactsHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreContacts()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more contacts"}</button></div>}
             </>}
