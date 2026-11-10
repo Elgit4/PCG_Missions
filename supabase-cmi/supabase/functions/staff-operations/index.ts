@@ -522,7 +522,7 @@ Deno.serve(async (request: Request) => {
           "id,full_name,account_status,staff_role_assignment!inner(role:role!inner(code,name,is_active))",
           { count: "exact" },
         )
-        .eq("account_status", "active")
+        .in("account_status", ["active", "inactive"])
         .eq("staff_role_assignment.branch_id", branch_id)
         .lte("staff_role_assignment.starts_at", now)
         .or(
