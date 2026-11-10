@@ -600,10 +600,23 @@ begin
   where id = p_request_id
     and branch_id = p_branch_id
     and status in ('processing', 'pending')
-  returning target_profile_id into v_target_profile_id;
+    and expires_at > pg_catalog.now()
+  returning target_profile_id, expires_at
+  into v_target_profile_id, v_request_expires_at;
 
   if v_target_profile_id is null then
     raise exception using errcode = 'P0002', message = 'password reset request not found';
+  end if;
+
+  if p_action = 'approved' then
+    update public.staff_profile
+    set must_change_password = true,
+        password_setup_expires_at = v_request_expires_at
+    where id = v_target_profile_id
+      and account_status = 'active';
+    if not found then
+      raise exception using errcode = 'P0002', message = 'active staff profile not found';
+    end if;
   end if;
 
   insert into private.staff_password_reset_audit(
