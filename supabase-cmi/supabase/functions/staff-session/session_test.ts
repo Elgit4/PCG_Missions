@@ -168,7 +168,6 @@ Deno.test(
   },
 );
 
-
 Deno.test("first-login password state withholds all workspace grants", () => {
   const firstLogin: StaffProfile = {
     ...profile,
@@ -187,11 +186,20 @@ Deno.test("first-login password state withholds all workspace grants", () => {
     capability: { code: "staff.password_reset.manage", is_active: true },
   }];
   const session = buildStaffSession(firstLogin, assignments, grants, branches);
-  if (!session.must_change_password) throw new Error("first-login flag missing");
-  if (session.branches.length || session.roles.length || session.capabilities.length) {
-    throw new Error("temporary-password account must not receive workspace grants");
+  if (!session.must_change_password) {
+    throw new Error("first-login flag missing");
   }
-  if (session.password_setup_expires_at !== firstLogin.password_setup_expires_at) {
+  if (
+    session.branches.length || session.roles.length ||
+    session.capabilities.length
+  ) {
+    throw new Error(
+      "temporary-password account must not receive workspace grants",
+    );
+  }
+  if (
+    session.password_setup_expires_at !== firstLogin.password_setup_expires_at
+  ) {
     throw new Error("password setup expiry was not projected");
   }
 });

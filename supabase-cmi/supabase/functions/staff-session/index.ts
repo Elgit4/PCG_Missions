@@ -169,7 +169,9 @@ Deno.serve(async (request: Request) => {
 
     const { data: profile, error: profileError } = await service
       .from("staff_profile")
-      .select("id,auth_user_id,full_name,email,account_status,must_change_password,password_setup_expires_at")
+      .select(
+        "id,auth_user_id,full_name,email,account_status,must_change_password,password_setup_expires_at",
+      )
       .eq("auth_user_id", authData.user.id)
       .maybeSingle();
 

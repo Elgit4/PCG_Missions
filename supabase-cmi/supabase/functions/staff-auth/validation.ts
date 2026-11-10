@@ -1,7 +1,6 @@
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const EMAIL =
-  /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" &&
@@ -22,8 +21,13 @@ export function normalizeEmail(value: unknown): string | null {
 export function parseResetRequest(
   value: unknown,
 ): { ok: true; email: string } | { ok: false; error: string } {
-  if (!object(value) || Object.keys(value).length !== 1 || !("email" in value)) {
-    return { ok: false, error: "Enter the email address on the staff account." };
+  if (
+    !object(value) || Object.keys(value).length !== 1 || !("email" in value)
+  ) {
+    return {
+      ok: false,
+      error: "Enter the email address on the staff account.",
+    };
   }
   const email = normalizeEmail(value.email);
   if (!email) {
@@ -53,7 +57,10 @@ export function parseResetReview(
   }
   const reason = typeof value.reason === "string" ? value.reason.trim() : "";
   if (reason.length < 10 || reason.length > 300) {
-    return { ok: false, error: "Enter a review reason between 10 and 300 characters." };
+    return {
+      ok: false,
+      error: "Enter a review reason between 10 and 300 characters.",
+    };
   }
   return { ok: true, branch_id: value.branch_id, reason };
 }
@@ -65,7 +72,9 @@ export function parseResetRequestId(value: string): string | null {
 export function parsePasswordChange(
   value: unknown,
 ): { ok: true; password: string } | { ok: false; error: string } {
-  if (!object(value) || Object.keys(value).length !== 1 || !("password" in value)) {
+  if (
+    !object(value) || Object.keys(value).length !== 1 || !("password" in value)
+  ) {
     return { ok: false, error: "A new password is required." };
   }
   if (

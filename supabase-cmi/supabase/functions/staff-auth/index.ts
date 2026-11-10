@@ -58,7 +58,12 @@ function fail(
   origin: string | null,
   requestId: string,
 ): Response {
-  return response({ error: { code, message }, request_id: requestId }, status, origin, requestId);
+  return response(
+    { error: { code, message }, request_id: requestId },
+    status,
+    origin,
+    requestId,
+  );
 }
 
 function bearerToken(request: Request): string | null {
@@ -70,22 +75,31 @@ function bearerToken(request: Request): string | null {
 
 function clients() {
   const auth = createClient(SUPABASE_URL, PUBLIC_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
   });
   const service = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
   });
   return { auth, service };
 }
 
 function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#39;",
-  })[character] ?? character);
+  return value.replace(/[&<>"']/g, (character) =>
+    ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    })[character] ?? character);
 }
 
 async function sendEmail(
@@ -103,7 +117,13 @@ async function sendEmail(
       "Authorization": `Bearer ${RESEND_API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from: EMAIL_FROM, to, subject, html, text: textBody }),
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      to,
+      subject,
+      html,
+      text: textBody,
+    }),
   });
   if (!result.ok) {
     // Never log the provider response body or recipient credentials.
@@ -112,7 +132,9 @@ async function sendEmail(
 }
 
 async function hmacFingerprint(value: string): Promise<string> {
-  if (AUTH_HMAC_KEY.length < 32) throw new Error("AUTH_HMAC_KEY_NOT_CONFIGURED");
+  if (AUTH_HMAC_KEY.length < 32) {
+    throw new Error("AUTH_HMAC_KEY_NOT_CONFIGURED");
+  }
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(AUTH_HMAC_KEY),
@@ -123,18 +145,25 @@ async function hmacFingerprint(value: string): Promise<string> {
   const signature = new Uint8Array(
     await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(value)),
   );
-  return [...signature].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return [...signature].map((byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 function clientIp(request: Request): string {
   const cloudflareIp = request.headers.get("cf-connecting-ip")?.trim();
   if (cloudflareIp) return cloudflareIp.slice(0, 80);
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]
+    ?.trim();
   return forwarded ? forwarded.slice(0, 80) : "unknown";
 }
 
 async function jsonBody(request: Request): Promise<JsonObject | null> {
-  if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("Content-Type") ?? "")) {
+  if (
+    !/^application\/json(?:\s*;|$)/i.test(
+      request.headers.get("Content-Type") ?? "",
+    )
+  ) {
     return null;
   }
   const contentLength = Number(request.headers.get("Content-Length") ?? "0");
@@ -173,7 +202,8 @@ async function jsonBody(request: Request): Promise<JsonObject | null> {
 }
 
 function randomTemporaryPassword(length = 36): string {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*-_";
+  const alphabet =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%*-_";
   const maximum = 256 - (256 % alphabet.length);
   let output = "";
   while (output.length < length) {
@@ -187,14 +217,19 @@ function randomTemporaryPassword(length = 36): string {
   return output;
 }
 
-async function constantTimeEqual(left: string, right: string): Promise<boolean> {
+async function constantTimeEqual(
+  left: string,
+  right: string,
+): Promise<boolean> {
   const [a, b] = await Promise.all([
     crypto.subtle.digest("SHA-256", new TextEncoder().encode(left)),
     crypto.subtle.digest("SHA-256", new TextEncoder().encode(right)),
   ]);
   const aa = new Uint8Array(a), bb = new Uint8Array(b);
   let difference = 0;
-  for (let index = 0; index < aa.length; index++) difference |= aa[index] ^ bb[index];
+  for (let index = 0; index < aa.length; index++) {
+    difference |= aa[index] ^ bb[index];
+  }
   return difference === 0;
 }
 
@@ -207,7 +242,13 @@ async function requireStaff(
   const { data, error } = await auth.auth.getUser(token);
   if (error || !data.user) {
     return {
-      error: fail("INVALID_SESSION", "A valid staff session is required.", 401, origin, requestId),
+      error: fail(
+        "INVALID_SESSION",
+        "A valid staff session is required.",
+        401,
+        origin,
+        requestId,
+      ),
       authUser: null,
       service,
     };
@@ -220,21 +261,42 @@ async function requireStaff(
   if (profileError) throw new Error("STAFF_PROFILE_LOOKUP_FAILED");
   if (!profile || profile.account_status !== "active") {
     return {
-      error: fail("STAFF_ACCOUNT_NOT_ACTIVE", "An active staff account is required.", 403, origin, requestId),
+      error: fail(
+        "STAFF_ACCOUNT_NOT_ACTIVE",
+        "An active staff account is required.",
+        403,
+        origin,
+        requestId,
+      ),
       authUser: null,
       service,
     };
   }
   if (profile.must_change_password) {
-    if (profile.password_setup_expires_at && Date.parse(profile.password_setup_expires_at) <= Date.now()) {
+    if (
+      profile.password_setup_expires_at &&
+      Date.parse(profile.password_setup_expires_at) <= Date.now()
+    ) {
       return {
-        error: fail("PASSWORD_SETUP_EXPIRED", "The temporary password has expired. Request an administrator-assisted reset.", 403, origin, requestId),
+        error: fail(
+          "PASSWORD_SETUP_EXPIRED",
+          "The temporary password has expired. Request an administrator-assisted reset.",
+          403,
+          origin,
+          requestId,
+        ),
         authUser: null,
         service,
       };
     }
     return {
-      error: fail("PASSWORD_CHANGE_REQUIRED", "Change the temporary password before using staff operations.", 403, origin, requestId),
+      error: fail(
+        "PASSWORD_CHANGE_REQUIRED",
+        "Change the temporary password before using staff operations.",
+        403,
+        origin,
+        requestId,
+      ),
       authUser: null,
       service,
     };
@@ -249,8 +311,17 @@ async function bootstrapAdmin(
 ): Promise<Response> {
   const configuredToken = Deno.env.get("CMI_BOOTSTRAP_TOKEN") ?? "";
   const suppliedToken = bearerToken(request) ?? "";
-  if (configuredToken.length < 32 || !suppliedToken || !await constantTimeEqual(configuredToken, suppliedToken)) {
-    return fail("BOOTSTRAP_NOT_AUTHORIZED", "Bootstrap authorization failed.", 401, origin, requestId);
+  if (
+    configuredToken.length < 32 || !suppliedToken ||
+    !await constantTimeEqual(configuredToken, suppliedToken)
+  ) {
+    return fail(
+      "BOOTSTRAP_NOT_AUTHORIZED",
+      "Bootstrap authorization failed.",
+      401,
+      origin,
+      requestId,
+    );
   }
 
   const email = normalizeEmail(Deno.env.get("CMI_BOOTSTRAP_ADMIN_EMAIL"));
@@ -258,7 +329,9 @@ async function bootstrapAdmin(
   const churchName = (Deno.env.get("CMI_BOOTSTRAP_CHURCH_NAME") ?? "").trim();
   const branchName = (Deno.env.get("CMI_BOOTSTRAP_BRANCH_NAME") ?? "").trim();
   const fallbackAdmins = (Deno.env.get("CMI_AUTH_ADMIN_EMAILS") ?? "")
-    .split(",").map((value) => normalizeEmail(value)).filter((value): value is string => !!value);
+    .split(",").map((value) => normalizeEmail(value)).filter((
+      value,
+    ): value is string => !!value);
   if (
     !SUPABASE_URL || !SERVICE_KEY || !email ||
     fullName.length < 2 || fullName.length > 180 ||
@@ -268,41 +341,57 @@ async function bootstrapAdmin(
     !RESEND_API_KEY || !EMAIL_FROM || AUTH_HMAC_KEY.length < 32 ||
     !fallbackAdmins.some((address) => address !== email)
   ) {
-    return fail("BOOTSTRAP_NOT_CONFIGURED", "The secure first-administrator setup is not fully configured.", 503, origin, requestId);
+    return fail(
+      "BOOTSTRAP_NOT_CONFIGURED",
+      "The secure first-administrator setup is not fully configured.",
+      503,
+      origin,
+      requestId,
+    );
   }
 
   const { service } = clients();
   const temporaryPassword = randomTemporaryPassword();
-  const { data: usersData, error: listError } = await service.auth.admin.listUsers({
-    page: 1,
-    perPage: 100,
-  });
+  const { data: usersData, error: listError } = await service.auth.admin
+    .listUsers({
+      page: 1,
+      perPage: 100,
+    });
   if (listError) throw new Error("BOOTSTRAP_AUTH_USER_LOOKUP_FAILED");
   const existingUsers = usersData.users;
   let authUserId: string;
   let retry = false;
 
   if (existingUsers.length === 0) {
-    const { data: created, error: createError } = await service.auth.admin.createUser({
-      email,
-      password: temporaryPassword,
-      email_confirm: true,
-    });
-    if (createError || !created.user) throw new Error("BOOTSTRAP_AUTH_USER_CREATE_FAILED");
+    const { data: created, error: createError } = await service.auth.admin
+      .createUser({
+        email,
+        password: temporaryPassword,
+        email_confirm: true,
+      });
+    if (createError || !created.user) {
+      throw new Error("BOOTSTRAP_AUTH_USER_CREATE_FAILED");
+    }
     authUserId = created.user.id;
 
-    const { error: bootstrapError } = await service.rpc("cmi_bootstrap_first_admin", {
-      p_auth_user_id: authUserId,
-      p_email: email,
-      p_full_name: fullName,
-      p_church_name: churchName,
-      p_branch_name: branchName,
-    });
+    const { error: bootstrapError } = await service.rpc(
+      "cmi_bootstrap_first_admin",
+      {
+        p_auth_user_id: authUserId,
+        p_email: email,
+        p_full_name: fullName,
+        p_church_name: churchName,
+        p_branch_name: branchName,
+      },
+    );
     if (bootstrapError) {
       await service.auth.admin.deleteUser(authUserId).catch(() => undefined);
       throw new Error("BOOTSTRAP_DATABASE_PROVISION_FAILED");
     }
-  } else if (existingUsers.length === 1 && normalizeEmail(existingUsers[0].email) === email) {
+  } else if (
+    existingUsers.length === 1 &&
+    normalizeEmail(existingUsers[0].email) === email
+  ) {
     authUserId = existingUsers[0].id;
     const { data: profile, error: profileError } = await service
       .from("staff_profile")
@@ -315,31 +404,60 @@ async function bootstrapAdmin(
       // Recover only the narrowly defined partial state: one confirmed Auth
       // user and no CMI profile/church/branch. The database transaction performs
       // the authoritative empty-project check before creating any records.
-      const { error: bootstrapError } = await service.rpc("cmi_bootstrap_first_admin", {
-        p_auth_user_id: authUserId,
-        p_email: email,
-        p_full_name: fullName,
-        p_church_name: churchName,
-        p_branch_name: branchName,
-      });
-      if (bootstrapError) throw new Error("BOOTSTRAP_DATABASE_PROVISION_FAILED");
-      const { error: passwordError } = await service.auth.admin.updateUserById(authUserId, {
-        password: temporaryPassword,
-      });
-      if (passwordError) throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
-      retry = true;
-    } else {
-      if (!profile.must_change_password || profile.account_status !== "active") {
-        return fail("BOOTSTRAP_ALREADY_USED", "First-administrator bootstrap has already been completed.", 409, origin, requestId);
+      const { error: bootstrapError } = await service.rpc(
+        "cmi_bootstrap_first_admin",
+        {
+          p_auth_user_id: authUserId,
+          p_email: email,
+          p_full_name: fullName,
+          p_church_name: churchName,
+          p_branch_name: branchName,
+        },
+      );
+      if (bootstrapError) {
+        throw new Error("BOOTSTRAP_DATABASE_PROVISION_FAILED");
+      }
+      const { error: passwordError } = await service.auth.admin.updateUserById(
+        authUserId,
+        {
+          password: temporaryPassword,
+        },
+      );
+      if (passwordError) {
+        throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
       }
       retry = true;
-      const { error: passwordError } = await service.auth.admin.updateUserById(authUserId, {
-        password: temporaryPassword,
-      });
-      if (passwordError) throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
+    } else {
+      if (
+        !profile.must_change_password || profile.account_status !== "active"
+      ) {
+        return fail(
+          "BOOTSTRAP_ALREADY_USED",
+          "First-administrator bootstrap has already been completed.",
+          409,
+          origin,
+          requestId,
+        );
+      }
+      retry = true;
+      const { error: passwordError } = await service.auth.admin.updateUserById(
+        authUserId,
+        {
+          password: temporaryPassword,
+        },
+      );
+      if (passwordError) {
+        throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
+      }
     }
   } else {
-    return fail("BOOTSTRAP_ALREADY_USED", "First-administrator bootstrap is only available on an empty Auth project.", 409, origin, requestId);
+    return fail(
+      "BOOTSTRAP_ALREADY_USED",
+      "First-administrator bootstrap is only available on an empty Auth project.",
+      409,
+      origin,
+      requestId,
+    );
   }
 
   const safeName = escapeHtml(fullName);
@@ -369,15 +487,20 @@ async function bootstrapAdmin(
   await sendEmail([email], subject, html, textBody);
 
   // The password is never returned by the bootstrap endpoint or written to logs.
-  return response({
-    data: {
-      created: !retry,
-      temporary_password_sent: true,
-      must_change_password: true,
-      password_expires_in_hours: 24,
+  return response(
+    {
+      data: {
+        created: !retry,
+        temporary_password_sent: true,
+        must_change_password: true,
+        password_expires_in_hours: 24,
+      },
+      request_id: requestId,
     },
-    request_id: requestId,
-  }, 200, origin, requestId);
+    200,
+    origin,
+    requestId,
+  );
 }
 
 Deno.serve(async (request: Request) => {
@@ -390,10 +513,17 @@ Deno.serve(async (request: Request) => {
     return createPreflightResponse(origin, ALLOWED_ORIGINS, id);
   }
   if (!SUPABASE_URL || !SERVICE_KEY || !PUBLIC_KEY) {
-    return fail("SERVICE_NOT_CONFIGURED", "Staff authentication service is not configured.", 503, origin, id);
+    return fail(
+      "SERVICE_NOT_CONFIGURED",
+      "Staff authentication service is not configured.",
+      503,
+      origin,
+      id,
+    );
   }
 
-  const path = new URL(request.url).pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+  const path = new URL(request.url).pathname.replace(/\/+$/, "").split("/")
+    .filter(Boolean);
   const route = path.slice(3);
   const action = route.join("/");
   try {
@@ -402,8 +532,11 @@ Deno.serve(async (request: Request) => {
     }
 
     if (request.method === "POST" && action === "request-password-reset") {
-      const configuredNotificationAdmins = (Deno.env.get("CMI_AUTH_ADMIN_EMAILS") ?? "")
-        .split(",").map((value) => normalizeEmail(value)).filter((value): value is string => !!value);
+      const configuredNotificationAdmins =
+        (Deno.env.get("CMI_AUTH_ADMIN_EMAILS") ?? "")
+          .split(",").map((value) => normalizeEmail(value)).filter((
+            value,
+          ): value is string => !!value);
       if (
         !RESEND_API_KEY || !EMAIL_FROM || !APP_URL.startsWith("https://") ||
         AUTH_HMAC_KEY.length < 32 || configuredNotificationAdmins.length === 0
@@ -418,15 +551,20 @@ Deno.serve(async (request: Request) => {
       }
       const body = await jsonBody(request);
       const parsed = parseResetRequest(body);
-      if (!parsed.ok) return fail("INVALID_REQUEST", parsed.error, 400, origin, id);
+      if (!parsed.ok) {
+        return fail("INVALID_REQUEST", parsed.error, 400, origin, id);
+      }
       const emailFingerprint = await hmacFingerprint(parsed.email);
       const ipFingerprint = await hmacFingerprint(clientIp(request));
       const { service } = clients();
-      const { data, error } = await service.rpc("cmi_request_staff_password_reset", {
-        p_email: parsed.email,
-        p_email_fingerprint: emailFingerprint,
-        p_ip_fingerprint: ipFingerprint,
-      });
+      const { data, error } = await service.rpc(
+        "cmi_request_staff_password_reset",
+        {
+          p_email: parsed.email,
+          p_email_fingerprint: emailFingerprint,
+          p_ip_fingerprint: ipFingerprint,
+        },
+      );
       if (error) throw new Error("PASSWORD_RESET_REQUEST_CREATE_FAILED");
 
       const record = data as {
@@ -437,11 +575,16 @@ Deno.serve(async (request: Request) => {
         admin_emails?: string[];
       } | null;
       const extraAdmins = (Deno.env.get("CMI_AUTH_ADMIN_EMAILS") ?? "")
-        .split(",").map((value) => normalizeEmail(value)).filter((value): value is string => !!value);
-      const recipients = [...new Set([
-        ...(record?.admin_emails ?? []).map((value) => normalizeEmail(value)).filter((value): value is string => !!value),
-        ...extraAdmins,
-      ])];
+        .split(",").map((value) => normalizeEmail(value)).filter((
+          value,
+        ): value is string => !!value);
+      const recipients = [
+        ...new Set([
+          ...(record?.admin_emails ?? []).map((value) => normalizeEmail(value))
+            .filter((value): value is string => !!value),
+          ...extraAdmins,
+        ]),
+      ];
       if (record?.matched && record.request_id) {
         let sent = false;
         try {
@@ -454,12 +597,20 @@ Deno.serve(async (request: Request) => {
             `<p>A staff member has requested help accessing PCG Missions.</p>
              <p><strong>Staff member:</strong> ${name}<br><strong>Account:</strong> ${email}</p>
              <p>Review the request in the authenticated staff workspace. Do not reply with or request the user's password.</p>
-             <p><a href="${escapeHtml(requestLink)}">Open password-reset requests</a></p>`,
-            `A staff member has requested help accessing PCG Missions.\nStaff member: ${record.staff_name ?? "A staff member"}\nAccount: ${record.staff_email ?? ""}\nReview the request in the authenticated staff workspace. Do not share or request passwords.\n${requestLink}`,
+             <p><a href="${
+              escapeHtml(requestLink)
+            }">Open password-reset requests</a></p>`,
+            `A staff member has requested help accessing PCG Missions.\nStaff member: ${
+              record.staff_name ?? "A staff member"
+            }\nAccount: ${
+              record.staff_email ?? ""
+            }\nReview the request in the authenticated staff workspace. Do not share or request passwords.\n${requestLink}`,
           );
           sent = true;
         } catch {
-          console.error("staff password-reset notification failed", { request_id: id });
+          console.error("staff password-reset notification failed", {
+            request_id: id,
+          });
         }
         await service.rpc("cmi_mark_staff_password_reset_notification", {
           p_request_id: record.request_id,
@@ -468,43 +619,87 @@ Deno.serve(async (request: Request) => {
       }
 
       // Deliberately identical for known, unknown, inactive and rate-limited addresses.
-      return response({
-        data: {
-          accepted: true,
-          message: "If this email belongs to an active staff account, the administrators have been notified.",
+      return response(
+        {
+          data: {
+            accepted: true,
+            message:
+              "If this email belongs to an active staff account, the administrators have been notified.",
+          },
+          request_id: id,
         },
-        request_id: id,
-      }, 202, origin, id);
+        202,
+        origin,
+        id,
+      );
     }
 
     if (request.method === "POST" && action === "complete-password-change") {
       const token = bearerToken(request);
-      if (!token) return fail("AUTH_REQUIRED", "A valid staff session is required.", 401, origin, id);
+      if (!token) {
+        return fail(
+          "AUTH_REQUIRED",
+          "A valid staff session is required.",
+          401,
+          origin,
+          id,
+        );
+      }
       const parsed = parsePasswordChange(await jsonBody(request));
-      if (!parsed.ok) return fail("INVALID_PASSWORD", parsed.error, 400, origin, id);
+      if (!parsed.ok) {
+        return fail("INVALID_PASSWORD", parsed.error, 400, origin, id);
+      }
 
       const { auth, service } = clients();
-      const { data: authData, error: authError } = await auth.auth.getUser(token);
+      const { data: authData, error: authError } = await auth.auth.getUser(
+        token,
+      );
       if (authError || !authData.user) {
-        return fail("INVALID_SESSION", "A valid staff session is required.", 401, origin, id);
+        return fail(
+          "INVALID_SESSION",
+          "A valid staff session is required.",
+          401,
+          origin,
+          id,
+        );
       }
       const { data: profile, error: profileError } = await service
         .from("staff_profile")
-        .select("id,account_status,must_change_password,password_setup_expires_at")
+        .select(
+          "id,account_status,must_change_password,password_setup_expires_at",
+        )
         .eq("auth_user_id", authData.user.id)
         .maybeSingle();
       if (profileError) throw new Error("STAFF_PROFILE_LOOKUP_FAILED");
       if (!profile || profile.account_status !== "active") {
-        return fail("STAFF_ACCOUNT_NOT_ACTIVE", "An active staff account is required.", 403, origin, id);
+        return fail(
+          "STAFF_ACCOUNT_NOT_ACTIVE",
+          "An active staff account is required.",
+          403,
+          origin,
+          id,
+        );
       }
       if (!profile.must_change_password) {
-        return fail("PASSWORD_CHANGE_NOT_REQUIRED", "There is no pending password setup or approved recovery for this account.", 409, origin, id);
+        return fail(
+          "PASSWORD_CHANGE_NOT_REQUIRED",
+          "There is no pending password setup or approved recovery for this account.",
+          409,
+          origin,
+          id,
+        );
       }
       if (
         profile.password_setup_expires_at &&
         Date.parse(profile.password_setup_expires_at) <= Date.now()
       ) {
-        return fail("PASSWORD_SETUP_EXPIRED", "The temporary password or recovery link has expired. Request an administrator-assisted reset.", 403, origin, id);
+        return fail(
+          "PASSWORD_SETUP_EXPIRED",
+          "The temporary password or recovery link has expired. Request an administrator-assisted reset.",
+          403,
+          origin,
+          id,
+        );
       }
 
       // Change the actual Supabase Auth credential before clearing the database gate.
@@ -514,11 +709,20 @@ Deno.serve(async (request: Request) => {
         { password: parsed.password },
       );
       if (passwordError) {
-        return fail("PASSWORD_UPDATE_FAILED", "The new password could not be saved. Check the password and try again.", 400, origin, id);
+        return fail(
+          "PASSWORD_UPDATE_FAILED",
+          "The new password could not be saved. Check the password and try again.",
+          400,
+          origin,
+          id,
+        );
       }
-      const { error: completionError } = await service.rpc("cmi_complete_staff_password_change", {
-        p_auth_user_id: authData.user.id,
-      });
+      const { error: completionError } = await service.rpc(
+        "cmi_complete_staff_password_change",
+        {
+          p_auth_user_id: authData.user.id,
+        },
+      );
       if (completionError) throw new Error("PASSWORD_CHANGE_COMPLETION_FAILED");
 
       // Revoke other refresh-token sessions while retaining this recovery/setup session.
@@ -531,25 +735,64 @@ Deno.serve(async (request: Request) => {
           },
         });
       } catch {
-        console.warn("other staff sessions could not be revoked", { request_id: id });
+        console.warn("other staff sessions could not be revoked", {
+          request_id: id,
+        });
       }
-      return response({ data: { password_change_required: false }, request_id: id }, 200, origin, id);
+      return response(
+        { data: { password_change_required: false }, request_id: id },
+        200,
+        origin,
+        id,
+      );
     }
 
     const token = bearerToken(request);
-    if (!token) return fail("AUTH_REQUIRED", "A valid staff session is required.", 401, origin, id);
+    if (!token) {
+      return fail(
+        "AUTH_REQUIRED",
+        "A valid staff session is required.",
+        401,
+        origin,
+        id,
+      );
+    }
     const required = await requireStaff(token, origin, id);
     if (required.error || !required.authUser) return required.error!;
     const { service } = required;
 
-    if (request.method === "GET" && route[0] === "admin" && route[1] === "password-reset-requests") {
-      const branchId = parseBranchId(new URL(request.url).searchParams.get("branch_id"));
-      if (!branchId) return fail("INVALID_REQUEST", "A valid branch_id is required.", 400, origin, id);
-      const { data, error } = await service.rpc("cmi_list_staff_password_reset_requests", {
-        p_actor_auth_user_id: required.authUser.id,
-        p_branch_id: branchId,
-      });
-      if (error?.code === "42501") return fail("FORBIDDEN", "You cannot review password-reset requests in this branch.", 403, origin, id);
+    if (
+      request.method === "GET" && route[0] === "admin" &&
+      route[1] === "password-reset-requests"
+    ) {
+      const branchId = parseBranchId(
+        new URL(request.url).searchParams.get("branch_id"),
+      );
+      if (!branchId) {
+        return fail(
+          "INVALID_REQUEST",
+          "A valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const { data, error } = await service.rpc(
+        "cmi_list_staff_password_reset_requests",
+        {
+          p_actor_auth_user_id: required.authUser.id,
+          p_branch_id: branchId,
+        },
+      );
+      if (error?.code === "42501") {
+        return fail(
+          "FORBIDDEN",
+          "You cannot review password-reset requests in this branch.",
+          403,
+          origin,
+          id,
+        );
+      }
       if (error) throw new Error("PASSWORD_RESET_REQUEST_LIST_FAILED");
       return response({ data, request_id: id }, 200, origin, id);
     }
@@ -563,45 +806,99 @@ Deno.serve(async (request: Request) => {
       const requestId = parseResetRequestId(route[2] ?? "");
       const actionName = route[3];
       if (!requestId || (actionName !== "approve" && actionName !== "deny")) {
-        return fail("NOT_FOUND", "Password-reset request action not found.", 404, origin, id);
+        return fail(
+          "NOT_FOUND",
+          "Password-reset request action not found.",
+          404,
+          origin,
+          id,
+        );
       }
       const body = await jsonBody(request);
       const parsed = parseResetReview(body);
-      if (!parsed.ok) return fail("INVALID_REQUEST", parsed.error, 400, origin, id);
+      if (!parsed.ok) {
+        return fail("INVALID_REQUEST", parsed.error, 400, origin, id);
+      }
 
       if (actionName === "deny") {
-        const { error } = await service.rpc("cmi_finish_staff_password_reset_request", {
+        const { error } = await service.rpc(
+          "cmi_finish_staff_password_reset_request",
+          {
+            p_actor_auth_user_id: required.authUser.id,
+            p_branch_id: parsed.branch_id,
+            p_request_id: requestId,
+            p_action: "denied",
+            p_reason: parsed.reason,
+          },
+        );
+        if (error?.code === "42501") {
+          return fail(
+            "FORBIDDEN",
+            "You cannot deny this password-reset request.",
+            403,
+            origin,
+            id,
+          );
+        }
+        if (error?.code === "P0002") {
+          return fail(
+            "NOT_FOUND",
+            "Pending password-reset request not found.",
+            404,
+            origin,
+            id,
+          );
+        }
+        if (error) throw new Error("PASSWORD_RESET_REQUEST_DENIAL_FAILED");
+        return response(
+          { data: { status: "denied" }, request_id: id },
+          200,
+          origin,
+          id,
+        );
+      }
+
+      const { data: claim, error: claimError } = await service.rpc(
+        "cmi_claim_staff_password_reset_request",
+        {
           p_actor_auth_user_id: required.authUser.id,
           p_branch_id: parsed.branch_id,
           p_request_id: requestId,
-          p_action: "denied",
-          p_reason: parsed.reason,
-        });
-        if (error?.code === "42501") return fail("FORBIDDEN", "You cannot deny this password-reset request.", 403, origin, id);
-        if (error?.code === "P0002") return fail("NOT_FOUND", "Pending password-reset request not found.", 404, origin, id);
-        if (error) throw new Error("PASSWORD_RESET_REQUEST_DENIAL_FAILED");
-        return response({ data: { status: "denied" }, request_id: id }, 200, origin, id);
+        },
+      );
+      if (claimError?.code === "42501") {
+        return fail(
+          "FORBIDDEN",
+          "You cannot approve this password-reset request.",
+          403,
+          origin,
+          id,
+        );
       }
-
-      const { data: claim, error: claimError } = await service.rpc("cmi_claim_staff_password_reset_request", {
-        p_actor_auth_user_id: required.authUser.id,
-        p_branch_id: parsed.branch_id,
-        p_request_id: requestId,
-      });
-      if (claimError?.code === "42501") return fail("FORBIDDEN", "You cannot approve this password-reset request.", 403, origin, id);
-      if (claimError?.code === "P0002") return fail("NOT_FOUND", "Pending password-reset request not found.", 404, origin, id);
+      if (claimError?.code === "P0002") {
+        return fail(
+          "NOT_FOUND",
+          "Pending password-reset request not found.",
+          404,
+          origin,
+          id,
+        );
+      }
       if (claimError) throw new Error("PASSWORD_RESET_REQUEST_CLAIM_FAILED");
-      const claimed = claim as { target_email?: string; target_name?: string } | null;
+      const claimed = claim as
+        | { target_email?: string; target_name?: string }
+        | null;
       const email = normalizeEmail(claimed?.target_email);
       if (!email) throw new Error("PASSWORD_RESET_TARGET_INVALID");
 
       try {
         const redirectTo = `${APP_URL}/?auth=recovery`;
-        const { data: linkData, error: linkError } = await service.auth.admin.generateLink({
-          type: "recovery",
-          email,
-          options: { redirectTo },
-        });
+        const { data: linkData, error: linkError } = await service.auth.admin
+          .generateLink({
+            type: "recovery",
+            email,
+            options: { redirectTo },
+          });
         const actionLink = linkData?.properties?.action_link;
         if (linkError || !actionLink || typeof actionLink !== "string") {
           throw new Error("AUTH_RECOVERY_LINK_GENERATION_FAILED");
@@ -615,7 +912,9 @@ Deno.serve(async (request: Request) => {
            <p>Your password-reset request has been approved by a church administrator.</p>
            <p><a href="${safeLink}">Set a new PCG Missions password</a></p>
            <p>This is a single-use recovery link. Do not forward it. If you did not request this reset, contact your church administrator immediately.</p>`,
-          `Hello ${claimed?.target_name ?? "staff member"},\nYour password-reset request has been approved. Use this single-use link to set a new password:\n${actionLink}\nDo not forward the link. If you did not request this reset, contact your church administrator immediately.`,
+          `Hello ${
+            claimed?.target_name ?? "staff member"
+          },\nYour password-reset request has been approved. Use this single-use link to set a new password:\n${actionLink}\nDo not forward the link. If you did not request this reset, contact your church administrator immediately.`,
         );
       } catch {
         await service.rpc("cmi_finish_staff_password_reset_request", {
@@ -623,26 +922,58 @@ Deno.serve(async (request: Request) => {
           p_branch_id: parsed.branch_id,
           p_request_id: requestId,
           p_action: "pending",
-          p_reason: "Recovery email delivery failed; request returned to pending review.",
+          p_reason:
+            "Recovery email delivery failed; request returned to pending review.",
         });
-        return fail("RESET_EMAIL_DELIVERY_FAILED", "The recovery email could not be delivered. The request remains available for retry.", 503, origin, id);
+        return fail(
+          "RESET_EMAIL_DELIVERY_FAILED",
+          "The recovery email could not be delivered. The request remains available for retry.",
+          503,
+          origin,
+          id,
+        );
       }
 
-      const { error: finishError } = await service.rpc("cmi_finish_staff_password_reset_request", {
-        p_actor_auth_user_id: required.authUser.id,
-        p_branch_id: parsed.branch_id,
-        p_request_id: requestId,
-        p_action: "approved",
-        p_reason: parsed.reason,
-      });
-      if (finishError) throw new Error("PASSWORD_RESET_REQUEST_APPROVAL_FAILED");
-      return response({ data: { status: "approved", recovery_email_sent: true }, request_id: id }, 200, origin, id);
+      const { error: finishError } = await service.rpc(
+        "cmi_finish_staff_password_reset_request",
+        {
+          p_actor_auth_user_id: required.authUser.id,
+          p_branch_id: parsed.branch_id,
+          p_request_id: requestId,
+          p_action: "approved",
+          p_reason: parsed.reason,
+        },
+      );
+      if (finishError) {
+        throw new Error("PASSWORD_RESET_REQUEST_APPROVAL_FAILED");
+      }
+      return response(
+        {
+          data: { status: "approved", recovery_email_sent: true },
+          request_id: id,
+        },
+        200,
+        origin,
+        id,
+      );
     }
 
-    return fail("NOT_FOUND", "Staff authentication operation not found.", 404, origin, id);
+    return fail(
+      "NOT_FOUND",
+      "Staff authentication operation not found.",
+      404,
+      origin,
+      id,
+    );
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
     console.error("staff-auth failure", { request_id: id, code });
-    return fail("STAFF_AUTH_OPERATION_FAILED", "Unable to complete this authentication operation.", 500, origin, id);
+    return fail(
+      "STAFF_AUTH_OPERATION_FAILED",
+      "Unable to complete this authentication operation.",
+      500,
+      origin,
+      id,
+    );
   }
 });

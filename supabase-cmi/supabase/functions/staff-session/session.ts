@@ -136,13 +136,17 @@ export function buildStaffSession(
       )
       .map(({ id, name, timezone }) => ({ id, name, timezone }))
       .sort((a, b) => a.name.localeCompare(b.name)),
-    roles: passwordChangeRequired ? [] : [...uniqueRoles.values()].sort((a, b) =>
-      a.branch_id.localeCompare(b.branch_id) || a.code.localeCompare(b.code)
-    ),
-    capabilities: passwordChangeRequired ? [] : [...uniqueCapabilities.values()].sort((a, b) =>
-      a.branch_id.localeCompare(b.branch_id) ||
-      a.code.localeCompare(b.code) ||
-      a.scope_mode.localeCompare(b.scope_mode)
-    ),
+    roles: passwordChangeRequired
+      ? []
+      : [...uniqueRoles.values()].sort((a, b) =>
+        a.branch_id.localeCompare(b.branch_id) || a.code.localeCompare(b.code)
+      ),
+    capabilities: passwordChangeRequired
+      ? []
+      : [...uniqueCapabilities.values()].sort((a, b) =>
+        a.branch_id.localeCompare(b.branch_id) ||
+        a.code.localeCompare(b.code) ||
+        a.scope_mode.localeCompare(b.scope_mode)
+      ),
   };
 }
