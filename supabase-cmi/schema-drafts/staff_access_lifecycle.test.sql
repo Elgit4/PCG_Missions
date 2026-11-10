@@ -1,5 +1,5 @@
 begin;
-select plan(30);
+select plan(32);
 select has_table('public','staff_access_audit','Staff access audit exists');
 select ok((select relrowsecurity from pg_class where oid='public.staff_access_audit'::regclass),'Audit RLS enabled');
 select ok(not has_table_privilege('anon','public.staff_access_audit','SELECT'),'Anon cannot read access audit');
@@ -18,8 +18,9 @@ select ok((select coalesce(array_to_string(proconfig,','),'') like '%search_path
 select is((select count(*)::integer from public.role_capability),65,'The reviewed visitor MVP role baseline is seeded');
 insert into auth.users(instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
 values('00000000-0000-0000-0000-000000000000','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20','authenticated','authenticated','access-actor@example.invalid','not-a-real-password-hash',now(),'{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb,now(),now()),
-('00000000-0000-0000-0000-000000000000','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21','authenticated','authenticated','access-target@example.invalid','not-a-real-password-hash',now(),'{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb,now(),now());
-insert into public.staff_profile(id,auth_user_id,full_name,account_status) values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20','Access Actor','active'),('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21','Access Target','active');
+('00000000-0000-0000-0000-000000000000','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21','authenticated','authenticated','access-target@example.invalid','not-a-real-password-hash',now(),'{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb,now(),now()),
+('00000000-0000-0000-0000-000000000000','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22','authenticated','authenticated','access-coordinator@example.invalid','not-a-real-password-hash',now(),'{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb,now(),now());
+insert into public.staff_profile(id,auth_user_id,full_name,account_status) values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20','Access Actor','active'),('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21','Access Target','active'),('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa24','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22','Access Coordinator','active');
 insert into public.church(id,name,timezone) values('10000000-0000-4000-8000-000000000020','Access Test Church','Africa/Accra');
 insert into public.branch(id,church_id,name,code) values('20000000-0000-4000-8000-000000000020','10000000-0000-4000-8000-000000000020','Access Test Branch','ACCESS');
 insert into public.team(id,branch_id,name)
@@ -28,7 +29,14 @@ insert into public.service_area(id,branch_id,name,code)
 values('40000000-0000-4000-8000-000000000020','20000000-0000-4000-8000-000000000020','Overlap Test Area','OVERLAP');
 insert into public.role_capability(role_id,capability_id,scope_mode) select r.id,c.id,'branch' from public.role r cross join public.capability c where r.code='admin_pastor' and c.code in('access.role.assign','staff.account.manage')
 on conflict do nothing;
+insert into public.role_capability(role_id,capability_id,scope_mode)
+select r.id,c.id,'branch' from public.role r cross join public.capability c
+where r.code='coordinator' and c.code='staff.account.manage'
+on conflict do nothing;
 insert into public.staff_role_assignment(staff_profile_id,role_id,branch_id,assigned_by,starts_at) select 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',r.id,'20000000-0000-4000-8000-000000000020','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',now()-interval '1 day' from public.role r where r.code='admin_pastor';
+insert into public.staff_role_assignment(staff_profile_id,role_id,branch_id,assigned_by,starts_at)
+select 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa24',r.id,'20000000-0000-4000-8000-000000000020','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',now()-interval '1 day'
+from public.role r where r.code='coordinator';
 
 insert into public.staff_role_assignment(staff_profile_id,role_id,branch_id,assigned_by,starts_at,ends_at)
 select 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',r.id,'20000000-0000-4000-8000-000000000020','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',now()-interval '1 day',now()+interval '5 days'
@@ -63,6 +71,8 @@ set local role service_role;
 select throws_ok($q$select public.cmi_assign_staff_role('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23','20000000-0000-4000-8000-000000000020','field_worker',now(),'2026-12-31T23:59:59Z','Unauthorized duplicate assignment')$q$,'42501',null,'Staff without role-assignment capability cannot assign roles');
 select throws_ok($q$select public.cmi_revoke_staff_role('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21',(select id from public.staff_role_assignment where staff_profile_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23'),'20000000-0000-4000-8000-000000000020','Unauthorized role revocation')$q$,'42501',null,'Staff without role-assignment capability cannot revoke roles');
 select throws_ok($q$select public.cmi_set_staff_account_status('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23','20000000-0000-4000-8000-000000000020','inactive','Unauthorized account deactivation')$q$,'42501',null,'Staff without account-management capability cannot change account state');
+select throws_ok($q$select public.cmi_set_staff_account_status('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22','20000000-0000-4000-8000-000000000020','inactive','Attempt to deactivate own admin account')$q$,'22023',null,'An administrator cannot deactivate their own account');
+select throws_ok($q$select public.cmi_set_staff_account_status('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22','20000000-0000-4000-8000-000000000020','inactive','Attempt to remove the only active Admin')$q$,'22023',null,'The last active Admin/Pastor cannot be deactivated by another authorised account');
 reset role;
 set local role service_role;
 select throws_ok($q$select public.cmi_assign_staff_role('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23','20000000-0000-4000-8000-000000000099','field_worker',now(),null,'Branch outside configured instance')$q$,'42501',null,'Role assignment rejects an unconfigured branch');
