@@ -1,77 +1,102 @@
 # CMI staff authentication — bootstrap and recovery runbook
 
-**Status:** PR #26 is merged, but this implementation is **on hold and must not be deployed**. It currently implements Supabase email/PIN authentication, while the confirmed product requirement is email + private PIN with one-time staff activation; the staff member establishes and alone knows the private PIN. The merged PIN lifecycle is therefore not production-conformant.
-**Scope:** First administrator bootstrap, first-login private PIN establishment, and administrator-approved staff PIN recovery.
+**Status:** PR #26 is merged, but the authentication implementation is **on hold and must not be deployed**. The current source implements Supabase email/password authentication. The confirmed product requirement is email + private PIN with one-time staff activation. The current source is therefore non-conformant.
+**Scope:** First administrator bootstrap, first-login credential replacement, staff activation and administrator-reviewed recovery.
 
-## Mandatory conformance hold\n\nThe current source uses Supabase PINs, temporary PINs and PIN-recovery links. This does not satisfy the confirmed email + private PIN requirement. Do not deploy `staff-auth`, configure bootstrap secrets, create the first administrator or represent Forgot PIN as complete until the authentication design is replaced with a reviewed PIN-verification and supported session-issuance flow. A short PIN must not simply be passed to Supabase `signInWithPIN` as if it were a strong PIN. The reset/forgot-PIN workflow must be explicitly approved, rate-limited, audited and designed without an administrator learning the staff member's private PIN.\n\n## Security model
+## Mandatory conformance hold
 
-- Supabase Auth remains the session authority. The browser must never receive a service-role key or server-side credential material.
-- Staff sign in using their email address and private PIN through a server-side verification boundary. The PIN is never sent directly to Supabase Auth and is never stored or logged in plaintext.
-- Proposed verifier: per-user random salt plus a reviewed memory-hard KDF and separately managed server-only pepper, deriving a high-entropy internal Supabase Auth credential. Supabase Auth's supported sign-in API issues the session; the application must not mint JWTs itself.
-- Per-account and per-IP throttling must be atomic, escalating and audited. Responses must not reveal whether an email address exists. KDF parameters, PIN length and lockout thresholds require security review and explicit product approval before implementation.
-- The first administrator receives a cryptographically random, one-time temporary PIN by email. No fixed PIN exists in source control.
-- The temporary PIN has a 24-hour setup window. The staff session cannot access workspace APIs until a new PIN is saved.
-- Staff recovery requests do not disclose whether an email belongs to an account.
-- Requests are fingerprinted, rate-limited, stored in the unexposed `private` schema and audited.
-- Only the branch Admin/Pastor capability `staff.PIN_reset.manage` can review requests. Self-approval is rejected.
-- Approval sends a single-use Supabase recovery link. Administrators never see or set the staff member's new PIN.
-- An approved recovery gates the account until the staff member changes the PIN.
-- Other refresh-token sessions are revoked after a successful PIN replacement where Supabase Auth accepts the sign-out request.
+Do not deploy `staff-auth`, configure its production secrets, create the first administrator or represent Forgot Password as complete until the email + private PIN design has been implemented and reviewed.
 
-## Required deployment configuration
+The current first-admin bootstrap generates a cryptographically random temporary password and sends it to the configured administrator mailbox. It does **not** create a static/shared password and does not store the temporary password in source control. This temporary credential is only a bootstrap mechanism; the first-login destination must be private PIN setup, not permanent password setup.
 
-Configure these as Supabase Edge Function secrets only. Never add them to Vite variables, frontend source, GitHub-tracked `.env` files or SQL migrations.
+A short PIN must not simply be sent to Supabase Auth as though it were a strong password. The application must use a reviewed server-side PIN verification boundary while retaining supported Supabase Auth session issuance. Do not mint custom JWTs or invent a Supabase session format.
+
+## Proposed security model
+
+See [CMI email + private PIN authentication architecture proposal](30_CMI_PIN_AUTHENTICATION_ARCHITECTURE_PROPOSAL.md).
+
+The proposed design:
+- Keeps Supabase Auth as the identity and session authority.
+- Accepts email + private PIN through a server-side Edge Function.
+- Uses a per-user random salt, reviewed memory-hard KDF and separately managed server-only pepper to derive an opaque internal Supabase Auth credential.
+- Never sends or stores a plaintext PIN, and never returns internal credential material to the browser.
+- Applies atomic per-account and per-IP throttling, progressive delay/lockout, generic responses and privacy-safe audit events.
+- Requires explicit decisions on PIN format/length, KDF parameters, lockout thresholds, session lifetime and recovery proof before implementation.
+
+## First administrator bootstrap requirement
+
+1. Configure a one-time high-entropy bootstrap bearer token and verified administrator identity as Edge Function secrets.
+2. Verify that Supabase Auth and CMI identity tables are in the explicitly approved empty state. Existing users or records must stop bootstrap; they must never be deleted or overwritten automatically.
+3. Create the first Auth identity with a cryptographically random, single-use temporary credential and provision the matching first-admin profile/branch transactionally.
+4. Send the temporary credential only to the verified administrator mailbox. Never return it from the API, log it or commit it.
+5. Permit the first administrator to use it only to enter the first-login credential setup flow.
+6. Replace the temporary credential with the administrator's private PIN using the reviewed PIN verifier.
+7. Invalidate the temporary credential and current bootstrap session, remove the bootstrap bearer secret from the deployed Edge Function configuration, and require a fresh email + PIN sign-in.
+8. Reject subsequent bootstrap attempts. Any partial-bootstrap recovery must be narrowly scoped, idempotent and audited.
+
+A fixed, shared or source-controlled administrator password is prohibited. The one-time random temporary credential is the safer implementation of the requested initial-access mechanism.
+
+## Staff activation and Forgot PIN
+
+- An authorised administrator provisions the staff profile and sends a one-time activation invitation to the verified staff email.
+- The invitation is single-use, time-limited and stored only as a hash.
+- The staff member establishes their own private PIN; administrators never see, choose or set it.
+- Forgot PIN requests return the same public response for known, unknown, inactive and throttled email addresses.
+- The request is rate-limited, fingerprinted and audited; the authorised branch administrator is notified.
+- Self-approval is prohibited. Review decisions require an audit reason.
+- Approval sends a single-use recovery link/token to the staff member's verified email. The administrator does not receive or set the replacement PIN.
+- Recovery permits only PIN replacement, not normal workspace access.
+- Successful replacement consumes the recovery token, rotates the internal credential, clears the forced-change gate and revokes other sessions where supported.
+- Denial, expiry, delivery failure, retries and completion are audited.
+
+## Existing source configuration (draft only)
+
+The current draft expects these values as Edge Function secrets. They are not to be configured in production while the authentication conformance hold remains:
 
 | Secret | Purpose |
 | --- | --- |
-| `CMI_BOOTSTRAP_TOKEN` | One-time high-entropy bootstrap bearer token; minimum 32 characters. Remove immediately after bootstrap succeeds. |
-| `CMI_BOOTSTRAP_ADMIN_EMAIL` | The first administrator's verified mailbox. |
-| `CMI_BOOTSTRAP_ADMIN_NAME` | Display name for the first administrator. |
+| `CMI_BOOTSTRAP_TOKEN` | One-time high-entropy bootstrap bearer token; minimum 32 characters. Remove after successful bootstrap. |
+| `CMI_BOOTSTRAP_ADMIN_EMAIL` | Verified first administrator mailbox. |
+| `CMI_BOOTSTRAP_ADMIN_NAME` | First administrator display name. |
 | `CMI_BOOTSTRAP_CHURCH_NAME` | Initial church name. |
 | `CMI_BOOTSTRAP_BRANCH_NAME` | Initial branch name. |
-| `CMI_ALLOWED_ORIGINS` | Exact comma-separated production origins; no wildcard. |
-| `CMI_APP_URL` | Canonical HTTPS frontend origin, without a trailing slash. |
-| `CMI_AUTH_HMAC_KEY` | Random HMAC key, minimum 32 characters, used for email/IP request fingerprints. |
-| `CMI_AUTH_ADMIN_EMAILS` | Optional emergency notification recipients. Normal recipients are resolved from active branch grants. |
-| `CMI_AUTH_EMAIL_FROM` | Sender address on a domain verified by Resend. |
+| `CMI_ALLOWED_ORIGINS` | Exact comma-separated allowed origins. |
+| `CMI_APP_URL` | Canonical HTTPS frontend origin. |
+| `CMI_AUTH_HMAC_KEY` | Server-only HMAC key for privacy-preserving request fingerprints. |
+| `CMI_AUTH_ADMIN_EMAILS` | Optional emergency notification recipients. |
+| `CMI_AUTH_EMAIL_FROM` | Sender address on a verified domain. |
 | `RESEND_API_KEY` | Server-side Resend API key. |
 
-Supabase provides `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and a publishable/legacy anon key to Edge Functions. The function must not be deployed without these platform values.
+Supabase provides `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and a publishable/legacy anon key to Edge Functions. The service-role key must never be exposed to the browser.
 
-## Deployment order
+## Deployment sequence after approval
 
-Do not deploy this authentication slice alone. Its migration depends on the CMI foundation, capability catalogue and staff access lifecycle.
+1. Obtain stakeholder approval for the role/branch model, staff identity and recovery-review authority.
+2. Resolve the outstanding authentication decisions in document 30.
+3. Review and revise the password-specific lifecycle SQL draft; do not apply it unchanged.
+4. Implement the PIN verification, activation and recovery flows with pinned dependencies and tests.
+5. Apply reviewed migrations in an isolated local CMI stack, run the complete pgTAP suite, and run Supabase advisors.
+6. Deploy to a separate staging Supabase project; configure Auth URLs and secrets only there.
+7. Verify the complete first-admin flow, staff activation, PIN sign-in, account throttling, Forgot PIN request, admin notification/review, recovery, session revocation and audit trail.
+8. Confirm the staging Auth project is empty before one-time bootstrap. Do not delete or reset existing production Auth users.
+9. Record migration versions, Edge Function versions, CI results and security test evidence.
+10. Only after stakeholder approval and staging sign-off may a separately approved production rollout be planned.
 
-1. Obtain church approval for the role/branch model, account identity and reset-review authority in `docs/11_CMI_STAKEHOLDER_DECISION_REGISTER.md`.
-2. Confirm the hosted Supabase platform-owner default-ACL remediation documented in `docs/27_CMI_HOSTED_DATABASE_PRIVILEGE_REMEDIATION.md`.
-3. Review and apply the CMI migrations in dependency order in a staging project first. Never point the isolated CMI CLI workspace at the historical ChurchConnect `/supabase` migration set.
-4. Verify the full pgTAP suite and Supabase Security Advisors in staging.
-5. Configure Auth Site URL and allowlist the production recovery redirect (the app root with `auth=recovery`). Use HTTPS only.
-6. Configure the server secrets in the table above.
-7. Deploy the `staff-auth` Edge Function. Its `verify_jwt = false` setting is intentional because it has public reset-request and one-time bootstrap routes. The function itself validates the dedicated bootstrap token and calls Supabase Auth `getUser` for all staff/admin routes. Never remove those in-handler checks.
-8. Configure the frontend's browser-safe `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`, then deploy the frontend.
-9. Run the one-time bootstrap only after verifying the Auth project has no users and the CMI church, branch and staff-profile tables are empty.
-10. Verify the admin email arrives, sign in with the one-time PIN, replace it immediately, confirm workspace access, then remove `CMI_BOOTSTRAP_TOKEN` from Edge Function secrets.
-11. Test a separate staff account's Forgot PIN flow end-to-end: request, admin email notification, branch-scoped review, denial, approval, recovery link, PIN change, audit entries and rejection of the old PIN.
-12. Record deployment timestamps, migration versions, Edge Function version and test evidence. Do not mark production ready until all checks pass.
+## Authorization boundary
 
-## Bootstrap restrictions
+The first Admin/Pastor bootstrap source currently proposes exactly four branch-scoped control-plane capabilities:
+- `staff.directory.read`
+- `staff.account.manage`
+- `access.role.assign`
+- `staff.password_reset.manage`
 
-The bootstrap endpoint refuses to run unless the Auth project contains exactly one confirmed user (the configured first administrator) and the CMI church, branch and staff-profile tables are empty. It cannot be used to overwrite an existing administrator or silently delete legacy accounts.
+These do not grant pastoral oversight, contact/export, SMS or business-module permissions. No role-capability grants are active in the hosted database. Stakeholder decisions R-01–R-12 and D-01–D-13 remain pending.
 
-If Auth users already exist, stop. Reconcile them explicitly with the church and technical owners; do not delete accounts or bypass the bootstrap guard.
+## Current hosted release boundary — verified 10 November 2026
 
-The bootstrap endpoint does not return the temporary PIN in its response. It sends it only to the configured mailbox. The temporary credential is never stored in Postgres or logs.
-
-## Operational notes
-
-- Configure Resend with a verified sender domain and disable click tracking/link rewriting for authentication messages.
-- Monitor Edge Function logs by request ID; never log bearer tokens, PINs, recovery links, HMAC input or provider response bodies.
-- Reset requests expire after 24 hours. A processing claim can be retried after its ten-minute lease if the function crashes.
-- Email delivery failures are audited. A failed recovery email leaves the request available for a later review/retry.
-- The public response to Forgot PIN remains the same for known, unknown, inactive and throttled addresses.
-- The first Admin/Pastor bootstrap receives only four branch-scoped control-plane capabilities: `staff.directory.read`, `staff.account.manage`, `access.role.assign` and `staff.PIN_reset.manage`. These grants do not create staff accounts; invitation/activation remains unimplemented. It deliberately does not receive `access.capability.manage`, contact/export, prayer/care oversight, SMS, or report permissions. All other business-domain grants remain blocked pending client approval of the role matrix.
-
-## Current release boundary
-
-This runbook and code are merged into `main` (PR #26), but remain undeployed. The hosted project currently has 11 public identity/authorization foundation tables and three recorded migrations, with all 11 tables RLS-enabled and no client SELECT access to staff profiles. It has zero deployed CMI Edge Functions. No production Auth configuration, Edge Function secret, administrator user, church, branch or CMI staff record has been created by the authentication implementation. The temporary-password implementation remains non-conformant and undeployed. The separate RLS-helper remediation is documented in `docs/27_CMI_HOSTED_DATABASE_PRIVILEGE_REMEDIATION.md` and the production audit.
+- Hosted Supabase project `cgwffpxlwgbnlinzwfoj` has 11 public identity/authorization foundation tables and three recorded migrations.
+- All 11 tables have RLS enabled. Anonymous and authenticated roles cannot SELECT staff profiles. The six approved roles are seeded; `role_capability` remains empty.
+- There are zero deployed CMI Edge Functions and no provisioned administrator, church, branch or staff records.
+- The current password-based authentication source and password-specific lifecycle SQL are drafts only and are not deployed.
+- Domain migrations, business grants, staff provisioning and production launch remain blocked pending stakeholder approval and staging verification.
+- The 11 informational RLS-enabled/no-policy advisor findings are intentional fail-closed behavior, not an authorization grant.
