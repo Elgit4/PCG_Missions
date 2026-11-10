@@ -54,6 +54,7 @@ The CMI-only backend is developed in `../supabase-cmi/`, isolated from the histo
 ## Audit and verification records
 
 - [Repository Consistency & Accuracy Audit](REPOSITORY_AUDIT_REPORT.md) — v2.1 cross-document review, corrected defects, unresolved implementation gaps and verification limitations.
+- [27 — Hosted Public-Schema Privilege Remediation](27_CMI_HOSTED_DATABASE_PRIVILEGE_REMEDIATION.md) — hosted default-ACL findings, application migration hardening, the remaining `supabase_admin` platform-owner action and verification procedure.
 
 ## Reading order
 
