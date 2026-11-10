@@ -6,7 +6,7 @@ create table public.staff_access_audit(
  id uuid primary key default gen_random_uuid(),branch_id uuid not null references public.branch(id) on delete restrict,
  actor_profile_id uuid not null references public.staff_profile(id) on delete restrict,
  target_profile_id uuid not null references public.staff_profile(id) on delete restrict,
- action text not null check(action in('role_assigned','role_revoked','account_deactivated','account_reactivated')),
+ action text not null check(action in('role_assigned','role_revoked','account_created','account_deactivated','account_reactivated')),
  reason text not null check(length(btrim(reason)) between 10 and 500),
  metadata jsonb not null default '{}'::jsonb check(jsonb_typeof(metadata)='object'),created_at timestamptz not null default now()
 );
