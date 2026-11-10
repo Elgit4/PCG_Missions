@@ -194,6 +194,19 @@ Deno.serve(async (request: Request) => {
       );
     }
 
+    if (profile.must_change_password) {
+      const expiresAt = Date.parse(profile.password_setup_expires_at ?? "");
+      if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+        return errorResponse(
+          "PASSWORD_SETUP_EXPIRED",
+          "The temporary password or recovery window has expired. Request an administrator-assisted reset.",
+          403,
+          origin,
+          id,
+        );
+      }
+    }
+
     const now = new Date().toISOString();
     const { data: assignments, error: assignmentError } = await service
       .from("staff_role_assignment")
