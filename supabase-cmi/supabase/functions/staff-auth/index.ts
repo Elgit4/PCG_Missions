@@ -97,7 +97,7 @@ function generateTemporaryPassword(): string {
   // required by the frontend password policy. Never log or persist this value.
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
-  const random = btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_")
+  const random = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_")
     .replace(/=+$/g, "");
   return `${random}A1a`;
 }
@@ -968,7 +968,7 @@ Deno.serve(async (request: Request) => {
            <p><strong><code>${safePassword}</code></strong></p>
            <p>Sign in with your registered email address and this temporary password. You must create a new private password before accessing PCG Missions.</p>
            <p>This temporary password expires within the reset request's validity window. Do not forward it. If you did not request this reset, contact your church administrator immediately.</p>`,
-          `Hello ${claimed?.target_name ?? "staff member"},\\nYour password-reset request has been approved. Your temporary password is: ${temporaryPassword}\\nSign in with your registered email address. You must create a new private password before accessing PCG Missions. Do not forward this message. If you did not request this reset, contact your church administrator immediately.`,
+          `Hello ${claimed?.target_name ?? "staff member"},\nYour password-reset request has been approved. Your temporary password is: ${temporaryPassword}\\nSign in with your registered email address. You must create a new private password before accessing PCG Missions. Do not forward this message. If you did not request this reset, contact your church administrator immediately.`,
         );
       } catch {
         await service.rpc("cmi_finish_staff_password_reset_request", {
