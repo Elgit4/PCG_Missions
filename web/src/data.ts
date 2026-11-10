@@ -21,6 +21,8 @@ export type Contact = {
   owner: string;
   date: string;
   accent: string;
+  consent?: "Granted" | "Declined" | "Not recorded";
+  preference?: string;
 };
 
 export type Task = {
@@ -32,6 +34,36 @@ export type Task = {
   time: string;
   owner: string;
   status: "Due today" | "Overdue" | "Upcoming";
+};
+
+export type EventRecord = {
+  title: string;
+  category: string;
+  date: string;
+  time: string;
+  place: string;
+  people: number;
+  tone: string;
+  mark: string;
+  image?: string;
+};
+
+export type PrayerRequest = {
+  id: string;
+  title: string;
+  detail: string;
+  received: string;
+  status: string;
+};
+
+export type TeamMember = {
+  initials: string;
+  name: string;
+  role: string;
+  teams: string;
+  tasks: number;
+  color: string;
+  status?: "Active" | "Pending" | "Inactive";
 };
 
 export const initialContacts: Contact[] = [
@@ -49,7 +81,7 @@ export const initialTasks: Task[] = [
   { id: "T-174", name: "Michael Tetteh", initials: "MT", action: "Invite to next service", due: "Nov 12", time: "11:00 AM", owner: "You", status: "Upcoming" },
 ];
 
-export const events = [
+export const events: EventRecord[] = [
   { title: "Community & Care Sunday", category: "SUNDAY SERVICE", date: "SUN, NOV 15", time: "8:00 AM", place: "Main auditorium", people: 126, tone: "event-olive", mark: "15" },
   { title: "New Members Welcome", category: "CONNECT", date: "WED, NOV 18", time: "6:30 PM", place: "Fellowship hall", people: 24, tone: "event-clay", mark: "18" },
   { title: "Adenta Community Outreach", category: "OUTREACH", date: "SAT, NOV 21", time: "9:00 AM", place: "Adenta market", people: 18, tone: "event-gold", mark: "21" },
@@ -59,6 +91,13 @@ export const prayerItems = [
   { id: "PR-084", title: "Prayer for family", detail: "Please keep my family in prayer this week.", received: "Today · 9:12 AM", status: "Assigned to you" },
   { id: "PR-081", title: "Strength and direction", detail: "Asking for prayer as I make an important decision.", received: "Nov 06 · 3:40 PM", status: "In prayer" },
   { id: "PR-078", title: "Thanksgiving", detail: "Grateful for the support received from the team.", received: "Nov 04 · 11:05 AM", status: "Follow-up requested" },
+];
+
+export const initialTeam: TeamMember[] = [
+  { initials: "EB", name: "Esi Boateng", role: "Coordinator", teams: "Welcome · Follow-up", tasks: 8, color: "forest", status: "Active" },
+  { initials: "KA", name: "Kojo Asante", role: "Team Leader", teams: "Adenta Follow-up", tasks: 6, color: "clay", status: "Active" },
+  { initials: "AN", name: "Akosua Nyarko", role: "Field Worker", teams: "Welcome Team", tasks: 4, color: "blue", status: "Active" },
+  { initials: "NA", name: "Nana Agyeman", role: "Follow-up Volunteer", teams: "Adenta Follow-up", tasks: 3, color: "ochre", status: "Active" },
 ];
 
 export const capabilities: Record<Role, Page[]> = {
