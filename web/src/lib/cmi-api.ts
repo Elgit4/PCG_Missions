@@ -46,6 +46,7 @@ export interface StaffSession {
 export interface StaffDirectoryEntry {
   id: string;
   full_name: string;
+  account_status: "active" | "inactive";
   roles: Array<{ code: string; name: string }>;
 }
 
@@ -293,6 +294,25 @@ export class CmiApiClient {
       invitation_email_sent: boolean;
       must_change_password: boolean;
     }>("staff-auth", "/admin/staff", { method: "POST", body: input });
+  }
+
+    setStaffAccountStatus(
+    staffProfileId: string,
+    branchId: string,
+    status: "active" | "inactive",
+    reason: string,
+  ) {
+    const action = status === "active" ? "reactivate" : "deactivate";
+    return this.request<{
+      staff_profile_id: string;
+      branch_id: string;
+      account_status: "active" | "inactive";
+      no_change?: boolean;
+    }>(
+      "staff-access-operations",
+      \`/staff/\${encodeURIComponent(staffProfileId)}/accounts/\${action}\`,
+      { method: "POST", body: { branch_id: branchId, reason } },
+    );
   }
 
   listStaffPasswordResetRequests(branchId: string) {
