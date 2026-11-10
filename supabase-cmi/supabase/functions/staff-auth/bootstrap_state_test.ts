@@ -34,7 +34,9 @@ Deno.test("bootstrap is blocked when any other Auth users exist", () => {
     [{ email: "admin@example.test" }, { email: "other@example.test" }],
   ];
   for (const users of cases) {
-    if (resolveBootstrapPath(users, "admin@example.test", false) !== "blocked") {
+    if (
+      resolveBootstrapPath(users, "admin@example.test", false) !== "blocked"
+    ) {
       throw new Error("non-empty unrelated Auth project must remain blocked");
     }
   }
