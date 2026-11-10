@@ -8,10 +8,13 @@ begin;
 
 alter table public.staff_profile
   add column if not exists must_change_password boolean not null default false,
+  add column if not exists password_setup_expires_at timestamptz,
   add column if not exists password_changed_at timestamptz;
 
 comment on column public.staff_profile.must_change_password is
   'When true, the staff-session projection withholds workspace access until a new password is set through the authenticated password lifecycle.';
+comment on column public.staff_profile.password_setup_expires_at is
+  'Expiry of the one-time bootstrap password window. Expired bootstrap sessions cannot access staff APIs.';
 comment on column public.staff_profile.password_changed_at is
   'Timestamp of the most recent successful staff-initiated password setup or reset.';
 
@@ -171,11 +174,11 @@ begin
 
   insert into public.staff_profile(
     auth_user_id, full_name, email, account_status,
-    must_change_password, password_changed_at
+    must_change_password, password_setup_expires_at, password_changed_at
   )
   values (
     p_auth_user_id, btrim(p_full_name), p_email, 'active',
-    true, null
+    true, pg_catalog.now() + interval '24 hours', null
   )
   returning id into v_profile_id;
 
@@ -574,6 +577,7 @@ declare
 begin
   update public.staff_profile
   set must_change_password = false,
+      password_setup_expires_at = null,
       password_changed_at = pg_catalog.now()
   where auth_user_id = p_auth_user_id
     and account_status = 'active'
