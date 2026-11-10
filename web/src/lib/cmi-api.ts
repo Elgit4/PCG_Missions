@@ -43,6 +43,20 @@ export interface StaffSession {
   password_setup_expires_at: string | null;
 }
 
+export interface StaffDirectoryEntry {
+  id: string;
+  full_name: string;
+  roles: Array<{ code: string; name: string }>;
+}
+
+export interface StaffAccountCreateInput {
+  branch_id: string;
+  full_name: string;
+  email: string;
+  role_code: "admin_pastor" | "coordinator" | "team_leader" | "field_worker" | "follow_up_volunteer" | "prayer_intercessor";
+  reason: string;
+}
+
 export interface StaffPasswordResetRequest {
   id: string;
   email: string;
@@ -266,9 +280,19 @@ export class CmiApiClient {
   }
 
   listStaffDirectory(branchId: string, options: { limit?: number; offset?: number; search?: string } = {}) {
-    return this.request<unknown[]>("staff-operations", "/staff", {
+    return this.request<StaffDirectoryEntry[]>("staff-operations", "/staff", {
       query: { branch_id: branchId, limit: options.limit ?? 25, offset: options.offset ?? 0, search: options.search },
     });
+  }
+
+  createStaffAccount(input: StaffAccountCreateInput) {
+    return this.request<{
+      staff_profile_id: string;
+      email: string;
+      role_code: StaffAccountCreateInput["role_code"];
+      invitation_email_sent: boolean;
+      must_change_password: boolean;
+    }>("staff-auth", "/admin/staff", { method: "POST", body: input });
   }
 
   listStaffPasswordResetRequests(branchId: string) {
