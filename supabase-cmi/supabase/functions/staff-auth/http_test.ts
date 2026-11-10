@@ -9,7 +9,10 @@ Deno.test("OPTIONS returns an empty 204 response", async () => {
   if (response.status !== 204 || await response.text() !== "") {
     throw new Error("preflight response must have an empty 204 body");
   }
-  if (response.headers.get("Access-Control-Allow-Origin") !== "https://pcg.example") {
+  if (
+    response.headers.get("Access-Control-Allow-Origin") !==
+      "https://pcg.example"
+  ) {
     throw new Error("approved origin was not reflected");
   }
   if (response.headers.get("X-Request-Id") !== "request-123") {
