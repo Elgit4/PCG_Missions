@@ -1,5 +1,6 @@
 # CMI backend implementation status
 
+> **PR #27 checkpoint — 10 November 2026:** The one-time bootstrap hardening PR is still **open and draft** on branch `fix/cmi-one-time-admin-bootstrap` at head `e49cde6699d025b2454044dc9d71dc99f5c82d7c`. Backend CI run [42883879544](https://github.com/Elgit4/PCG_Missions/actions/runs/42883879544) completed successfully, including Deno formatting/lint/type checks, bootstrap-state tests, full Auth-user pagination tests, local migrations and pgTAP. This validates the PR head's automated backend checks only. PR #27 does not implement email + private PIN, activation, the operator recovery path for uncertain bootstrap email delivery, or staging/UAT; it remains a non-deployable hardening change and has not been merged.
 > **Current status — 10 November 2026 (supersedes older dated snapshots below):**
 > - PR #24 (staff frontend integration), PR #25 (production frontend/backend integration), and PR #26 (administrator bootstrap and staff password recovery) are **merged into `main`**.
 > - The integrated frontend source is present under `web/`; the CMI backend source and Edge Functions are under `supabase-cmi/`. Source presence and merged PRs do not mean either application is deployed.
