@@ -2,10 +2,10 @@ import { listAllAuthUsers } from "./auth_users.ts";
 
 Deno.test(
   "Auth user scan reads every page before returning a complete result",
-  async () => {
+  () => {
     const calls: number[] = [];
     const users = await listAllAuthUsers(
-      async (page, perPage) => {
+      (page, perPage) => {
         calls.push(page);
         if (perPage !== 2) throw new Error("unexpected page size");
         return {
@@ -24,9 +24,9 @@ Deno.test(
 
 Deno.test(
   "Auth user scan detects a matching admin on a later page",
-  async () => {
+  () => {
     const users = await listAllAuthUsers(
-      async (page) => ({
+      (page) => ({
         users: page === 1
           ? ["unrelated-1", "unrelated-2"]
           : page === 2
@@ -45,11 +45,11 @@ Deno.test(
 
 Deno.test(
   "Auth user scan fails closed when the page limit is reached",
-  async () => {
+  () => {
     let rejected = false;
     try {
       await listAllAuthUsers(
-        async () => ({
+        () => ({
           users: ["user-1", "user-2"],
           error: null,
         }),
@@ -66,11 +66,11 @@ Deno.test(
 
 Deno.test(
   "Auth user scan fails closed on provider errors",
-  async () => {
+  () => {
     let rejected = false;
     try {
       await listAllAuthUsers(
-        async () => ({
+        () => ({
           users: [],
           error: new Error("provider unavailable"),
         }),
@@ -87,11 +87,11 @@ Deno.test(
 
 Deno.test(
   "Auth user scan fails closed on malformed pages",
-  async () => {
+  () => {
     let rejected = false;
     try {
       await listAllAuthUsers(
-        async () => ({
+        () => ({
           users: ["one", "two", "three"],
           error: null,
         }),
@@ -107,11 +107,11 @@ Deno.test(
 
 Deno.test(
   "Auth user scan rejects invalid pagination limits",
-  async () => {
+  () => {
     let rejected = false;
     try {
       await listAllAuthUsers(
-        async () => ({ users: [], error: null }),
+        () => ({ users: [], error: null }),
         0,
         1,
       );
