@@ -303,7 +303,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           {availablePages.map((item) => <button key={item} type="button" className={page === item ? "active" : ""} aria-current={page === item ? "page" : undefined} onClick={() => setPage(item)}>
             {item === "Overview" ? <Activity size={19} /> : item === "Contacts" ? <Users size={19} /> : <ClipboardList size={19} />}
             <span className="cmi-nav-desktop-label">{item === "Follow-up" ? "Follow-up tasks" : item}</span>
-            {item === "Follow-up" && <span className="cmi-nav-mobile-label">Tasks</span>}
+            <span className="cmi-nav-mobile-label">{item === "Overview" ? "Home" : item === "Contacts" ? "People" : "Tasks"}</span>
             {item === "Follow-up" && openTasks.length > 0 ? <em>{openTasks.length}</em> : null}
           </button>)}
         </nav>
