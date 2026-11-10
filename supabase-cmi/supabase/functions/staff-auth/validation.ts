@@ -115,11 +115,20 @@ export function parseStaffAccountCreate(
 ): { ok: true; value: StaffAccountCreateInput } | { ok: false; error: string } {
   if (!object(value)) return { ok: false, error: "A JSON object is required." };
   const allowed = new Set([
-    "branch_id", "full_name", "email", "role_code", "reason",
+    "branch_id",
+    "full_name",
+    "email",
+    "role_code",
+    "reason",
   ]);
-  if (Object.keys(value).length !== allowed.size ||
-    Object.keys(value).some((key) => !allowed.has(key))) {
-    return { ok: false, error: "Provide branch, name, email, role and reason." };
+  if (
+    Object.keys(value).length !== allowed.size ||
+    Object.keys(value).some((key) => !allowed.has(key))
+  ) {
+    return {
+      ok: false,
+      error: "Provide branch, name, email, role and reason.",
+    };
   }
   const branchId = parseBranchId(
     typeof value.branch_id === "string" ? value.branch_id : null,
@@ -143,6 +152,12 @@ export function parseStaffAccountCreate(
   }
   return {
     ok: true,
-    value: { branch_id: branchId, full_name: fullName, email, role_code: roleCode, reason },
+    value: {
+      branch_id: branchId,
+      full_name: fullName,
+      email,
+      role_code: roleCode,
+      reason,
+    },
   };
 }
