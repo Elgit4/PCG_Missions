@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CmiApiClient, CmiApiError } from "./cmi-api";
+import { CmiApiClient } from "./cmi-api";
 
 const config = {
   supabaseUrl: "https://example.supabase.co/",

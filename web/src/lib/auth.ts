@@ -32,7 +32,11 @@ function normalizeSession(value: unknown): AuthSession | null {
   const expiresAt = typeof item.expires_at === "number" ? item.expires_at :
     typeof item.expires_in === "number" ? Math.floor(Date.now() / 1000) + item.expires_in : 0;
   if (!Number.isFinite(expiresAt) || expiresAt <= 0) return null;
-  return { access_token: item.access_token, refresh_token: item.refresh_token, token_type: item.token_type, expires_at: expiresAt, user: item.user };
+  const user: AuthUser = {
+    id: item.user.id,
+    ...(typeof item.user.email === "string" || item.user.email === null ? { email: item.user.email } : {}),
+  };
+  return { access_token: item.access_token, refresh_token: item.refresh_token, token_type: item.token_type, expires_at: expiresAt, user };
 }
 
 export class SupabaseAuthClient {

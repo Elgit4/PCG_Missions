@@ -34,7 +34,10 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [page, setPage] = useState<Page>("Overview");
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [tasks, setTasks] = useState<FollowUpTask[]>([]);
+  const [contactsHasMore, setContactsHasMore] = useState(false);
+  const [tasksHasMore, setTasksHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -58,30 +61,44 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   useEffect(() => {
     let current = true;
     if (!branchId) {
-      setContacts([]); setTasks([]); setLoading(false); setLoadError("");
+      setContacts([]); setTasks([]);
+      setContactsHasMore(false); setTasksHasMore(false);
+      setLoading(false); setLoadError("");
       return () => { current = false; };
     }
     setLoading(true); setLoadError("");
     const requests: Promise<void>[] = [];
     if (canReadContacts) {
-      requests.push(api.listContacts(branchId, { limit: 50, offset: 0 })
-        .then((result) => { if (current) setContacts(result.data); })
+      requests.push(api.listContacts(branchId, { limit: 50, offset: 0, search: query.trim() || undefined })
+        .then((result) => {
+          if (current) {
+            setContacts(result.data);
+            setContactsHasMore(result.data.length === 50);
+          }
+        })
         .catch((error: unknown) => { if (current) setLoadError(messageFor(error)); }));
-    } else setContacts([]);
+    } else {
+      setContacts([]);
+      setContactsHasMore(false);
+    }
     if (canReadTasks) {
       requests.push(api.listFollowUpTasks(branchId, { limit: 50, offset: 0 })
-        .then((result) => { if (current) setTasks(result.data); })
+        .then((result) => {
+          if (current) {
+            setTasks(result.data);
+            setTasksHasMore(result.data.length === 50);
+          }
+        })
         .catch((error: unknown) => { if (current) setLoadError(messageFor(error)); }));
-    } else setTasks([]);
+    } else {
+      setTasks([]);
+      setTasksHasMore(false);
+    }
     void Promise.all(requests).finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
-  }, [api, branchId, canReadContacts, canReadTasks]);
+  }, [api, branchId, canReadContacts, canReadTasks, query]);
 
-  const visibleContacts = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase();
-    if (!normalized) return contacts;
-    return contacts.filter((contact) => [displayName(contact), contact.id, contact.preferred_language ?? ""].join(" ").toLocaleLowerCase().includes(normalized));
-  }, [contacts, query]);
+  const visibleContacts = contacts;
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
   const openTasks = tasks.filter((task) => task.status === "open" || task.status === "in_progress");
   const completedTasks = tasks.filter((task) => task.status === "completed");
@@ -91,13 +108,45 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setRefreshing(true); setActionError("");
     try {
       const [contactResult, taskResult] = await Promise.all([
-        canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
+        canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0, search: query.trim() || undefined }) : Promise.resolve(null),
         canReadTasks ? api.listFollowUpTasks(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
       ]);
-      if (contactResult) setContacts(contactResult.data);
-      if (taskResult) setTasks(taskResult.data);
+      if (contactResult) {
+        setContacts(contactResult.data);
+        setContactsHasMore(contactResult.data.length === 50);
+      }
+      if (taskResult) {
+        setTasks(taskResult.data);
+        setTasksHasMore(taskResult.data.length === 50);
+      }
     } catch (error) { setActionError(messageFor(error)); }
     finally { setRefreshing(false); }
+  };
+
+  const loadMoreContacts = async () => {
+    if (!canReadContacts || !branchId || !contactsHasMore || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const result = await api.listContacts(branchId, {
+        limit: 50,
+        offset: contacts.length,
+        search: query.trim() || undefined,
+      });
+      setContacts((current) => [...current, ...result.data]);
+      setContactsHasMore(result.data.length === 50);
+    } catch (error) { setActionError(messageFor(error)); }
+    finally { setLoadingMore(false); }
+  };
+
+  const loadMoreTasks = async () => {
+    if (!canReadTasks || !branchId || !tasksHasMore || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const result = await api.listFollowUpTasks(branchId, { limit: 50, offset: tasks.length });
+      setTasks((current) => [...current, ...result.data]);
+      setTasksHasMore(result.data.length === 50);
+    } catch (error) { setActionError(messageFor(error)); }
+    finally { setLoadingMore(false); }
   };
 
   const createContact = async (event: FormEvent<HTMLFormElement>) => {
@@ -244,7 +293,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">PEOPLE & CONNECTION</p><h3>Contacts</h3><p>Only contacts within your server-authorised scope are shown.</p></div>
               {canCreateContacts && <button className="cmi-button cmi-button-primary" onClick={() => setShowContactForm((value) => !value)}><Plus size={16} />Add contact</button>}
             </div>
-            <label className="cmi-search"><Search size={16} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search visible contacts" /></label>
+            <label className="cmi-search"><Search size={16} /><input aria-label="Search contacts in this branch" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contacts in this branch" /></label>
             {showContactForm && canCreateContacts && <form className="cmi-form-grid" onSubmit={createContact}>
               <label>First name<input name="first_name" required maxLength={120} autoComplete="given-name" /></label>
               <label>Last name<input name="last_name" required maxLength={120} autoComplete="family-name" /></label>
@@ -255,6 +304,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             <div className="cmi-table-wrap"><table className="cmi-table"><thead><tr><th>CONTACT</th><th>STATUS</th><th>LANGUAGE</th><th>IDENTITY</th></tr></thead><tbody>
               {visibleContacts.map((contact) => <tr key={contact.id}><td><strong>{displayName(contact)}</strong><small>{contact.id}</small></td><td><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td>{contact.preferred_language || "Not recorded"}</td><td>{contact.phone_display || contact.phone_e164 || "Restricted / not recorded"}</td></tr>)}
             </tbody></table>{!visibleContacts.length && !loading && <p className="cmi-empty-row">No contacts are available for this search and access scope.</p>}</div>
+            {contactsHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreContacts()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more contacts"}</button></div>}
           </div>}
 
           {page === "Follow-up" && canReadTasks && <div className="cmi-panel">
@@ -276,6 +326,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                 {canUpdateTasks && (task.status === "open" || task.status === "in_progress") && <button className="cmi-complete-button" onClick={() => void completeTask(task)} aria-label="Mark task complete" title="Mark task complete"><CheckCircle2 size={18} /></button>}
               </article>;
             })}{!tasks.length && !loading && <p className="cmi-empty-row">No follow-up tasks are visible in this branch scope.</p>}</div>
+            {tasksHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreTasks()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more tasks"}</button></div>}
           </div>}
 
           {!canReadContacts && page === "Contacts" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Contact access is not granted</h3><p>Your assigned role has no contact-read capability for this branch.</p></div>}
