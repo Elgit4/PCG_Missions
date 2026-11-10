@@ -15,7 +15,7 @@ select ok((select prosecdef from pg_proc where oid='public.cmi_assign_staff_role
 select ok(not has_table_privilege('service_role','public.staff_profile','UPDATE'),'Service role cannot directly update staff profiles');
 select ok(not has_table_privilege('service_role','public.staff_role_assignment','INSERT,UPDATE'),'Service role cannot directly mutate role assignments');
 select ok((select coalesce(array_to_string(proconfig,','),'') like '%search_path=pg_catalog%' from pg_proc where oid='public.cmi_assign_staff_role(uuid,uuid,uuid,text,timestamptz,timestamptz,text)'::regprocedure),'Assignment pins search_path');
-select is((select count(*)::integer from public.role_capability),0,'No production role grants are seeded');
+select is((select count(*)::integer from public.role_capability),65,'The reviewed visitor MVP role baseline is seeded');
 insert into auth.users(instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
 values('00000000-0000-0000-0000-000000000000','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20','authenticated','authenticated','access-actor@example.invalid','not-a-real-password-hash',now(),'{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb,now(),now()),
 ('00000000-0000-0000-0000-000000000000','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21','authenticated','authenticated','access-target@example.invalid','not-a-real-password-hash',now(),'{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb,now(),now());
@@ -26,7 +26,8 @@ insert into public.team(id,branch_id,name)
 values('30000000-0000-4000-8000-000000000020','20000000-0000-4000-8000-000000000020','Overlap Test Team');
 insert into public.service_area(id,branch_id,name,code)
 values('40000000-0000-4000-8000-000000000020','20000000-0000-4000-8000-000000000020','Overlap Test Area','OVERLAP');
-insert into public.role_capability(role_id,capability_id,scope_mode) select r.id,c.id,'branch' from public.role r cross join public.capability c where r.code='admin_pastor' and c.code in('access.role.assign','staff.account.manage');
+insert into public.role_capability(role_id,capability_id,scope_mode) select r.id,c.id,'branch' from public.role r cross join public.capability c where r.code='admin_pastor' and c.code in('access.role.assign','staff.account.manage')
+on conflict do nothing;
 insert into public.staff_role_assignment(staff_profile_id,role_id,branch_id,assigned_by,starts_at) select 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',r.id,'20000000-0000-4000-8000-000000000020','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',now()-interval '1 day' from public.role r where r.code='admin_pastor';
 
 insert into public.staff_role_assignment(staff_profile_id,role_id,branch_id,assigned_by,starts_at,ends_at)
