@@ -11,6 +11,7 @@ import {
   parseStaffAccountCreate,
 } from "./validation.ts";
 import { generateTemporaryPassword } from "./temporary_password.ts";
+import { resolveBootstrapPath } from "./bootstrap_state.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -362,9 +363,10 @@ async function bootstrapAdmin(
     return { users: data?.users, error };
   });
   let authUserId: string;
-  let retry = false;
+  let createdNewAuthUser = false;
+  const bootstrapPath = resolveBootstrapPath(existingUsers, email, false);
 
-  if (existingUsers.length === 0) {
+  if (bootstrapPath === "create") {
     const { data: created, error: createError } = await service.auth.admin
       .createUser({
         email,
@@ -375,6 +377,7 @@ async function bootstrapAdmin(
       throw new Error("BOOTSTRAP_AUTH_USER_CREATE_FAILED");
     }
     authUserId = created.user.id;
+    createdNewAuthUser = true;
 
     const { error: bootstrapError } = await service.rpc(
       "cmi_bootstrap_first_admin",
@@ -390,67 +393,50 @@ async function bootstrapAdmin(
       await service.auth.admin.deleteUser(authUserId).catch(() => undefined);
       throw new Error("BOOTSTRAP_DATABASE_PROVISION_FAILED");
     }
-  } else if (
-    existingUsers.length === 1 &&
-    normalizeEmail(existingUsers[0].email) === email
-  ) {
+  } else if (bootstrapPath === "recover_partial_auth_user") {
     authUserId = existingUsers[0].id;
     const { data: profile, error: profileError } = await service
       .from("staff_profile")
-      .select("id,must_change_password,account_status")
+      .select("id")
       .eq("auth_user_id", authUserId)
       .maybeSingle();
     if (profileError) throw new Error("BOOTSTRAP_PROFILE_LOOKUP_FAILED");
 
-    if (!profile) {
-      // Recover only the narrowly defined partial state: one confirmed Auth
-      // user and no CMI profile/church/branch. The database transaction performs
-      // the authoritative empty-project check before creating any records.
-      const { error: bootstrapError } = await service.rpc(
-        "cmi_bootstrap_first_admin",
-        {
-          p_auth_user_id: authUserId,
-          p_email: email,
-          p_full_name: fullName,
-          p_church_name: churchName,
-          p_branch_name: branchName,
-        },
+    // A provisioned profile consumes bootstrap permanently. In particular, do
+    // not rotate/reissue a temporary credential on a repeated bootstrap call.
+    const verifiedPath = resolveBootstrapPath(existingUsers, email, !!profile);
+    if (verifiedPath !== "recover_partial_auth_user") {
+      return fail(
+        "BOOTSTRAP_ALREADY_USED",
+        "First-administrator bootstrap has already been consumed.",
+        409,
+        origin,
+        requestId,
       );
-      if (bootstrapError) {
-        throw new Error("BOOTSTRAP_DATABASE_PROVISION_FAILED");
-      }
-      const { error: passwordError } = await service.auth.admin.updateUserById(
-        authUserId,
-        {
-          password: temporaryPassword,
-        },
-      );
-      if (passwordError) {
-        throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
-      }
-      retry = true;
-    } else {
-      if (
-        !profile.must_change_password || profile.account_status !== "active"
-      ) {
-        return fail(
-          "BOOTSTRAP_ALREADY_USED",
-          "First-administrator bootstrap has already been completed.",
-          409,
-          origin,
-          requestId,
-        );
-      }
-      retry = true;
-      const { error: passwordError } = await service.auth.admin.updateUserById(
-        authUserId,
-        {
-          password: temporaryPassword,
-        },
-      );
-      if (passwordError) {
-        throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
-      }
+    }
+
+    // Recover only the narrow Auth-user-created / CMI-profile-not-created
+    // partial state. The database RPC independently checks that church,
+    // branch and staff tables are still empty before provisioning.
+    const { error: bootstrapError } = await service.rpc(
+      "cmi_bootstrap_first_admin",
+      {
+        p_auth_user_id: authUserId,
+        p_email: email,
+        p_full_name: fullName,
+        p_church_name: churchName,
+        p_branch_name: branchName,
+      },
+    );
+    if (bootstrapError) {
+      throw new Error("BOOTSTRAP_DATABASE_PROVISION_FAILED");
+    }
+    const { error: passwordError } = await service.auth.admin.updateUserById(
+      authUserId,
+      { password: temporaryPassword },
+    );
+    if (passwordError) {
+      throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
     }
   } else {
     return fail(
@@ -492,7 +478,7 @@ async function bootstrapAdmin(
   return response(
     {
       data: {
-        created: !retry,
+        created: createdNewAuthUser,
         temporary_password_sent: true,
         must_change_password: true,
         password_expires_in_hours: 24,
