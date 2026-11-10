@@ -2,7 +2,7 @@ import { listAllAuthUsers } from "./auth_users.ts";
 
 Deno.test(
   "Auth user scan reads every page before returning a complete result",
-  () => {
+  async () => {
     const calls: number[] = [];
     const users = await listAllAuthUsers(
       (page, perPage) => {
@@ -24,7 +24,7 @@ Deno.test(
 
 Deno.test(
   "Auth user scan detects a matching admin on a later page",
-  () => {
+  async () => {
     const users = await listAllAuthUsers(
       (page) => ({
         users: page === 1
@@ -45,7 +45,7 @@ Deno.test(
 
 Deno.test(
   "Auth user scan fails closed when the page limit is reached",
-  () => {
+  async () => {
     let rejected = false;
     try {
       await listAllAuthUsers(
@@ -66,7 +66,7 @@ Deno.test(
 
 Deno.test(
   "Auth user scan fails closed on provider errors",
-  () => {
+  async () => {
     let rejected = false;
     try {
       await listAllAuthUsers(
@@ -87,7 +87,7 @@ Deno.test(
 
 Deno.test(
   "Auth user scan fails closed on malformed pages",
-  () => {
+  async () => {
     let rejected = false;
     try {
       await listAllAuthUsers(
@@ -107,7 +107,7 @@ Deno.test(
 
 Deno.test(
   "Auth user scan rejects invalid pagination limits",
-  () => {
+  async () => {
     let rejected = false;
     try {
       await listAllAuthUsers(
@@ -121,7 +121,6 @@ Deno.test(
     if (!rejected) throw new Error("invalid pagination limit was accepted");
   },
 );
-
 
 Deno.test(
   "Auth user scan fails closed when the provider omits its user array",
