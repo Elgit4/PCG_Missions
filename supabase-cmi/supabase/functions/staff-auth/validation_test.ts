@@ -1,5 +1,6 @@
 import {
   normalizeEmail,
+  parsePasswordChange,
   parseBranchId,
   parseResetRequest,
   parseResetRequestId,
@@ -52,5 +53,22 @@ Deno.test("admin review requires branch scope and an auditable reason", () => {
   }
   if (parseResetReview({ branch_id: valid.branch_id, reason: "valid reason", actor_id: "spoof" }).ok) {
     throw new Error("caller-supplied actor field accepted");
+  }
+});
+
+Deno.test("password change requires a strong replacement password and no extra fields", () => {
+  const valid = parsePasswordChange({ password: "NewSecurePassword2026" });
+  if (!valid.ok || valid.password !== "NewSecurePassword2026") {
+    throw new Error("valid replacement password rejected");
+  }
+  for (const input of [
+    { password: "short1A" },
+    { password: "lowercasepassword2026" },
+    { password: "UPPERCASEPASSWORD2026" },
+    { password: "NoDigitsPasswordHere" },
+    { password: "x".repeat(129) },
+    { password: "NewSecurePassword2026", user_id: "spoofed" },
+  ]) {
+    if (parsePasswordChange(input).ok) throw new Error("invalid password payload accepted");
   }
 });
