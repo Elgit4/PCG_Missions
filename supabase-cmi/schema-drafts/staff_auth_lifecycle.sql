@@ -854,6 +854,15 @@ commit;
     pg_catalog.now(), pg_catalog.btrim(p_reason)
   );
 
+  insert into public.staff_access_audit(
+    branch_id, actor_profile_id, target_profile_id, action, reason, metadata
+  )
+  values (
+    p_branch_id, v_actor_profile_id, v_profile_id, 'account_created',
+    pg_catalog.btrim(p_reason),
+    pg_catalog.jsonb_build_object('role_code', p_role_code, 'email', v_email)
+  );
+
   return pg_catalog.jsonb_build_object(
     'staff_profile_id', v_profile_id,
     'auth_user_id', p_target_auth_user_id,
