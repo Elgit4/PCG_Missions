@@ -84,16 +84,13 @@ from private.staff_password_reset_request
 where email_fingerprint = repeat('a',64);
 
 select throws_ok(
-  $update private.staff_password_reset_audit
-    set event_type='approved'
-    where request_id=(select id from private.staff_password_reset_request where email_fingerprint=repeat('a',64))$,
+  'update private.staff_password_reset_audit set event_type = ''approved'' where request_id = (select id from private.staff_password_reset_request where email_fingerprint = repeat(''a'',64))',
   '55000',
   'password reset audit is append-only',
   'reset audit UPDATE is rejected'
 );
 select throws_ok(
-  $delete from private.staff_password_reset_audit
-    where request_id=(select id from private.staff_password_reset_request where email_fingerprint=repeat('a',64))$,
+  'delete from private.staff_password_reset_audit where request_id = (select id from private.staff_password_reset_request where email_fingerprint = repeat(''a'',64))',
   '55000',
   'password reset audit is append-only',
   'reset audit DELETE is rejected'
