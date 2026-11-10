@@ -95,6 +95,9 @@ jobs:
       - name: Test temporary password generation policy
         run: deno test supabase-cmi/supabase/functions/staff-auth/temporary_password_test.ts
 
+      - name: Test one-time administrator bootstrap state
+        run: deno test supabase-cmi/supabase/functions/staff-auth/bootstrap_state_test.ts
+
       - name: Test staff authentication CORS preflight
         run: deno test supabase-cmi/supabase/functions/staff-auth/http_test.ts
 
