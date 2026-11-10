@@ -369,6 +369,20 @@ Deno.serve(async (request: Request) => {
     }
 
     if (request.method === "POST" && action === "request-password-reset") {
+      const configuredNotificationAdmins = (Deno.env.get("CMI_AUTH_ADMIN_EMAILS") ?? "")
+        .split(",").map((value) => normalizeEmail(value)).filter((value): value is string => !!value);
+      if (
+        !RESEND_API_KEY || !EMAIL_FROM || !APP_URL.startsWith("https://") ||
+        AUTH_HMAC_KEY.length < 32 || configuredNotificationAdmins.length === 0
+      ) {
+        return fail(
+          "AUTH_RECOVERY_NOT_CONFIGURED",
+          "Account recovery is not fully configured. Contact a church administrator.",
+          503,
+          origin,
+          id,
+        );
+      }
       const body = await jsonBody(request);
       const parsed = parseResetRequest(body);
       if (!parsed.ok) return fail("INVALID_REQUEST", parsed.error, 400, origin, id);
@@ -395,7 +409,7 @@ Deno.serve(async (request: Request) => {
         ...(record?.admin_emails ?? []).map((value) => normalizeEmail(value)).filter((value): value is string => !!value),
         ...extraAdmins,
       ])];
-      if (record?.matched && record.request_id && recipients.length > 0) {
+      if (record?.matched && record.request_id) {
         let sent = false;
         try {
           const name = escapeHtml(record.staff_name ?? "A staff member");
