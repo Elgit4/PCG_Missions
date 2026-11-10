@@ -48,7 +48,9 @@ Deno.serve(async (req: Request) => {
   if (origin && !origins.has(origin)) {
     return fail("ORIGIN_NOT_ALLOWED", "Origin not allowed.", 403, null, id);
   }
-  if (req.method === "OPTIONS") return createPreflightResponse(origin, origins, id);
+  if (req.method === "OPTIONS") {
+    return createPreflightResponse(origin, origins, id);
+  }
   if (req.method !== "POST") {
     return fail("METHOD_NOT_ALLOWED", "Method not allowed.", 405, origin, id);
   }
