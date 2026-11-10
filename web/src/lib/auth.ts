@@ -174,15 +174,12 @@ export class PcgAuthClient {
     if (fragment.get("type") !== "recovery") return false;
     const accessToken = fragment.get("access_token");
     const refreshToken = fragment.get("refresh_token");
-    const userId = fragment.get("user_id");
     if (!accessToken || !refreshToken) {
       window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
       throw new AuthClientError(400, "INVALID_RECOVERY_LINK", "This password-reset link is invalid or has expired.");
     }
     const expiresIn = Number(fragment.get("expires_in") ?? "3600");
-    const user = userId
-      ? await this.getUser(accessToken)
-      : await this.getUser(accessToken);
+    const user = await this.getUser(accessToken);
     this.saveSession({
       access_token: accessToken,
       refresh_token: refreshToken,
