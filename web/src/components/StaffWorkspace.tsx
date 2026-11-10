@@ -295,6 +295,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
   return (
     <div className="cmi-workspace">
+      <a className="cmi-skip-link" href="#cmi-content">Skip to content</a>
       <aside className="cmi-sidebar">
         <div className="cmi-brand"><img src="/logo.svg" alt="" /><span><strong>PCG MISSIONS</strong><small>STAFF WORKSPACE</small></span></div>
         <div className="cmi-sidebar-label">WORKSPACE</div>
@@ -340,7 +341,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             <button className="cmi-button cmi-button-secondary" onClick={() => void refresh()} disabled={refreshing || loading}>{refreshing ? "Refreshing…" : "Refresh"}</button>
           </div>
         </header>
-        <section className="cmi-content" aria-live="polite">
+        <section className="cmi-content" id="cmi-content" tabIndex={-1} aria-busy={loading}>
           {loadError && <div className="cmi-alert" role="alert">{loadError}</div>}
           {actionError && <div className="cmi-alert" role="alert">{actionError}<button onClick={() => setActionError("")} aria-label="Dismiss message">×</button></div>}
           {loading && <div className="cmi-loading" role="status">Loading authorised branch data…</div>}
@@ -377,7 +378,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowContactForm(false)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Save contact"}</button></div>
             </form>}
             {canReadContacts && <>
-              <div className="cmi-table-wrap"><table className="cmi-table"><thead><tr><th>CONTACT</th><th>STATUS</th><th>LANGUAGE</th><th>IDENTITY</th></tr></thead><tbody>
+              <div className="cmi-table-wrap"><table className="cmi-table"><caption className="cmi-sr-only">Contacts visible in the current branch and access scope</caption><thead><tr><th scope="col">CONTACT</th><th scope="col">STATUS</th><th scope="col">LANGUAGE</th><th scope="col">IDENTITY</th></tr></thead><tbody>
                 {visibleContacts.map((contact) => <tr key={contact.id}><td data-label="Contact"><strong>{displayName(contact)}</strong><small>{contact.id}</small></td><td data-label="Status"><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td data-label="Language">{contact.preferred_language || "Not recorded"}</td><td data-label="Identity">{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
               </tbody></table>{!visibleContacts.length && !loading && <p className="cmi-empty-row">No contacts are available for this search and access scope.</p>}</div>
               {contactsHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreContacts()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more contacts"}</button></div>}
@@ -401,7 +402,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               return <article className="cmi-task-row" key={task.id}><div className="cmi-task-symbol"><CalendarClock size={18} /></div>
                 <div className="cmi-task-copy"><strong>{contact ? displayName(contact) : "Contact details restricted"}</strong><p>{task.task_note || "No operational note"}</p><small>{formatDate(task.due_at, branchTimeZone)} · Priority {task.priority}</small></div>
                 <span className={`cmi-task-status status-${task.status}`}>{statusLabel(task.status)}</span>
-                {canUpdateTasks && (task.status === "open" || task.status === "in_progress") && <button className="cmi-complete-button" onClick={() => void completeTask(task)} aria-label="Mark task complete" title="Mark task complete"><CheckCircle2 size={18} /></button>}
+                {canUpdateTasks && (task.status === "open" || task.status === "in_progress") && <button className="cmi-complete-button" onClick={() => void completeTask(task)} aria-label={`Mark ${contact ? displayName(contact) : "follow-up"} task complete`} title="Mark task complete"><CheckCircle2 size={18} /></button>}
               </article>;
             })}{!tasks.length && !loading && <p className="cmi-empty-row">No follow-up tasks are visible in this branch scope.</p>}</div>
             {tasksHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreTasks()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more tasks"}</button></div>}
