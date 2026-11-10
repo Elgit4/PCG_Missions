@@ -354,7 +354,7 @@ async function bootstrapAdmin(
       page,
       perPage,
     });
-    return { users: data?.users ?? [], error };
+    return { users: data?.users, error };
   });
   let authUserId: string;
   let retry = false;
