@@ -41,7 +41,7 @@ Capabilities are stable action codes, not UI routes. Do not introduce an implici
 | Domain | Capability code | Action |
 |---|---|---|
 | Staff | staff.directory.read | Read permitted staff directory fields |
-| Staff | staff.account.manage | Provision, activate/deactivate and initiate secure credential reset/reissue |
+| Staff | staff.account.manage | Manage existing staff account status and initiate approved credential reset/reissue |
 | Authorization | access.role.assign | Assign/remove role assignments |
 | Authorization | access.capability.manage | Maintain capability grants and policy configuration |
 | Teams | team.manage | Manage teams and memberships |
