@@ -36,7 +36,11 @@ Deno.test("staff-access preflight is a valid empty 204 response", async () => {
     "allowed headers",
   );
   assertEquals(response.headers.get("X-Request-Id"), requestId, "request ID");
-  assertEquals(response.headers.get("Cache-Control"), "no-store", "cache policy");
+  assertEquals(
+    response.headers.get("Cache-Control"),
+    "no-store",
+    "cache policy",
+  );
 });
 
 Deno.test("staff-access preflight never reflects an unapproved origin", () => {
@@ -47,6 +51,10 @@ Deno.test("staff-access preflight never reflects an unapproved origin", () => {
   );
 
   assertEquals(response.status, 204, "status");
-  assertEquals(response.headers.get("Access-Control-Allow-Origin"), null, "origin header");
+  assertEquals(
+    response.headers.get("Access-Control-Allow-Origin"),
+    null,
+    "origin header",
+  );
   assertEquals(response.headers.get("Vary"), "Origin", "vary header");
 });
