@@ -12,7 +12,7 @@
 3. Record approver, date and any conditions.
 4. Update the role matrix, ERD, physical schema and validation report before generating executable migrations.
 
-The recommendations below are engineering defaults intended to reduce risk while decisions are pending. They are not church policy and must not be treated as approval.
+The recommendations below are engineering defaults intended to reduce risk while decisions are pending. They are not church policy and must not be treated as approval. A client-facing decision schedule, recommended permission baseline, UAT checklist and approval record are provided in [document 29 — Client Stakeholder Approval & Handover Pack](29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md).
 
 ## A. Authorization and role-scope decisions
 
