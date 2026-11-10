@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import { createPreflightResponse } from "./http.ts";
+import { listAllAuthUsers } from "./auth_users.ts";
 import {
   normalizeEmail,
   parseBranchId,
@@ -348,13 +349,13 @@ async function bootstrapAdmin(
 
   const { service } = clients();
   const temporaryPassword = randomTemporaryPassword();
-  const { data: usersData, error: listError } = await service.auth.admin
-    .listUsers({
-      page: 1,
-      perPage: 100,
+  const existingUsers = await listAllAuthUsers(async (page, perPage) => {
+    const { data, error } = await service.auth.admin.listUsers({
+      page,
+      perPage,
     });
-  if (listError) throw new Error("BOOTSTRAP_AUTH_USER_LOOKUP_FAILED");
-  const existingUsers = usersData.users;
+    return { users: data?.users ?? [], error };
+  });
   let authUserId: string;
   let retry = false;
 
