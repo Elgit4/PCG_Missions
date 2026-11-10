@@ -5,10 +5,10 @@ export default function App() {
   const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "";
 
   const configurationError = !supabaseUrl || !publishableKey
-    ? "This deployment is missing its browser-safe Supabase URL or publishable key."
+    ? "This portal is not connected to its required service configuration. Staff access remains unavailable. Contact a church administrator."
     : "";
 
-  const accessLifecycleMessage = "Staff sign-in is not enabled yet. The approved Supabase Auth account activation and private-PIN lifecycle must be completed and deployed before this portal can accept credentials. No sign-in details are collected or transmitted.";
+  const accessLifecycleMessage = "The approved Supabase Auth flow must support staff account activation, private-PIN setup and account recovery before this portal can accept credentials. This page does not collect or transmit sign-in details.";
 
   return (
     <StaffLogin
