@@ -13,6 +13,8 @@
 
 begin;
 
+create extension if not exists btree_gist with schema extensions;
+
 create schema if not exists private;
 revoke all on schema private from public, anon, authenticated;
 
@@ -149,6 +151,19 @@ create index staff_role_assignment_branch_active_idx
   on public.staff_role_assignment(branch_id, role_id, staff_profile_id)
   where ends_at is null and revoked_at is null;
 
+-- Prevent overlapping time-bounded assignments, including concurrent inserts.
+-- The unique partial index above handles the common open-ended case; this
+-- exclusion constraint closes the gap for finite, overlapping intervals.
+alter table public.staff_role_assignment
+  add constraint staff_role_assignment_no_overlap_excl
+  exclude using gist (
+    staff_profile_id with =,
+    role_id with =,
+    branch_id with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  )
+  where (revoked_at is null);
+
 create table public.team (
   id uuid primary key default gen_random_uuid(),
   branch_id uuid not null references public.branch(id) on delete restrict,
@@ -185,6 +200,15 @@ create unique index staff_team_membership_one_active_uq
   on public.staff_team_membership(staff_profile_id, team_id)
   where ends_at is null and revoked_at is null;
 
+alter table public.staff_team_membership
+  add constraint staff_team_membership_no_overlap_excl
+  exclude using gist (
+    staff_profile_id with =,
+    team_id with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  )
+  where (revoked_at is null);
+
 create table public.service_area (
   id uuid primary key default gen_random_uuid(),
   branch_id uuid not null references public.branch(id) on delete restrict,
@@ -214,6 +238,14 @@ create table public.staff_area_coverage (
 create unique index staff_area_coverage_one_active_uq
   on public.staff_area_coverage(staff_profile_id, service_area_id)
   where ends_at is null;
+
+alter table public.staff_area_coverage
+  add constraint staff_area_coverage_no_overlap_excl
+  exclude using gist (
+    staff_profile_id with =,
+    service_area_id with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  );
 
 -- Maintain timestamps on mutable catalogue/configuration rows.
 create trigger church_set_updated_at before update on public.church

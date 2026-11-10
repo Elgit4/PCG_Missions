@@ -1,5 +1,5 @@
 begin;
-select plan(27);
+select plan(30);
 select has_table('public','staff_access_audit','Staff access audit exists');
 select ok((select relrowsecurity from pg_class where oid='public.staff_access_audit'::regclass),'Audit RLS enabled');
 select ok(not has_table_privilege('anon','public.staff_access_audit','SELECT'),'Anon cannot read access audit');
@@ -22,8 +22,36 @@ values('00000000-0000-0000-0000-000000000000','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa
 insert into public.staff_profile(id,auth_user_id,full_name,account_status) values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20','Access Actor','active'),('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21','Access Target','active');
 insert into public.church(id,name,timezone) values('10000000-0000-4000-8000-000000000020','Access Test Church','Africa/Accra');
 insert into public.branch(id,church_id,name,code) values('20000000-0000-4000-8000-000000000020','10000000-0000-4000-8000-000000000020','Access Test Branch','ACCESS');
+insert into public.team(id,branch_id,name)
+values('30000000-0000-4000-8000-000000000020','20000000-0000-4000-8000-000000000020','Overlap Test Team');
+insert into public.service_area(id,branch_id,name,code)
+values('40000000-0000-4000-8000-000000000020','20000000-0000-4000-8000-000000000020','Overlap Test Area','OVERLAP');
 insert into public.role_capability(role_id,capability_id,scope_mode) select r.id,c.id,'branch' from public.role r cross join public.capability c where r.code='admin_pastor' and c.code in('access.role.assign','staff.account.manage');
 insert into public.staff_role_assignment(staff_profile_id,role_id,branch_id,assigned_by,starts_at) select 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',r.id,'20000000-0000-4000-8000-000000000020','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',now()-interval '1 day' from public.role r where r.code='admin_pastor';
+
+insert into public.staff_role_assignment(staff_profile_id,role_id,branch_id,assigned_by,starts_at,ends_at)
+select 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',r.id,'20000000-0000-4000-8000-000000000020','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',now()-interval '1 day',now()+interval '5 days'
+from public.role r where r.code='field_worker';
+select throws_ok(
+  $q$insert into public.staff_role_assignment(staff_profile_id,role_id,branch_id,assigned_by,starts_at,ends_at)
+     select 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',r.id,'20000000-0000-4000-8000-000000000020','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',now(),now()+interval '6 days'
+     from public.role r where r.code='field_worker'$q$,
+  '23P01',null,'Overlapping time-bounded staff role assignments are rejected'
+);
+insert into public.staff_team_membership(staff_profile_id,team_id,branch_id,created_by,starts_at,ends_at)
+values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22','30000000-0000-4000-8000-000000000020','20000000-0000-4000-8000-000000000020','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',now()-interval '1 day',now()+interval '5 days');
+select throws_ok(
+  $q$insert into public.staff_team_membership(staff_profile_id,team_id,branch_id,created_by,starts_at,ends_at)
+     values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22','30000000-0000-4000-8000-000000000020','20000000-0000-4000-8000-000000000020','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',now(),now()+interval '6 days')$q$,
+  '23P01',null,'Overlapping staff team membership periods are rejected'
+);
+insert into public.staff_area_coverage(staff_profile_id,service_area_id,branch_id,created_by,starts_at,ends_at)
+values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22','40000000-0000-4000-8000-000000000020','20000000-0000-4000-8000-000000000020','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',now()-interval '1 day',now()+interval '5 days');
+select throws_ok(
+  $q$insert into public.staff_area_coverage(staff_profile_id,service_area_id,branch_id,created_by,starts_at,ends_at)
+     values('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22','40000000-0000-4000-8000-000000000020','20000000-0000-4000-8000-000000000020','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22',now(),now()+interval '6 days')$q$,
+  '23P01',null,'Overlapping staff service-area coverage periods are rejected'
+);
 set local role service_role;
 select public.cmi_assign_staff_role('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23','20000000-0000-4000-8000-000000000020','field_worker',now(),'2026-12-31T23:59:59Z','Approved test assignment');
 reset role;
