@@ -58,7 +58,7 @@ Public site navigation is visitor-oriented and must not reuse staff navigation o
 The browser is untrusted. Route guards improve usability but are not security controls. Every protected read/write must be enforced by RLS and/or trusted server-side authorization. Public registration is a narrowly scoped endpoint, not public access to staff contact tables.
 
 Use server-side operations for:
-- PIN verification/session issuance and credential reissue;
+- Supabase Auth password sign-in, temporary-password setup/replacement and administrator-reviewed credential reset;
 - contact merge and other multi-record transactional operations;
 - offline capture synchronization and idempotency;
 - public event registration/capacity/transport reservation;
@@ -73,7 +73,7 @@ Never expose service-role keys or credential secrets to the browser.
 Offline capability is restricted to queued field captures, cached capture pickers and previously opened event check-in data. Provide pending/syncing/synced/failed states, idempotent sync and safe conflict handling. Do not cache the entire app or sensitive prayer/care records as part of this scope.
 
 ## 8. Authentication UX
-Sign-in uses email and administrator-issued PIN. Keep error messages safe and avoid account enumeration. Include a secure PIN reissue/reset flow, throttling and session revocation after account deactivation. Exact PIN format and recovery method require security approval.
+Sign-in uses email and password through Supabase Auth. First-time and reset access use a random temporary password, followed by mandatory private password replacement before workspace access. Keep error messages generic to prevent account enumeration. Rate-limit reset requests, audit administrator approval/denial, expire temporary credentials and revoke other sessions after credential reset or account deactivation.
 
 ## 9. Public content lifecycle
 Staff drafts are private. Authorized publication changes make sermons, daily words and tracts public. Anonymous endpoints must filter on explicit public/published state and expose only fields intended for visitors. Event registration is available only when enabled for that event.
