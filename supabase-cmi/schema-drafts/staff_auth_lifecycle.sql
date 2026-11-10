@@ -587,19 +587,18 @@ begin
     raise exception using errcode = 'P0002', message = 'active staff profile not found';
   end if;
 
-  update private.staff_password_reset_request
-  set status = 'completed', completed_at = pg_catalog.now()
-  where target_profile_id = v_profile_id
-    and status = 'approved';
-
-  insert into private.staff_password_reset_audit(
-    request_id, actor_profile_id, event_type
+  with completed_requests as (
+    update private.staff_password_reset_request
+    set status = 'completed', completed_at = pg_catalog.now()
+    where target_profile_id = v_profile_id
+      and status = 'approved'
+    returning id, branch_id
   )
-  select id, v_profile_id, 'reset_completed'
-  from private.staff_password_reset_request
-  where target_profile_id = v_profile_id
-    and status = 'completed'
-    and completed_at > pg_catalog.now() - interval '1 minute';
+  insert into private.staff_password_reset_audit(
+    request_id, branch_id, actor_profile_id, event_type
+  )
+  select id, branch_id, v_profile_id, 'reset_completed'
+  from completed_requests;
 
   return pg_catalog.jsonb_build_object('must_change_password', false);
 end;
