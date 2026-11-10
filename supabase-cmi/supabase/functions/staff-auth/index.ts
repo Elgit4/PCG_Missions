@@ -3,6 +3,7 @@ import { createPreflightResponse } from "./http.ts";
 import {
   normalizeEmail,
   parseBranchId,
+  parsePasswordChange,
   parseResetRequest,
   parseResetRequestId,
   parseResetReview,
@@ -447,15 +448,44 @@ Deno.serve(async (request: Request) => {
     if (request.method === "POST" && action === "complete-password-change") {
       const token = bearerToken(request);
       if (!token) return fail("AUTH_REQUIRED", "A valid staff session is required.", 401, origin, id);
+      const parsed = parsePasswordChange(await jsonBody(request));
+      if (!parsed.ok) return fail("INVALID_PASSWORD", parsed.error, 400, origin, id);
+
       const { auth, service } = clients();
       const { data: authData, error: authError } = await auth.auth.getUser(token);
       if (authError || !authData.user) {
         return fail("INVALID_SESSION", "A valid staff session is required.", 401, origin, id);
       }
-      const { error } = await service.rpc("cmi_complete_staff_password_change", {
+      const { data: profile, error: profileError } = await service
+        .from("staff_profile")
+        .select("id,account_status,must_change_password,password_setup_expires_at")
+        .eq("auth_user_id", authData.user.id)
+        .maybeSingle();
+      if (profileError) throw new Error("STAFF_PROFILE_LOOKUP_FAILED");
+      if (!profile || profile.account_status !== "active") {
+        return fail("STAFF_ACCOUNT_NOT_ACTIVE", "An active staff account is required.", 403, origin, id);
+      }
+      if (
+        profile.must_change_password &&
+        profile.password_setup_expires_at &&
+        Date.parse(profile.password_setup_expires_at) <= Date.now()
+      ) {
+        return fail("PASSWORD_SETUP_EXPIRED", "The temporary password has expired. Request an administrator-assisted reset.", 403, origin, id);
+      }
+
+      // Change the actual Supabase Auth credential before clearing the database gate.
+      // If the database write fails, the account remains gated and the user can retry.
+      const { error: passwordError } = await service.auth.admin.updateUserById(
+        authData.user.id,
+        { password: parsed.password },
+      );
+      if (passwordError) {
+        return fail("PASSWORD_UPDATE_FAILED", "The new password could not be saved. Check the password and try again.", 400, origin, id);
+      }
+      const { error: completionError } = await service.rpc("cmi_complete_staff_password_change", {
         p_auth_user_id: authData.user.id,
       });
-      if (error) throw new Error("PASSWORD_CHANGE_COMPLETION_FAILED");
+      if (completionError) throw new Error("PASSWORD_CHANGE_COMPLETION_FAILED");
       return response({ data: { password_change_required: false }, request_id: id }, 200, origin, id);
     }
 
