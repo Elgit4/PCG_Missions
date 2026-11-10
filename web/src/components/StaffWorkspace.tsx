@@ -96,6 +96,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setContactsHasMore(false);
     setTasksHasMore(false);
     setResetRequests([]);
+    setStaffMembers([]);
+    setShowStaffForm(false);
     setResetReasons({});
     setLoadError("Your staff session has expired. Please sign in again.");
     setActionError("");
@@ -419,6 +421,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                 setContacts([]);
                 setTasks([]);
                 setResetRequests([]);
+                setStaffMembers([]);
+                setShowStaffForm(false);
                 setResetReasons({});
                 setContactsHasMore(false);
                 setTasksHasMore(false);
