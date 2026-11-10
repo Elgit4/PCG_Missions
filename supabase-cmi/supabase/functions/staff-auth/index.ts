@@ -134,7 +134,7 @@ function clientIp(request: Request): string {
 }
 
 async function jsonBody(request: Request): Promise<JsonObject | null> {
-  if (!/^application\\/json(?:\\s*;|$)/i.test(request.headers.get("Content-Type") ?? "")) {
+  if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("Content-Type") ?? "")) {
     return null;
   }
   const contentLength = Number(request.headers.get("Content-Length") ?? "0");
