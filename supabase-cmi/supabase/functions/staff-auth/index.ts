@@ -8,6 +8,7 @@ import {
   parseResetRequest,
   parseResetRequestId,
   parseResetReview,
+  parseStaffAccountCreate,
 } from "./validation.ts";
 import { generateTemporaryPassword } from "./temporary_password.ts";
 
@@ -761,6 +762,137 @@ Deno.serve(async (request: Request) => {
     const required = await requireStaff(token, origin, id);
     if (required.error || !required.authUser) return required.error!;
     const { service } = required;
+
+    if (
+      request.method === "POST" &&
+      route[0] === "admin" &&
+      route[1] === "staff" &&
+      route.length === 2
+    ) {
+      const parsed = parseStaffAccountCreate(await jsonBody(request));
+      if (!parsed.ok) {
+        return fail("INVALID_REQUEST", parsed.error, 400, origin, id);
+      }
+      if (!RESEND_API_KEY || !EMAIL_FROM) {
+        return fail(
+          "AUTH_EMAIL_NOT_CONFIGURED",
+          "Staff invitation email is not configured.",
+          503,
+          origin,
+          id,
+        );
+      }
+
+      const temporaryPassword = generateTemporaryPassword();
+      const { data: created, error: createError } = await service.auth.admin
+        .createUser({
+          email: parsed.value.email,
+          password: temporaryPassword,
+          email_confirm: true,
+          user_metadata: { full_name: parsed.value.full_name },
+        });
+      if (createError || !created.user) {
+        if (createError?.message?.toLowerCase().includes("already")) {
+          return fail(
+            "STAFF_EMAIL_ALREADY_EXISTS",
+            "An account with this email already exists. Review the staff directory before retrying.",
+            409,
+            origin,
+            id,
+          );
+        }
+        throw new Error("STAFF_AUTH_USER_CREATE_FAILED");
+      }
+
+      const { data: provisioned, error: provisionError } = await service.rpc(
+        "cmi_create_staff_account",
+        {
+          p_actor_auth_user_id: required.authUser.id,
+          p_target_auth_user_id: created.user.id,
+          p_full_name: parsed.value.full_name,
+          p_email: parsed.value.email,
+          p_branch_id: parsed.value.branch_id,
+          p_role_code: parsed.value.role_code,
+          p_reason: parsed.value.reason,
+        },
+      );
+      if (provisionError || !provisioned) {
+        await service.auth.admin.deleteUser(created.user.id);
+        if (provisionError?.code === "42501") {
+          return fail(
+            "FORBIDDEN",
+            "You are not authorised to create staff accounts or assign roles in this branch.",
+            403,
+            origin,
+            id,
+          );
+        }
+        if (provisionError?.code === "23505") {
+          return fail(
+            "STAFF_ACCOUNT_ALREADY_EXISTS",
+            "A staff profile already exists for this email.",
+            409,
+            origin,
+            id,
+          );
+        }
+        throw new Error("STAFF_PROFILE_PROVISION_FAILED");
+      }
+
+      const safeName = escapeHtml(parsed.value.full_name);
+      const safeEmail = escapeHtml(parsed.value.email);
+      const safePassword = escapeHtml(temporaryPassword);
+      try {
+        await sendEmail(
+          [parsed.value.email],
+          "Your PCG Missions staff account",
+          `<p>Hello ${safeName},</p>
+           <p>An administrator has created your PCG Missions staff account.</p>
+           <p><strong>Sign-in email:</strong> ${safeEmail}</p>
+           <p><strong>One-time temporary password:</strong><br><code>${safePassword}</code></p>
+           <p>Sign in using this email and temporary password. You must choose a new private password immediately after your first sign-in. This temporary password expires in 24 hours.</p>
+           <p>Do not forward this email. If you were not expecting this account, contact your church administrator.</p>`,
+          [
+            `Hello ${parsed.value.full_name},`,
+            "An administrator has created your PCG Missions staff account.",
+            `Sign-in email: ${parsed.value.email}`,
+            `One-time temporary password: ${temporaryPassword}`,
+            "Sign in with this email and temporary password. You must choose a new private password immediately after first sign-in. This temporary password expires in 24 hours.",
+            "Do not forward this email. If you were not expecting this account, contact your church administrator.",
+          ].join("\\n"),
+        );
+      } catch {
+        console.error("staff invitation email delivery failed", {
+          request_id: id,
+          staff_profile_id: (provisioned as { staff_profile_id?: string })
+            ?.staff_profile_id,
+        });
+        return fail(
+          "STAFF_INVITATION_EMAIL_FAILED",
+          "The staff account was created, but the invitation email could not be delivered. The administrator should ask the user to submit Forgot password so a temporary password can be issued through the approved recovery process.",
+          503,
+          origin,
+          id,
+        );
+      }
+
+      return response(
+        {
+          data: {
+            staff_profile_id:
+              (provisioned as { staff_profile_id: string }).staff_profile_id,
+            email: parsed.value.email,
+            role_code: parsed.value.role_code,
+            invitation_email_sent: true,
+            must_change_password: true,
+          },
+          request_id: id,
+        },
+        201,
+        origin,
+        id,
+      );
+    }
 
     if (
       request.method === "GET" && route[0] === "admin" &&
