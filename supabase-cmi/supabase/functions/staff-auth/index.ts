@@ -497,12 +497,14 @@ Deno.serve(async (request: Request) => {
       if (!profile || profile.account_status !== "active") {
         return fail("STAFF_ACCOUNT_NOT_ACTIVE", "An active staff account is required.", 403, origin, id);
       }
+      if (!profile.must_change_password) {
+        return fail("PASSWORD_CHANGE_NOT_REQUIRED", "There is no pending password setup or approved recovery for this account.", 409, origin, id);
+      }
       if (
-        profile.must_change_password &&
         profile.password_setup_expires_at &&
         Date.parse(profile.password_setup_expires_at) <= Date.now()
       ) {
-        return fail("PASSWORD_SETUP_EXPIRED", "The temporary password has expired. Request an administrator-assisted reset.", 403, origin, id);
+        return fail("PASSWORD_SETUP_EXPIRED", "The temporary password or recovery link has expired. Request an administrator-assisted reset.", 403, origin, id);
       }
 
       // Change the actual Supabase Auth credential before clearing the database gate.
@@ -518,6 +520,19 @@ Deno.serve(async (request: Request) => {
         p_auth_user_id: authData.user.id,
       });
       if (completionError) throw new Error("PASSWORD_CHANGE_COMPLETION_FAILED");
+
+      // Revoke other refresh-token sessions while retaining this recovery/setup session.
+      try {
+        await fetch(`${SUPABASE_URL}/auth/v1/logout?scope=others`, {
+          method: "POST",
+          headers: {
+            apikey: PUBLIC_KEY,
+            Authorization: `Bearer ${token}`,
+          },
+        });
+      } catch {
+        console.warn("other staff sessions could not be revoked", { request_id: id });
+      }
       return response({ data: { password_change_required: false }, request_id: id }, 200, origin, id);
     }
 
