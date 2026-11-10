@@ -203,18 +203,10 @@ jobs:
 
           cp supabase-cmi/schema-drafts/backend_capability_catalogue.test.sql supabase-cmi/supabase/tests/cmi_backend_capability_catalogue.test.sql
 
-          sleep 1
-          supabase --workdir supabase-cmi migration new cmi_staff_access_lifecycle
-          access_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_staff_access_lifecycle.sql' -print -quit)"
-          test -n "$access_migration"
-          cp supabase-cmi/schema-drafts/staff_access_lifecycle.sql "$access_migration"
+          # Staff access and authentication lifecycle SQL already exist as
+          # permanent, ordered migrations. Do not generate duplicate temporary
+          # copies of these migrations; only stage their pgTAP suites here.
           cp supabase-cmi/schema-drafts/staff_access_lifecycle.test.sql supabase-cmi/supabase/tests/cmi_staff_access_lifecycle.test.sql
-
-          sleep 1
-          supabase --workdir supabase-cmi migration new cmi_staff_auth_lifecycle
-          auth_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_staff_auth_lifecycle.sql' -print -quit)"
-          test -n "$auth_migration"
-          cp supabase-cmi/schema-drafts/staff_auth_lifecycle.sql "$auth_migration"
           cp supabase-cmi/schema-drafts/staff_auth_lifecycle.test.sql supabase-cmi/supabase/tests/cmi_staff_auth_lifecycle.test.sql
 
           cp supabase-cmi/schema-drafts/followup_task_operations.test.sql supabase-cmi/supabase/tests/cmi_followup_task_operations.test.sql
@@ -241,8 +233,6 @@ jobs:
           rm -f supabase-cmi/supabase/migrations/*_cmi_restricted_pastoral_domain.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_events_attendance_public_content.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_backend_capability_catalogue.sql
-          rm -f supabase-cmi/supabase/migrations/*_cmi_staff_access_lifecycle.sql
-          rm -f supabase-cmi/supabase/migrations/*_cmi_staff_auth_lifecycle.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_followup_task_operations.sql
           rm -f supabase-cmi/supabase/migrations/*_cmi_pastoral_read_operations.sql
           rm -f supabase-cmi/supabase/tests/cmi_backend_capability_catalogue.test.sql
