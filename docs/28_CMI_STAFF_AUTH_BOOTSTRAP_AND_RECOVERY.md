@@ -67,7 +67,7 @@ The bootstrap endpoint does not return the temporary password in its response. I
 - Reset requests expire after 24 hours. A processing claim can be retried after its ten-minute lease if the function crashes.
 - Email delivery failures are audited. A failed recovery email leaves the request available for a later review/retry.
 - The public response to Forgot password remains the same for known, unknown, inactive and throttled addresses.
-- The first Admin/Pastor bootstrap receives only four branch-scoped control-plane capabilities: `staff.directory.read`, `staff.account.manage`, `access.role.assign` and `staff.password_reset.manage`. It deliberately does not receive `access.capability.manage`, contact/export, prayer/care oversight, SMS, or report permissions. All other business-domain grants remain blocked pending client approval of the role matrix.
+- The first Admin/Pastor bootstrap receives only four branch-scoped control-plane capabilities. Staff invitation/activation and account creation are not implemented by this capability yet: `staff.directory.read`, `staff.account.manage`, `access.role.assign` and `staff.password_reset.manage`. It deliberately does not receive `access.capability.manage`, contact/export, prayer/care oversight, SMS, or report permissions. All other business-domain grants remain blocked pending client approval of the role matrix.
 
 ## Current release boundary
 
