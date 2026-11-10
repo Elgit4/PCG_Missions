@@ -901,47 +901,18 @@ Deno.serve(async (request: Request) => {
         throw new Error("PASSWORD_RESET_TARGET_INVALID");
       }
 
-      // Mark the profile as setup-required before replacing its Auth password.
-      // If password update or delivery fails, the request is returned to the
-      // pending queue while the account remains blocked from staff operations.
-      const { error: finishError } = await service.rpc(
-        "cmi_finish_staff_password_reset_request",
-        {
-          p_actor_auth_user_id: required.authUser.id,
-          p_branch_id: parsed.branch_id,
-          p_request_id: requestId,
-          p_action: "approved",
-          p_reason: parsed.reason,
-        },
-      );
-      if (finishError) {
-        await service.rpc("cmi_finish_staff_password_reset_request", {
-          p_actor_auth_user_id: required.authUser.id,
-          p_branch_id: parsed.branch_id,
-          p_request_id: requestId,
-          p_action: "pending",
-          p_reason: "Approval finalization failed; request returned for retry.",
-        });
-        throw new Error("PASSWORD_RESET_REQUEST_APPROVAL_FAILED");
-      }
-
+      // Claiming the request has already gated the target profile in the
+      // database. Keep it in processing state on any failure so an authorised
+      // administrator can retry after the 10-minute claim lease expires.
       const temporaryPassword = generateTemporaryPassword();
       const { error: passwordError } = await service.auth.admin.updateUserById(
         targetAuthUserId,
         { password: temporaryPassword },
       );
       if (passwordError) {
-        await service.rpc("cmi_finish_staff_password_reset_request", {
-          p_actor_auth_user_id: required.authUser.id,
-          p_branch_id: parsed.branch_id,
-          p_request_id: requestId,
-          p_action: "pending",
-          p_reason:
-            "Temporary credential update failed; request returned for retry.",
-        });
         return fail(
           "RESET_CREDENTIAL_UPDATE_FAILED",
-          "The temporary password could not be issued. The request remains available for administrator retry.",
+          "The temporary password could not be issued. The request remains restricted and can be retried by an administrator.",
           503,
           origin,
           id,
@@ -970,21 +941,35 @@ Deno.serve(async (request: Request) => {
           textBody,
         );
       } catch {
-        await service.rpc("cmi_finish_staff_password_reset_request", {
-          p_actor_auth_user_id: required.authUser.id,
-          p_branch_id: parsed.branch_id,
-          p_request_id: requestId,
-          p_action: "pending",
-          p_reason:
-            "Temporary password email delivery failed; request returned to pending review.",
+        console.error("staff temporary password email delivery failed", {
+          request_id: id,
         });
         return fail(
           "RESET_EMAIL_DELIVERY_FAILED",
-          "The temporary password could not be emailed. The account remains restricted and the request is available for administrator retry.",
+          "The temporary password could not be emailed. The account remains restricted and the request can be retried by an administrator.",
           503,
           origin,
           id,
         );
+      }
+
+      const { error: finishError } = await service.rpc(
+        "cmi_finish_staff_password_reset_request",
+        {
+          p_actor_auth_user_id: required.authUser.id,
+          p_branch_id: parsed.branch_id,
+          p_request_id: requestId,
+          p_action: "approved",
+          p_reason: parsed.reason,
+        },
+      );
+      if (finishError) {
+        // The account was already gated at claim time and the temporary
+        // password was delivered. The user can complete the forced change;
+        // the database completion transaction also closes a processing request.
+        console.error("staff password reset approval finalization failed", {
+          request_id: id,
+        });
       }
 
       return response(
