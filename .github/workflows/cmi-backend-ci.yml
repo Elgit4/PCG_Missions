@@ -96,6 +96,9 @@ jobs:
       - name: Test one-time administrator bootstrap state decisions
         run: deno test supabase-cmi/supabase/functions/staff-auth/bootstrap_state_test.ts
 
+      - name: Test complete Auth user pagination for bootstrap
+        run: deno test supabase-cmi/supabase/functions/staff-auth/auth_users_test.ts
+
       - name: Test staff authentication CORS preflight
         run: deno test supabase-cmi/supabase/functions/staff-auth/http_test.ts
 
