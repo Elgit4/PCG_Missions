@@ -41,18 +41,18 @@ The system is designed to fail closed until that approval exists. The first admi
 | `follow_up_volunteer` | Follow-up Volunteer | Assigned follow-up work and minimum contact fields |
 | `prayer_intercessor` | Prayer Intercessor | Prayer requests actively assigned to that intercessor; no general contact directory |
 
-The database role catalogue already constrains role codes to these six values. The role/capability grant table is intentionally empty before first-administrator bootstrap.
+The database role catalogue constrains role codes to these six values. The current visitor-management MVP migration seeds 65 branch/team/assigned-scoped role-capability grants across the six roles (Admin/Pastor 18, Coordinator 14, Team Leader 14, Field Worker 12, Follow-up Volunteer 7, Prayer Intercessor 0). These are the limited visitor/follow-up permissions recorded in the product-owner implementation baseline; they do not approve the separate pending church-policy decisions for pastoral oversight, exports, SMS, offline access or the remaining modules.
 
 ## 4. Implemented first-administrator baseline
 
-The bootstrap function has been amended so the first Admin/Pastor receives only these four branch-scoped control-plane grants:
+The bootstrap assigns the first administrator the existing `admin_pastor` role in the configured branch. The four capabilities below are the limited staff-control-plane permissions needed for account administration. They are not the administrator's complete capability list: the Admin/Pastor role also receives the 18 branch-scoped visitor/follow-up MVP capabilities seeded by the separate visitor authorization migration. Bootstrap does not create extra business grants or bypass the role catalogue.
 
 | Capability | Why it is needed |
 |---|---|
 | `staff.directory.read` | Read the minimum staff directory projection required to administer accounts and role assignments |
 | `staff.account.manage` | Manage existing provisioned staff account status and administer approved recovery workflow |
 | `access.role.assign` | Assign and revoke only the six defined staff roles |
-| `staff.password_reset.manage` | Review reset requests and initiate a one-time recovery link |
+| `staff.password_reset.manage` | Review reset requests and issue a one-time temporary password |
 
 The bootstrap explicitly does **not** grant:
 - `access.capability.manage` (prevents an administrator from silently rewriting the permission policy);
@@ -61,7 +61,7 @@ The bootstrap explicitly does **not** grant:
 - SMS provider configuration, campaign approval, campaign sending or automation;
 - any unapproved business-domain permission.
 
-The updated isolated database test asserts exactly these four grants and asserts that pastoral oversight, SMS, export and capability-policy editing remain absent. This is a narrow technical bootstrap rule, not a substitute for client sign-off of the operational role matrix.
+The bootstrap-specific database assertions verify that the first administrator receives the four staff-control-plane capabilities and does not receive capability-policy editing, pastoral narrative oversight, SMS or export permissions. The role's separate visitor/follow-up grants are verified by the visitor MVP authorization tests. This technical baseline is not a substitute for church sign-off of the pending R/D decisions.
 
 ## 5. Recommended role permission baseline for client approval
 
