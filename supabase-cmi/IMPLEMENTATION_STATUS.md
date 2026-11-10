@@ -2,7 +2,7 @@
 
 **Baseline:** CMI Follow-up v2.1  
 **Workspace:** `supabase-cmi/` (isolated from historical `supabase/`)  
-**Status (2026-11-09):** PRs #3–#19 are merged to `main`. The current audited `main` commit is `55a3004b84a6934efd100c7614338f3ffae58b44` (PR #19 merge). Historical implementation checks passed on earlier PR heads, including [run #42666252894](https://github.com/Elgit4/PCG_Missions/actions/runs/42666252894), but the latest `main` workflow [run #42671972079](https://github.com/Elgit4/PCG_Missions/actions/runs/42671972079) concluded `failure`; its jobs endpoint returned no jobs, so no failing step or job log is available. Current `main` must therefore be treated as CI-unverified until a subsequent run succeeds. R-01–R-12, D-01–D-13 and the separate authentication/SMS/offline/audit approvals remain pending. No role grants are seeded. No hosted CMI database has been linked or modified, and no Edge Function has been deployed.
+**Status (2026-11-09):** PRs #3–#19 are merged to `main`; PR #20 (documentation reconciliation) and PR #21 (staff access lifecycle) are open and must be merged in that order. PR #21 head `8bf88571f9e16661ff5e43a41922576a29099bcf` passed exact-head CI run [#42685732135](https://github.com/Elgit4/PCG_Missions/actions/runs/42685732135): all 31 substantive steps succeeded, including seven pgTAP suites and the expanded 27-assertion staff-access suite. The current source branch includes the changes from PR #20 and #21. R-01–R-12, D-01–D-13 and separate authentication/SMS/offline/audit approvals remain pending. No role grants are seeded. No hosted CMI database has been linked or modified, and no Edge Function has been deployed.
 
 ## Staff API implementation merged to main
 
@@ -180,3 +180,38 @@ No frontend application is present in `main`. No hosted Supabase project, produc
 ## Staff access lifecycle implementation — source branch
 
 A reviewable staff-access implementation is available on feat/cmi-staff-access-lifecycle: guarded role assignment/revocation, account deactivation/reactivation, an append-only access audit ledger, a staff access Edge Function and unit/pgTAP tests. It is specified in document 24 and maps to requirements in documents 00, 02, 07, 08, 11 and 12. It deliberately seeds no role-capability grants. The email+PIN credential lifecycle, invitation/activation, private PIN establishment, reset/reissue, recovery and throttling remain blocked by the explicit approval gate in document 11 and the implementation baseline; no PIN verifier has been invented. This branch is based on the unmerged documentation PR #20 and must be merged only after PR #20.
+
+
+## Requirements-driven engineering baseline — proposed for implementation
+
+Document [25 — Requirements-Driven Engineering Baseline](../docs/25_CMI_REQUIREMENTS_DRIVEN_ENGINEERING_BASELINE.md) records the selected technical defaults directly from CMI Follow-up v2.1 requirements and the role/security/schema proposals. It preserves the approval state in document 11: no church-policy decision is marked approved by this engineering recommendation.
+
+The baseline selects:
+- Email + private PIN with one-time activation, private PIN establishment, protected server-side verification and session revocation; the exact Supabase-compatible session issuance must be threat-modelled and verified before implementation.
+- Six-role, multi-role capability union with mandatory branch/team/event/contact/assignment and sensitive-record scope checks; no grants until D-01 and R-01–R-12 approval.
+- Provider-neutral SMS architecture with separate manual, bulk and automated capabilities; consent/suppression rechecks, campaign creator/approver separation, exact-content approval, budgets, idempotent outbox and verified callbacks. Provider dispatch remains disabled until D-09/D-10/D-11 and R-06–R-09 approvals.
+- Limited offline capture only, audited pastoral reads, narrow public projections, transactional event capacity and no unapproved waitlist, and no arbitrary retention periods.
+
+The document is an engineering baseline, not an authorization to deploy, activate role grants, choose a provider or send live SMS.
+
+
+## Hubtel SMS provider adapter — source-only
+
+A provider adapter and mocked unit-test suite are available on the current integration branch:
+- `supabase/functions/_shared/sms/hubtel.ts` implements the documented Hubtel Business SMS POST send and message-status lookup.
+- Credentials are read only from server-side environment secrets: `HUBTEL_SMS_CLIENT_ID`, `HUBTEL_SMS_CLIENT_SECRET`, `HUBTEL_SMS_SENDER_ID`.
+- `CMI_SMS_LIVE_ENABLED` must equal the exact string `true` before the adapter will submit a message. Missing/other values fail closed.
+- The adapter distinguishes provider acceptance from final delivery, maps provider statuses, uses Basic auth and never places credentials in URL query parameters.
+- Ambiguous send failures are marked non-retryable because the documented Hubtel SMS request contract does not expose an idempotency key; blindly retrying could send duplicates.
+- Status lookups are safe to retry. No signed SMS callback contract is assumed; the published Hubtel SMS integration documents message-ID status lookup.
+- CI now type-checks and tests the adapter with mocked fetch calls.
+
+This is not a complete messaging system. There is no SMS outbox schema/dispatcher, consent/suppression workflow, campaign approval, automation engine, spend reservation, polling worker or delivery-log API yet. The adapter is not wired to any public or staff endpoint. No Hubtel account, sender ID, API credentials or balance has been configured. No live SMS has been sent. R-06–R-09 and D-09–D-11 remain pending, so live dispatch must remain disabled.
+
+## Frontend integration handoff
+
+Document [26 — Frontend Integration Handoff](../docs/26_CMI_FRONTEND_INTEGRATION_HANDOFF.md) consolidates the actual existing function names, endpoint families, request headers, session/capability model, available draft workflows, gated workflows and frontend acceptance tests. It explicitly notes that source code is not deployment and that domain schema drafts are not permanent migrations.
+
+The current Supabase config explicitly declares JWT verification for all authenticated CMI Edge Functions; only `public-content` has gateway JWT verification disabled because it is an anonymous published-content projection. Staff functions independently validate bearer tokens with Supabase Auth. The service-role key and all provider credentials remain server-only.
+
+The latest source branch includes PR #20/#21/#22 changes plus the Hubtel adapter and frontend handoff. PR #23 will target PR #22's branch; merge order remains #20, #21, #22, then #23. No PR has been merged by this work.

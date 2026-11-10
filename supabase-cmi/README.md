@@ -166,3 +166,19 @@ The next unblocked engineering step is to restore a verifiable green CMI CI run 
 The staff-access-operations Edge Function implements guarded role assignment, role revocation, staff account deactivation and reactivation. It requires access.role.assign or staff.account.manage with branch scope and delegates final checks/writes to service-role-only SECURITY DEFINER RPCs. The append-only staff_access_audit table records role and account-state changes. No role grants are seeded, so these operations fail closed until the church approves R-01–R-12 and D-01 and approved grants are provisioned. See document 24.
 
 The email+PIN lifecycle, invitation/activation, private PIN setup, reset/reissue and recovery remain unimplemented because document 11 explicitly leaves the credential lifecycle and PIN security parameters pending and document 16 prohibits implementing a PIN verifier before approval/security review. No hosted Auth or database changes are made by this source-only branch.
+
+
+## Requirements-driven engineering baseline
+
+See [document 25](../docs/25_CMI_REQUIREMENTS_DRIVEN_ENGINEERING_BASELINE.md) for the source-traced decisions governing authentication, authorization, SMS, offline boundaries, pastoral privacy, public access, events and retention. It distinguishes selected technical defaults from church-policy approvals. Do not create role grants, activate SMS dispatch, implement a PIN verifier or promote policy-gated domain migrations merely because a recommendation is documented. The approval state remains in document 11.
+
+
+## Frontend integration contract
+
+See [document 26](../docs/26_CMI_FRONTEND_INTEGRATION_HANDOFF.md) before implementing the PWA. It distinguishes source-controlled APIs from deployed services, lists exact function names and route families, documents the common bearer/publishable-key headers and identifies policy-gated screens. The current capability grant table is empty; the frontend must treat an empty capability projection as no business access.
+
+## SMS provider adapter
+
+A provider-specific, server-only Hubtel Business SMS adapter is available at `supabase/functions/_shared/sms/hubtel.ts`. It uses the documented business POST API and status lookup, requires an explicit live-enable flag, and refuses automatic retry after an ambiguous send outcome to avoid duplicate messages. Unit tests mock the network. It is not an Edge Function endpoint and is not connected to an outbox/dispatcher yet.
+
+Read the [Hubtel SMS setup runbook](supabase/functions/_shared/sms/README.md). Do not configure live secrets, enable live dispatch, deploy or send messages until the D-09/D-10/D-11 and R-06–R-09 approvals, consent/suppression, campaign controls, budget controls and deployment authorization are complete.

@@ -95,3 +95,14 @@ The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role sche
 - Manual, bulk and automated SMS are in scope; WhatsApp automation is not included. SMS must remain disabled until provider, sender-ID, consent/opt-out and budget controls are configured and tested.
 - Multi-church administration and the listed future/held features are out of scope.
 - A documented capability is not proof that the feature has shipped. Verify implementation separately.
+
+
+## Requirements-driven engineering baseline
+
+- [25 — CMI Requirements-Driven Engineering Baseline](25_CMI_REQUIREMENTS_DRIVEN_ENGINEERING_BASELINE.md): selected technical defaults and implementation gates traced to the v2.1 specification, security model, role matrix, schema proposal and decision register. This does not mark pending church decisions as approved.
+
+
+## Frontend and provider integration
+
+- [26 — Frontend Integration Handoff](26_CMI_FRONTEND_INTEGRATION_HANDOFF.md) — exact current Edge Function surface, auth headers, capability/scope behaviour, response handling, available versus gated screens and integration acceptance checks.
+- [Hubtel SMS integration runbook](../supabase-cmi/supabase/functions/_shared/sms/README.md) — selected Ghana business SMS provider, API contract, server-only secrets, delivery-status polling and live activation gates.

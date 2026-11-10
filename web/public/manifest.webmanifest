@@ -1,0 +1,17 @@
+{
+  "name": "PCG Missions",
+  "short_name": "PCG",
+  "description": "PCG Missions staff workspace",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F5F6FA",
+  "theme_color": "#30358F",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
