@@ -45,7 +45,7 @@ export function StaffLogin({
           </header>
           {configurationError
             ? <p className="staff-login-notice" role="alert">{configurationError}</p>
-            : <p className="staff-login-availability"><span /> Backend integration configured</p>}
+            : <p className="staff-login-availability"><span /> Browser configuration present</p>}
           <div className="staff-login-notice" role="status">
             <ShieldCheck size={17} aria-hidden="true" />
             <span>{accessLifecycleMessage}</span>

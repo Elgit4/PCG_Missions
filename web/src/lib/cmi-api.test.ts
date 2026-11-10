@@ -60,17 +60,17 @@ describe("CmiApiClient", () => {
       branch_id: "branch", contact_id: "contact", client_request_id: "request",
       priority: 2,
     };
-    await expect(client.createFollowUpTask({ ...common, assignee_user_id: "", team_id: "" } as never))
-      .rejects.toThrow(/Exactly one/);
+    expect(() => client.createFollowUpTask({ ...common, assignee_user_id: "", team_id: "" } as never))
+      .toThrow(/Exactly one/);
     expect(fetcher).not.toHaveBeenCalled();
   });
 
   it("rejects task reassignment with both targets", async () => {
     const fetcher = vi.fn();
     const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await expect(client.reassignFollowUpTask("branch", "task", {
+    expect(() => client.reassignFollowUpTask("branch", "task", {
       assignee_user_id: "user", team_id: "team",
-    } as never)).rejects.toThrow(/Exactly one/);
+    } as never)).toThrow(/Exactly one/);
     expect(fetcher).not.toHaveBeenCalled();
   });
 
