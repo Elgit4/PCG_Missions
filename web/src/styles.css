@@ -2019,3 +2019,27 @@ html[data-theme="dark"] .activity-panel { background-image: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .staff-login-input-wrap, .staff-login-submit { transition: none; }
 }
+
+
+.cmi-success-note {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(22, 128, 78, 0.24);
+  border-radius: 12px;
+  background: rgba(22, 128, 78, 0.08);
+  color: #176b45;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.cmi-success-note button {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
