@@ -161,33 +161,67 @@ jobs:
           test -f supabase-cmi/supabase/tests/identity_authorization_foundation.test.sql
           test ! -e supabase-cmi/supabase/migrations/20261107001200_churchconnect_core_schema.sql
 
-      - name: Verify permanent CMI migrations and pgTAP suites
+      - name: Generate temporary CLI migrations from reviewed schema drafts
         run: |
           set -euo pipefail
-          for migration in \
-            20261111010000_cmi_contacts_followup_domain.sql \
-            20261111010100_cmi_restricted_pastoral_domain.sql \
-            20261111010200_cmi_events_attendance_public_content.sql \
-            20261111010300_cmi_backend_capability_catalogue.sql \
-            20261111010400_cmi_followup_task_operations.sql \
-            20261111010500_cmi_pastoral_read_operations.sql \
-            20261111010600_cmi_staff_access_lifecycle.sql \
-            20261111010700_cmi_staff_auth_lifecycle.sql \
-            20261110235900_cmi_visitor_mvp_authorization.sql; do
-            test -f "supabase-cmi/supabase/migrations/$migration"
-          done
-          for test_file in \
-            cmi_contacts_followup_domain.test.sql \
-            cmi_restricted_pastoral_domain.test.sql \
-            cmi_events_attendance_public_content.test.sql \
-            cmi_backend_capability_catalogue.test.sql \
-            cmi_followup_task_operations.test.sql \
-            cmi_pastoral_read_operations.test.sql \
-            cmi_staff_access_lifecycle.test.sql \
-            cmi_staff_auth_lifecycle.test.sql \
-            visitor_mvp_authorization.test.sql; do
-            test -f "supabase-cmi/supabase/tests/$test_file"
-          done
+
+          supabase --workdir supabase-cmi migration new cmi_contacts_followup_domain
+          contacts_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_contacts_followup_domain.sql' -print -quit)"
+          test -n "$contacts_migration"
+          cp supabase-cmi/schema-drafts/contacts_followup_domain.sql "$contacts_migration"
+
+          # Supabase migration filenames use second-resolution timestamps.
+          sleep 1
+          supabase --workdir supabase-cmi migration new cmi_restricted_pastoral_domain
+          pastoral_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_restricted_pastoral_domain.sql' -print -quit)"
+          test -n "$pastoral_migration"
+          cp supabase-cmi/schema-drafts/restricted_pastoral_domain.sql "$pastoral_migration"
+
+          sleep 1
+          supabase --workdir supabase-cmi migration new cmi_events_attendance_public_content
+          events_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_events_attendance_public_content.sql' -print -quit)"
+          test -n "$events_migration"
+          cp supabase-cmi/schema-drafts/events_attendance_public_content.sql "$events_migration"
+
+          sleep 1
+          supabase --workdir supabase-cmi migration new cmi_backend_capability_catalogue
+          capability_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_backend_capability_catalogue.sql' -print -quit)"
+          test -n "$capability_migration"
+          cp supabase-cmi/schema-drafts/backend_capability_catalogue.sql "$capability_migration"
+
+          sleep 1
+          supabase --workdir supabase-cmi migration new cmi_followup_task_operations
+          followup_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_followup_task_operations.sql' -print -quit)"
+          test -n "$followup_migration"
+          cp supabase-cmi/schema-drafts/followup_task_operations.sql "$followup_migration"
+
+          sleep 1
+          supabase --workdir supabase-cmi migration new cmi_pastoral_read_operations
+          pastoral_read_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_pastoral_read_operations.sql' -print -quit)"
+          test -n "$pastoral_read_migration"
+          cp supabase-cmi/schema-drafts/pastoral_read_operations.sql "$pastoral_read_migration"
+
+          cp supabase-cmi/schema-drafts/backend_capability_catalogue.test.sql supabase-cmi/supabase/tests/cmi_backend_capability_catalogue.test.sql
+
+          sleep 1
+          supabase --workdir supabase-cmi migration new cmi_staff_access_lifecycle
+          access_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_staff_access_lifecycle.sql' -print -quit)"
+          test -n "$access_migration"
+          cp supabase-cmi/schema-drafts/staff_access_lifecycle.sql "$access_migration"
+          cp supabase-cmi/schema-drafts/staff_access_lifecycle.test.sql supabase-cmi/supabase/tests/cmi_staff_access_lifecycle.test.sql
+
+          sleep 1
+          supabase --workdir supabase-cmi migration new cmi_staff_auth_lifecycle
+          auth_migration="$(find supabase-cmi/supabase/migrations -maxdepth 1 -type f -name '*_cmi_staff_auth_lifecycle.sql' -print -quit)"
+          test -n "$auth_migration"
+          cp supabase-cmi/schema-drafts/staff_auth_lifecycle.sql "$auth_migration"
+          cp supabase-cmi/schema-drafts/staff_auth_lifecycle.test.sql supabase-cmi/supabase/tests/cmi_staff_auth_lifecycle.test.sql
+
+          cp supabase-cmi/schema-drafts/followup_task_operations.test.sql supabase-cmi/supabase/tests/cmi_followup_task_operations.test.sql
+          cp supabase-cmi/schema-drafts/contacts_followup_domain.test.sql supabase-cmi/supabase/tests/cmi_contacts_followup_domain.test.sql
+          cp supabase-cmi/schema-drafts/restricted_pastoral_domain.test.sql supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
+          cp supabase-cmi/schema-drafts/events_attendance_public_content.test.sql supabase-cmi/supabase/tests/cmi_events_attendance_public_content.test.sql
+          cp supabase-cmi/schema-drafts/pastoral_read_operations.test.sql supabase-cmi/supabase/tests/cmi_pastoral_read_operations.test.sql
 
       - name: Start isolated local CMI stack and apply CMI migrations
         run: supabase --workdir supabase-cmi start
@@ -203,3 +237,19 @@ jobs:
           else
             echo "Supabase CLI was not installed; no local CMI stack was started."
           fi
+          rm -f supabase-cmi/supabase/migrations/*_cmi_contacts_followup_domain.sql
+          rm -f supabase-cmi/supabase/migrations/*_cmi_restricted_pastoral_domain.sql
+          rm -f supabase-cmi/supabase/migrations/*_cmi_events_attendance_public_content.sql
+          rm -f supabase-cmi/supabase/migrations/*_cmi_backend_capability_catalogue.sql
+          rm -f supabase-cmi/supabase/migrations/*_cmi_staff_access_lifecycle.sql
+          rm -f supabase-cmi/supabase/migrations/*_cmi_staff_auth_lifecycle.sql
+          rm -f supabase-cmi/supabase/migrations/*_cmi_followup_task_operations.sql
+          rm -f supabase-cmi/supabase/migrations/*_cmi_pastoral_read_operations.sql
+          rm -f supabase-cmi/supabase/tests/cmi_backend_capability_catalogue.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_staff_access_lifecycle.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_staff_auth_lifecycle.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_followup_task_operations.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_contacts_followup_domain.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_events_attendance_public_content.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_pastoral_read_operations.test.sql
