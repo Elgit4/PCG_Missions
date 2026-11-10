@@ -116,8 +116,8 @@ select is(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  4,
-  'bootstrap grants only the minimum Admin/Pastor control-plane capabilities'
+  65,
+  'bootstrap preserves the reviewed least-privilege role baseline'
 );
 select is(
   (select count(*)::integer
