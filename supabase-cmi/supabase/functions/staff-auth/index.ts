@@ -9,6 +9,7 @@ import {
   parseResetRequestId,
   parseResetReview,
 } from "./validation.ts";
+import { generateTemporaryPassword } from "./temporary_password.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -90,16 +91,6 @@ function clients() {
     },
   });
   return { auth, service };
-}
-
-function generateTemporaryPassword(): string {
-  // 256 bits of cryptographic randomness plus guaranteed character classes
-  // required by the frontend password policy. Never log or persist this value.
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
-  const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");
-  const random = btoa(binary).replace(/\+/g, "-").replace(/\//g, "_")
-    .replace(/=+$/g, "");
-  return `${random}A1a`;
 }
 
 function escapeHtml(value: string): string {
