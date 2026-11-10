@@ -190,7 +190,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     if (!branchId) return;
     setRefreshing(true); setActionError("");
     try {
-      const [contactResult, taskResult, resetResult] = await Promise.all([
+      const [contactResult, taskResult, resetResult, staffResult] = await Promise.all([
         canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0, search: query.trim() || undefined }) : Promise.resolve(null),
         canReadTasks ? api.listFollowUpTasks(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
         canManagePasswordResets ? api.listStaffPasswordResetRequests(branchId) : Promise.resolve(null),
@@ -205,7 +205,6 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         setTasksHasMore(taskResult.data.length === 50);
       }
       if (resetResult) setResetRequests(resetResult.data);
-      const staffResult = canReadStaffDirectory ? await api.listStaffDirectory(branchId, { limit: 100, offset: 0 }) : null;
       if (staffResult) setStaffMembers(staffResult.data);
     } catch (error) { handleActionError(error); }
     finally { setRefreshing(false); }
