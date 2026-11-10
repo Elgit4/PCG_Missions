@@ -182,7 +182,6 @@ export class CmiApiClient {
     const headers = new Headers({
       apikey: this.config.publishableKey,
       Accept: "application/json",
-      "Cache-Control": "no-store",
     });
     if (token) headers.set("Authorization", `Bearer ${token}`);
     if (options.body !== undefined) headers.set("Content-Type", "application/json");

@@ -17,7 +17,7 @@ describe("CmiApiClient", () => {
   it("sends the publishable key and bearer token to the staff session function", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: { staff: { account_status: "active" } }, request_id: "request-1" }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
+      { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } },
     ));
     const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
     const result = await client.getStaffSession();
@@ -26,7 +26,7 @@ describe("CmiApiClient", () => {
     expect(new Headers(init.headers).get("apikey")).toBe("public-test-key");
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
     expect(result.request_id).toBe("request-1");
-    expect(new Headers(init.headers).get("Cache-Control")).toBe("no-store");
+    expect(new Headers(init.headers).has("Cache-Control")).toBe(false);
   });
 
   it("preserves safe backend error codes and request IDs", async () => {
