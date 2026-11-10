@@ -60,7 +60,7 @@ The repository contains the CMI v2.1 product specification, logical and physical
 
 The permanent CMI migration currently in source is the identity/authorization foundation. The remaining domain SQL slices are still under `supabase-cmi/schema-drafts/` and have been tested on isolated local CI stacks using temporary migrations. The repository implementation status explicitly records that these drafts are not permanent migration history and are not deployed to hosted production.
 
-The current source does not contain the complete production PWA frontend. Edge Function source covers selected public content, staff, pastoral audited-read, event-draft, announcement-draft, content-draft and calendar-draft operations, but none are deployed to the hosted project.
+PRs #24 and #25 have since been merged, and the integrated frontend source is present under `web/`. PR #26 has also been merged and adds first-administrator bootstrap and administrator-approved password recovery source. This updates the repository-source finding only: the frontend is not deployed, the authentication lifecycle is not configured or deployed, the hosted project still has zero CMI public application tables and zero deployed CMI Edge Functions, and no production administrator has been bootstrapped.
 
 ## Release-blocking governance and engineering gaps
 
