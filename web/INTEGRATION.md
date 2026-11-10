@@ -6,7 +6,7 @@ The production entry point now renders an authenticated staff workspace rather t
 
 The current live frontend includes Supabase Auth email + private-PIN sign-in; tab-scoped session storage, access-token refresh and sign-out; server-verified staff-session bootstrap; explicit active-branch selection; capability-derived contacts and follow-up navigation; contact list and creation with identity fields gated by their separate capture capability; follow-up task list, self-assigned task creation where the access scope can be safely resolved, and task completion.
 
-The Auth client uses Supabase Auth's password grant with the staff PIN passed as the credential. Supabase Auth validates the credential and issues the JWT; the browser contains no custom PIN verifier, hashing scheme or service-role credential. Access and refresh tokens are stored only in sessionStorage for the current tab, refreshed before protected requests when necessary, and cleared locally on sign-out.
+No password-grant shortcut or custom PIN verifier is present. Access and refresh tokens are stored only in sessionStorage for the current tab, refreshed before protected requests when necessary, and cleared locally on sign-out.
 
 ## Authentication limitations
 
@@ -59,4 +59,4 @@ The frontend source is not equivalent to a deployable production system. The rep
 7. Run frontend and backend CI against the release commit, then execute end-to-end tests against a staging Supabase project with approved test identities and grants.
 8. Verify security, accessibility, mobile/responsive behaviour, session revocation, backup/restore and operational monitoring before production cutover.
 
-Until those external backend and policy gates are complete, the frontend can be built and tested but must not be represented as ready for live church operations.
+Until those external backend and policy gates are complete, the frontend can be built and tested but the staff workspace remains intentionally inaccessible. It must not be represented as ready for live church operations.
