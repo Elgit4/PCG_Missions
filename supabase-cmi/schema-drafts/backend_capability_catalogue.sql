@@ -7,7 +7,7 @@ begin;
 
 insert into public.capability (code, description, sensitivity) values
   ('staff.directory.read', 'Read permitted staff directory fields.', 'ordinary'),
-  ('staff.account.manage', 'Provision, activate/deactivate and initiate secure credential reset or reissue.', 'restricted'),
+  ('staff.account.manage', 'Manage the status of an existing provisioned staff account and initiate an approved credential reset or reissue.', 'restricted'),
   ('access.role.assign', 'Assign and revoke staff role assignments.', 'highly_restricted'),
   ('access.capability.manage', 'Maintain capability grants and policy configuration.', 'highly_restricted'),
   ('team.manage', 'Manage teams and team memberships.', 'ordinary'),
