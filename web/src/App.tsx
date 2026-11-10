@@ -69,7 +69,7 @@ export default function App() {
     }
     if (!next.branches.length) {
       setStaffSession(null);
-      throw new CmiApiError(403, "NO_ACTIVE_BRANCH", "Your account has no active branch assignment. Contact an administrator.");
+      throw new CmiApiError(403, "NO_ACTIVE_BRANCH", "Your account has no active branch assignment. Contact an administrator.", null);
     }
     setStaffSession(next);
     setView("sign-in");
