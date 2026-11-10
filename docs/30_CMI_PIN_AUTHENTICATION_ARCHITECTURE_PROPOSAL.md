@@ -112,3 +112,17 @@ Recommended security posture: prefer passkeys where the user's device supports t
 - All six approved roles remain unchanged; business capability grants remain empty until stakeholder approval.
 - Unit, integration, pgTAP, Edge Function and browser tests cover abuse, failure, recovery, session revocation and account enumeration.
 - Staging verification and stakeholder approval are complete before any production deployment.
+
+## 3.1 Bootstrap credential-delivery failure (required recovery design)
+
+The one-time bootstrap operation must be treated as consumed as soon as the first-admin profile has been provisioned, regardless of whether the email provider confirms delivery. A timeout or ambiguous provider response must not trigger another bootstrap attempt: the message may already have been delivered.
+
+The current password-based draft intentionally rejects a repeated bootstrap once the first-admin profile exists. It does not currently implement a separate recovery operation for the case where provisioning succeeded but the credential email failed or delivery is uncertain. Therefore:
+
+- Never delete or recreate the Auth user, staff profile, church or branch to retry bootstrap.
+- Never expose the temporary credential, bootstrap bearer token, service-role key or recovery link in logs, tickets or chat.
+- Require an authorised operator to verify the administrator identity against the approved stakeholder record and inspect the existing Auth/profile linkage before any intervention. Ambiguous state must be escalated, not overwritten.
+- Before implementation can be considered production-ready, add a separately authorised, audited operator recovery mechanism that can issue a new single-use recovery challenge to the already-verified mailbox without changing identity, scope or permissions. It must not let an administrator choose or learn the permanent PIN.
+- Until that mechanism exists and is tested, credential-delivery failure after provisioning is a release blocker. The current code has no supported recovery route for it.
+
+After successful credential setup, the deployment operator—not the Edge Function—must remove the deployed `CMI_BOOTSTRAP_TOKEN` secret and verify its removal. The PIN flow and the operator recovery mechanism remain unimplemented; this proposal does not authorise deployment.
