@@ -71,8 +71,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canUpdateTasks = hasCapability(session, "followup.task.update.scoped", branchId);
   const canManagePasswordResets = hasCapability(session, "staff.password_reset.manage", branchId);
   const availablePages = useMemo(() => {
-    const pages = getAvailableStaffPages(session, branchId)
-      .filter((candidate): candidate is Page =>
+    const pages: Page[] = getAvailableStaffPages(session, branchId)
+      .filter((candidate): candidate is "Overview" | "Contacts" | "Follow-up" =>
         candidate === "Overview" || candidate === "Contacts" || candidate === "Follow-up"
       );
     if (canCreateContacts && !pages.includes("Contacts")) pages.push("Contacts");
