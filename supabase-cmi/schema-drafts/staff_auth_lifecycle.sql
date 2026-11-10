@@ -193,8 +193,8 @@ begin
   );
 
   -- The first administrator receives only the minimum control-plane
-  -- capabilities needed to provision staff, assign the six approved roles,
-  -- and review account recovery. Business-domain capabilities (contacts,
+  -- capabilities needed to view the staff directory, provision staff,
+  -- assign the six approved roles, and review account recovery. Business-domain capabilities (contacts,
   -- events, prayer/care, SMS, reports, exports and oversight) remain empty
   -- until the client signs off the role matrix. Capability-policy editing is
   -- deliberately excluded to prevent self-escalation.
@@ -202,6 +202,7 @@ begin
   select v_role_id, cap.id, 'branch'
   from public.capability cap
   where cap.code in (
+    'staff.directory.read',
     'staff.account.manage',
     'access.role.assign',
     'staff.password_reset.manage'
