@@ -1,5 +1,7 @@
 # CMI staff authentication — bootstrap and recovery runbook
 
+> **SUPERSEDED — 10 November 2026:** The product owner confirmed Supabase email/password authentication, generated temporary passwords, mandatory first-login password replacement and administrator-reviewed password reset. The PIN requirements and conformance hold below are historical and must not be followed as current implementation requirements. See [the current authentication and authorization baseline](31_VISITOR_MVP_AUTHENTICATION_AUTHORIZATION_BASELINE.md), [the stakeholder handover pack](29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md) and [the current implementation checkpoint](../supabase-cmi/IMPLEMENTATION_STATUS.md). Production is still NO-GO for the separate delivery-recovery, provider, approval, deployment and UAT blockers documented there.
+
 **Status:** PR #26 is merged, but the authentication implementation is **on hold and must not be deployed**. The current source implements Supabase email/password authentication. The confirmed product requirement is email + private PIN with one-time staff activation. The current source is therefore non-conformant.
 **Scope:** First administrator bootstrap, first-login credential replacement, staff activation and administrator-reviewed recovery.
 
