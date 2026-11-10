@@ -57,8 +57,8 @@ select extensions.ok(
 
 select extensions.is(
   (select count(*)::integer from public.role_capability),
-  0,
-  'no unapproved role-capability grants are introduced'
+  65,
+  'the reviewed visitor MVP role baseline remains present'
 );
 
 -- Synthetic fixtures only.
