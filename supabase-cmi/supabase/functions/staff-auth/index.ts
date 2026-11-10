@@ -685,7 +685,9 @@ Deno.serve(async (request: Request) => {
           id,
         );
       }
-      const setupExpiresAt = Date.parse(profile.password_setup_expires_at ?? "");
+      const setupExpiresAt = Date.parse(
+        profile.password_setup_expires_at ?? "",
+      );
       if (!Number.isFinite(setupExpiresAt) || setupExpiresAt <= Date.now()) {
         return fail(
           "PASSWORD_SETUP_EXPIRED",
