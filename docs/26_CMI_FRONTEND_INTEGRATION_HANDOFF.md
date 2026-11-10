@@ -11,7 +11,7 @@ The backend source provides these API families:
 | Surface | Function | Current source capability | Availability boundary |
 |---|---|---|---|
 | Public visitor reads | `public-content` | Published church profile, sermons, daily words, tracts, welcome messages, public announcements and public events | Read-only; function is source-only and not deployed |
-| Staff session | `staff-session` | Validates Auth token and returns active staff, branches, roles and capability projection | Source-only; email+PIN sign-in/activation is not implemented |
+| Staff session | `staff-session` | Validates Auth token and returns active staff, branches, roles and capability projection | Source-only; email/password sign-in and temporary-password setup are implemented in the frontend/backend source but not deployed |
 | Contacts and follow-up | `staff-operations` | Scoped contact list/detail/capture/update and task list/detail/create/update/reassign | Source-only; no role grants are seeded |
 | Pastoral record reads | `pastoral-operations` | Individual audited prayer/care record reads | Approval-gated; R-01/R-10/R-11/D-07 pending; no grants |
 | Staff access administration | `staff-access-operations` | Assign/revoke roles; deactivate/reactivate accounts | New source in PR #21; no grants and not deployed |
@@ -20,7 +20,7 @@ The backend source provides these API families:
 | Visitor content authoring | `content-operations` | Sermon and welcome-message private drafts | Source-only; no publication, Daily Word or tract authoring |
 | Calendar | `calendar-operations` | Branch-scoped calendar list/detail/create/update | Source-only; branch scope only |
 
-**Important:** all current Edge Functions are source-controlled, not deployed. The CMI permanent migration currently contains only the identity/authorization foundation. Domain SQL is validated from `schema-drafts/` using temporary local CI migrations; it has not been promoted into permanent migration history or applied to a hosted project. The `role_capability` table has no grants. A valid session with an empty capability list means the user has no business-operation permissions; it must not be treated as an Admin default.
+**Important:** all current Edge Functions are source-controlled, not deployed. The feature branch contains 13 ordered permanent CMI migrations, including the identity foundation, visitor/follow-up domain, restricted pastoral and events/public-content schemas, staff lifecycle and visitor MVP authorization baseline. CI applies these committed migrations to an isolated local Supabase stack and runs pgTAP; none has been applied to the hosted project. The visitor MVP migration seeds 65 explicit least-privilege role grants. Other sensitive or policy-gated capabilities (pastoral narrative oversight, exports, SMS, offline restricted access and unapproved module actions) remain ungranted. A session with an empty capability projection still means no business access; never infer Admin access from a role label or missing data.
 
 The frontend can begin with app shell, routing, design system, public pages, auth-state shell, capability-aware navigation and typed API integration. Do not represent gated workflows as operational until their backend, approvals, grants and deployment are complete.
 
@@ -38,7 +38,7 @@ Never include:
 - webhook verification secrets
 - any private credential or admin token
 
-Use Supabase Auth client sessions only after the approved email+PIN lifecycle has been implemented. The current backend expects a valid Supabase Auth access token; do not invent a PIN-to-session bridge in the browser.
+Use Supabase Auth client sessions only after successful email/password authentication. The source implements temporary-password first-login replacement and administrator-reviewed password resets; production deployment remains gated by delivery recovery and provider configuration. The current backend expects a valid Supabase Auth access token; do not invent a PIN-to-session bridge in the browser.
 
 Protected Edge Function request headers:
 ```http
