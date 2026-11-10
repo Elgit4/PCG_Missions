@@ -43,10 +43,14 @@ Deno.test("Auth user scan fails closed when the page limit is reached", async ()
 Deno.test("Auth user scan fails closed on provider errors", async () => {
   let rejected = false;
   try {
-    await listAllAuthUsers(async () => ({
-      users: [],
-      error: new Error("provider unavailable"),
-    }), 2, 2);
+    await listAllAuthUsers(
+      async () => ({
+        users: [],
+        error: new Error("provider unavailable"),
+      }),
+      2,
+      2,
+    );
   } catch (error) {
     rejected = error instanceof Error &&
       error.message === "BOOTSTRAP_AUTH_USER_LOOKUP_FAILED";
@@ -57,10 +61,14 @@ Deno.test("Auth user scan fails closed on provider errors", async () => {
 Deno.test("Auth user scan fails closed on malformed pages", async () => {
   let rejected = false;
   try {
-    await listAllAuthUsers(async () => ({
-      users: ["one", "two", "three"],
-      error: null,
-    }), 2, 2);
+    await listAllAuthUsers(
+      async () => ({
+        users: ["one", "two", "three"],
+        error: null,
+      }),
+      2,
+      2,
+    );
   } catch {
     rejected = true;
   }
