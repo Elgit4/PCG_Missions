@@ -112,3 +112,39 @@ A dedicated frontend workflow was added at `.github/workflows/cmi-web-ci.yml`. T
 The hosted production snapshot remains unchanged: zero CMI public application tables, one hosted security-remediation migration, zero deployed CMI Edge Functions, and no production Auth users or CMI records created by this work. Security, performance and health advisors returned no lints; the RLS-helper direct-execution checks remain false for `anon`, `authenticated` and `service_role`.
 
 **Release decision remains NO-GO.** The client must approve the role/data/authentication decisions, the email+PIN mismatch must be resolved and implemented, staff invitation/activation must be completed, domain migrations must be promoted and tested in staging, and the application must be deployed and accepted before production launch.
+
+
+## Post-migration verification addendum — 10 November 2026
+
+This addendum supersedes the earlier **Hosted production snapshot** above for the current state. The original snapshot is retained as a historical record of the audit before the identity/authorization foundation was applied.
+
+The explicitly authorised identity/authorization foundation and its supporting indexes have since been applied to hosted Supabase project `cgwffpxlwgbnlinzwfoj`.
+
+| Control | Verified current result |
+|---|---|
+| Hosted public foundation tables | 11 |
+| Recorded hosted migrations | 3 |
+| CMI Edge Functions deployed | 0 |
+| RLS enabled | 11 of 11 tables |
+| Six approved roles | 6 seeded |
+| Role-capability grants | 0 |
+| Staff, church, branch, team and service-area records | 0 |
+| Anonymous SELECT on staff profiles | Denied |
+| Authenticated SELECT on staff profiles | Denied |
+| Service-role SELECT on foundation staff profiles | Allowed; server-side only |
+| Security advisor | 11 informational `rls_enabled_no_policy` notices; intentional fail-closed state |
+| Performance advisor | No unindexed foreign-key findings; unused-index notices remain expected on empty tables |
+
+Hosted migration history:
+
+1. `20261110130847` — `revoke_public_rls_auto_enable_execute`
+2. `20261110134538` — `cmi_identity_authorization_foundation`
+3. `20261110134606` — `cmi_foundation_fk_indexes`
+
+The 11 tables are `church`, `branch`, `staff_profile`, `role`, `capability`, `role_capability`, `staff_role_assignment`, `team`, `staff_team_membership`, `service_area` and `staff_area_coverage`. The role catalogue contains exactly the six approved roles. No role-capability grants or business records were seeded. All 11 tables have RLS enabled and no client-facing policies, so the informational no-policy notices are expected and access remains closed.
+
+The supporting-index migration added indexes for the seven previously unindexed foreign-key paths. The remaining unused-index notices are not a reason to remove these integrity/performance indexes before real query workloads exist.
+
+The current backend CI run for commit `2528205046b48d1cca7b4c59f800780ce442a2cf` passed: [GitHub Actions run 42827620899](https://github.com/Elgit4/PCG_Missions/actions/runs/42827620899). The immediately preceding run for the index-migration commit was cancelled when the newer main-branch run superseded it; the successful current-head run is the relevant result.
+
+**Release decision remains NO-GO.** This is only the identity/authorization foundation, not the complete CMI schema or application. No administrator, church/branch records, Edge Functions, authentication flow, domain tables, business role grants or production staff have been provisioned. Stakeholder approvals and the email + private PIN authentication conformance work remain release blockers.
