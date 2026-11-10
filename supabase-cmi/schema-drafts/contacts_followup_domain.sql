@@ -132,6 +132,26 @@ create index contact_assignment_active_user_idx
 create index contact_assignment_active_team_idx
   on public.contact_assignment(team_id, contact_id) where ends_at is null;
 
+-- Prevent duplicate overlapping assignments to the same person or team while
+-- still allowing different people/teams to share responsibility for a contact.
+alter table public.contact_assignment
+  add constraint contact_assignment_user_no_overlap_excl
+  exclude using gist (
+    contact_id with =,
+    assignee_user_id with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  )
+  where (assignee_user_id is not null);
+
+alter table public.contact_assignment
+  add constraint contact_assignment_team_no_overlap_excl
+  exclude using gist (
+    contact_id with =,
+    team_id with =,
+    tstzrange(starts_at, ends_at, '[)') with &&
+  )
+  where (team_id is not null);
+
 create table public.contact_note (
   id uuid primary key default gen_random_uuid(),
   contact_id uuid not null,
