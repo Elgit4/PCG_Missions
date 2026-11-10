@@ -39,6 +39,17 @@ export interface StaffSession {
   branches: Array<{ id: string; name: string; timezone: string }>;
   roles: Array<{ code: string; name: string; branch_id: string }>;
   capabilities: Array<{ code: string; scope_mode: string; branch_id: string }>;
+  must_change_password: boolean;
+  password_setup_expires_at: string | null;
+}
+
+export interface StaffPasswordResetRequest {
+  id: string;
+  email: string;
+  full_name: string;
+  requested_at: string;
+  expires_at: string;
+  status: "pending" | "processing";
 }
 
 export interface ContactRecord {
@@ -258,6 +269,28 @@ export class CmiApiClient {
     return this.request<unknown[]>("staff-operations", "/staff", {
       query: { branch_id: branchId, limit: options.limit ?? 25, offset: options.offset ?? 0, search: options.search },
     });
+  }
+
+  listStaffPasswordResetRequests(branchId: string) {
+    return this.request<StaffPasswordResetRequest[]>(
+      "staff-auth",
+      "/admin/password-reset-requests",
+      { query: { branch_id: branchId } },
+    );
+  }
+  approveStaffPasswordResetRequest(branchId: string, requestId: string, reason: string) {
+    return this.request<{ status: string; recovery_email_sent: boolean }>(
+      "staff-auth",
+      `/admin/password-reset-requests/${encodeURIComponent(requestId)}/approve`,
+      { method: "POST", body: { branch_id: branchId, reason } },
+    );
+  }
+  denyStaffPasswordResetRequest(branchId: string, requestId: string, reason: string) {
+    return this.request<{ status: string }>(
+      "staff-auth",
+      `/admin/password-reset-requests/${encodeURIComponent(requestId)}/deny`,
+      { method: "POST", body: { branch_id: branchId, reason } },
+    );
   }
   readPrayerRequest(branchId: string, requestId: string, accessMode: "assigned" | "oversight", reasonCode?: string) {
     return this.request<unknown>("pastoral-operations", `/prayer/requests/${encodeURIComponent(requestId)}/read`, {
