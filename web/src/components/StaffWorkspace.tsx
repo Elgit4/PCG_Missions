@@ -458,6 +458,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                 setResetRequests([]);
                 setStaffMembers([]);
                 setShowStaffForm(false);
+                setStaffStatusEdit(null);
+                setStaffStatusReason("");
                 setResetReasons({});
                 setContactsHasMore(false);
                 setTasksHasMore(false);
