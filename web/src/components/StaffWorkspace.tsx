@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Activity, CalendarClock, CheckCircle2, ClipboardList, LogOut, Plus, Search, ShieldCheck, Users } from "lucide-react";
-import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture } from "../lib/capabilities";
+import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
 import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffSession, TaskCreateInput } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 
@@ -46,6 +46,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const contactRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
+  const taskRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
 
   const canReadContacts = canOpenStaffPage(session, "Contacts", branchId);
   const canReadTasks = canOpenStaffPage(session, "Follow-up", branchId);
@@ -66,8 +68,27 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     return pages;
   }, [session, branchId, canCreateContacts]);
   const canCaptureIdentity = hasIdentityCapture(session, branchId);
+  const canReadIdentity = hasIdentityRead(session, branchId);
   const activeBranch = session.branches.find((branch) => branch.id === branchId);
   const branchTimeZone = activeBranch?.timezone || "Africa/Accra";
+
+  const expireSession = useCallback(() => {
+    setContacts([]);
+    setTasks([]);
+    setContactsHasMore(false);
+    setTasksHasMore(false);
+    setLoadError("Your staff session has expired. Please sign in again.");
+    setActionError("");
+    void onSignOut();
+  }, [onSignOut]);
+
+  const handleActionError = useCallback((error: unknown) => {
+    if (error instanceof CmiApiError && error.status === 401) {
+      expireSession();
+      return;
+    }
+    setActionError(messageFor(error));
+  }, [expireSession]);
 
   useEffect(() => {
     let current = true;
@@ -87,7 +108,11 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             setContactsHasMore(result.data.length === 50);
           }
         })
-        .catch((error: unknown) => { if (current) setLoadError(messageFor(error)); }));
+        .catch((error: unknown) => {
+          if (!current) return;
+          if (error instanceof CmiApiError && error.status === 401) expireSession();
+          else setLoadError(messageFor(error));
+        }));
     } else {
       setContacts([]);
       setContactsHasMore(false);
@@ -107,7 +132,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     }
     void Promise.all(requests).finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
-  }, [api, branchId, canReadContacts, canReadTasks, query]);
+  }, [api, branchId, canReadContacts, canReadTasks, query, expireSession]);
 
   const visibleContacts = contacts;
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
@@ -130,7 +155,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         setTasks(taskResult.data);
         setTasksHasMore(taskResult.data.length === 50);
       }
-    } catch (error) { setActionError(messageFor(error)); }
+    } catch (error) { handleActionError(error); }
     finally { setRefreshing(false); }
   };
 
@@ -145,7 +170,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       });
       setContacts((current) => [...current, ...result.data]);
       setContactsHasMore(result.data.length === 50);
-    } catch (error) { setActionError(messageFor(error)); }
+    } catch (error) { handleActionError(error); }
     finally { setLoadingMore(false); }
   };
 
@@ -156,7 +181,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       const result = await api.listFollowUpTasks(branchId, { limit: 50, offset: tasks.length });
       setTasks((current) => [...current, ...result.data]);
       setTasksHasMore(result.data.length === 50);
-    } catch (error) { setActionError(messageFor(error)); }
+    } catch (error) { handleActionError(error); }
     finally { setLoadingMore(false); }
   };
 
@@ -168,9 +193,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     const lastName = String(form.get("last_name") ?? "").trim();
     const phone = canCaptureIdentity ? String(form.get("phone") ?? "").trim() : "";
     if (!firstName || !lastName) { setActionError("Enter the visitor's first and last name."); return; }
-    const input: ContactCreateInput = {
+    const contactPayload = {
       branch_id: branchId,
-      client_request_id: crypto.randomUUID(),
       first_name: firstName,
       last_name: lastName,
       preferred_name: String(form.get("preferred_name") ?? "").trim() || null,
@@ -178,12 +202,21 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       source_metadata: { device_type: "web" },
       ...(phone ? { phone_display: phone } : {}),
     };
+    const fingerprint = JSON.stringify(contactPayload);
+    if (!contactRequestRef.current || contactRequestRef.current.fingerprint !== fingerprint) {
+      contactRequestRef.current = { fingerprint, id: crypto.randomUUID() };
+    }
+    const input: ContactCreateInput = {
+      ...contactPayload,
+      client_request_id: contactRequestRef.current.id,
+    };
     setSaving(true); setActionError("");
     try {
       const result = await api.createContact(input);
       setContacts((current) => [result.data, ...current.filter((item) => item.id !== result.data.id)]);
+      contactRequestRef.current = null;
       setShowContactForm(false); setPage("Contacts");
-    } catch (error) { setActionError(messageFor(error)); }
+    } catch (error) { handleActionError(error); }
     finally { setSaving(false); }
   };
 
@@ -203,21 +236,29 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     }
     const parsedDueDate = dueInput ? new Date(dueInput) : null;
     if (parsedDueDate && Number.isNaN(parsedDueDate.getTime())) { setActionError("Enter a valid due date and time."); return; }
-    const input: TaskCreateInput = {
+    const taskPayload = {
       branch_id: branchId,
       contact_id: contactId,
-      client_request_id: crypto.randomUUID(),
       assignee_user_id: session.user.id,
       priority: Number.isInteger(rawPriority) && rawPriority >= 1 && rawPriority <= 5 ? rawPriority : 2,
       task_note: taskNote || null,
       due_at: parsedDueDate ? parsedDueDate.toISOString() : null,
     };
+    const fingerprint = JSON.stringify(taskPayload);
+    if (!taskRequestRef.current || taskRequestRef.current.fingerprint !== fingerprint) {
+      taskRequestRef.current = { fingerprint, id: crypto.randomUUID() };
+    }
+    const input: TaskCreateInput = {
+      ...taskPayload,
+      client_request_id: taskRequestRef.current.id,
+    };
     setSaving(true); setActionError("");
     try {
       const result = await api.createFollowUpTask(input);
       setTasks((current) => [result.data, ...current.filter((item) => item.id !== result.data.id)]);
+      taskRequestRef.current = null;
       setShowTaskForm(false); setPage("Follow-up");
-    } catch (error) { setActionError(messageFor(error)); }
+    } catch (error) { handleActionError(error); }
     finally { setSaving(false); }
   };
 
@@ -227,7 +268,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     try {
       const result = await api.updateFollowUpTask(branchId, task.id, { status: "completed" });
       setTasks((current) => current.map((item) => item.id === task.id ? result.data : item));
-    } catch (error) { setActionError(messageFor(error)); }
+    } catch (error) { handleActionError(error); }
   };
   const signOut = async () => {
     setSigningOut(true);
@@ -270,7 +311,17 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         <header className="cmi-topbar">
           <div><span className="cmi-breadcrumb">PCG MISSIONS / {activeBranch.name.toUpperCase()}</span><h1>{page === "Follow-up" ? "Follow-up tasks" : page}</h1></div>
           <div className="cmi-topbar-actions">
-            <label className="cmi-branch-picker"><span>BRANCH</span><select aria-label="Active branch" value={branchId} onChange={(event) => { setBranchId(event.target.value); setPage("Overview"); }}>
+            <label className="cmi-branch-picker"><span>BRANCH</span><select aria-label="Active branch" value={branchId} onChange={(event) => {
+                setContacts([]);
+                setTasks([]);
+                setContactsHasMore(false);
+                setTasksHasMore(false);
+                setQuery("");
+                setShowContactForm(false);
+                setShowTaskForm(false);
+                setBranchId(event.target.value);
+                setPage("Overview");
+              }}>
               {session.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
             </select></label>
             <button className="cmi-button cmi-button-secondary" onClick={() => void refresh()} disabled={refreshing || loading}>{refreshing ? "Refreshing…" : "Refresh"}</button>
