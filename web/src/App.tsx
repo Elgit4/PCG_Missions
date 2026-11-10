@@ -61,15 +61,17 @@ export default function App() {
     if (!api) throw new Error("The staff API is not configured.");
     const result = await api.getStaffSession();
     const next = result.data;
-    setStaffSession(next);
     if (next.must_change_password) {
+      setStaffSession(next);
       setView("change-password");
       setNotice("");
       return;
     }
     if (!next.branches.length) {
+      setStaffSession(null);
       throw new CmiApiError(403, "NO_ACTIVE_BRANCH", "Your account has no active branch assignment. Contact an administrator.");
     }
+    setStaffSession(next);
     setView("sign-in");
     setError("");
     setNotice("");
