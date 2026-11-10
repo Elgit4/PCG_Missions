@@ -354,7 +354,9 @@ export function projectStaffDirectoryRows(
   rows: StaffDirectoryProfileRow[],
 ): StaffDirectoryMember[] {
   return rows
-    .filter((row) => row.account_status === "active" || row.account_status === "inactive")
+    .filter((row) =>
+      row.account_status === "active" || row.account_status === "inactive"
+    )
     .map((row) => {
       const roles = new Map<string, string>();
       for (const assignment of row.staff_role_assignment ?? []) {
