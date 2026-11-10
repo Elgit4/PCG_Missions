@@ -8,7 +8,7 @@
 
 ## Executive result
 
-The production project is active, but the CMI application schema is not present. At audit time the hosted `public` schema contained **zero application tables**, the migration history contained only the security-remediation migration listed below, and there were **zero deployed CMI Edge Functions**. This is not a production-ready application.
+The production project is active. The original pre-foundation audit snapshot contained zero application tables; after the approved foundation rollout on 10 November 2026, the hosted `public` schema now contains **11 identity/authorization foundation tables**, with **three recorded migrations** and **zero deployed CMI Edge Functions**. The application/domain schema and authentication lifecycle are still incomplete. This is not a production-ready application.
 
 The six CMI operational roles remain unchanged:
 - Admin / Pastor (`admin_pastor`)
@@ -38,29 +38,32 @@ Verification query confirmed:
 
 The subsequent Supabase security-advisor query returned no lints. The hosted migration list recorded version `20261110130847`.
 
-## Hosted production snapshot
+## Hosted production snapshot — verified after foundation rollout
+
+The initial remediation-only snapshot above is historical. The following reflects the hosted project after the foundation and supporting-index migrations were applied and verified.
 
 | Control | Observed result |
 |---|---|
-| Supabase project | Active / healthy |
-| Hosted `public` application tables | 0 |
-| Hosted migration history | 1 remediation migration |
+| Supabase project | Active |
+| Hosted `public` foundation tables | 11 |
+| Hosted migration history | 3 recorded migrations |
 | CMI Edge Functions deployed | 0 |
-| RLS helper exposed to anon | No |
-| RLS helper exposed to authenticated | No |
-| Security advisor | No findings after remediation |
-| Six-role catalogue in hosted DB | Not deployed |
-| Role-capability grants | Not deployed |
-| Staff profiles / branch / teams | Not deployed |
+| RLS enabled | 11/11 tables |
+| `anon` / `authenticated` SELECT on `staff_profile` | Denied |
+| Six-role catalogue | 6 approved roles seeded |
+| `role_capability` grants | 0 rows (fail-closed) |
+| Church / branch / staff / team records | 0 provisioned |
 | Production authentication workflow | Not deployed |
+| Security advisor | 11 informational `rls_enabled_no_policy` findings; intentional fail-closed state |
+| Performance advisor | No unindexed foreign-key findings; unused-index notices expected on empty tables |
 
 ## Repository and design findings
 
 The repository contains the CMI v2.1 product specification, logical and physical data proposals, role/capability proposal, schema drafts, Edge Function source and pgTAP test suites. These are not equivalent to deployed production functionality.
 
-The permanent CMI migration currently in source is the identity/authorization foundation. The remaining domain SQL slices are still under `supabase-cmi/schema-drafts/` and have been tested on isolated local CI stacks using temporary migrations. The repository implementation status explicitly records that these drafts are not permanent migration history and are not deployed to hosted production.
+The permanent CMI migrations in source now include the identity/authorization foundation, hosted RLS-helper privilege remediation and supporting foreign-key indexes. The hosted project records all three. The remaining domain SQL slices are still under `supabase-cmi/schema-drafts/` and have been tested on isolated local CI stacks using temporary migrations. These drafts are not permanent migration history and are not deployed to hosted production.
 
-PRs #24 and #25 have since been merged, and the integrated frontend source is present under `web/`. PR #26 has also been merged and adds first-administrator bootstrap and administrator-approved password recovery source. This updates the repository-source finding only: the frontend is not deployed, the authentication lifecycle is not configured or deployed, the hosted project still has zero CMI public application tables and zero deployed CMI Edge Functions, and no production administrator has been bootstrapped.
+PRs #24 and #25 have since been merged, and the integrated frontend source is present under `web/`. PR #26 has also been merged and adds first-administrator bootstrap and administrator-reviewed password recovery source. This updates the repository-source finding only: the frontend is not deployed; the current authentication source is email/password and is non-conformant with the confirmed email + private PIN requirement; the authentication lifecycle is not configured or deployed; the hosted project has only the 11-table identity/authorization foundation and zero deployed CMI Edge Functions; and no production administrator has been bootstrapped.
 
 ## Release-blocking governance and engineering gaps
 
@@ -74,7 +77,7 @@ The formal stakeholder decision register still marks R-01–R-12 and D-01–D-13
 - Contact duplicate/merge, public registration and capacity rules.
 - Care/prayer retention, offline device protection and data retention.
 - Report fields and review authority.
-- PIN activation, private PIN setup, reset/reissue and recovery security.
+- PIN activation, private PIN setup, reset/reissue and recovery security. The email + private PIN architecture proposal is now documented in `docs/30_CMI_PIN_AUTHENTICATION_ARCHITECTURE_PROPOSAL.md`; PIN length/format, KDF parameters, throttling thresholds, session lifetime and recovery proof remain unresolved.
 
 The six roles are confirmed as fixed. That confirmation does not itself approve these sensitive permission and data-governance decisions. The system must remain fail-closed: no role-capability grants should be invented, no broad RLS policies should be introduced, and no sensitive prayer/care narrative should be exposed.
 
