@@ -936,7 +936,8 @@ Deno.serve(async (request: Request) => {
           p_branch_id: parsed.branch_id,
           p_request_id: requestId,
           p_action: "pending",
-          p_reason: "Temporary credential update failed; request returned for retry.",
+          p_reason:
+            "Temporary credential update failed; request returned for retry.",
         });
         return fail(
           "RESET_CREDENTIAL_UPDATE_FAILED",
