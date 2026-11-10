@@ -58,8 +58,17 @@ create function public.cmi_default_acl_probe_fn()
 returns integer language sql as 'select 1';
 
 select ok(
-  (select relrowsecurity from pg_class where oid='public.cmi_default_acl_probe'::regclass),
-  'Supabase RLS event trigger still enables RLS on new public tables'
+  (select count(*) = 11
+   from pg_class c
+   join pg_namespace n on n.oid=c.relnamespace
+   where n.nspname='public'
+     and c.relname = any(array[
+       'church','branch','staff_profile','role','capability',
+       'role_capability','staff_role_assignment','team',
+       'staff_team_membership','service_area','staff_area_coverage'
+     ])
+     and c.relrowsecurity),
+  'RLS is explicitly enabled on every foundation table independent of hosted event triggers'
 );
 select ok(
   not has_table_privilege('anon', 'public.cmi_default_acl_probe', 'SELECT')

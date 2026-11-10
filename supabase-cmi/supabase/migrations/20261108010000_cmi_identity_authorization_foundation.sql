@@ -29,6 +29,13 @@ alter default privileges for role postgres in schema public
 alter default privileges for role postgres in schema public
   revoke execute on functions from public, anon, authenticated, service_role;
 
+-- PostgreSQL grants EXECUTE on newly created functions to PUBLIC by default.
+-- Schema-specific default ACLs cannot subtract that global default, so remove
+-- the global PUBLIC function default for objects created by postgres as well.
+-- Reviewed Edge Function paths receive only their explicit grants.
+alter default privileges for role postgres
+  revoke execute on functions from public;
+
 -- Supabase creates this SECURITY DEFINER event-trigger helper in hosted
 -- projects. Its trigger remains installed; remove only direct SQL/API execute
 -- rights. CI verifies that the event trigger still auto-enables RLS.
