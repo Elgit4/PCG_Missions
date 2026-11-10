@@ -131,7 +131,8 @@ begin
 
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended('pcg_missions_first_admin_bootstrap', 0));
 
-  if exists (select 1 from auth.users)
+  if (select count(*) from auth.users) <> 1
+     or not exists (select 1 from auth.users where id = p_auth_user_id)
      or exists (select 1 from public.staff_profile)
      or exists (select 1 from public.church)
      or exists (select 1 from public.branch) then
