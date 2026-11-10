@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(15);
+select plan(23);
 
 select has_column(
   'public', 'staff_profile', 'must_change_password',
@@ -71,6 +71,71 @@ select ok(
   and not has_function_privilege('anon','public.cmi_complete_staff_password_change(uuid)','EXECUTE')
   and not has_function_privilege('authenticated','public.cmi_complete_staff_password_change(uuid)','EXECUTE'),
   'password-change completion is available only through the authenticated server boundary'
+);
+
+insert into auth.users(
+  instance_id, id, aud, role, email, encrypted_password,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+  created_at, updated_at
+)
+values (
+  '00000000-0000-0000-0000-000000000000',
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+  'authenticated', 'authenticated', 'first-admin@example.test',
+  'not-a-real-password-hash', pg_catalog.now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{}'::jsonb, pg_catalog.now(), pg_catalog.now()
+);
+
+select lives_ok(
+  $select public.cmi_bootstrap_first_admin(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    'first-admin@example.test',
+    'First Administrator',
+    'PCG Missions Test Church',
+    'Main Test Branch'
+  )$,
+  'one confirmed Auth user can bootstrap the first administrator'
+);
+select is(
+  (select must_change_password from public.staff_profile where auth_user_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'),
+  true,
+  'the initial administrator must replace the temporary password'
+);
+select ok(
+  (select password_setup_expires_at > pg_catalog.now()
+     and password_setup_expires_at <= pg_catalog.now() + interval '24 hours'
+   from public.staff_profile
+   where auth_user_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'),
+  'the one-time administrator password expires within 24 hours'
+);
+select is((select count(*)::integer from public.church),1,'bootstrap creates one church');
+select is((select count(*)::integer from public.branch),1,'bootstrap creates one initial branch');
+select is((select count(*)::integer from public.staff_profile),1,'bootstrap creates one staff profile');
+select is(
+  (select count(*)::integer
+   from public.role_capability rc
+   join public.capability cap on cap.id=rc.capability_id
+   where cap.code='staff.password_reset.manage'),
+  1,
+  'bootstrap grants the narrow password-reset permission to the Admin/Pastor role'
+);
+select is(
+  (select count(*)::integer from public.role_capability),
+  1,
+  'bootstrap does not grant any unapproved business capabilities'
+);
+select throws_ok(
+  $select public.cmi_bootstrap_first_admin(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    'first-admin@example.test',
+    'First Administrator',
+    'PCG Missions Test Church',
+    'Main Test Branch'
+  )$,
+  '55000',
+  'first-admin bootstrap is already used',
+  'the first-administrator bootstrap cannot be repeated'
 );
 
 insert into private.staff_password_reset_request(
