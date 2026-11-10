@@ -97,7 +97,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git add web/package-lock.json
+          git add package-lock.json
           if git diff --cached --quiet; then
             echo "The dependency lockfile is already committed."
             exit 0
