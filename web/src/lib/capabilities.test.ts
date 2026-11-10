@@ -17,24 +17,39 @@ const baseSession: StaffSession = {
 };
 
 describe("capability-driven staff navigation", () => {
-  it("does not infer business access from a role when grants are empty", () => {
+  it("does not infer business access from role names when grants are empty", () => {
     expect(getAvailableStaffPages(baseSession, "branch-a")).toEqual(["Overview"]);
   });
 
-  it("requires the capability to apply to the selected branch", () => {
+  it("requires a branch ID for every branch-scoped capability check", () => {
+    const session = {
+      ...baseSession,
+      capabilities: [{ code: "contact.read.scoped", scope_mode: "branch", branch_id: "branch-a" }],
+    };
+    expect(canOpenStaffPage(session, "Contacts")).toBe(false);
+    expect(canOpenStaffPage(session, "Contacts", undefined)).toBe(false);
+    expect(canOpenStaffPage(session, "Contacts", "branch-a")).toBe(true);
+  });
+
+  it("does not accept a grant from a different active branch", () => {
     const session = {
       ...baseSession,
       capabilities: [{ code: "contact.read.scoped", scope_mode: "branch", branch_id: "branch-b" }],
     };
     expect(canOpenStaffPage(session, "Contacts", "branch-a")).toBe(false);
-    expect(canOpenStaffPage(session, "Contacts", "branch-b")).toBe(true);
+    expect(canOpenStaffPage(session, "Contacts", "branch-b")).toBe(false);
   });
 
-  it("keeps prayer lists and reports unavailable without supported APIs", () => {
+  it("requires the selected branch to exist in the current staff session", () => {
+    expect(canOpenStaffPage(baseSession, "Overview", "branch-b")).toBe(false);
+    expect(getAvailableStaffPages(baseSession)).toEqual([]);
+  });
+
+  it("keeps pastoral and report pages unavailable without supported list APIs", () => {
     const session = {
       ...baseSession,
       capabilities: [
-        { code: "pastoral.prayer.read.assigned", scope_mode: "assigned", branch_id: "branch-a" },
+        { code: "prayer.request.read.assigned", scope_mode: "assigned", branch_id: "branch-a" },
         { code: "report.read", scope_mode: "branch", branch_id: "branch-a" },
       ],
     };
@@ -49,5 +64,13 @@ describe("capability-driven staff navigation", () => {
     };
     expect(hasIdentityRead(session, "branch-a")).toBe(true);
     expect(hasIdentityRead(session, "branch-b")).toBe(false);
+  });
+
+  it("does not open an inactive staff session", () => {
+    const session = {
+      ...baseSession,
+      staff: { ...baseSession.staff, account_status: "inactive" as "active" },
+    };
+    expect(canOpenStaffPage(session, "Overview", "branch-a")).toBe(false);
   });
 });

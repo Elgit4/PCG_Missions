@@ -1,26 +1,17 @@
 /**
  * PCG Missions CMI v2.1 browser API adapter.
  *
- * This client only calls approved Edge Function routes. It never connects to
- * Postgres directly and never accepts service-role/provider credentials.
- * Supply an access-token provider backed by the approved Supabase Auth client.
+ * Browser clients use a publishable key and a Supabase Auth access token only.
+ * All business authorization is performed by the Edge Functions; this adapter
+ * never talks directly to Postgres or carries service-role/provider secrets.
  */
 export interface CmiApiConfig {
   supabaseUrl: string;
   publishableKey: string;
 }
-
 export type AccessTokenProvider = () => Promise<string | null>;
-
-export interface ApiEnvelope<T> {
-  data: T;
-  request_id: string;
-}
-
-export interface ApiErrorBody {
-  error?: { code?: string; message?: string };
-  request_id?: string;
-}
+export interface ApiEnvelope<T> { data: T; request_id: string }
+export interface ApiErrorBody { error?: { code?: string; message?: string }; request_id?: string }
 
 export class CmiApiError extends Error {
   readonly status: number;
@@ -62,6 +53,8 @@ export interface ContactRecord {
   age_range?: string | null;
   preferred_language?: string | null;
   service_area_id?: string | null;
+  contact_status: string;
+  identity_redacted?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -108,25 +101,26 @@ export interface FollowUpTask {
   updated_at?: string;
 }
 
-export interface TaskCreateInput {
+interface TaskCreateBase {
   branch_id: string;
   contact_id: string;
   client_request_id: string;
   list_id?: string | null;
-  assignee_user_id?: string | null;
-  team_id?: string | null;
   priority: number;
   due_at?: string | null;
   task_note?: string | null;
 }
-
+export type TaskAssignmentTarget =
+  | { assignee_user_id: string; team_id?: never }
+  | { team_id: string; assignee_user_id?: never };
+export type TaskCreateInput = TaskCreateBase & TaskAssignmentTarget;
+export type TaskReassignmentInput = TaskAssignmentTarget;
 export interface TaskUpdateInput {
   priority?: number;
   due_at?: string | null;
   task_note?: string | null;
-  status?: "open" | "in_progress" | "completed" | "cancelled";
+  status?: FollowUpTask["status"];
 }
-
 export interface CmiRequestOptions {
   method?: "GET" | "POST" | "PATCH";
   query?: Record<string, string | number | undefined>;
@@ -137,13 +131,17 @@ export interface CmiRequestOptions {
 function normalizeBaseUrl(value: string): string {
   return value.trim().replace(/\/+$/, "");
 }
-
 function parseJson(text: string): unknown {
   if (!text) return null;
-  try {
-    return JSON.parse(text) as unknown;
-  } catch {
-    return null;
+  try { return JSON.parse(text) as unknown; } catch { return null; }
+}
+function assertExactlyOneTaskTarget(
+  input: { assignee_user_id?: unknown; team_id?: unknown },
+): asserts input is TaskReassignmentInput {
+  const hasAssignee = typeof input.assignee_user_id === "string" && input.assignee_user_id.trim().length > 0;
+  const hasTeam = typeof input.team_id === "string" && input.team_id.trim().length > 0;
+  if (hasAssignee === hasTeam) {
+    throw new TypeError("Exactly one non-empty task assignment target is required.");
   }
 }
 
@@ -155,10 +153,15 @@ export class CmiApiClient {
     private readonly getAccessToken: AccessTokenProvider,
     private readonly fetcher: typeof fetch = fetch,
   ) {
-    this.baseUrl = `${normalizeBaseUrl(config.supabaseUrl)}/functions/v1`;
-    if (!config.supabaseUrl.trim() || !config.publishableKey.trim()) {
+    const supabaseUrl = normalizeBaseUrl(config.supabaseUrl);
+    if (!supabaseUrl || !config.publishableKey.trim()) {
       throw new Error("PCG Missions API configuration is incomplete.");
     }
+    const parsedUrl = new URL(supabaseUrl);
+    if (parsedUrl.protocol !== "https:" && parsedUrl.hostname !== "localhost" && parsedUrl.hostname !== "127.0.0.1") {
+      throw new Error("The Supabase URL must use HTTPS outside local development.");
+    }
+    this.baseUrl = `${supabaseUrl}/functions/v1`;
   }
 
   private async request<T>(
@@ -171,13 +174,11 @@ export class CmiApiClient {
     if (authenticated && !token) {
       throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
     }
-
     const suffix = path ? (path.startsWith("/") ? path : `/${path}`) : "";
     const url = new URL(`${this.baseUrl}/${functionName}${suffix}`);
     for (const [key, value] of Object.entries(options.query ?? {})) {
       if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
     }
-
     const headers = new Headers({
       apikey: this.config.publishableKey,
       Accept: "application/json",
@@ -198,39 +199,35 @@ export class CmiApiClient {
       throw new CmiApiError(0, "NETWORK_ERROR", "Unable to reach PCG Missions. Check your connection and try again.", null);
     }
 
-    const payload = parseJson(await response.text()) as ApiEnvelope<T> & ApiErrorBody | null;
+    const payload = parseJson(await response.text()) as (ApiEnvelope<T> & ApiErrorBody) | null;
     const requestId = payload?.request_id ?? response.headers.get("X-Request-Id");
     if (!response.ok) {
-      const code = payload?.error?.code ?? `HTTP_${response.status}`;
-      const message = payload?.error?.message ?? "The request could not be completed.";
-      throw new CmiApiError(response.status, code, message, requestId ?? null);
+      throw new CmiApiError(
+        response.status,
+        payload?.error?.code ?? `HTTP_${response.status}`,
+        payload?.error?.message ?? "The request could not be completed.",
+        requestId ?? null,
+      );
     }
-    if (!payload || !("data" in payload)) {
+    if (!payload || typeof payload !== "object" || !("data" in payload)) {
       throw new CmiApiError(502, "INVALID_RESPONSE", "The server returned an unexpected response.", requestId ?? null);
     }
     return payload;
   }
 
-  getStaffSession(): Promise<ApiEnvelope<StaffSession>> {
-    return this.request<StaffSession>("staff-session", "");
-  }
+  getStaffSession() { return this.request<StaffSession>("staff-session", ""); }
 
   listContacts(branchId: string, options: { limit?: number; offset?: number; search?: string } = {}) {
     return this.request<ContactRecord[]>("staff-operations", "/contacts", {
       query: { branch_id: branchId, limit: options.limit ?? 25, offset: options.offset ?? 0, search: options.search },
     });
   }
-
   getContact(branchId: string, contactId: string) {
-    return this.request<ContactRecord>("staff-operations", `/contacts/${encodeURIComponent(contactId)}`, {
-      query: { branch_id: branchId },
-    });
+    return this.request<ContactRecord>("staff-operations", `/contacts/${encodeURIComponent(contactId)}`, { query: { branch_id: branchId } });
   }
-
   createContact(input: ContactCreateInput) {
     return this.request<ContactRecord>("staff-operations", "/contacts", { method: "POST", body: input });
   }
-
   updateContact(branchId: string, contactId: string, input: ContactUpdateInput) {
     return this.request<ContactRecord>("staff-operations", `/contacts/${encodeURIComponent(contactId)}`, {
       method: "PATCH", query: { branch_id: branchId }, body: input,
@@ -242,22 +239,17 @@ export class CmiApiClient {
       query: { branch_id: branchId, limit: options.limit ?? 25, offset: options.offset ?? 0, status: options.status },
     });
   }
-
   createFollowUpTask(input: TaskCreateInput) {
+    assertExactlyOneTaskTarget(input);
     return this.request<FollowUpTask>("staff-operations", "/followup/tasks", { method: "POST", body: input });
   }
-
   updateFollowUpTask(branchId: string, taskId: string, input: TaskUpdateInput) {
     return this.request<FollowUpTask>("staff-operations", `/followup/tasks/${encodeURIComponent(taskId)}`, {
       method: "PATCH", query: { branch_id: branchId }, body: input,
     });
   }
-
-  reassignFollowUpTask(
-    branchId: string,
-    taskId: string,
-    input: { assignee_user_id?: string | null; team_id?: string | null },
-  ) {
+  reassignFollowUpTask(branchId: string, taskId: string, input: TaskReassignmentInput) {
+    assertExactlyOneTaskTarget(input);
     return this.request<FollowUpTask>("staff-operations", `/followup/tasks/${encodeURIComponent(taskId)}/reassign`, {
       method: "POST", query: { branch_id: branchId }, body: input,
     });
@@ -268,31 +260,21 @@ export class CmiApiClient {
       query: { branch_id: branchId, limit: options.limit ?? 25, offset: options.offset ?? 0, search: options.search },
     });
   }
-
   readPrayerRequest(branchId: string, requestId: string, accessMode: "assigned" | "oversight", reasonCode?: string) {
     return this.request<unknown>("pastoral-operations", `/prayer/requests/${encodeURIComponent(requestId)}/read`, {
-      method: "POST",
-      body: { branch_id: branchId, access_mode: accessMode, ...(reasonCode ? { reason_code: reasonCode } : {}) },
+      method: "POST", body: { branch_id: branchId, access_mode: accessMode, ...(reasonCode ? { reason_code: reasonCode } : {}) },
     });
   }
-
   readCareRecord(branchId: string, recordId: string, accessMode: "assigned" | "oversight", reasonCode?: string) {
     return this.request<unknown>("pastoral-operations", `/care/records/${encodeURIComponent(recordId)}/read`, {
-      method: "POST",
-      body: { branch_id: branchId, access_mode: accessMode, ...(reasonCode ? { reason_code: reasonCode } : {}) },
+      method: "POST", body: { branch_id: branchId, access_mode: accessMode, ...(reasonCode ? { reason_code: reasonCode } : {}) },
     });
   }
-
   getPublicContent<T = unknown>(resource: string, query: Record<string, string | number | undefined> = {}) {
-    return this.request<T>("public-content", "", {
-      authenticated: false,
-      query: { resource, ...query },
-    });
+    return this.request<T>("public-content", "", { authenticated: false, query: { resource, ...query } });
   }
 }
 
-
-/** Build a configured client from browser-safe Vite variables. */
 export function createConfiguredCmiApiClient(getAccessToken: AccessTokenProvider): CmiApiClient {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
