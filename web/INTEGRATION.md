@@ -2,9 +2,9 @@
 
 ## Current application state
 
-The production entry point renders a secure access-setup screen. It does not collect or transmit email addresses, passwords, PINs or any other sign-in credentials. The approved staff Auth lifecycle (account creation, activation, private-PIN setup, verification and recovery) is not implemented by the current backend, and the stakeholder decision register still marks important authentication parameters as pending approval.
+The frontend now includes an email/password sign-in flow backed by Supabase Auth, a forced first-login password replacement screen, recovery-link handling, a privacy-preserving Forgot password request, and an Admin/Pastor password-reset review queue. These features are implemented on the `feat/cmi-admin-auth-lifecycle` branch and remain source-only until the database migration, Edge Function and server secrets are deployed in the approved order.
 
-The live staff workspace is implemented in `src/components/StaffWorkspace.tsx` and connects to the typed `CmiApiClient`, but `App.tsx` intentionally does not mount it until the approved authentication lifecycle and the CMI backend deployment are ready. This avoids creating a browser-side credential workaround or presenting source-only endpoints as operational.
+The live staff workspace is implemented in `src/components/StaffWorkspace.tsx` and connects to the typed `CmiApiClient`. It is mounted only after Supabase Auth succeeds and the server-issued staff session confirms an active profile and branch. The workspace is not available to accounts with a pending temporary-password or approved-recovery change.
 
 The workspace implementation includes:
 - server-provided staff session and branch context;
@@ -18,9 +18,13 @@ The workspace implementation includes:
 
 ## Authentication boundary
 
-No custom PIN verifier, browser-side token issuer, direct PIN-as-password shortcut or custom token storage is implemented. The current staff-access backend does not provide invitations, activation, PIN setup/reissue or account recovery. The frontend must not enable credential entry until the approved Supabase Auth integration and full lifecycle have been implemented and verified.
+Authentication uses Supabase Auth email/password credentials. The application does not implement a custom PIN verifier, browser-side token issuer, PIN-as-password shortcut, or administrator-known permanent password.
 
-Only after policy approval and backend implementation should the staff workspace be mounted with a supported Supabase Auth client session. A valid session must then be verified through `GET /staff-session`; a missing staff profile, inactive account, empty branch context or empty capability set must never be treated as Admin access.
+The first administrator is created only by a one-time server-only bootstrap route when the Auth project and CMI church/branch/profile tables are empty. It generates a random temporary password at runtime, emails it to the configured administrator mailbox, and records a 24-hour password-setup deadline. The temporary password is not committed to source, returned by the endpoint, or stored in Postgres. The first successful sign-in is restricted to password replacement before workspace access.
+
+Staff recovery is administrator-approved. A staff member submits an email address; the API responds identically whether or not the account exists. A matching active staff account creates a private, throttled and audited request and notifies the branch Admin/Pastor recipients by email. An authorised administrator records a review reason and approves or denies the request. Approval sends a single-use Supabase recovery link; the administrator never sees or chooses the staff member's replacement password. Approved recovery also gates staff access until the password has been changed.
+
+The staff workspace is mounted only after a valid session is verified through `GET /staff-session`; a missing staff profile, inactive account, pending password change, empty branch context or missing capability must never be treated as Admin access.
 
 ## Browser configuration
 
