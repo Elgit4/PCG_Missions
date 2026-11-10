@@ -192,12 +192,11 @@ begin
     pg_catalog.now(), 'Initial one-time PCG Missions administrator bootstrap'
   );
 
-  -- The first administrator receives only the minimum control-plane
-  -- capabilities needed to view the staff directory, manage existing staff
-  -- account status, assign the six approved roles, and review account recovery. Business-domain capabilities (contacts,
-  -- events, prayer/care, SMS, reports, exports and oversight) remain empty
-  -- until the client signs off the role matrix. Capability-policy editing is
-  -- deliberately excluded to prevent self-escalation.
+  -- The reviewed visitor MVP authorization migration seeds the role matrix.
+  -- Bootstrap only ensures that the first Admin/Pastor retains the minimum
+  -- branch-scoped control-plane capabilities needed to manage staff accounts,
+  -- assign the six approved roles and review account recovery. It does not
+  -- grant capability-policy editing or expand any other role's permissions.
   insert into public.role_capability(role_id, capability_id, scope_mode)
   select v_role_id, cap.id, 'branch'
   from public.capability cap
