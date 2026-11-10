@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(15);
+select plan(14);
 
 select has_column(
   'public', 'staff_profile', 'must_change_password',
@@ -72,20 +72,24 @@ select ok(
 insert into private.staff_password_reset_request(
   email_fingerprint, ip_fingerprint, status
 )
-values (repeat('a',64), repeat('b',64), 'unmatched')
-returning id as reset_request_id \\gset;
+values (repeat('a',64), repeat('b',64), 'unmatched');
 
 insert into private.staff_password_reset_audit(request_id,event_type)
-values (:'reset_request_id','requested');
+select id, 'requested'
+from private.staff_password_reset_request
+where email_fingerprint = repeat('a',64);
 
 select throws_ok(
-  $$update private.staff_password_reset_audit set event_type='approved' where request_id=:'reset_request_id'$$,
+  $update private.staff_password_reset_audit
+    set event_type='approved'
+    where request_id=(select id from private.staff_password_reset_request where email_fingerprint=repeat('a',64))$,
   '55000',
   'password reset audit is append-only',
   'reset audit UPDATE is rejected'
 );
 select throws_ok(
-  $$delete from private.staff_password_reset_audit where request_id=:'reset_request_id'$$,
+  $delete from private.staff_password_reset_audit
+    where request_id=(select id from private.staff_password_reset_request where email_fingerprint=repeat('a',64))$,
   '55000',
   'password reset audit is append-only',
   'reset audit DELETE is rejected'
