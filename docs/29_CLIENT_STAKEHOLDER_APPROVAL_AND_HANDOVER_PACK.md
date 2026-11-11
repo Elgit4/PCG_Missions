@@ -153,9 +153,9 @@ For each item, the client should approve the recommended default or enter an alt
 - Forgot password creates a generic-response, rate-limited request and notifies the authorised Admin/Pastor. The administrator approves or denies with a reason; approval issues a fresh temporary password by email and forces password replacement.
 - Temporary passwords must never be stored in plaintext, returned to the admin UI, written to logs or included in audit metadata. Supabase Auth manages password hashing and sessions.
 - Credential reset/deactivation must revoke other active sessions. Failed email delivery must leave access gated and provide a safe, audited retry path.
-- The one-time first-admin bootstrap must never be rerun to recover uncertain email delivery. A separate operator-controlled recovery mechanism is required before production launch.
+- The one-time first-admin bootstrap must never be used to create a second identity or reset the database after uncertain email delivery. PR #33 implements a narrowly bounded operator-controlled recovery path: it accepts only the exact configured first administrator while the account remains active and the mandatory first-password-change gate is incomplete, rotates the temporary password before retrying delivery, and permanently rejects recovery after password setup. It remains a draft pending review/integration and staging verification.
 
-**Production status:** The selected password flow has passing branch-level automated tests, but first-admin email-delivery recovery, production email configuration, deployment and staging/UAT remain release gates.
+**Production status:** The selected password flow and the PR #33 first-admin delivery-recovery implementation have passing branch-level automated tests, including the 343-test pgTAP suite. PR #33 remains unmerged; production email configuration, staging verification, deployment and UAT remain release gates.
 ## 9. Client configuration and operational inputs
 
 The client must supply or approve these before staging/production configuration:
