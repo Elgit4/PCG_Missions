@@ -27,7 +27,7 @@ The system is designed to fail closed until that approval exists. The first admi
 6. Service-role Edge Functions must independently authorize the caller; service-role RLS bypass is not business authorization.
 7. Anonymous visitors can only read explicitly published public content and submit narrow validated registration forms. They cannot search staff, contacts, prayer, care, attendance or private records.
 8. SMS, exports, offline access to restricted data and bulk operations remain disabled until their separate controls are approved and tested.
-9. No passwords, PINs, tokens, provider keys or recovery links may be exposed in browser-readable records, audit metadata or logs.
+9. No passwords, tokens, provider keys or recovery links may be exposed in browser-readable records, audit metadata or logs.
 10. All privileged access, account changes, role changes, sensitive reads and approved exports must produce append-only audit evidence.
 
 ## 3. Six-role operating model
@@ -165,7 +165,7 @@ The client must supply or approve these before staging/production configuration:
 | Authorised church approver and pastoral data owner | Name, role, approval date |
 | Canonical church name and initial branch name | Exact display names |
 | Initial Admin/Pastor mailbox | Verified email controlled by the client |
-| Staff login model | Email + private PIN (confirmed product baseline); approve PIN/security parameters |
+| Staff login model | Email + password through Supabase Auth; verify temporary-password delivery and first-login replacement in staging |
 | Production domain and hosting owner | HTTPS domain and DNS access |
 | Verified transactional email sender | Domain/sender approval and delivery owner |
 | SMS provider account | Provider account owner, sender ID approval, consent and budget |
@@ -244,7 +244,7 @@ The client handover is complete only when the following evidence is attached:
 | Meeting date | Pending |
 | Approved R-01–R-12 | Pending |
 | Approved D-01–D-13 | Pending |
-| Authentication model | Email + private PIN (product baseline); security parameters pending approval |
+| Authentication model | Email + password through Supabase Auth; product-owner decision confirmed 10 Nov 2026 |
 | Approved role matrix revision | Pending |
 | Approved retention schedule | Pending |
 | Exceptions and conditions | Pending |
