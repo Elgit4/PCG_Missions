@@ -6,6 +6,7 @@ import {
   parseRoleAssignment,
 } from "./validation.ts";
 import { readJson } from "../_shared/request_body.ts";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "",
   SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   PUBLIC = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
