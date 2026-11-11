@@ -5,10 +5,19 @@ function makeRequest(
   body: Uint8Array | string | null,
   headers: Record<string, string> = { "Content-Type": "application/json" },
 ): Request {
+  const requestBody: BodyInit | null = body === null
+    ? null
+    : typeof body === "string"
+    ? body
+    : (() => {
+      const bytes = new Uint8Array(body.byteLength);
+      bytes.set(body);
+      return bytes.buffer;
+    })();
   return new Request("https://example.test/operations", {
     method: "POST",
     headers,
-    body: body === null ? null : body,
+    body: requestBody,
   });
 }
 
