@@ -48,20 +48,18 @@ These are the recommended technical options for implementation. Items marked app
 
 ## 3. Authentication implementation contract
 
-The implementation must preserve the product's email + PIN requirement and the security proposal's activation lifecycle:
+The implementation follows the product owner's 10 November 2026 confirmation of Supabase email + password authentication. The earlier email + private PIN proposal is superseded and must not be implemented.
 
-1. An authorized administrator provisions a staff identity and issues a one-time activation credential.
-2. The staff member completes activation and establishes a private PIN that the administrator cannot view or recover.
-3. Subsequent sign-in uses the staff email and private PIN through a trusted server-side verifier.
-4. The verifier never returns whether an email exists independently of a generic authentication result.
-5. Apply per-account and per-source rate limits, progressive delays and bounded lockout/recovery behaviour. Exact thresholds are configuration decisions, not invented constants.
-6. Store only a modern salted PIN verifier/hash in a protected server-only credential store if the approved Supabase integration requires one. Never duplicate plaintext credentials or place PINs in Auth metadata, profile rows, logs, analytics or URLs.
-7. Issue sessions only through a supported, documented Supabase-compatible mechanism. Verify session revocation/refresh semantics before implementation; do not mint ad-hoc JWTs.
-8. PIN reset/reissue uses a verified recovery path, invalidates prior credentials and revokes relevant sessions.
-9. Deactivation blocks protected requests even if an old access token remains valid; revoke/ban Auth sessions as an additional control.
-10. Role assignment is a separate audited authorization operation. A valid PIN never grants a role.
+1. Supabase Auth is the sole identity, password-hashing and session authority.
+2. An authorized Admin/Pastor provisions staff through a trusted server-side operation and the system generates a cryptographically random, short-lived temporary password.
+3. The temporary password is sent only to the verified account email address. It is never returned to the browser, administrator UI, logs or audit metadata.
+4. First sign-in is gated until the staff member chooses a private permanent password. Temporary credentials expire after the configured 24-hour setup window.
+5. Forgot Password uses a generic-response, rate-limited request and administrator review. Approval issues a new temporary password to the verified staff email; the administrator never sees or sets the permanent password.
+6. Failed email delivery must leave the account gated. The first-admin recovery path is narrowly limited to the exact configured identity while its initial password-change gate remains incomplete; it rotates the temporary password before retrying delivery. Once password setup is complete, bootstrap recovery is permanently rejected.
+7. Deactivation blocks protected requests even if an old access token remains valid; revoke/ban Auth sessions as an additional control.
+8. Role assignment is a separate audited authorization operation. A valid password never grants a role.
 
-**Build gate:** before implementing reusable PIN verification, verify the current Supabase Auth documentation and supported custom-auth/session integration, complete a threat model for PIN entropy and online guessing, and add tests for enumeration, brute force, replay, reset, stale sessions and deactivated users. If the supported session model cannot safely satisfy email + PIN, present the exact conflict for product-owner approval rather than silently changing login to password or phone OTP.
+**Verification gate:** test generic account-recovery responses, rate limits, temporary-password expiry, forced password replacement, failed-delivery recovery, credential rotation, stale-session handling and deactivated users. Use supported Supabase Auth APIs; do not build a parallel password store or mint custom JWTs.
 
 ## 4. Authorization implementation contract
 
@@ -161,6 +159,6 @@ This document records the selected engineering recommendations requested for the
 
 - R-01–R-12: pending church/stakeholder approval.
 - D-01–D-13: pending church/stakeholder approval.
-- Email + PIN lifecycle/security integration: pending technical threat model and product/security approval.
+- Email/password authentication decision: confirmed by product owner on 10 November 2026. Provider configuration, staging validation, delivery recovery and production deployment remain release gates.
 - SMS provider, lawful basis/consent, sender ID, quiet hours, templates, budgets and trigger catalogue: pending.
 - Hosted Supabase deployment and production release: not authorized by this document.
