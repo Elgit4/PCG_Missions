@@ -21,7 +21,7 @@ The baseline follows:
 
 | ID | Implemented default | Enforcement rule |
 |---|---|---|
-| R-01 | Admin/Pastor pastoral oversight is a separate capability, not an automatic role bypass. | Deny narrative reads unless a dedicated oversight grant exists; require reason code and append-only access audit on every read. Keep grants disabled until the pastoral oversight process is configured and tested. |
+| R-01 | Admin/Pastor pastoral oversight is a separate capability, not an automatic role bypass. | Grant only the dedicated Admin/Pastor oversight-read capabilities for prayer and care. Every read must pass the allowlisted reason-code check and append-only access audit in the same transaction. No oversight mutation or broad role bypass. |
 | R-02 | Coordinator may coordinate prayer workflow metadata only. | May see permitted assignment/status/queue metadata; no request narrative or care note access. |
 | R-03 | Coordinator ordinary contact access is branch-scoped and minimized. | Branch boundary applies; phone/email and restricted notes are excluded from the default projection unless separately granted. |
 | R-04 | Team Leader administration is limited to active own-team membership and explicitly assigned events. | No cross-team membership edits, branch-wide reassignment, bulk export or access based solely on role title. |
@@ -30,7 +30,7 @@ The baseline follows:
 | R-07 | Team Leader may prepare team/event-scoped campaign drafts only. | No approve/send permission. A separate approver is required for dispatch. |
 | R-08 | Campaign creator and approver must be different active users. | Database/service operation rejects self-approval. No single-user emergency bypass is enabled by default. |
 | R-09 | Coordinator global SMS automation/provider configuration is disabled. | Automation rules and provider dispatch are disabled by default; only an explicitly allowlisted, reviewed rule can later be activated. |
-| R-10 | Care access is assignment-based, with separate Admin/Pastor oversight. | Assigned care worker sees only assigned care work. No automatic access from Coordinator, Team Leader or other role. Oversight requires dedicated grant, reason and audit. |
+| R-10 | Care access is assignment-based, with separate Admin/Pastor oversight. | No assigned-care worker role exists among the six roles, so assigned care read/update remains ungranted. Admin/Pastor receives only the separate reason-coded, audited care oversight-read capability; no care mutation grant. |
 | R-11 | Intercessor may create a request only through the approved intake flow and read only actively assigned request text. | No general contact directory, linked-contact phone/email or unassigned request discovery. |
 | R-12 | Exports are disabled except for a dedicated Admin/Pastor export capability. | Export requires scope-filtered fields, masking, explicit confirmation, reason, audit and limits. No broad export grant is seeded. |
 
