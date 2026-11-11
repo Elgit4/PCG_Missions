@@ -1318,3 +1318,180 @@ button, input, select, textarea { font: inherit; }
   .staff-login-submit,
   .staff-login-password-toggle { transition: none; }
 }
+
+
+/* -------------------------------------------------------------------------- */
+/* CMI interface quality pass — interaction, accessibility and small screens  */
+/* -------------------------------------------------------------------------- */
+.cmi-workspace,
+.cmi-workspace * {
+  -webkit-tap-highlight-color: transparent;
+}
+.cmi-workspace {
+  min-width: 320px;
+  overflow-x: clip;
+}
+.cmi-main,
+.cmi-content,
+.cmi-panel,
+.cmi-panel-heading,
+.cmi-form-grid,
+.cmi-table-wrap {
+  min-width: 0;
+}
+.cmi-nav button,
+.cmi-button,
+.cmi-complete-button,
+.cmi-user-card button,
+.cmi-topbar-actions button {
+  touch-action: manipulation;
+}
+.cmi-nav button:focus-visible,
+.cmi-button:focus-visible,
+.cmi-complete-button:focus-visible,
+.cmi-user-card button:focus-visible,
+.cmi-topbar-actions button:focus-visible,
+.cmi-search input:focus-visible,
+.cmi-branch-picker select:focus-visible,
+.cmi-form-grid input:focus-visible,
+.cmi-form-grid select:focus-visible,
+.cmi-form-grid textarea:focus-visible,
+.cmi-reset-reason textarea:focus-visible {
+  outline: 3px solid #aeb5ff;
+  outline-offset: 3px;
+}
+.cmi-button,
+.cmi-complete-button,
+.cmi-user-card button {
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .16s ease;
+}
+.cmi-button:active:not(:disabled),
+.cmi-complete-button:active {
+  transform: translateY(1px);
+}
+.cmi-button:disabled,
+.cmi-complete-button:disabled,
+.cmi-user-card button:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+.cmi-search input:focus-visible {
+  outline-offset: 2px;
+}
+.cmi-table caption {
+  text-align: left;
+}
+.cmi-task-copy,
+.cmi-reset-person,
+.cmi-panel-heading > div {
+  min-width: 0;
+}
+.cmi-task-copy strong,
+.cmi-task-copy p,
+.cmi-reset-person strong,
+.cmi-reset-person span {
+  overflow-wrap: anywhere;
+}
+.cmi-alert {
+  overflow-wrap: anywhere;
+}
+.cmi-footer {
+  flex-wrap: wrap;
+  align-items: center;
+}
+@media (max-width: 900px) {
+  .cmi-content {
+    padding-left: clamp(16px, 3vw, 28px);
+    padding-right: clamp(16px, 3vw, 28px);
+  }
+}
+@media (max-width: 680px) {
+  .cmi-workspace {
+    min-width: 320px;
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+  }
+  .cmi-sidebar {
+    padding-bottom: max(9px, env(safe-area-inset-bottom));
+  }
+  .cmi-nav {
+    gap: 3px;
+  }
+  .cmi-nav button {
+    min-height: 60px;
+    min-width: 0;
+    padding-inline: 2px;
+    font-size: 10px;
+  }
+  .cmi-nav button > svg {
+    flex: 0 0 auto;
+  }
+  .cmi-nav-mobile-label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cmi-topbar {
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+  .cmi-content {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+  .cmi-panel-heading > div {
+    flex: 1 1 100%;
+  }
+  .cmi-panel-heading .cmi-button {
+    min-height: 44px;
+  }
+  .cmi-form-grid input,
+  .cmi-form-grid select,
+  .cmi-form-grid textarea,
+  .cmi-reset-reason textarea {
+    font-size: 16px;
+  }
+  .cmi-form-actions .cmi-button,
+  .cmi-reset-actions .cmi-button {
+    min-height: 44px;
+  }
+  .cmi-task-row {
+    gap: 10px;
+  }
+  .cmi-task-copy {
+    flex: 1 1 calc(100% - 52px);
+  }
+  .cmi-task-status {
+    margin-left: 46px;
+  }
+  .cmi-footer {
+    padding-left: 14px;
+    padding-right: 14px;
+    padding-bottom: max(13px, env(safe-area-inset-bottom));
+  }
+}
+@media (max-width: 360px) {
+  .cmi-stat-grid {
+    grid-template-columns: 1fr;
+  }
+  .cmi-stat-card:last-child:nth-child(odd) {
+    grid-column: auto;
+  }
+  .cmi-nav button {
+    font-size: 9px;
+  }
+  .cmi-topbar h1 {
+    font-size: 22px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cmi-button,
+  .cmi-complete-button,
+  .cmi-user-card button {
+    transition: none;
+  }
+  .cmi-button:active:not(:disabled),
+  .cmi-complete-button:active {
+    transform: none;
+  }
+}
