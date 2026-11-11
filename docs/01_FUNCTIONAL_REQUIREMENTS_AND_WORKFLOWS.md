@@ -5,10 +5,10 @@
 This document groups requirements by the work users perform. It defines expected behaviour, not implementation status.
 
 ## 1. Staff access and workspace
-- Staff sign in with administrator-issued email and PIN.
+- Staff sign in with their registered email and password through Supabase Auth. Initial access and administrator-approved recovery use generated, short-lived temporary passwords that must be replaced before workspace access.
 - Staff see only modules, actions and records authorized for their effective roles and assignments.
 - A user may hold multiple roles; permissions combine without widening record scope beyond church, team, event or assignment boundaries.
-- Shared-device sign-out and PIN confidentiality are mandatory operating practices.
+- Shared-device sign-out and password confidentiality are mandatory operating practices.
 
 ## 2. Contacts and field capture
 - Create a contact from Contacts or an event workspace.
