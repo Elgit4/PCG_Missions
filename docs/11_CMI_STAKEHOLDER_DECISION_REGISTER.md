@@ -66,16 +66,16 @@ These are implementation gates alongside R/D decisions:
 
 | Field | Record |
 |---|---|
-| Church/stakeholder representative | Owner-directed default selected; see document 31 |
-| Technical reviewer | Owner-directed default selected; see document 31 |
-| Approval meeting/date | Owner-directed default selected; see document 31 |
+| Church/stakeholder representative | Pending |
+| Technical reviewer | Pending |
+| Approval meeting/date | Pending |
 | Approved R-01–R-12 | Product-owner implementation baseline selected; church sign-off pending |
 | Approved D-01–D-13 | Product-owner implementation baseline selected; church sign-off pending |
 | Approved authentication decision | Supabase email/password confirmed by product owner — 10 Nov 2026 |
 | Approved SMS/provider decision | None yet |
-| Conditions or exceptions | Owner-directed default selected; see document 31 |
-| Approved ERD revision | Owner-directed default selected; see document 31 |
-| Approved physical schema revision | Owner-directed default selected; see document 31 |
+| Conditions or exceptions | Pending |
+| Approved ERD revision | Pending |
+| Approved physical schema revision | Pending |
 
 ## E. Change-control rule
 
@@ -86,7 +86,7 @@ When a decision is approved:
 - add or revise authorization and database tests;
 - preserve a short change rationale in the relevant design document.
 
-Do not create production grants, executable migrations or hosted database changes from an unapproved recommendation.
+The owner-directed defaults may be implemented in source-controlled branches. Do not apply migrations, provision production role grants, deploy functions or enable sensitive features in the hosted environment without a separate release authorization and completion of the relevant compliance gates.
 
 
 ## F. Product-owner implementation baseline — 11 November 2026
