@@ -13,7 +13,7 @@
 
 This pack converts the outstanding CMI stakeholder questions into a concrete, reviewable least-privilege baseline. It is intended for a decision meeting with the church's authorised representative(s), pastoral lead, ministry coordinator and technical owner.
 
-It does **not** claim that the church has approved these choices. The developer cannot approve church policy on the client's behalf. The client must select **Approve**, **Amend** or **Reject**, name the approver and date, and record any exception before business permissions are activated in production.
+The product owner has directed the engineering team to implement the conservative defaults in [document 31](31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md) now. This does not claim church-board or pastoral-lead sign-off. The client may select **Accept**, **Amend** or **Reject** during handover; any later change will be handled through change control. The system remains fail-closed for capabilities that are not implemented and enabled.
 
 The system uses the owner-directed least-privilege baseline and continues to fail closed for any capability not explicitly implemented and enabled. The first administrator bootstrap is the sole exception and receives only the minimum branch-scoped account-control permissions documented in section 4.
 
