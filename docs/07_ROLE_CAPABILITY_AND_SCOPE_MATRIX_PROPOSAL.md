@@ -100,55 +100,40 @@ Every capability must still be combined with scope predicates and field restrict
 
 ## 4. Proposed role-to-capability grant matrix
 
-Legend: **G** proposed default grant; **S** scoped grant; **P** privileged Admin/Pastor grant; **C** conditional pending approval; **—** no grant proposed.
+Legend: **G** active grant in the current owner-directed source baseline; **S** active scoped grant; **P** active privileged grant; **C** reserved/conditional and not granted; **—** no grant. This table describes the actual current source grant set, not a promise that an unimplemented module is available.
 
 | Capability group | Admin / Pastor | Coordinator | Team leader | Field worker | Follow-up volunteer | Prayer intercessor |
 |---|---:|---:|---:|---:|---:|---:|
-| Staff directory read | G | S | S | — | — | — |
-| Staff account provision/activation | P | — | — | — | — | — |
+| Staff directory read | P | — | — | — | — | — |
+| Staff account lifecycle | P | — | — | — | — | — |
 | Role assignment | P | — | — | — | — | — |
-| Capability/policy administration | P | — | — | — | — | — |
-| Team management | P | C | C | — | — | — |
-| Service area configuration/coverage | P | C | C | — | — | — |
-| Contact capture create | G | G | S | S | C | — |
+| Capability/policy administration | — | — | — | — | — | — |
+| Team/service-area administration | — | — | — | — | — | — |
+| Contact capture create | G | G | S | S | — | — |
 | Ordinary contact read | G | S | S | S | S | — |
 | Ordinary contact update | G | S | S | S | S | — |
-| Contact merge | P | C | — | — | — | — |
-| Contact export | P | C | C | — | — | — |
+| Contact phone/email capture/read/update | P (branch) | — | — | — | — | — |
+| Contact merge/export | — | — | — | — | — | — |
 | Ordinary notes read/create | G | S | S | S | S | — |
 | Contact interactions record | G | S | S | S | S | — |
-| Contact assignment/reassignment | P | S | S | C | C | — |
-| Follow-up task create/read/update | G | S | S | S | S | — |
-| Follow-up task assign/reassign | P | S | S | C | C | — |
-| Prayer request create | G | G | C | C | C | G |
-| Assigned prayer read/update | — | — | — | — | — | S (read only) |
-| Prayer workflow coordination | P | C | — | — | — | — |
-| Prayer privileged oversight | P (read only, reason-coded/audited) | — | — | — | — | — |
-| Care directory/groups | P | C | C | — | — | — |
-| Assigned care record read/update | — (no care-worker role yet) | — | — | — | — | — |
-| Care privileged oversight | P (read only, reason-coded/audited) | — | — | — | — | — |
-| Event read/manage | G | G | S | S | C | — |
-| Registration management | G | G | S | S | C | — |
-| Event check-in | G | G | S | S | C | — |
-| Event closeout submit | G | S | S | C | — | — |
-| Event closeout review | P | S | C | — | — | — |
-| Calendar management | G | S | S | C | C | C |
-| Announcement create/publish | G | S | S | — | — | — |
-| Manual individual SMS | P | S | S | C | C | — |
-| Bulk campaign create | P | S | S | — | — | — |
-| Bulk campaign approve | P | C | — | — | — | — |
-| Bulk campaign send | P | S | S | — | — | — |
-| SMS automation configure/pause | P | C | — | — | — | — |
-| SMS delivery metadata read | P | S | S | C | C | — |
-| Provider/sender configuration | P | — | — | — | — | — |
-| Public content draft management | G | S | C | — | — | — |
-| Public content publish | P | C | — | — | — | — |
-| Report submit | G | G | S | S | S | C |
-| Report read | G | S | S | S | S | C |
-| Report review | P | S | C | — | — | — |
-| Report export | P | C | C | — | — | — |
-| Privileged audit read | P | — | — | — | — | — |
-| Church-wide settings | P | — | — | — | — | — |
+| Contact assignment/reassignment | P | S | S | — | — | — |
+| Follow-up task create/read/update | G | S | S | S | S (read/update) | — |
+| Follow-up task assign/reassign | P | S | S | — | — | — |
+| Prayer request create/update | — | — | — | — | — | — |
+| Assigned prayer request read | — | — | — | — | — | S |
+| Prayer workflow metadata | — | — | — | — | — | — |
+| Prayer privileged oversight read | P (reason-coded/audited) | — | — | — | — | — |
+| Care directory/groups | — | — | — | — | — | — |
+| Assigned care read/update | — (no care-worker role provisioned) | — | — | — | — | — |
+| Care privileged oversight read | P (reason-coded/audited) | — | — | — | — | — |
+| Events, registration, transport, check-in and closeout | — | — | — | — | — | — |
+| Calendar management | — | — | — | — | — | — |
+| Announcements/publication | — | — | — | — | — | — |
+| Manual/bulk/automated SMS and provider configuration | — | — | — | — | — | — |
+| Public content authoring/publication | — | — | — | — | — | — |
+| Reports and exports | — | — | — | — | — | — |
+| Privileged audit log read | — | — | — | — | — | — |
+| Church-wide settings | — | — | — | — | — | — |
 
 * Admin/Pastor oversight is a separate explicit capability, not an unconditional bypass of assignment/privacy rules. The P notation here means the role may be granted that separate oversight capability subject to audit and approved policy.
 
