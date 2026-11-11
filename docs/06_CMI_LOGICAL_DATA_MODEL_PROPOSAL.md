@@ -166,14 +166,16 @@ Public anonymous reads must filter by published/active state in database policie
 
 | Entity | Purpose | Key attributes |
 |---|---|---|
-| `ministry_reports` | Daily evangelism, event evangelism and weekly ministry reports | branch_id, report_type, event_id (nullable), period_start, period_end, author_id, team_id (nullable), payload, status, submitted_at, reviewed_by, reviewed_at |
+| `ministry_reports` | Daily evangelism, event evangelism and weekly ministry reports | branch_id, report_type, typed event/team FKs, period_start/end, author_id, typed non-negative count columns, status, submitted_at; no generic JSON payload |
 | `report_review_events` | Report approval/return history | report_id, reviewer_id, decision, comments, occurred_at |
 | `audit_events` | Security and privileged-action audit trail | actor_id (nullable), action, entity_type, entity_id, branch_id, occurred_at, safe_metadata |
 | `offline_sync_receipts` | Reserved future server acknowledgements if offline mode is re-enabled | client_operation_id, actor_id, operation_type, result_status, server_entity_id, received_at, error_code; not created or used in the initial release |
 
 **Governance rules**
-- Reports must distinguish capture, follow-up task completion, contact attempts, successful conversations, registrations and actual attendance.
-- Report payloads must be validated against report type; sensitive prayer/care narratives are not report payloads.
+- Reports must distinguish contact capture, gospel presentations, decisions for Christ, follow-up required/completed, visits, calls, events supported and actual attendance using typed non-negative count fields.
+- Daily evangelism and event evangelism are single-day reports; event reports reference a same-branch event. Weekly ministry reports cover exactly seven inclusive calendar days.
+- Report review history is append-only. Authors see their own reports; Admin/Pastor and Coordinator review at branch scope; Team Leaders review active own-team reports; Field Workers and Follow-up Volunteers submit/read their own reports; Prayer Intercessors have no report access.
+- Sensitive prayer/care narratives are never report payloads. Exports remain disabled.
 - Audit metadata must be minimized and must not contain PINs, provider secrets, full prayer text or confidential care narratives.
 - Offline sync receipts are not part of the initial release. If D-08 is revisited, receipts must contain only minimum acknowledgements, never cached personal or pastoral data.
 
