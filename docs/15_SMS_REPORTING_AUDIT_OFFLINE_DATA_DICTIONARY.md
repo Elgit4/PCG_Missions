@@ -7,7 +7,7 @@
 
 ## 1. Scope and conventions
 
-This slice specifies candidate PostgreSQL types, nullability, keys and constraints for SMS eligibility, manual/bulk/automated dispatch, provider callbacks, ministry reports, audit and limited offline synchronization. All IDs are UUIDs unless specified. All timestamps are `timestamptz` UTC. Money uses `numeric(12,2)` and an explicit ISO currency code. Provider secrets remain in server-side secret storage, never in Data API tables.
+This reference specifies candidate PostgreSQL types, nullability, keys and constraints for SMS, typed ministry reports and audit. Offline synchronization is a future extension only and is disabled for the initial release. All IDs are UUIDs unless specified. All timestamps are `timestamptz` UTC. Money uses `numeric(12,2)` and an explicit ISO currency code. Provider secrets remain in server-side secret storage, never in Data API tables.
 
 SMS is cost-bearing and must be disabled until provider, sender identity, legal basis/consent handling, opt-out, quiet hours, templates, caps and approval are configured and tested.
 
@@ -234,7 +234,7 @@ Store only minimum inbound data needed to create suppression. Never persist unre
 
 UNIQUE `(outbox_id, attempt_number)`; no provider credentials or full message body in attempt logs.
 
-## 5. Reports, audit and limited offline sync
+## 5. Reports and audit (offline extension deferred)
 
 ### 5.1 `ministry_report`
 
@@ -254,7 +254,7 @@ UNIQUE `(outbox_id, attempt_number)`; no provider credentials or full message bo
 | `created_at` | timestamptz | No | DEFAULT now() | Creation |
 | `updated_at` | timestamptz | No | DEFAULT now() | Update |
 
-Check period_end >= period_start. D-12 must approve exact report fields. Prefer typed columns for stable counts; JSON only for genuinely variable validated sections. Replace polymorphic scope with typed FK columns/link tables.
+Check period_end >= period_start. The selected D-12 default is typed columns for stable report facts and no arbitrary JSON payload for core counts. Use typed branch/team/event relationships instead of polymorphic scope. The specific report workflow remains unimplemented and its capability grants remain absent until the API and tests are ready.
 
 ### 5.2 `report_review_event`
 
@@ -267,7 +267,7 @@ Check period_end >= period_start. D-12 must approve exact report fields. Prefer 
 | `comment` | text | Yes | — | Operational review comment |
 | `created_at` | timestamptz | No | DEFAULT now() | Review time |
 
-Append-only. Reviewer must have report.review.scoped and matching scope.
+Append-only. The selected reviewer default is Admin/Pastor and Coordinator at branch scope, Team Leader within active own-team scope; authors may view their own reports. Field Worker and Follow-up Volunteer may submit/read only their own reports. Prayer Intercessor has no report access. Implement and test these grants before enabling the report module.
 
 ### 5.3 `audit_event`
 
@@ -299,7 +299,7 @@ Append-only; deny UPDATE/DELETE to application roles. Never log PINs, provider s
 | `received_at` | timestamptz | No | DEFAULT now() | Receipt time |
 | `expires_at` | timestamptz | No | — | Receipt expiry |
 
-A receipt is not an offline payload store. Keep local queues minimal and encrypted; reauthenticate and reauthorize at sync. Reject prayer/care narratives. Same request ID + same hash returns original result; same ID + different hash is rejected. Device revocation and retention policy remain D-08/D-13 decisions.
+Offline sync receipts are deferred and not created or used in the initial release. If offline mode is re-enabled after a new D-08 change, require encrypted device/session binding, short expiry, sign-out revocation, reauthorization at sync and conflict recovery. Never queue prayer/care narratives.
 
 ## 6. Critical invariants
 
@@ -312,7 +312,7 @@ A receipt is not an offline payload store. Keep local queues minimal and encrypt
 7. Automated rules default OFF and require an approved trigger/recipient allowlist.
 8. Audit events are append-only and do not duplicate sensitive payloads.
 9. Reports cannot become an alternate channel for pastoral narratives.
-10. Offline sync is a narrow receipt/idempotency mechanism, not general offline database access.
+10. Offline mode is disabled for the initial release; no local data queue, cache or offline check-in is permitted.
 
 ## 7. Reconciliation findings
 
@@ -331,7 +331,7 @@ A receipt is not an offline payload store. Keep local queues minimal and encrypt
 ## 8. Validation status
 
 - [x] Typed data dictionary drafted for SMS preference, suppression, templates, campaign, automation, outbox and callback lifecycle.
-- [x] Typed data dictionary drafted for reports, append-only audit and limited offline receipts.
+- [x] Typed data dictionary drafted for reports and append-only audit; offline receipt design is deferred and not part of the initial release.
 - [x] Manual/bulk/automated source constraints and idempotency requirements documented.
 - [x] Cost, opt-out, callback and key-management risks recorded.
 - [ ] Reconcile DD-17–DD-25 with provider choice, ERD and physical schema.
