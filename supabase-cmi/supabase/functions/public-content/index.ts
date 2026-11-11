@@ -1,15 +1,16 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import {
+  getScheduledPublicationFilter,
   parsePublicContentRequest,
   PUBLIC_RESOURCES,
-  getScheduledPublicationFilter,
   type PublicResource,
 } from "./validation.ts";
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const allowedOrigins = new Set(
-  (Deno.env.get("PUBLIC_CONTENT_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
+  (Deno.env.get("PUBLIC_CONTENT_ALLOWED_ORIGINS") ??
+    "https://pcg-missions.vercel.app")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
@@ -17,14 +18,19 @@ const allowedOrigins = new Set(
 
 const supabase = supabaseUrl && serviceRoleKey
   ? createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
     global: { headers: { "X-Application-Name": "cmi-public-content-edge" } },
   })
   : null;
 
 const baseHeaders = {
   "Content-Type": "application/json; charset=utf-8",
-  "Cache-Control": "public, max-age=60, s-maxage=300, stale-while-revalidate=60",
+  "Cache-Control":
+    "public, max-age=60, s-maxage=300, stale-while-revalidate=60",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "Vary": "Origin",
@@ -90,7 +96,9 @@ Deno.serve(async (request: Request) => {
     if (parsed.value.resource === "church-profile") {
       const { data, error } = await supabase
         .from("church_public_profile")
-        .select("public_name,welcome_content,public_phone,public_email,address_text,website_url,social_links,updated_at")
+        .select(
+          "public_name,welcome_content,public_phone,public_email,address_text,website_url,social_links,updated_at",
+        )
         .limit(1)
         .maybeSingle();
 
@@ -121,7 +129,9 @@ Deno.serve(async (request: Request) => {
       query = query.eq(config.slugColumn, parsed.value.slug);
     }
 
-    query = query.order(config.order.column, { ascending: config.order.ascending });
+    query = query.order(config.order.column, {
+      ascending: config.order.ascending,
+    });
 
     query = query.range(
       parsed.value.offset,
