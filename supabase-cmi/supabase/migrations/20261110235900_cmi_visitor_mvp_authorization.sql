@@ -28,23 +28,21 @@ insert into public.role_capability(role_id,capability_id,scope_mode)
 select r.id,c.id,'branch' from public.role r cross join public.capability c
 where r.code='admin_pastor' and c.code in (
 'staff.directory.read','staff.account.manage','access.role.assign','staff.password_reset.manage',
-'contact.capture.create','contact.read.scoped','contact.update.scoped','contact.identity.capture',
-'contact.identity.read.scoped','contact.identity.update.scoped','contact.note.create',
+'contact.capture.create','contact.read.scoped','contact.update.scoped','contact.note.create',
 'contact.note.read.scoped','contact.interaction.record','contact.assign.scoped',
 'followup.task.create','followup.task.read.scoped','followup.task.update.scoped','followup.task.assign.scoped')
 on conflict do nothing;
 
--- Coordinator: branch-wide visitor and follow-up, but no staff administration.
+-- Coordinator: branch-wide ordinary contact/follow-up only; identity fields are redacted by default.
 insert into public.role_capability(role_id,capability_id,scope_mode)
 select r.id,c.id,'branch' from public.role r cross join public.capability c
 where r.code='coordinator' and c.code in (
-'contact.capture.create','contact.read.scoped','contact.update.scoped','contact.identity.capture',
-'contact.identity.read.scoped','contact.identity.update.scoped','contact.note.create',
+'contact.capture.create','contact.read.scoped','contact.update.scoped','contact.note.create',
 'contact.note.read.scoped','contact.interaction.record','contact.assign.scoped',
 'followup.task.create','followup.task.read.scoped','followup.task.update.scoped','followup.task.assign.scoped')
 on conflict do nothing;
 
--- Team Leader: team-scoped visitor and follow-up.
+-- Team Leader: team-scoped ordinary visitor/follow-up; identity fields are redacted by default.
 insert into public.role_capability(role_id,capability_id,scope_mode)
 select r.id,c.id,'team' from public.role r cross join public.capability c
 where r.code='team_leader' and c.code in (
@@ -54,26 +52,25 @@ where r.code='team_leader' and c.code in (
 'followup.task.create','followup.task.read.scoped','followup.task.update.scoped','followup.task.assign.scoped')
 on conflict do nothing;
 
--- Field Worker: assigned visitor and follow-up scope.
+-- Field Worker: assigned ordinary visitor/follow-up; identity fields are redacted by default.
 insert into public.role_capability(role_id,capability_id,scope_mode)
 select r.id,c.id,'assigned' from public.role r cross join public.capability c
 where r.code='field_worker' and c.code in (
-'contact.capture.create','contact.read.scoped','contact.update.scoped','contact.identity.capture',
-'contact.identity.read.scoped','contact.identity.update.scoped','contact.note.create',
+'contact.capture.create','contact.read.scoped','contact.update.scoped','contact.note.create',
 'contact.note.read.scoped','contact.interaction.record','followup.task.create',
 'followup.task.read.scoped','followup.task.update.scoped')
 on conflict do nothing;
 
--- Follow-up Volunteer: assigned visitor follow-up only.
+-- Follow-up Volunteer: assigned visitor follow-up only; identity fields are redacted by default.
 insert into public.role_capability(role_id,capability_id,scope_mode)
 select r.id,c.id,'assigned' from public.role r cross join public.capability c
 where r.code='follow_up_volunteer' and c.code in (
-'contact.read.scoped','contact.identity.read.scoped','contact.note.create',
-'contact.note.read.scoped','contact.interaction.record','followup.task.read.scoped',
+'contact.read.scoped','contact.note.create','contact.note.read.scoped',
+'contact.interaction.record','followup.task.read.scoped',
 'followup.task.update.scoped')
 on conflict do nothing;
 
--- Prayer Intercessor intentionally has no visitor CRM grants. No exports,
+-- Restricted contact phone/email capabilities are Admin/Pastor-only in this baseline. Lower roles receive minimized contact projections. Prayer Intercessor intentionally has no visitor CRM grants. No exports,
 -- SMS, prayer/care narrative access or capability-policy editing are granted.
 comment on table public.role_capability is
 'Least-privilege visitor-management MVP grants. Branch/team/assigned scope is enforced server-side by Edge Functions.';
