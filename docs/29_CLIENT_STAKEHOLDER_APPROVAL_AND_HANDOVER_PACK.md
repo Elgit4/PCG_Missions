@@ -153,9 +153,9 @@ The product owner has selected the defaults in document 31 for the current imple
 - Forgot password creates a generic-response, rate-limited request and notifies the authorised Admin/Pastor. The administrator approves or denies with a reason; approval issues a fresh temporary password by email and forces password replacement.
 - Temporary passwords must never be stored in plaintext, returned to the admin UI, written to logs or included in audit metadata. Supabase Auth manages password hashing and sessions.
 - Credential reset/deactivation must revoke other active sessions. Failed email delivery must leave access gated and provide a safe, audited retry path.
-- The one-time first-admin bootstrap must never be rerun to recover uncertain email delivery. A separate operator-controlled recovery mechanism is required before production launch.
+- The one-time first-admin bootstrap must never be used to create a second identity. PR #33 adds a narrowly bounded, serialized recovery path for an undelivered first-admin temporary password; it rotates the temporary credential and retries delivery only while the account remains behind the mandatory first-password-change gate. It is unmerged and requires staging verification.
 
-**Production status:** The selected password flow has passing branch-level automated tests, but first-admin email-delivery recovery, production email configuration, deployment and staging/UAT remain release gates.
+**Production status:** The selected password flow and PR #33 recovery/concurrency implementation passed branch-level backend CI, including 355 pgTAP assertions. PR #33 remains unmerged; production email configuration, staging verification, deployment and UAT remain release gates.
 ## 9. Client configuration and operational inputs
 
 The client must supply or approve these before staging/production configuration:
@@ -165,7 +165,7 @@ The client must supply or approve these before staging/production configuration:
 | Authorised church approver and pastoral data owner | Name, role, approval date |
 | Canonical church name and initial branch name | Exact display names |
 | Initial Admin/Pastor mailbox | Verified email controlled by the client |
-| Staff login model | Email + private PIN (confirmed product baseline); approve PIN/security parameters |
+| Staff login model | Supabase Auth email + password; temporary-password onboarding and forced first-login replacement |
 | Production domain and hosting owner | HTTPS domain and DNS access |
 | Verified transactional email sender | Domain/sender approval and delivery owner |
 | SMS provider account | Provider account owner, sender ID approval, consent and budget |
@@ -244,7 +244,7 @@ The client handover is complete only when the following evidence is attached:
 | Meeting date | Pending |
 | Approved R-01–R-12 | Pending |
 | Approved D-01–D-13 | Pending |
-| Authentication model | Email + private PIN (product baseline); security parameters pending approval |
+| Authentication model | Supabase Auth email + password; product-owner decision confirmed 10 Nov 2026 |
 | Approved role matrix revision | Pending |
 | Approved retention schedule | Pending |
 | Exceptions and conditions | Pending |
