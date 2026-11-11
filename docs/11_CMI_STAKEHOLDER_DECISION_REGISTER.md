@@ -27,9 +27,9 @@ The product owner has explicitly authorized implementation of the standard conse
 | R-07 | Team leader bulk SMS permissions | May prepare team/event-scoped draft only; dispatch requires separate authorized approval. | Owner-directed default selected; see document 31 |
 | R-08 | Campaign creator/approver separation | Creator and approver must be different active users; any emergency exception is explicit and audited. | Owner-directed default selected; see document 31 |
 | R-09 | Coordinator automated SMS configuration | No global provider/rule enablement; allow only approved trigger catalogue and templates after explicit capability grant. | Owner-directed default selected; see document 31 |
-| R-10 | Care record read/update roles | Assigned care workers only; Admin/Pastor oversight as a separate audited capability. | Owner-directed default selected; see document 31 |
-| R-11 | Intercessor creation and linked contact identity | Intercessor may create a request if authorized and see assigned request text; linked contact identity/phone minimized and separately approved. | Owner-directed default selected; see document 31 |
-| R-12 | Contact/report exports and masking | Admin/Pastor only by default; export-specific capability, scoped fields, audit and masking. | Owner-directed default selected; see document 31 |
+| R-10 | Care record read/update roles | No assigned-care role exists; Admin/Pastor has only separate reason-coded, audited oversight-read capability; no care mutation grant. | Owner-directed default selected; see document 31 |
+| R-11 | Intercessor creation and linked contact identity | Intercessor has read-only access to actively assigned prayer-request text; no creation, assignment management, unassigned discovery or linked contact identity. | Owner-directed default selected; see document 31 |
+| R-12 | Contact/report exports and masking | Exports disabled until a dedicated scoped capability, masking, explicit confirmation, reason, audit and limits are implemented. | Owner-directed default selected; see document 31 |
 
 ## B. Logical data and workflow decisions
 
@@ -42,7 +42,7 @@ The product owner has explicitly authorized implementation of the standard conse
 | D-05 | Public registration fields, anonymous-to-contact linking and duplicate review | Collect the minimum attendee fields; keep public intake separate from staff contact access; link/create canonical contacts only through a trusted reviewable server flow. | Owner-directed default selected; see document 31 |
 | D-06 | Capacity, cancellation, waitlist and transport seat rules | Enforce capacity transactionally; no waitlist until explicitly required; separate registration from transport reservation and attendance. | Owner-directed default selected; see document 31 |
 | D-07 | Prayer/care oversight, retention and deletion | Separate restricted tables, assignment-based access, explicit audited oversight, documented retention and controlled archival/deletion. | Owner-directed default selected; see document 31 |
-| D-08 | Offline device identity, local expiry, sign-out and conflict recovery | Keep offline scope limited; encrypt local data, expire queues, reauthorize on sync, and never queue prayer/care narratives. | Owner-directed default selected; see document 31 |
+| D-08 | Offline device identity, local expiry, sign-out and conflict recovery | Offline mode disabled for the initial release; do not cache or queue contact, event-attendance or pastoral data. Re-enable only after device/session binding, encryption, expiry, sign-out and conflict-recovery tests pass. | Owner-directed default selected; see document 31 |
 | D-09 | SMS provider, consent/lawful basis, opt-out, quiet hours, sender ID and templates | No live dispatch until provider and Ghana-specific sender/regulatory requirements, recipient eligibility, opt-out, quiet hours and budget are approved. | Owner-directed default selected; see document 31 |
 | D-10 | Automated SMS trigger catalogue and recipient class per trigger | Start with an explicit allowlist of low-risk operational triggers; each rule disabled by default and approved before activation. | Owner-directed default selected; see document 31 |
 | D-11 | Campaign creator/approver/sender separation, caps and spend limits | Separate creator and approver; enforce per-campaign and global spend/segment caps before dispatch. | Owner-directed default selected; see document 31 |
@@ -59,7 +59,7 @@ These are implementation gates alongside R/D decisions:
 | Branch model | Confirm branch count and whether branch scope applies to all operational records | One configured branch context unless church leadership confirms additional branches. | Owner-directed default selected; see document 31 |
 | Public site | Exact public fields, publication authority, abuse/rate limits and contact-form retention | Published content only; no anonymous directory access. | Owner-directed default selected; see document 31 |
 | SMS content | Sender identity, template approval, opt-out language, service-message classification and inbound keyword handling | No dispatch until provider capabilities and lawful handling are confirmed. | Owner-directed default selected; see document 31 |
-| Offline security | Device encryption, device/session revocation, local queue expiry and shared-device sign-out | Minimal encrypted queue with short approved retention and server-side reauthorization. | Owner-directed default selected; see document 31 |
+| Offline security | Device encryption, device/session revocation, local queue expiry and shared-device sign-out | Offline mode disabled; no device-local queue or cached personal data in the initial release. | Owner-directed default selected; see document 31 |
 | Audit | Events that require audit, retention, access to audit logs and tamper protection | Append-only audit with least-privilege read access; no secrets or sensitive narrative copied into generic metadata. | Owner-directed default selected; see document 31 |
 
 ## D. Approval record
