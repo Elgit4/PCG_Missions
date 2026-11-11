@@ -1,5 +1,5 @@
 begin;
-select plan(23);
+select plan(26);
 
 select has_table('public', 'capability', 'Capability catalogue exists');
 select ok(
@@ -12,8 +12,8 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  55,
-  'the owner-directed visitor MVP baseline contains 55 least-privilege grants'
+  58,
+  'the owner-directed visitor MVP baseline contains 58 least-privilege grants'
 );
 select ok(
   not exists (
@@ -61,6 +61,44 @@ select ok(
     where c.code like 'sms.%' or c.code like '%.export%'
   ),
   'SMS and export capabilities remain ungranted by default'
+);
+
+select is(
+  (select count(*)::integer
+   from public.role_capability rc
+   join public.role r on r.id = rc.role_id
+   join public.capability c on c.id = rc.capability_id
+   where r.code = 'prayer_intercessor'
+     and c.code = 'prayer.request.read.assigned'
+     and rc.scope_mode = 'assigned'),
+  1,
+  'Prayer Intercessor receives only assigned prayer-request read access'
+);
+select is(
+  (select count(*)::integer
+   from public.role_capability rc
+   join public.role r on r.id = rc.role_id
+   join public.capability c on c.id = rc.capability_id
+   where r.code = 'admin_pastor'
+     and c.code in ('prayer.oversight.read','care.oversight.read')
+     and rc.scope_mode = 'oversight'),
+  2,
+  'Admin/Pastor oversight is explicit, reason-coded and audited for prayer and care reads'
+);
+select ok(
+  not exists (
+    select 1 from public.role_capability rc
+    join public.role r on r.id = rc.role_id
+    join public.capability c on c.id = rc.capability_id
+    where r.code in ('coordinator','team_leader','field_worker','follow_up_volunteer')
+      and c.code in (
+        'prayer.request.read.assigned',
+        'prayer.oversight.read',
+        'care.record.read.assigned',
+        'care.oversight.read'
+      )
+  ),
+  'no other role receives prayer/care narrative read or oversight grants'
 );
 
 select has_function(
