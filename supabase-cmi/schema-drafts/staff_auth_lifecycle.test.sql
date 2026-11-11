@@ -39,8 +39,8 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  65,
-  'the reviewed visitor MVP role baseline exists before first-admin bootstrap'
+  58,
+  'the owner-directed visitor MVP role baseline exists before first-admin bootstrap'
 );
 select ok(
   exists(select 1 from public.capability where code='staff.password_reset.manage' and is_active),
@@ -116,7 +116,7 @@ select is(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  65,
+  58,
   'bootstrap preserves the reviewed least-privilege role baseline'
 );
 select is(
