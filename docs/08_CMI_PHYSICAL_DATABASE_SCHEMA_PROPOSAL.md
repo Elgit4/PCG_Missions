@@ -343,7 +343,7 @@ No migration files should be generated from this proposal until the logical ERD,
 6. **Events:** events, public registration endpoint, transport, check-in and closeout.
 7. **Public content/calendar:** publication workflows and anonymous read policies for approved published records only.
 8. **SMS foundation:** preference/suppression, templates/versioning, campaign approval, outbox, automation execution, callback verification, budgets and dry-run tests; provider integration remains disabled until approved.
-9. **Reports/offline:** reports, review events, minimal offline sync receipts and expiry controls.
+9. **Reports:** typed reports and review events. Offline sync receipts and device-local queues are excluded from the initial release and may be designed later after the D-08 security gate.
 10. **Hardening:** indexes/query plans, grants audit, RLS test matrix, backups/restore rehearsal, retention controls and staged deployment.
 
 Each migration must be reviewed, versioned, reproducible in a clean local database and accompanied by tests. Use synthetic data. Run Supabase security advisors and test both authenticated and anonymous access. Do not apply schema changes to a hosted project without explicit project identification and user approval.
