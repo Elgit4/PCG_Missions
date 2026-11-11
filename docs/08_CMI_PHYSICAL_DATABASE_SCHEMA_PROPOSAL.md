@@ -295,7 +295,7 @@ Use pgTAP or equivalent database tests with seeded synthetic users for all six r
 - opt-out and suppression block subsequent SMS dispatch;
 - duplicate webhook/capture/registration/dispatch events are idempotently ignored.
 
-## 6. Authentication and staff PIN implications
+## 6. Authentication and staff password lifecycle
 
 The product-owner-confirmed baseline is Supabase Auth **email plus password**. Supabase Auth owns password verification, hashing and sessions. The application must not store plaintext passwords, temporary passwords or duplicate password hashes.
 
@@ -306,9 +306,9 @@ A safe provisioning pattern is:
 4. Recovery is generic-response and rate-limited; an authorized Admin/Pastor reviews the request and the system issues a new temporary password to the verified email address.
 5. Reset/deactivation revokes existing sessions and protected requests re-check active account status.
 
-The exact Supabase Auth integration for reusable PIN sign-in is a security design decision, not something to improvise by passing a short PIN directly as a password. Before release, test temporary-password entropy and expiry, email delivery failure recovery, rate limits, generic responses, forced password replacement, session revocation, stale-token behaviour and deactivated accounts. A custom verifier must run only in a trusted server environment and must not expose a user-enumeration oracle. Never put PINs in user metadata, logs or browser-readable tables, and never allow role changes through client-editable metadata.
+The earlier reusable-PIN proposal is superseded by the product owner's 10 November 2026 email/password decision. Before release, test temporary-password entropy and expiry, email delivery failure recovery, rate limits, generic responses, forced password replacement, session revocation, stale-token behaviour and deactivated accounts. Never put credentials in user metadata, logs or browser-readable tables, and never allow role changes through client-editable metadata.
 
-If the product owner instead chooses one-time PIN activation followed by a different sign-in secret, that changes the stated email-plus-PIN login requirement and must be explicitly approved rather than silently substituted.
+Do not implement a custom PIN verifier or parallel credential store. A future change to the authentication model requires a product-owner change request, security review and migration plan.
 
 ## 7. Mapping unresolved decisions R-01 to R-12
 
