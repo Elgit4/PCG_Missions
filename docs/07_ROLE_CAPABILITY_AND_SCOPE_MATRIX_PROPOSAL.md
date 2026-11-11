@@ -165,9 +165,9 @@ Legend: **G** active grant in the current owner-directed source baseline; **S** 
 - Individual SMS remains conditional.
 
 **Prayer intercessor**
-- Read/update only prayer requests actively assigned to them.
-- No general contact directory access. Any linked contact projection is minimized to fields needed for the assignment.
-- No care records, contact exports or SMS campaign privileges by default.
+- Read only prayer-request text actively assigned to them.
+- No request creation, update, assignment management, unassigned discovery or linked contact identity.
+- No general contact directory, care records, contact exports or SMS campaign privileges.
 
 ## 5. Cross-domain and field-level restrictions
 
@@ -267,7 +267,7 @@ Use operation-specific policies, not one broad FOR ALL policy.
 | R-11 | Can intercessors create requests and see linked contact name/phone? | Create only through approved intake; assigned request text only; no linked phone/email projection |
 | R-12 | Which roles may export contact/report data and what masking applies? | Export disabled until dedicated audited capability, masking and release gate are implemented |
 
-No migration should encode conditional grants until these decisions are approved.
+The source baseline contains 58 explicit active grants as recorded in document 31. No conditional, SMS, export, capability-policy administration, prayer/care mutation or incomplete-module grants are seeded. Hosted deployment remains separate and requires the release gates in document 31.
 
 ## 11. Approval record
 
