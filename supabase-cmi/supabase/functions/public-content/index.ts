@@ -9,7 +9,7 @@ import {
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const allowedOrigins = new Set(
-  (Deno.env.get("PUBLIC_CONTENT_ALLOWED_ORIGINS") ?? "")
+  (Deno.env.get("PUBLIC_CONTENT_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
