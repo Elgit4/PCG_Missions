@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(76);
+select plan(77);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -11,6 +11,13 @@ select has_table('public','event_registration','event registration table exists'
 select has_table('public','transport_option','transport option table exists');
 select has_table('public','transport_reservation','transport reservation table exists');
 select has_table('public','event_checkin','event check-in table exists');
+select extensions.ok(
+  (select pg_get_constraintdef(oid) not like '%offline_sync%'
+   from pg_constraint
+   where conrelid='public.event_checkin'::regclass
+     and conname='event_checkin_source_check'),
+  'offline check-in source is not accepted while offline mode is disabled'
+);
 select has_table('public','event_closeout','event closeout table exists');
 select has_table('public','event_closeout_event','event closeout history table exists');
 select has_table('public','event_idempotency_receipt','event idempotency receipt ledger exists');
