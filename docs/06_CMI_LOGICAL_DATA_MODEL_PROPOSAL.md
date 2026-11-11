@@ -56,7 +56,7 @@
 
 **Contact rules**
 - A contact may have multiple capture records, notes, assignments over time, interactions, event registrations, attendance records and follow-up tasks.
-- `client_capture_id` is unique per originating device/user scope to make offline retries idempotent.
+- A future `client_capture_id` may be unique per originating device/user scope if offline capture is re-enabled. Offline queueing is disabled in the initial release.
 - Contact identity is distinct from event registration and attendance.
 - A merge must transactionally re-point eligible foreign keys, preserve the source identity and history, and record before/after references. Do not hard-delete the source row during the initial merge operation.
 - Notes marked sensitive must not use this ordinary notes table; prayer and care narratives belong in their restricted domains.
@@ -93,7 +93,7 @@
 - Intercessors can read only requests currently assigned to them, plus explicitly permitted history needed to perform their task. Prayer and care each require a dedicated access-audit relation so every sensitive narrative read is attributable to the correct record type. They cannot discover unassigned or another intercessor's requests by list, search, export, direct ID or relationship traversal.
 - Admin/Pastor oversight is a separately granted and audited capability; it must not be inferred solely from a role name.
 - Avoid broad views, search indexes, notifications and exports that expose these narratives.
-- Do not place prayer/care records in the general offline capture queue.
+- Offline mode is disabled in the initial release. Do not cache or queue contact, event-attendance, prayer/care or report data on devices.
 
 ### E. Events, public registration, transport and attendance
 
@@ -111,7 +111,7 @@
 - Capacity checks must be concurrency-safe. Define whether capacity includes confirmed registrations only and how cancellations/waitlists behave before implementation.
 - Transport reservation is optional and exists only for an event registration when transport is enabled.
 - Event staff assignments are stored in `event_staff_assignments`; event-scoped permissions must not leak to other events.
-- Offline check-in requires a stable `client_checkin_id`, bounded local data retention and server-side reauthorization at sync.
+- Offline check-in is not accepted in the initial release. The database permits only staff and event-workspace check-in sources.
 
 ### F. Calendar and announcements
 
@@ -162,20 +162,20 @@ Announcement audience membership and channel permissions must be re-evaluated wh
 
 Public anonymous reads must filter by published/active state in database policies. External PDF URLs must be HTTPS and are references only; this application does not host PDF files.
 
-### I. Reports, governance and offline sync
+### I. Reports, governance and future offline extension
 
 | Entity | Purpose | Key attributes |
 |---|---|---|
 | `ministry_reports` | Daily evangelism, event evangelism and weekly ministry reports | branch_id, report_type, event_id (nullable), period_start, period_end, author_id, team_id (nullable), payload, status, submitted_at, reviewed_by, reviewed_at |
 | `report_review_events` | Report approval/return history | report_id, reviewer_id, decision, comments, occurred_at |
 | `audit_events` | Security and privileged-action audit trail | actor_id (nullable), action, entity_type, entity_id, branch_id, occurred_at, safe_metadata |
-| `offline_sync_receipts` | Server acknowledgements for queued client operations | client_operation_id, actor_id, operation_type, result_status, server_entity_id, received_at, error_code |
+| `offline_sync_receipts` | Reserved future server acknowledgements if offline mode is re-enabled | client_operation_id, actor_id, operation_type, result_status, server_entity_id, received_at, error_code; not created or used in the initial release |
 
 **Governance rules**
 - Reports must distinguish capture, follow-up task completion, contact attempts, successful conversations, registrations and actual attendance.
 - Report payloads must be validated against report type; sensitive prayer/care narratives are not report payloads.
 - Audit metadata must be minimized and must not contain PINs, provider secrets, full prayer text or confidential care narratives.
-- Offline sync receipts contain only the minimum acknowledgement needed to make retries safe. They are not a general offline data store.
+- Offline sync receipts are not part of the initial release. If D-08 is revisited, receipts must contain only minimum acknowledgements, never cached personal or pastoral data.
 
 ## 3. Relationship and cardinality summary
 
@@ -217,7 +217,7 @@ These are design candidates; confirm exact nullability and partial-index syntax 
 - Unique template version number per template.
 - Index public content by publication status/date/slug; unique tract slug.
 - Index reports by branch/type/period/status and author/team.
-- Unique offline receipt by actor plus client operation ID.
+- If offline mode is re-enabled, require unique receipts by actor plus client operation ID; no offline receipt table is created in the initial release.
 
 ## 5. RLS and access-policy design notes
 
@@ -261,7 +261,7 @@ Recommended implementation boundaries:
 
 ## 7. Validation and decision register
 
-Cross-document validation findings are recorded in [09 — Database Design Validation Report](09_DATABASE_DESIGN_VALIDATION_REPORT.md). The ERD-to-physical entity mapping is maintained in [10 — ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md), and stakeholder approvals for D-01–D-13 and R-01–R-12 are recorded in [11 — Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md). Do not treat recommended defaults as stakeholder approvals.
+Cross-document validation findings are recorded in [09 — Database Design Validation Report](09_DATABASE_DESIGN_VALIDATION_REPORT.md). The ERD-to-physical entity mapping is maintained in [10 — ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md), and owner-directed defaults for D-01–D-13 and R-01–R-12 are recorded in [11 — Stakeholder Decision Register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md) and [31 — Safe-Default Decision Baseline](31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md). These engineering defaults may be amended through change control and are not formal church-policy sign-off.
 
 ## 8. Recommended build sequence after approval
 
