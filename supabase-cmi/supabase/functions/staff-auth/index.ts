@@ -364,9 +364,32 @@ async function bootstrapAdmin(
   });
   let authUserId: string;
   let createdNewAuthUser = false;
-  const bootstrapPath = resolveBootstrapPath(existingUsers, email, false);
+  authUserId = bootstrapPath === "create"
+    ? ""
+    : existingUsers[0].id;
+  let existingProfile: {
+    id: string;
+    account_status: string;
+    must_change_password: boolean;
+    password_changed_at: string | null;
+  } | null = null;
 
-  if (bootstrapPath === "create") {
+  if (bootstrapPath !== "create") {
+    const { data: profile, error: profileError } = await service
+      .from("staff_profile")
+      .select("id,account_status,must_change_password,password_changed_at")
+      .eq("auth_user_id", authUserId)
+      .maybeSingle();
+    if (profileError) throw new Error("BOOTSTRAP_PROFILE_LOOKUP_FAILED");
+    existingProfile = profile;
+  }
+
+  const verifiedPath = resolveBootstrapPath(
+    existingUsers,
+    email,
+    existingProfile,
+  );
+  if (verifiedPath === "create") {
     const { data: created, error: createError } = await service.auth.admin
       .createUser({
         email,
@@ -393,31 +416,9 @@ async function bootstrapAdmin(
       await service.auth.admin.deleteUser(authUserId).catch(() => undefined);
       throw new Error("BOOTSTRAP_DATABASE_PROVISION_FAILED");
     }
-  } else if (bootstrapPath === "recover_partial_auth_user") {
-    authUserId = existingUsers[0].id;
-    const { data: profile, error: profileError } = await service
-      .from("staff_profile")
-      .select("id")
-      .eq("auth_user_id", authUserId)
-      .maybeSingle();
-    if (profileError) throw new Error("BOOTSTRAP_PROFILE_LOOKUP_FAILED");
-
-    // A provisioned profile consumes bootstrap permanently. In particular, do
-    // not rotate/reissue a temporary credential on a repeated bootstrap call.
-    const verifiedPath = resolveBootstrapPath(existingUsers, email, !!profile);
-    if (verifiedPath !== "recover_partial_auth_user") {
-      return fail(
-        "BOOTSTRAP_ALREADY_USED",
-        "First-administrator bootstrap has already been consumed.",
-        409,
-        origin,
-        requestId,
-      );
-    }
-
-    // Recover only the narrow Auth-user-created / CMI-profile-not-created
-    // partial state. The database RPC independently checks that church,
-    // branch and staff tables are still empty before provisioning.
+  } else if (verifiedPath === "recover_partial_auth_user") {
+    // Recover only Auth-user-created / CMI-profile-not-created state. The
+    // database RPC independently verifies the project is still unprovisioned.
     const { error: bootstrapError } = await service.rpc(
       "cmi_bootstrap_first_admin",
       {
@@ -438,10 +439,34 @@ async function bootstrapAdmin(
     if (passwordError) {
       throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
     }
+  } else if (verifiedPath === "recover_undelivered_credential") {
+    // The account exists, but the first-admin password gate has never been
+    // completed. Rotate the temporary password before retrying delivery so a
+    // previous possibly-delivered credential can no longer be used.
+    const { error: passwordError } = await service.auth.admin.updateUserById(
+      authUserId,
+      { password: temporaryPassword },
+    );
+    if (passwordError) {
+      throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
+    }
+    const { error: expiryError } = await service
+      .from("staff_profile")
+      .update({
+        password_setup_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000)
+          .toISOString(),
+      })
+      .eq("id", existingProfile!.id)
+      .eq("account_status", "active")
+      .eq("must_change_password", true)
+      .is("password_changed_at", null);
+    if (expiryError) {
+      throw new Error("BOOTSTRAP_PASSWORD_EXPIRY_REFRESH_FAILED");
+    }
   } else {
     return fail(
       "BOOTSTRAP_ALREADY_USED",
-      "First-administrator bootstrap is only available on an empty Auth project.",
+      "First-administrator bootstrap has already been consumed or is not eligible for recovery.",
       409,
       origin,
       requestId,
