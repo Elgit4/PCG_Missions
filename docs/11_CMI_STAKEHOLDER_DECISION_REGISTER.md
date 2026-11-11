@@ -69,9 +69,9 @@ These are implementation gates alongside R/D decisions:
 | Church/stakeholder representative | Pending |
 | Technical reviewer | Pending |
 | Approval meeting/date | Pending |
-| Approved R-01–R-12 | None yet |
-| Approved D-01–D-13 | None yet |
-| Approved authentication decision | None yet |
+| Approved R-01–R-12 | None yet — church policy decisions remain pending |
+| Approved D-01–D-13 | None yet — logical data decisions remain pending |
+| Approved authentication decision | Email/password through Supabase Auth; generated temporary password for first access/reset; staff member sets a private permanent password — confirmed by product owner 10 Nov 2026 |
 | Approved SMS/provider decision | None yet |
 | Conditions or exceptions | Pending |
 | Approved ERD revision | Pending |
