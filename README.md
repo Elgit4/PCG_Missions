@@ -26,6 +26,7 @@ The current database-design proposal is committed on `main`:
 - [Logical Data Model](docs/06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md)
 - [Editable Crow's Foot ERD](docs/database/CMI_Follow_Up_Logical_ERD_v0.1.drawio)
 - [Role/Capability Matrix](docs/07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md)
+- [Owner-Directed Safe-Default Decision Baseline](docs/31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md)
 - [Physical PostgreSQL Schema Proposal](docs/08_CMI_PHYSICAL_DATABASE_SCHEMA_PROPOSAL.md)
 - [Database Design Validation Report](docs/09_DATABASE_DESIGN_VALIDATION_REPORT.md)
 - [ERD-to-Physical Schema Traceability](docs/10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md)
