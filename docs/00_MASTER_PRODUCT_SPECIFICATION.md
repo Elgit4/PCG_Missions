@@ -28,12 +28,12 @@ A guide description is a target capability description, not proof that a feature
 ## 3. Product boundaries
 
 ### Included
-- Staff authentication using administrator-issued **email and PIN**.
+- Staff authentication using Supabase Auth **email and password**, short-lived temporary-password onboarding and mandatory first-login replacement.
 - Six operational roles, with users permitted to hold more than one role.
 - Permission- and scope-controlled staff workspace.
 - Contact directory, field capture, notes, history, duplicate review/merge and assignment.
 - Follow-up lists and items with due dates, priorities, notes, completion and overdue visibility.
-- Limited offline capture queue, cached capture pickers and previously opened event check-in data.
+- Offline capture is a future capability and is disabled for the initial production release until device-local security and sync recovery controls pass.
 - Restricted prayer requests and pastoral care records, including assignment and expiry.
 - Care contacts, groups, care summaries and call/visit outcome recording.
 - Events, public registration when enabled, optional capacity, transport reservations, check-in, event assignments and closeout.
@@ -78,14 +78,14 @@ Prayer requests and care notes are sensitive pastoral information. Access must b
 ## 5. Authentication and account lifecycle
 
 - Staff sign in using email and password through Supabase Auth. Administrators issue only random, short-lived temporary passwords; users set and retain their own permanent passwords.
-- PINs are private credentials and must never be shared or exposed in support requests.
+- Passwords are private credentials and must never be shared or exposed in support requests.
 - Administrators provision and manage staff access according to their authority.
 - Sign-out is required on shared devices; device locking is recommended.
-- Implement secure PIN handling: never store or log plaintext PINs; use a server-validated credential flow, rate limiting, throttling, secure session issuance, reset/reissue controls and audit events.
-- A PIN must not be treated as a role or authorization claim.
+- Use Supabase Auth for password hashing and sessions; never store or log plaintext passwords or temporary credentials. Apply generic rate-limited recovery, forced first-login password replacement, session revocation and audit events.
+- A password must not be treated as a role or authorization claim.
 - Public visitor pages and event registration do not require staff sign-in.
 
-The exact PIN lifecycle (length, expiry, reset/reissue and recovery verification) is an implementation decision to be specified and security-reviewed before production.
+The temporary-password expiry, email delivery, forced replacement and administrator-reviewed recovery lifecycle are specified in the current authentication runbook and must pass staging tests before production.
 
 ## 6. Functional modules
 
@@ -113,7 +113,7 @@ Detailed functional flows and acceptance criteria are in [01 — Functional Requ
 A permitted staff member captures a contact from Contacts or an event workspace. Required fields remain minimal for field speed. Capture pickers provide configured source, area, age range and other options. A duplicate is reviewed and merged through the record actions when appropriate. Contacts retain notes, assignments and follow-up history.
 
 ### 7.2 Offline field capture
-When connection is unavailable, the queued capture form stores a pending capture locally. Cached capture pickers support entry. Pending captures sync when connection returns and must expose pending, syncing, synced and failed/conflict states. Offline support is limited to queued field captures, cached pickers and previously opened event check-in data; do not imply general offline access.
+Offline mode is disabled for the initial production release. Do not store contact, pastoral or attendance records on devices. Re-enable only after encrypted local storage, device/session binding, expiry, sign-out recovery, reauthorization at sync and conflict handling are verified.
 
 ### 7.3 Follow-up
 Contacts are organized into follow-up lists. Lists/items are assigned to team members according to permissions. Items can include scheduled date, priority and notes. Assignees see work in their assigned workspace. Completion is recorded after contact is made; overdue items remain visible until cleared, completed or reassigned under authorized rules.
@@ -132,7 +132,7 @@ Staff submit daily evangelism, event evangelism and weekly ministry reports. Aut
 
 ## 8. Communications and SMS policy
 
-SMS is an approved product capability in three modes:
+SMS is a planned product capability in three modes, but all live dispatch modes are disabled until the provider, lawful basis/consent, sender, suppression, campaign controls and authorization gates are satisfied:
 1. **Manual SMS:** an authorized staff member composes and sends an individual message from a permitted contact record.
 2. **Bulk SMS:** an authorized user selects an allowed audience (for example, a team, event registrants or contacts within their scope), reviews recipient count and message, and explicitly confirms the campaign.
 3. **Automated SMS:** approved system events can enqueue configured messages, such as event registration confirmation, event updates/reminders, or follow-up task reminders. Each trigger must be explicitly enabled, configurable and auditable; no unapproved trigger may send.
@@ -159,8 +159,8 @@ Announcements may be delivered through in-app and SMS channels only where config
 - Keep prayer requests and pastoral notes private and scope them to authorized roles/assignments.
 - Do not export or share attendee lists or sensitive details through public channels.
 - Use role-, team-, event- and assignment-scoped access.
-- Sign out on shared devices; never share PINs.
-- Do not include passwords, PINs or private visitor data in support requests.
+- Sign out on shared devices; never share passwords.
+- Do not include passwords, temporary credentials or private visitor data in support requests.
 - Church-approved retention, correction, deletion and data-subject request processes govern records.
 - Audit sensitive access, account changes, role/capability changes, merges, exports, publication and other privileged actions.
 - RLS and trusted server-side authorization must enforce access. Frontend route guards are not security controls.
@@ -169,11 +169,11 @@ Announcements may be delivered through in-app and SMS channels only where config
 
 - Mobile-first responsive PWA; core field workflows must be usable on small phones.
 - Accessible forms, labels, keyboard operation, focus states, readable typography and sufficient contrast.
-- Clear loading, empty, validation, offline, sync, error and success states.
+- Clear loading, empty, validation, error and success states; offline/sync states are required only if offline mode is later enabled.
 - Reliable duplicate handling and safe contact merging with preserved history.
-- Idempotent offline sync and conflict handling; do not silently discard captures.
+- If offline mode is later enabled, require idempotent sync and conflict handling; do not silently discard captures.
 - Pagination and indexed search for growing contact/event/report records.
-- Secure sessions and credential handling; no plaintext PIN storage/logging.
+- Secure sessions and credential handling; no plaintext password or temporary-credential storage/logging.
 - Automated tests for role combinations, scope boundaries, prayer privacy, event permissions, offline sync and public/staff separation.
 - Use synthetic data during development and testing; production data requires church authorization and privacy controls.
 
@@ -181,9 +181,9 @@ Announcements may be delivered through in-app and SMS channels only where config
 
 The product is not ready for release until:
 1. All six roles and multi-role combinations have an approved capability/scope matrix.
-2. Supabase email/password authentication, temporary-password onboarding, first-login replacement, administrator-reviewed recovery and session revocation pass security tests.
+2. Supabase email/password authentication, temporary-password onboarding, first-login replacement, administrator-reviewed recovery and session revocation pass staging security tests.
 3. Contact capture, duplicate merge and follow-up history work on mobile.
-4. Offline queue reliably syncs and reports failures without losing data.
+4. Offline mode remains disabled unless the encrypted device queue and sync recovery have passed security and reliability tests.
 5. Prayer isolation is verified with positive and negative authorization tests.
 6. Public registration, transport reservation and event check-in work when enabled.
 7. Event-specific assignments do not leak data across events.
@@ -197,7 +197,7 @@ The product is not ready for release until:
 
 The guide establishes the functional direction but does not define every technical or policy detail. Before production, record approval for:
 - exact permissions within each role and how multiple roles combine;
-- PIN format, expiry, reset/reissue and recovery process;
+- Temporary-password expiry, delivery, reset/reissue and recovery process;
 - church and branch identity/configuration;
 - event registration fields, capacity behaviour, cancellation and transport rules;
 - contact consent wording and retention/deletion policy;
