@@ -2,16 +2,16 @@
 
 **Version:** 0.1  
 **Baseline:** CMI Follow-up v2.1  
-**Status:** Engineering proposal for stakeholder and security review — **not approved SQL and not applied to Supabase**  
+**Status:** Physical design reference aligned to the product-owner-selected engineering baseline; this document is not itself executable SQL and has not been applied to hosted Supabase  
 **Depends on:** [Logical Data Model](06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md), [Role/Capability Matrix](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md), [Data Architecture](03_DATA_AND_DATABASE_ARCHITECTURE.md)
 
 ## 1. Purpose and non-goals
 
 This document translates the approved-product direction and proposed logical model into a PostgreSQL-oriented physical design. It defines candidate schemas, tables, keys, constraints, indexes, row-level security (RLS), migration sequencing and operational safeguards.
 
-It is not an executable migration. No database has been changed, no Supabase project has been selected or connected, and no production permissions are being granted. Names and types below are proposed conventions to validate against the final ERD and stakeholder decisions. The entity-by-entity crosswalk is maintained in [10 — ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md). Typed column-level data dictionary slices are documented in [13 — Foundation, Contacts & Follow-up](13_FOUNDATION_CONTACT_FOLLOWUP_DATA_DICTIONARY.md), [14 — Restricted Pastoral, Events & Public Content](14_PASTORAL_EVENTS_PUBLIC_CONTENT_DATA_DICTIONARY.md), and [15 — SMS, Reporting, Audit & Offline](15_SMS_REPORTING_AUDIT_OFFLINE_DATA_DICTIONARY.md). Findings DD-01–DD-25 must be reconciled before migration drafting.
+It is not an executable migration. The corresponding source-controlled migrations are maintained under `supabase-cmi/supabase/migrations/` and validated in isolated CI. This design remains a reference for schema reconciliation; no hosted production migration or production permissions are authorized by this document. The entity-by-entity crosswalk is maintained in [10 — ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md). Typed column-level data dictionary slices are documented in [13 — Foundation, Contacts & Follow-up](13_FOUNDATION_CONTACT_FOLLOWUP_DATA_DICTIONARY.md), [14 — Restricted Pastoral, Events & Public Content](14_PASTORAL_EVENTS_PUBLIC_CONTENT_DATA_DICTIONARY.md), and [15 — SMS, Reporting, Audit & Offline](15_SMS_REPORTING_AUDIT_OFFLINE_DATA_DICTIONARY.md). Findings DD-01–DD-25 must be reconciled before migration drafting.
 
-The design targets one church instance with a configured branch context. It does not introduce multi-church network administration. It supports the six operational roles, multi-role users, public visitor content and registration, staff workflows, limited offline queues, and manual/bulk/automated SMS. It does not imply full offline operation or WhatsApp automation.
+The design targets one configured church instance and branch context. It does not introduce multi-church network administration. It supports six operational roles and multi-role users. Public registration, offline queues, live SMS, exports and incomplete sensitive workflows remain disabled until their implementation and compliance gates pass.
 
 ## 2. PostgreSQL conventions
 
@@ -58,7 +58,7 @@ Church/branch configuration is administered by the privileged settings workflow.
 
 ### 3.2 Identity, roles, capabilities and scope
 
-Supabase Auth owns credential verification and sessions. The application stores a profile linked 1:1 to `auth.users.id`; it must not store plaintext PINs or duplicate password hashes.
+Supabase Auth owns email/password verification and sessions. The application stores a profile linked to `auth.users.id`; it must not store plaintext passwords, temporary credentials or duplicate password hashes.
 
 | Table | Candidate columns and constraints |
 |---|---|
@@ -360,7 +360,7 @@ Before implementation sign-off, reviewers must approve:
 - [ ] Role/capability matrix and R-01 to R-12.
 - [ ] Branch ownership and scope rules.
 - [ ] Prayer/care separation, intercessor field visibility and Admin/Pastor oversight.
-- [ ] PIN/authentication flow and account recovery.
+- [x] Supabase email/password authentication and account recovery design; production email provider and staging verification remain release gates.
 - [ ] Public registration privacy, capacity and abuse controls.
 - [ ] SMS recipient classes, consent/lawful basis, opt-out, quiet hours, caps, provider and creator/approver separation.
 - [ ] Offline encryption, expiry and sign-out recovery.
@@ -379,4 +379,4 @@ Before implementation sign-off, reviewers must approve:
 
 ## 11. Verification status
 
-This is a design artifact only. It has not been parsed or applied as SQL, tested against a PostgreSQL instance, checked with Supabase advisors, or validated against a running application. It makes no claim that repository code or a hosted database currently implements this design. The next gate is stakeholder approval and a traceable schema-to-ERD reconciliation; only then should executable migration drafts and RLS tests be created.
+This remains a design reference, not executable SQL. Related source migrations and pgTAP suites are maintained in `supabase-cmi/` and must be verified at the exact PR head. It does not claim that the hosted database or deployed application implements the full target design. The next gate is exact-head CI, schema-to-ERD reconciliation, code review and staging validation.
