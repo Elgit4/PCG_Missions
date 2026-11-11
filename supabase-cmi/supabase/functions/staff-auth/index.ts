@@ -374,7 +374,7 @@ async function bootstrapAdmin(
   if (existingUsers.length === 1) {
     const { data: profile, error: profileError } = await service
       .from("staff_profile")
-      .select("id,account_status,must_change_password,password_changed_at")
+      .select("id,email,account_status,must_change_password,password_changed_at")
       .eq("auth_user_id", authUserId)
       .maybeSingle();
     if (profileError) throw new Error("BOOTSTRAP_PROFILE_LOOKUP_FAILED");
