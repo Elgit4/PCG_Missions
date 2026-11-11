@@ -121,12 +121,12 @@ Legend: **G** proposed default grant; **S** scoped grant; **P** privileged Admin
 | Follow-up task create/read/update | G | S | S | S | S | — |
 | Follow-up task assign/reassign | P | S | S | C | C | — |
 | Prayer request create | G | G | C | C | C | G |
-| Assigned prayer read/update | P* | C* | C* | — | — | S |
+| Assigned prayer read/update | — | — | — | — | — | S (read only) |
 | Prayer workflow coordination | P | C | — | — | — | — |
-| Prayer privileged oversight | P | — | — | — | — | — |
+| Prayer privileged oversight | P (read only, reason-coded/audited) | — | — | — | — | — |
 | Care directory/groups | P | C | C | — | — | — |
-| Assigned care record read/update | P* | C* | C* | — | — | — |
-| Care privileged oversight | P | — | — | — | — | — |
+| Assigned care record read/update | — (no care-worker role yet) | — | — | — | — | — |
+| Care privileged oversight | P (read only, reason-coded/audited) | — | — | — | — | — |
 | Event read/manage | G | G | S | S | C | — |
 | Registration management | G | G | S | S | C | — |
 | Event check-in | G | G | S | S | C | — |
