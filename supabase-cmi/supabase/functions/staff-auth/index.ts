@@ -128,6 +128,10 @@ async function sendEmail(
       html,
       text: textBody,
     }),
+    // Keep provider latency well below the three-minute first-admin lease.
+    // This bounds credential-delivery work and allows the lease to be released
+    // before another recovery attempt can legitimately take over.
+    signal: AbortSignal.timeout(15_000),
   });
   if (!result.ok) {
     // Never log the provider response body or recipient credentials.
