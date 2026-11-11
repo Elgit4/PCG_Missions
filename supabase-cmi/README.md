@@ -37,7 +37,7 @@ The product owner confirmed Supabase email/password authentication on 10 Novembe
 1. `contacts_followup_domain.sql` and matching test.
 2. `restricted_pastoral_domain.sql` and matching test.
 3. `events_attendance_public_content.sql` and matching test.
-4. `backend_capability_catalogue.sql` and matching security test; it seeds capability metadata only. The separate permanent visitor MVP authorization migration seeds 65 explicit role-capability grants for visitor/follow-up operations.
+4. `backend_capability_catalogue.sql` and matching security test; it seeds capability metadata only. The owner-directed visitor MVP authorization baseline in PR #37 seeds 55 explicit role-capability grants for visitor/follow-up operations.
 
 The third slice covers event lifecycle, typed event staff/team assignments, registration, transport, check-in, closeout, typed calendar scope, typed announcement audiences, church public profile, welcome messages, sermons, daily word, digital tracts and typed external document links.
 
@@ -153,7 +153,7 @@ The database RPCs independently validate the active staff profile, active branch
 
 Both RPCs are `SECURITY DEFINER`, pin `search_path` to `pg_catalog`, and are executable only by `service_role`. Browser table grants remain closed. The SQL remains in `schema-drafts/`, not permanent migration history. CI applies it only through temporary CLI-generated migrations on the disposable local CMI stack. PR #11's exact-head run [42594351467](https://github.com/Elgit4/PCG_Missions/actions/runs/42594351467) passed the initial 30-assertion pastoral suite (208 assertions total). Subsequent hardening expanded it to 46 assertions (224 total) in main CI run [42596909576](https://github.com/Elgit4/PCG_Missions/actions/runs/42596909576). PR #13 then added three tests for the bounded 100-interaction projection and absence of audit rows after denied reads. Its exact-head run [42600705230](https://github.com/Elgit4/PCG_Missions/actions/runs/42600705230) passed all seven pgTAP files (**227 assertions**), Deno formatting/lint/type-checks and all 58 Deno unit tests. PR #13 is merged as [b8843c2](https://github.com/Elgit4/PCG_Missions/commit/b8843c2ea09561ccaf712222dccb282490126fd6); the post-merge `main` workflow [42601107555](https://github.com/Elgit4/PCG_Missions/actions/runs/42601107555) also passed.
 
-No role-capability grants are seeded. R-01, R-10, R-11 and D-07 remain pending; these reads remain denied for actual staff until decisions are approved and the approved grants are provisioned. No create, list, update, assignment, archive, delete or retention endpoints are included. The functions remain undeployed; nothing has been applied to a hosted Supabase project.
+No pastoral narrative or care capabilities are granted by the current owner-directed baseline. Individual audited-read endpoints remain source-only and do not provide list, create, update, assignment, archive, delete or retention workflows. The functions remain undeployed; nothing has been applied to a hosted Supabase project.
 
 
 ## Current backend readiness snapshot — 2026-11-09
