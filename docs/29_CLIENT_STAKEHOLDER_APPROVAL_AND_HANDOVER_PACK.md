@@ -115,12 +115,12 @@ The product owner has selected the defaults in document 31 for the current imple
 | R-04 | Team leader administration | Own team and explicitly assigned events only; no cross-team membership changes or exports | Cross-team data exposure and unauthorised staff changes | Pending |
 | R-05 | Field worker/volunteer contact fields | Minimum assigned-contact fields; phone/email separately approved | Personal contact details unnecessarily exposed | Pending |
 | R-06 | Individual SMS by field workers/volunteers | Disabled at launch | Uncontrolled messages, cost and consent risk | Pending |
-| R-07 | Team leader bulk SMS | Team/event-scoped draft only; dispatch by a separate authorised sender after approval | Unapproved bulk messaging | Pending |
+| R-07 | Team leader bulk SMS | Team/event-scoped draft only; no approval or dispatch | Unapproved bulk messaging | Owner-directed default selected; SMS remains disabled |
 | R-08 | Campaign creator/approver separation | Different active users; logged exception only when operationally unavoidable | Self-approved campaigns and uncontrolled spend | Pending |
-| R-09 | Coordinator automated SMS configuration | Allowlisted triggers/templates only; no global provider control | Unintended automated messages and spend | Pending |
+| R-09 | Coordinator automated SMS configuration | Disabled; empty trigger catalogue; no provider/global enablement | Unintended automated messages and spend | Owner-directed default selected; SMS remains disabled |
 | R-10 | Care record read/update | Assigned care workers only; Admin/Pastor oversight separate and audited | Unauthorised access to sensitive care details | Pending |
-| R-11 | Intercessor creation and linked identity | Create requests if authorised; assigned request text only; linked identity minimised | Unnecessary disclosure of requester's identity/contact | Pending |
-| R-12 | Contact/report exports | Off by default; Admin/Pastor export-specific grant, masked fields, reason and audit | Bulk extraction of personal or pastoral information | Pending |
+| R-11 | Intercessor creation and linked identity | Approved intake only; assigned request text; no linked phone/email projection | Unnecessary disclosure of requester's identity/contact | Owner-directed default selected; implementation pending |
+| R-12 | Contact/report exports | Disabled until dedicated capability, masking, limits and audit are implemented | Bulk extraction of personal or pastoral information | Owner-directed default selected; export remains disabled |
 
 ## 7. Logical data and workflow decisions D-01 to D-13
 
