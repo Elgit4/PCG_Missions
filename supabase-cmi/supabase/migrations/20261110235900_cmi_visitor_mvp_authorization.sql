@@ -23,6 +23,21 @@ insert into public.capability (code, description, sensitivity) values
 ('followup.task.assign.scoped','Assign follow-up tasks within the role scope.','ordinary')
 on conflict (code) do update set description=excluded.description,sensitivity=excluded.sensitivity,is_active=true;
 
+-- Reconcile any earlier pre-release baseline that granted contact identity
+-- fields to lower operational roles. This migration is not deployed to hosted
+-- production; this defensive delete also makes local/staging replays converge
+-- on the selected least-privilege grant set.
+delete from public.role_capability rc
+using public.role r, public.capability c
+where rc.role_id = r.id
+  and rc.capability_id = c.id
+  and r.code in ('coordinator','team_leader','field_worker','follow_up_volunteer')
+  and c.code in (
+    'contact.identity.capture',
+    'contact.identity.read.scoped',
+    'contact.identity.update.scoped'
+  );
+
 -- Admin/Pastor: branch-wide visitor/follow-up plus limited staff control plane.
 insert into public.role_capability(role_id,capability_id,scope_mode)
 select r.id,c.id,'branch' from public.role r cross join public.capability c
