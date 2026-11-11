@@ -163,7 +163,7 @@ No role-capability grants are seeded. R-01, R-10, R-11 and D-07 remain pending; 
 - The CMI schema foundation is the only permanent CMI migration. The six domain SQL drafts and matching pgTAP suites are validated through temporary migrations on the isolated local CI stack; they are not permanent migration history.
 - Source-only Edge Functions currently cover public-content projections, staff session/operations, pastoral audited reads, private event drafts, announcement drafts, sermon/welcome drafts and branch calendar operations.
 - No role-capability grants are seeded. R-01–R-12, D-01–D-13 and authentication/SMS/offline/audit approvals remain pending. Do not infer access rules or activate messaging.
-- Staff invitation/activation and private PIN lifecycle, complete prayer/care management, event registration/capacity/transport/check-in transactions, reporting, offline sync and SMS dispatch remain incomplete or approval-gated.
+- Staff invitation/activation and password lifecycle, complete prayer/care management, event registration/capacity/transport/check-in transactions, reporting, offline sync and SMS dispatch remain incomplete or approval-gated.
 - No frontend application is present in `main`; no hosted Supabase project has been linked or modified; no production migration or Edge Function has been deployed.
 
 The next unblocked engineering step is to restore a verifiable green CMI CI run and keep documentation aligned. Feature work requiring the outstanding church policy decisions must remain blocked until those decisions are recorded.
@@ -173,12 +173,12 @@ The next unblocked engineering step is to restore a verifiable green CMI CI run 
 
 The staff-access-operations Edge Function implements guarded role assignment, role revocation, staff account deactivation and reactivation. The staff-auth function also exposes administrator-only staff account creation, backed by `cmi_create_staff_account`, which verifies branch-scoped staff-account and role-assignment capabilities before creating a profile, assigning one of the six roles and writing an access-audit record. New staff receive a one-time temporary credential by email and must replace it at first sign-in. See document 24.
 
-The current draft authentication slice implements Supabase email/password sign-in, one-time temporary-password bootstrap, Admin/Pastor-created staff accounts, forced first-login password replacement and administrator-reviewed temporary-password recovery. The product owner has referred to email + PIN authentication while describing a password-style first-login/reset workflow. The exact credential type therefore remains a release blocker: do not deploy this email/password implementation as a substitute for a PIN flow without explicit confirmation. If PIN is confirmed, replace the credential handling with the reviewed server-side PIN verifier while retaining Supabase Auth session authority.
+The current authentication slice implements Supabase email/password sign-in, one-time temporary-password bootstrap, Admin/Pastor-created staff accounts, forced first-login password replacement and administrator-reviewed temporary-password recovery. The product owner confirmed email/password on 10 November 2026; the earlier email + PIN proposal is superseded. PR #33 adds the bounded first-admin email-delivery recovery path and has passed its isolated backend CI suite, but it remains an unmerged draft stacked on PR #28. Production email configuration, staging verification and deployment are still outstanding.
 
 
 ## Requirements-driven engineering baseline
 
-See [document 25](../docs/25_CMI_REQUIREMENTS_DRIVEN_ENGINEERING_BASELINE.md) for the source-traced decisions governing authentication, authorization, SMS, offline boundaries, pastoral privacy, public access, events and retention. It distinguishes selected technical defaults from church-policy approvals. Do not create role grants, activate SMS dispatch, implement a PIN verifier or promote policy-gated domain migrations merely because a recommendation is documented. The approval state remains in document 11.
+See [document 25](../docs/25_CMI_REQUIREMENTS_DRIVEN_ENGINEERING_BASELINE.md) for the source-traced decisions governing authentication, authorization, SMS, offline boundaries, pastoral privacy, public access, events and retention. It distinguishes selected technical defaults from church-policy approvals. Do not create unapproved role grants, activate SMS dispatch, implement a superseded PIN verifier or promote policy-gated domain migrations merely because a recommendation is documented. The approval state remains in document 11.
 
 
 ## Frontend integration contract
