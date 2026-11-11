@@ -28,7 +28,9 @@ Deno.test("first administrator can safely reissue an undelivered temporary crede
     },
   );
   if (result !== "recover_undelivered_credential") {
-    throw new Error("still-gated first administrator should allow credential recovery");
+    throw new Error(
+      "still-gated first administrator should allow credential recovery",
+    );
   }
 });
 
@@ -58,7 +60,9 @@ Deno.test("inactive first administrator cannot use bootstrap recovery", () => {
     },
   );
   if (result !== "already_used") {
-    throw new Error("inactive profile must not be eligible for bootstrap recovery");
+    throw new Error(
+      "inactive profile must not be eligible for bootstrap recovery",
+    );
   }
 });
 
