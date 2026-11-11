@@ -1,5 +1,5 @@
 begin;
-select plan(19);
+select plan(23);
 
 select has_table('public', 'capability', 'Capability catalogue exists');
 select ok(
@@ -12,9 +12,57 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  65,
-  'the approved visitor MVP role baseline contains 65 least-privilege grants'
+  52,
+  'the owner-directed visitor MVP baseline contains 52 least-privilege grants'
 );
+select ok(
+  not exists (
+    select 1 from public.role_capability rc
+    join public.role r on r.id = rc.role_id
+    join public.capability c on c.id = rc.capability_id
+    where r.code in ('coordinator','team_leader','field_worker','follow_up_volunteer')
+      and c.code in (
+        'contact.identity.capture',
+        'contact.identity.read.scoped',
+        'contact.identity.update.scoped'
+      )
+  ),
+  'ordinary contact phone/email permissions are not granted to coordinator, team leader, field worker or follow-up volunteer'
+);
+select ok(
+  (select count(*)::integer
+   from public.role_capability rc
+   join public.role r on r.id = rc.role_id
+   join public.capability c on c.id = rc.capability_id
+   where r.code = 'admin_pastor'
+     and c.code in (
+       'contact.identity.capture',
+       'contact.identity.read.scoped',
+       'contact.identity.update.scoped'
+     )
+     and rc.scope_mode = 'branch'),
+  3,
+  'Admin/Pastor retains the three explicit branch-scoped contact identity capabilities'
+);
+select ok(
+  not exists (
+    select 1 from public.role_capability rc
+    join public.role r on r.id = rc.role_id
+    join public.capability c on c.id = rc.capability_id
+    where r.code = 'prayer_intercessor'
+  ),
+  'Prayer Intercessor receives no ordinary contact CRM grants'
+);
+select ok(
+  not exists (
+    select 1 from public.role_capability rc
+    join public.role r on r.id = rc.role_id
+    join public.capability c on c.id = rc.capability_id
+    where c.code like 'sms.%' or c.code like '%.export%'
+  ),
+  'SMS and export capabilities remain ungranted by default'
+);
+
 select has_function(
   'public',
   'cmi_create_contact',
