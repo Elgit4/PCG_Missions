@@ -2,7 +2,7 @@
 
 **Version:** 0.1  
 **Baseline:** CMI Follow-up v2.1  
-**Status:** Awaiting church/stakeholder approval — no decisions are assumed approved  
+**Status:** Product-owner implementation defaults selected on 11 November 2026; church-policy sign-off remains separate  
 **Purpose:** One review sheet for the authorization decisions (R-01–R-12) and logical data decisions (D-01–D-13).
 
 ## How to use this register
@@ -12,13 +12,13 @@
 3. Record approver, date and any conditions.
 4. Update the role matrix, ERD, physical schema and validation report before generating executable migrations.
 
-The recommendations below are engineering defaults intended to reduce risk while decisions are pending. They are not church policy and must not be treated as approval. A client-facing decision schedule, recommended permission baseline, UAT checklist and approval record are provided in [document 29 — Client Stakeholder Approval & Handover Pack](29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md).
+The product owner has explicitly authorized implementation of the standard conservative defaults for all R-01–R-12 and D-01–D-13 decisions. Those selected defaults are now the engineering baseline in [document 31 — Owner-Directed Safe-Default Decision Baseline](31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md). This is product-owner authority to implement the current default, not a claim that the church board, pastoral lead, legal adviser or regulator has approved its policy implications. Stakeholders may request amendments later through change control.
 
 ## A. Authorization and role-scope decisions
 
-| ID | Decision to approve | Recommended safe default pending approval | Approval / alternative |
+| ID | Decision to approve | Recommended safe default pending approval | Current product-owner baseline |
 |---|---|---|---|
-| R-01 | Admin/Pastor access to prayer and care narratives | Explicit privileged oversight capability; every narrative read mediated and audited. No blanket role bypass. | Pending |
+| R-01 | Admin/Pastor access to prayer and care narratives | Explicit privileged oversight capability; every narrative read mediated and audited. No blanket role bypass. | Owner-directed default selected; implementation/release status tracked in document 31 |
 | R-02 | Coordinator prayer management scope | Workflow/assignment/status metadata only; no narrative read until explicitly granted. | Pending |
 | R-03 | Coordinator access to ordinary contacts | Operational church/branch workspace with minimized fields; no restricted pastoral fields. | Pending |
 | R-04 | Team leader team administration | Own team and explicitly assigned event only; no cross-team membership changes or exports by default. | Pending |
@@ -69,9 +69,9 @@ These are implementation gates alongside R/D decisions:
 | Church/stakeholder representative | Pending |
 | Technical reviewer | Pending |
 | Approval meeting/date | Pending |
-| Approved R-01–R-12 | None yet |
-| Approved D-01–D-13 | None yet |
-| Approved authentication decision | None yet |
+| Approved R-01–R-12 | Product-owner implementation baseline selected; church sign-off pending |
+| Approved D-01–D-13 | Product-owner implementation baseline selected; church sign-off pending |
+| Approved authentication decision | Supabase email/password confirmed by product owner — 10 Nov 2026 |
 | Approved SMS/provider decision | None yet |
 | Conditions or exceptions | Pending |
 | Approved ERD revision | Pending |
