@@ -73,5 +73,5 @@ on conflict do nothing;
 -- Restricted contact phone/email capabilities are Admin/Pastor-only in this baseline. Lower roles receive minimized contact projections. Prayer Intercessor intentionally has no visitor CRM grants. No exports,
 -- SMS, prayer/care narrative access or capability-policy editing are granted.
 comment on table public.role_capability is
-'Least-privilege visitor-management MVP grants. Branch/team/assigned scope is enforced server-side by Edge Functions.';
+'Owner-directed least-privilege visitor-management baseline: 55 grants. Contact phone/email capabilities are Admin/Pastor-only by default; lower roles receive minimized projections. Branch/team/assigned scope is enforced server-side by Edge Functions.';
 commit;
