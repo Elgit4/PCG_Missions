@@ -44,14 +44,14 @@ Public site navigation is visitor-oriented and must not reuse staff navigation o
 - Mobile-first field entry with minimal required fields, large touch targets and sensible defaults.
 - Clear distinction between contacts, event registrations, attendance and follow-up tasks.
 - Fast capture from Contacts and event workspace.
-- Visible sync status for queued offline captures.
+- Offline sync status only if the feature is enabled after its device-security gate.
 - Explicit duplicate review before merge; confirmation and history preservation.
 - Task lists prioritize due/overdue work without implying automated retention judgments.
 - Prayer and care screens communicate confidentiality and avoid unnecessary exposure.
 - Event setup clearly distinguishes registration enabled/disabled, capacity and optional transport.
 - Draft/publication states are unmistakable.
 - Reports explain their date range, scope and status.
-- All forms include loading, validation, empty, offline, error and success states.
+- All forms include loading, validation, empty, error and success states; offline states are added only if offline mode is enabled.
 - Responsive accessibility: semantic headings, keyboard/focus, contrast, labels, reduced motion and readable type.
 
 ## 6. Data access and backend boundaries
@@ -70,7 +70,7 @@ Use server-side operations for:
 Never expose service-role keys or credential secrets to the browser.
 
 ## 7. Offline design
-Offline capability is restricted to queued field captures, cached capture pickers and previously opened event check-in data. Provide pending/syncing/synced/failed states, idempotent sync and safe conflict handling. Do not cache the entire app or sensitive prayer/care records as part of this scope.
+Offline mode is disabled for the initial production release. Re-enable only after encrypted local storage, device/session binding, expiry, sign-out recovery, server-side reauthorization and conflict handling are implemented and tested. Never cache prayer/care narratives.
 
 ## 8. Authentication UX
 Sign-in uses email and password through Supabase Auth. First-time and reset access use a random temporary password, followed by mandatory private password replacement before workspace access. Keep error messages generic to prevent account enumeration. Rate-limit reset requests, audit administrator approval/denial, expire temporary credentials and revoke other sessions after credential reset or account deactivation.
@@ -92,12 +92,12 @@ Staff drafts are private. Authorized publication changes make sermons, daily wor
 Log operational identifiers and failure codes without PINs, secrets or pastoral narratives. Add tests for role/scope combinations, public isolation, prayer privacy, event access, sync retries, duplicate merge and publication state. Monitor sync failures, failed check-in reconciliation, registration capacity conflicts and authorization denials.
 
 ## 12. Proposed implementation sequence
-1. Approve requirements, role matrix and PIN security flow.
+1. Apply the product-owner-directed role/capability safe-default baseline and verify the email/password lifecycle.
 2. Approve information architecture and responsive prototypes.
 3. Redesign target database/ERD and RLS policies.
 4. Establish dedicated staging and CI.
 5. Implement auth, roles, teams and scope enforcement.
-6. Implement contacts, capture, duplicate merge and offline queue.
+6. Implement contacts, online capture, duplicate review/merge and scoped follow-up; keep offline queue disabled until its security gate passes.
 7. Implement follow-up, prayer and care.
 8. Implement events, public registration, transport and check-in.
 9. Implement calendar, announcements, SMS provider adapter, consent/suppression, campaigns, automation triggers and delivery webhooks.
