@@ -513,6 +513,62 @@ async function bootstrapAdmin(
   );
 }
 
+async function bootstrapAdminWithLease(
+  request: Request,
+  origin: string | null,
+  requestId: string,
+): Promise<Response> {
+  // Authenticate the operator before taking the shared lock. An invalid
+  // request must not be able to block a legitimate bootstrap attempt.
+  const configuredToken = Deno.env.get("CMI_BOOTSTRAP_TOKEN") ?? "";
+  const suppliedToken = bearerToken(request) ?? "";
+  if (
+    configuredToken.length < 32 || !suppliedToken ||
+    !await constantTimeEqual(configuredToken, suppliedToken)
+  ) {
+    return fail(
+      "BOOTSTRAP_NOT_AUTHORIZED",
+      "Bootstrap authorization failed.",
+      401,
+      origin,
+      requestId,
+    );
+  }
+
+  const { service } = clients();
+  const leaseId = crypto.randomUUID();
+  const { data: acquired, error: acquireError } = await service.rpc(
+    "cmi_acquire_first_admin_bootstrap_lease",
+    { p_lease_id: leaseId },
+  );
+  if (acquireError) throw new Error("BOOTSTRAP_LEASE_ACQUIRE_FAILED");
+  if (acquired !== true) {
+    return fail(
+      "BOOTSTRAP_IN_PROGRESS",
+      "A first-administrator setup or recovery operation is already in progress. Wait briefly and retry.",
+      409,
+      origin,
+      requestId,
+    );
+  }
+
+  try {
+    return await bootstrapAdmin(request, origin, requestId);
+  } finally {
+    const { error: releaseError } = await service.rpc(
+      "cmi_release_first_admin_bootstrap_lease",
+      { p_lease_id: leaseId },
+    );
+    if (releaseError) {
+      // The lease expires automatically after three minutes if the runtime
+      // terminates before release. Never log the bearer token or credentials.
+      console.error("first-admin bootstrap lease release failed", {
+        request_id: requestId,
+      });
+    }
+  }
+}
+
 Deno.serve(async (request: Request) => {
   const id = crypto.randomUUID();
   const origin = request.headers.get("Origin");
@@ -538,7 +594,7 @@ Deno.serve(async (request: Request) => {
   const action = route.join("/");
   try {
     if (request.method === "POST" && action === "bootstrap-admin") {
-      return await bootstrapAdmin(request, origin, id);
+      return await bootstrapAdminWithLease(request, origin, id);
     }
 
     if (request.method === "POST" && action === "request-password-reset") {
