@@ -275,12 +275,12 @@ Use operation-specific policies, not one broad FOR ALL policy.
 | R-04 | Can Team leaders create contacts, assign across teams, manage membership and export? | Team-scoped create/work; no cross-team actions/export by default |
 | R-05 | Which contact fields can Field workers and Follow-up volunteers read/update? | Minimum necessary fields; phone/email access separately considered |
 | R-06 | Can Field workers/Follow-up volunteers send individual SMS? | Off by default pending purpose, consent, cap and approval |
-| R-07 | Can Team leaders create/approve/send bulk campaigns? | Create/send only for own team/event; approval by Coordinator or Admin/Pastor |
+| R-07 | Can Team leaders create/approve/send bulk campaigns? | Draft only for own team/event; no approval or dispatch |
 | R-08 | Must campaign creator and approver be different? | Yes where second approver exists; logged exception otherwise |
-| R-09 | Can Coordinator configure automated SMS? | Approved trigger catalogue/templates only; Admin/Pastor controls provider/global enablement |
+| R-09 | Can Coordinator configure automated SMS? | Disabled; empty trigger catalogue; no provider/global enablement |
 | R-10 | Which roles can read/update care records? | Assigned care workers only; Admin/Pastor oversight separately audited |
-| R-11 | Can intercessors create requests and see linked contact name/phone? | Create allowed; linked identity minimized; phone only if justified |
-| R-12 | Which roles may export contact/report data and what masking applies? | Admin/Pastor by default; scoped report export only after approval |
+| R-11 | Can intercessors create requests and see linked contact name/phone? | Create only through approved intake; assigned request text only; no linked phone/email projection |
+| R-12 | Which roles may export contact/report data and what masking applies? | Export disabled until dedicated audited capability, masking and release gate are implemented |
 
 No migration should encode conditional grants until these decisions are approved.
 
