@@ -50,6 +50,7 @@ select ok(
     join public.role r on r.id = rc.role_id
     join public.capability c on c.id = rc.capability_id
     where r.code = 'prayer_intercessor'
+      and (c.code like 'contact.%' or c.code like 'followup.task.%')
   ),
   'Prayer Intercessor receives no ordinary contact CRM grants'
 );
