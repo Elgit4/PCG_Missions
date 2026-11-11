@@ -362,11 +362,8 @@ async function bootstrapAdmin(
     });
     return { users: data?.users, error };
   });
-  let authUserId: string;
+  let authUserId = existingUsers.length === 1 ? existingUsers[0].id : "";
   let createdNewAuthUser = false;
-  authUserId = bootstrapPath === "create"
-    ? ""
-    : existingUsers[0].id;
   let existingProfile: {
     id: string;
     account_status: string;
@@ -374,7 +371,7 @@ async function bootstrapAdmin(
     password_changed_at: string | null;
   } | null = null;
 
-  if (bootstrapPath !== "create") {
+  if (existingUsers.length === 1) {
     const { data: profile, error: profileError } = await service
       .from("staff_profile")
       .select("id,account_status,must_change_password,password_changed_at")
