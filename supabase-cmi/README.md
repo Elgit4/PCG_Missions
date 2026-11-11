@@ -24,7 +24,7 @@ The hosted Supabase project `cgwffpxlwgbnlinzwfoj` has the 11-table identity/aut
 
 The 11 informational `rls_enabled_no_policy` security-advisor notices are intentional fail-closed behavior pending approved policies. The performance advisor no longer reports unindexed foreign keys; unused-index notices are expected before application data and query traffic exist. This is an initial foundation migration only, not a complete application schema or production launch.
 
-The product owner confirmed Supabase email/password authentication on 10 November 2026. The earlier email + PIN proposal is superseded; see [the current authentication baseline](../docs/31_VISITOR_MVP_AUTHENTICATION_AUTHORIZATION_BASELINE.md) and [handover decision](../docs/29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md). The password lifecycle has passing branch-level unit/integration tests, but first-admin delivery recovery, production Edge Function deployment, email configuration, staging/UAT and remaining module workflows are not complete. The domain schema sources have now been promoted into permanent ordered migration files on the feature branch; they have not been applied to the hosted project. Production remains NO-GO.
+The product owner confirmed Supabase email/password authentication on 10 November 2026. The earlier email + PIN proposal is superseded; see [the current authentication baseline](../docs/31_VISITOR_MVP_AUTHENTICATION_AUTHORIZATION_BASELINE.md) and [handover decision](../docs/29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md). The password lifecycle and first-admin delivery recovery have passing branch-level CI; PR #33 remains unmerged. Production Edge Function deployment, email configuration, staging/UAT and remaining module workflows are not complete. The domain schema sources have now been promoted into permanent ordered migration files on the feature branch; they have not been applied to the hosted project. Production remains NO-GO.
 
 ## Current source layout
 
@@ -41,13 +41,13 @@ The product owner confirmed Supabase email/password authentication on 10 Novembe
 
 The third slice covers event lifecycle, typed event staff/team assignments, registration, transport, check-in, closeout, typed calendar scope, typed announcement audiences, church public profile, welcome messages, sermons, daily word, digital tracts and typed external document links.
 
-All domain drafts preserve branch-consistent foreign keys, RLS and closed browser grants. No client table policies are created. The visitor MVP authorization migration is the explicit product-owner-approved implementation baseline for 65 visitor/follow-up role grants; pastoral oversight, exports, SMS, capability-policy editing and other policy-gated grants remain absent pending church approval. The event draft removes the unapproved waitlist state, requires idempotency for public registrations and check-ins, and avoids polymorphic scope/audience/content references.
+All domain drafts preserve branch-consistent foreign keys, RLS and closed browser grants. No client table policies are created. The visitor MVP authorization baseline is being updated by PR #37 to 55 grants under the product-owner-directed safe-default decision record. Phone/email identity grants are removed from Coordinator, Team Leader, Field Worker and Follow-up Volunteer; pastoral oversight, exports, SMS and capability-policy editing remain ungranted. The event draft removes the unapproved waitlist state, requires idempotency for public registrations and check-ins, and avoids polymorphic scope/audience/content references.
 
 ## Validation
 
 The first three suites passed in [GitHub Actions run 42436473154](https://github.com/Elgit4/PCG_Missions/actions/runs/42436473154): 14 + 24 + 20 = 58 assertions. The events/attendance/public-content draft is included in the isolated local CI workflow with an expanded 46-assertion suite. The original 36 assertions passed in [run 42437731467](https://github.com/Elgit4/PCG_Missions/actions/runs/42437731467); the expanded 46 assertions and the full 104-assertion workflow passed in [run 42439672140](https://github.com/Elgit4/PCG_Missions/actions/runs/42439672140).
 
-CI generates temporary migration filenames using `supabase migration new`, copies the drafts into the isolated CLI project, applies them locally, runs pgTAP, then removes the temporary files. Draft SQL is not yet promoted to permanent migrations.
+The current authorization/domain feature branch contains permanent ordered migration files. CI replays them on an isolated local Supabase stack and runs the pgTAP suites. These migrations are source-controlled only and have not been applied to hosted production.
 
 ## Edge Functions
 
@@ -162,8 +162,8 @@ No role-capability grants are seeded. R-01, R-10, R-11 and D-07 remain pending; 
 - Latest `main` workflow run: [42671972079](https://github.com/Elgit4/PCG_Missions/actions/runs/42671972079) concluded `failure`. GitHub's jobs endpoint returned an empty job list for that run, so there is no job log or identified failing step available from the current run record. Treat `main` CI as not verified green until a new run succeeds.
 - The CMI schema foundation is the only permanent CMI migration. The six domain SQL drafts and matching pgTAP suites are validated through temporary migrations on the isolated local CI stack; they are not permanent migration history.
 - Source-only Edge Functions currently cover public-content projections, staff session/operations, pastoral audited reads, private event drafts, announcement drafts, sermon/welcome drafts and branch calendar operations.
-- No role-capability grants are seeded. R-01–R-12, D-01–D-13 and authentication/SMS/offline/audit approvals remain pending. Do not infer access rules or activate messaging.
-- Staff invitation/activation and private PIN lifecycle, complete prayer/care management, event registration/capacity/transport/check-in transactions, reporting, offline sync and SMS dispatch remain incomplete or approval-gated.
+- PR #37 implements the product-owner-directed safe-default baseline and reduces default contact identity grants. Church stakeholders may later amend the defaults through change control. SMS, exports, offline and privileged pastoral access remain disabled.
+- Complete prayer/care mutation workflows, event registration/capacity/transport/check-in transactions, reporting and role-scoped event workflows remain incomplete. Offline sync and live SMS dispatch are intentionally disabled by the selected baseline.
 - No frontend application is present in `main`; no hosted Supabase project has been linked or modified; no production migration or Edge Function has been deployed.
 
 The next unblocked engineering step is to restore a verifiable green CMI CI run and keep documentation aligned. Feature work requiring the outstanding church policy decisions must remain blocked until those decisions are recorded.
@@ -173,12 +173,12 @@ The next unblocked engineering step is to restore a verifiable green CMI CI run 
 
 The staff-access-operations Edge Function implements guarded role assignment, role revocation, staff account deactivation and reactivation. The staff-auth function also exposes administrator-only staff account creation, backed by `cmi_create_staff_account`, which verifies branch-scoped staff-account and role-assignment capabilities before creating a profile, assigning one of the six roles and writing an access-audit record. New staff receive a one-time temporary credential by email and must replace it at first sign-in. See document 24.
 
-The current draft authentication slice implements Supabase email/password sign-in, one-time temporary-password bootstrap, Admin/Pastor-created staff accounts, forced first-login password replacement and administrator-reviewed temporary-password recovery. The product owner has referred to email + PIN authentication while describing a password-style first-login/reset workflow. The exact credential type therefore remains a release blocker: do not deploy this email/password implementation as a substitute for a PIN flow without explicit confirmation. If PIN is confirmed, replace the credential handling with the reviewed server-side PIN verifier while retaining Supabase Auth session authority.
+The current authentication slice implements Supabase email/password sign-in, one-time temporary-password bootstrap, Admin/Pastor-created staff accounts, forced first-login password replacement and administrator-reviewed temporary-password recovery. The product owner confirmed email/password on 10 November 2026; the earlier PIN proposal is superseded. Production email configuration, first-admin recovery review, staging validation and deployment remain outstanding.
 
 
 ## Requirements-driven engineering baseline
 
-See [document 25](../docs/25_CMI_REQUIREMENTS_DRIVEN_ENGINEERING_BASELINE.md) for the source-traced decisions governing authentication, authorization, SMS, offline boundaries, pastoral privacy, public access, events and retention. It distinguishes selected technical defaults from church-policy approvals. Do not create role grants, activate SMS dispatch, implement a PIN verifier or promote policy-gated domain migrations merely because a recommendation is documented. The approval state remains in document 11.
+See [document 25](../docs/25_CMI_REQUIREMENTS_DRIVEN_ENGINEERING_BASELINE.md) and [document 31](../docs/31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md) for the selected owner-directed defaults. Do not activate SMS dispatch, exports, offline sync or privileged pastoral access until their implementation and compliance gates pass.
 
 
 ## Frontend integration contract
