@@ -190,7 +190,7 @@ The exact message-body storage approach (encrypted database column, server-side 
 | `audit_event` | `id uuid PK`; `actor_user_id uuid NULL`; `action_code text`; `target_type text`; `target_id uuid NULL`; `branch_id uuid NULL`; `occurred_at`; `request_id`; `safe_metadata jsonb`. Append-only; exclude secrets, prayer text, care narratives and unnecessary phone/message content. |
 | `offline_sync_receipt` | `id uuid PK`; `user_id FK`; `device_key_id text`; `client_request_id uuid UNIQUE`; `payload_hash text`; `result_state text CHECK`; `server_record_id uuid NULL`; `received_at`; `expires_at`. Do not store full unsynced payload indefinitely. |
 
-Offline support remains deliberately limited to queued field captures, cached picker data and previously opened event check-in data. Queue only approved minimal payloads. Do not queue prayer requests or care narratives. The server must re-authenticate, re-authorize and validate current field rules on sync; an old local permission snapshot is not authority. Define device encryption, sign-out recovery and expiry before release.
+Offline mode is disabled for the initial production release. Do not cache personal records or event attendance on devices. Re-enable only after encrypted local storage, device/session binding, short expiry, sign-out recovery, reauthorization at sync and conflict-resolution tests pass.
 
 ## 4. Constraints and indexes
 
@@ -297,15 +297,16 @@ Use pgTAP or equivalent database tests with seeded synthetic users for all six r
 
 ## 6. Authentication and staff PIN implications
 
-The product baseline is staff sign-in using **email plus PIN**, with the PIN treated as a private credential and never as a role or authorization claim. The database must not store plaintext PINs or duplicate credential hashes.
+The product-owner-confirmed baseline is Supabase Auth **email plus password**. Supabase Auth owns password verification, hashing and sessions. The application must not store plaintext passwords, temporary passwords or duplicate password hashes.
 
 A safe provisioning pattern is:
-1. Admin creates the staff identity and issues a one-time activation PIN/invitation.
-2. On first activation, the staff member establishes a private PIN that the administrator cannot view or recover.
-3. Subsequent sign-in uses email plus the private PIN through a server-validated authentication flow, if that is the approved product decision.
-4. PIN reset/reissue uses a verified recovery process and invalidates previous credentials/sessions as appropriate.
+1. Admin provisions the staff identity through a trusted server-side operation and issues a cryptographically random, short-lived temporary password to the verified email address.
+2. First login is gated until the staff member sets a private permanent password.
+3. Administrators never see, choose or store the permanent password.
+4. Recovery is generic-response and rate-limited; an authorized Admin/Pastor reviews the request and the system issues a new temporary password to the verified email address.
+5. Reset/deactivation revokes existing sessions and protected requests re-check active account status.
 
-The exact Supabase Auth integration for reusable PIN sign-in is a security design decision, not something to improvise by passing a short PIN directly as a password. Before implementation, threat-model PIN entropy, rate limits, progressive throttling/lockout, secure hashing/verification, session issuance, recovery, device sharing and credential stuffing. A custom verifier must run only in a trusted server environment and must not expose a user-enumeration oracle. Never put PINs in user metadata, logs or browser-readable tables, and never allow role changes through client-editable metadata.
+The exact Supabase Auth integration for reusable PIN sign-in is a security design decision, not something to improvise by passing a short PIN directly as a password. Before release, test temporary-password entropy and expiry, email delivery failure recovery, rate limits, generic responses, forced password replacement, session revocation, stale-token behaviour and deactivated accounts. A custom verifier must run only in a trusted server environment and must not expose a user-enumeration oracle. Never put PINs in user metadata, logs or browser-readable tables, and never allow role changes through client-editable metadata.
 
 If the product owner instead chooses one-time PIN activation followed by a different sign-in secret, that changes the stated email-plus-PIN login requirement and must be explicitly approved rather than silently substituted.
 
