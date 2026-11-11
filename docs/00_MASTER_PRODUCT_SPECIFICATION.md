@@ -145,7 +145,7 @@ SMS requirements:
 - Store message intent, sender/trigger, template/version, recipient reference, provider message ID, queued/submitted/delivered/failed/undeliverable status, timestamps and failure code. Do not treat provider acceptance as delivery.
 - Use an outbox/queue, idempotency keys, bounded retries and rate limits to avoid duplicate sends. Failed messages must be visible to authorized operators.
 - Enforce role, team, event and contact scope at send time, not just when selecting recipients.
-- Never include prayer-request details, confidential pastoral notes, sensitive care narratives, passwords, PINs, recovery tokens or other secrets in SMS. Use neutral wording for sensitive workflows.
+- Never include prayer-request details, confidential pastoral notes, sensitive care narratives, passwords, temporary credentials, recovery tokens or other secrets in SMS. Use neutral wording for sensitive workflows.
 - Bulk campaigns require a final review/confirmation step and audit record. Restrict campaign creation, audience selection and sending separately if the capability matrix requires it.
 - Automated messages must be opt-in/configurable by trigger and template, respect an approved quiet-hours policy; do not enable automated sending until that policy is configured, and be cancellable/pausable by authorized administrators.
 - Record and respect applicable consent, opt-out and Ghanaian telecommunications/provider requirements. Provider, sender-ID registration, pricing, throughput and regulatory setup must be validated before production.
