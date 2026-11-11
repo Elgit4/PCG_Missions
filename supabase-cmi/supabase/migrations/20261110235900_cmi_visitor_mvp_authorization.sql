@@ -70,8 +70,29 @@ where r.code='follow_up_volunteer' and c.code in (
 'followup.task.update.scoped')
 on conflict do nothing;
 
--- Restricted contact phone/email capabilities are Admin/Pastor-only in this baseline. Lower roles receive minimized contact projections. Prayer Intercessor intentionally has no visitor CRM grants. No exports,
--- SMS, prayer/care narrative access or capability-policy editing are granted.
+-- Prayer Intercessor receives only actively assigned prayer-request reads.
+-- This does not grant request creation, assignment management or contact identity.
+insert into public.role_capability(role_id,capability_id,scope_mode)
+select r.id,c.id,'assigned'
+from public.role r cross join public.capability c
+where r.code='prayer_intercessor'
+  and c.code='prayer.request.read.assigned'
+on conflict do nothing;
+
+-- Admin/Pastor pastoral oversight is an explicit audited capability, not a
+-- role bypass. The read RPCs require allowlisted reason codes and append an
+-- access-audit row in the same transaction.
+insert into public.role_capability(role_id,capability_id,scope_mode)
+select r.id,c.id,'oversight'
+from public.role r cross join public.capability c
+where r.code='admin_pastor'
+  and c.code in ('prayer.oversight.read','care.oversight.read')
+on conflict do nothing;
+
+-- No other role receives pastoral narrative access. Coordinator workflow
+-- metadata APIs and assigned-care worker roles are not yet implemented, so
+-- their corresponding capabilities remain ungranted. No exports, SMS,
+-- capability-policy editing or privileged pastoral mutation grants are seeded.
 comment on table public.role_capability is
-'Owner-directed least-privilege visitor-management baseline: 55 grants. Contact phone/email capabilities are Admin/Pastor-only by default; lower roles receive minimized projections. Branch/team/assigned scope is enforced server-side by Edge Functions.';
+'Owner-directed least-privilege visitor-management baseline: 58 grants. Contact phone/email capabilities are Admin/Pastor-only by default; lower roles receive minimized projections. Branch/team/assigned scope is enforced server-side by Edge Functions.';
 commit;
