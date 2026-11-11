@@ -133,11 +133,13 @@ select is(
    from public.role_capability rc
    join public.capability cap on cap.id=rc.capability_id
    where cap.code in (
-     'prayer.oversight.read','care.oversight.read',
+     'prayer.oversight.manage','care.oversight.manage',
+     'prayer.request.create','prayer.request.update.assigned',
+     'care.record.read.assigned','care.record.update.assigned',
      'sms.campaign.send.scoped','report.export.scoped','access.capability.manage'
    )),
   0,
-  'bootstrap grants no business-domain, pastoral oversight, SMS, export or policy-editing privileges'
+  'bootstrap does not add pastoral mutation, care assignment, SMS, export or policy-editing grants beyond the owner-directed read-only baseline'
 );
 select throws_ok(
   'select public.cmi_bootstrap_first_admin(''aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'', ''first-admin@example.test'', ''First Administrator'', ''PCG Missions Test Church'', ''Main Test Branch'')',
