@@ -37,7 +37,7 @@ These artifacts are committed on `main` and are **proposals for review**, not ap
 
 ## Backend implementation
 
-The CMI-only backend is developed in `../supabase-cmi/`, isolated from the historical ChurchConnect workspace. The permanent migrations contain the identity/authorization foundation and the hosted RLS-helper privilege remediation. Domain SQL/pgTAP drafts remain under `schema-drafts/` and CI validates them on an isolated local Supabase stack; they must not be promoted to permanent domain migrations until the relevant physical-design and stakeholder decisions are approved. The integrated frontend is source-controlled under `../web/`, and PRs #24–#26 are merged; source presence is not deployment evidence. The hosted Supabase project currently has zero CMI public application tables and zero deployed CMI Edge Functions.
+The CMI-only backend is developed in `../supabase-cmi/`, isolated from the historical ChurchConnect workspace. The current authorization feature branch contains 13 ordered permanent CMI migrations covering the foundation, contacts/follow-up, restricted pastoral records, events/attendance/public content, capability grants, task operations, audited pastoral reads, visitor MVP authorization and staff access/auth lifecycle. Backend CI applies the committed migration set to an isolated local Supabase stack and runs 343 pgTAP assertions across 10 files. These migrations are source-controlled and locally validated, but remain subject to code review and church approval before they are applied to hosted production. The integrated frontend is source-controlled under `../web/`; source presence is not deployment evidence. The hosted Supabase project currently has 11 foundation tables, only 3 recorded migrations, no CMI domain records and zero deployed CMI Edge Functions.
 
 - [16 — Schema Reconciliation & Decision Crosswalk](16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) — tracks DD-01–DD-25, their proposed dispositions and approval dependencies.
 - [Isolated CMI Supabase workspace](../supabase-cmi/README.md) — separate CLI configuration, migration history and test workspace.
@@ -65,7 +65,7 @@ The CMI-only backend is developed in `../supabase-cmi/`, isolated from the histo
 4. Use document 03 before changing the database or generating an ERD.
 5. Review the proposed logical model and ERD after understanding documents 00–03.
 6. Review the physical schema, validation report, traceability crosswalk and stakeholder decision register.
-7. Resolve approval gates before creating executable domain migrations or enabling production access.
+7. Resolve approval gates before applying the feature-branch migrations to hosted production or enabling production access.
 8. Use document 04 for frontend and backend implementation.
 9. Use document 05 to plan and verify delivery.
 10. Use document 06 for staff operating instructions.
@@ -85,7 +85,7 @@ The following files were created for the earlier ChurchConnect two-role requirem
 - `database/ChurchConnect_ERD_v1.0.drawio`
 - `database/ChurchConnect_ERD_v1.1.drawio`
 
-The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role schema and are not the target CMI database. They are not evidence of CMI six-role, event registration, transport, public-content or offline-queue implementation. The current CMI ERD and schema proposals are committed on `main`, but remain proposals pending approval and reconciliation; the validated SQL drafts are not yet the approved production schema.
+The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role schema and are not the target CMI database. They are not evidence of CMI six-role, event registration, transport, public-content or offline-queue implementation. The CMI ERD and logical/physical design proposals remain subject to stakeholder approval and reconciliation. The separate 13-migration implementation set on the authorization feature branch has passed isolated local CI, but is not yet approved or applied to hosted production.
 
 ## Baseline rules
 
