@@ -28,8 +28,9 @@ insert into public.role_capability(role_id,capability_id,scope_mode)
 select r.id,c.id,'branch' from public.role r cross join public.capability c
 where r.code='admin_pastor' and c.code in (
 'staff.directory.read','staff.account.manage','access.role.assign','staff.password_reset.manage',
-'contact.capture.create','contact.read.scoped','contact.update.scoped','contact.note.create',
-'contact.note.read.scoped','contact.interaction.record','contact.assign.scoped',
+'contact.capture.create','contact.read.scoped','contact.update.scoped',
+'contact.identity.capture','contact.identity.read.scoped','contact.identity.update.scoped',
+'contact.note.create','contact.note.read.scoped','contact.interaction.record','contact.assign.scoped',
 'followup.task.create','followup.task.read.scoped','followup.task.update.scoped','followup.task.assign.scoped')
 on conflict do nothing;
 
@@ -46,8 +47,7 @@ on conflict do nothing;
 insert into public.role_capability(role_id,capability_id,scope_mode)
 select r.id,c.id,'team' from public.role r cross join public.capability c
 where r.code='team_leader' and c.code in (
-'contact.capture.create','contact.read.scoped','contact.update.scoped','contact.identity.capture',
-'contact.identity.read.scoped','contact.identity.update.scoped','contact.note.create',
+'contact.capture.create','contact.read.scoped','contact.update.scoped','contact.note.create',
 'contact.note.read.scoped','contact.interaction.record','contact.assign.scoped',
 'followup.task.create','followup.task.read.scoped','followup.task.update.scoped','followup.task.assign.scoped')
 on conflict do nothing;
