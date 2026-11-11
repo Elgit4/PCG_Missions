@@ -134,7 +134,7 @@ function getBearer(request: Request): string | null {
 
 async function readJson(request: Request): Promise<unknown> {
   const contentType = request.headers.get("Content-Type") ?? "";
-  if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
+  if (!/^application\/json(?:\s*;|$)/i.test(contentType)) {
     throw new Error("CONTENT_TYPE_REQUIRED");
   }
 
