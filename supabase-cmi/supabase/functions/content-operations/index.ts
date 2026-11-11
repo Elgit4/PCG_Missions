@@ -7,8 +7,8 @@ import {
   parseWelcomeMessageCreate,
   parseWelcomeMessagePatch,
 } from "./validation.ts";
-
 import { readJson } from "../_shared/request_body.ts";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "";
