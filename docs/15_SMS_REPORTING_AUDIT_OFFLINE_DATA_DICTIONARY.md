@@ -244,17 +244,25 @@ UNIQUE `(outbox_id, attempt_number)`; no provider credentials or full message bo
 | `branch_id` | uuid | No | FK → branch | Branch |
 | `report_type` | text | No | CHECK | daily_evangelism, event_evangelism, weekly_ministry |
 | `period_start` | date | No | — | Start date in church-local calendar |
-| `period_end` | date | No | — | End date; >= start |
+| `period_end` | date | No | — | Same day for daily/event reports; seven-day inclusive range for weekly report |
 | `author_user_id` | uuid | No | FK → staff_profile | Author |
-| `scope_type` | text | No | CHECK | own, team, event, branch |
-| `scope_id` | uuid | Yes | — | Polymorphic scope reference; replace before migration |
+| `team_id` | uuid | Yes | FK → team, RESTRICT | Optional typed team scope; must belong to branch |
+| `event_id` | uuid | Yes | FK → event, RESTRICT | Required for event evangelism; must belong to branch |
+| `contacts_captured` | integer | No | DEFAULT 0, CHECK >= 0 | Count of new contacts captured |
+| `gospel_presentations` | integer | No | DEFAULT 0, CHECK >= 0 | Count of gospel presentations |
+| `decisions_for_christ` | integer | No | DEFAULT 0, CHECK >= 0 | Count of recorded decisions; cannot exceed presentations |
+| `followup_required` | integer | No | DEFAULT 0, CHECK >= 0 | Count of people needing follow-up |
+| `followup_completed` | integer | No | DEFAULT 0, CHECK >= 0 | Count of follow-up activities completed |
+| `visits_completed` | integer | No | DEFAULT 0, CHECK >= 0 | Count of completed visits |
+| `calls_completed` | integer | No | DEFAULT 0, CHECK >= 0 | Count of completed calls |
+| `events_supported` | integer | No | DEFAULT 0, CHECK >= 0 | Count of events supported |
+| `attendance_count` | integer | No | DEFAULT 0, CHECK >= 0 | Attendance count for event evangelism |
 | `status` | text | No | DEFAULT 'draft', CHECK | draft, submitted, returned, approved |
-| `report_data` | jsonb | No | DEFAULT '{}' | Typed/validated report payload; no sensitive pastoral narratives |
 | `submitted_at` | timestamptz | Yes | — | Submission |
 | `created_at` | timestamptz | No | DEFAULT now() | Creation |
 | `updated_at` | timestamptz | No | DEFAULT now() | Update |
 
-Check period_end >= period_start. The selected D-12 default is typed columns for stable report facts and no arbitrary JSON payload for core counts. Use typed branch/team/event relationships instead of polymorphic scope. The specific report workflow remains unimplemented and its capability grants remain absent until the API and tests are ready.
+Use typed checks: daily evangelism has a single-day period and no event; event evangelism has a single-day period and a same-branch event; weekly ministry spans exactly seven inclusive calendar days. Enforce `decisions_for_christ <= gospel_presentations`. No generic JSON payload or free-form pastoral narrative is accepted. Review scope is author-own, branch (Admin/Pastor and Coordinator) or active own-team (Team Leader). Field Worker and Follow-up Volunteer submit/read own reports only; Prayer Intercessor has no report access. This report schema and API are not yet implemented, so no report capabilities are granted.
 
 ### 5.2 `report_review_event`
 
