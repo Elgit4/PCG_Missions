@@ -18,7 +18,7 @@ This document groups requirements by the work users perform. It defines expected
 - Detect possible duplicates and allow authorized merging from the record actions menu.
 - A merge must preserve the surviving contact's relevant history and record the merge action for audit/recovery.
 
-**Acceptance:** A permitted worker can capture a contact on a phone, save it online or queue it offline, find it later within scope, and review its history.
+**Acceptance for the initial release:** A permitted worker can capture a contact online, find it later within scope, and review its history. Offline queueing is disabled until the device-security gate passes.
 
 ## 3. Offline field capture
 Offline capture is specified as a future capability but is **disabled for the initial production release** until encrypted local storage, device/session binding, expiry, sign-out recovery and conflict handling pass security tests. When enabled, scope is intentionally narrow:
