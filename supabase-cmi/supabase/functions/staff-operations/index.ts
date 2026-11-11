@@ -31,7 +31,7 @@ const FOLLOWUP_IDEMPOTENCY_KEY_VERSION = Number(
   Deno.env.get("CMI_FOLLOWUP_IDEMPOTENCY_KEY_VERSION") ?? "1",
 );
 const allowedOrigins = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "")
+  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
