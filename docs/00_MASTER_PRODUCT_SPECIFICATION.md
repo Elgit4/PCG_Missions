@@ -28,7 +28,7 @@ A guide description is a target capability description, not proof that a feature
 ## 3. Product boundaries
 
 ### Included
-- Staff authentication using administrator-issued **email and PIN**.
+- Staff authentication using registered **email and password** through Supabase Auth.
 - Six operational roles, with users permitted to hold more than one role.
 - Permission- and scope-controlled staff workspace.
 - Contact directory, field capture, notes, history, duplicate review/merge and assignment.
@@ -78,14 +78,15 @@ Prayer requests and care notes are sensitive pastoral information. Access must b
 ## 5. Authentication and account lifecycle
 
 - Staff sign in using email and password through Supabase Auth. Administrators issue only random, short-lived temporary passwords; users set and retain their own permanent passwords.
-- PINs are private credentials and must never be shared or exposed in support requests.
-- Administrators provision and manage staff access according to their authority.
-- Sign-out is required on shared devices; device locking is recommended.
-- Implement secure PIN handling: never store or log plaintext PINs; use a server-validated credential flow, rate limiting, throttling, secure session issuance, reset/reissue controls and audit events.
-- A PIN must not be treated as a role or authorization claim.
+- Supabase Auth is the sole identity, password-hashing and session authority; do not build a parallel password store or custom token issuer.
+- Administrators provision accounts through trusted server-side operations and issue only cryptographically random, short-lived temporary passwords by email.
+- Staff members establish their own private permanent password on first sign-in; workspace APIs remain gated until the change is complete.
+- Administrator-reviewed password resets issue a new temporary password to the verified account email. Administrators never see or choose a permanent password.
+- Rate-limit sign-in and recovery, return generic public recovery responses, audit privileged actions, and revoke other sessions after credential changes where supported.
+- Never expose passwords, recovery tokens, access tokens, refresh tokens or service-role keys in browser-readable records, URLs, analytics or logs.
 - Public visitor pages and event registration do not require staff sign-in.
 
-The exact PIN lifecycle (length, expiry, reset/reissue and recovery verification) is an implementation decision to be specified and security-reviewed before production.
+The email/password decision was confirmed by the product owner on 10 November 2026. The temporary-password delivery failure and retry path is addressed in the current staff-auth implementation proposal; provider configuration and production verification remain release gates.
 
 ## 6. Functional modules
 
@@ -144,7 +145,7 @@ SMS requirements:
 - Store message intent, sender/trigger, template/version, recipient reference, provider message ID, queued/submitted/delivered/failed/undeliverable status, timestamps and failure code. Do not treat provider acceptance as delivery.
 - Use an outbox/queue, idempotency keys, bounded retries and rate limits to avoid duplicate sends. Failed messages must be visible to authorized operators.
 - Enforce role, team, event and contact scope at send time, not just when selecting recipients.
-- Never include prayer-request details, confidential pastoral notes, sensitive care narratives, PINs or other secrets in SMS. Use neutral wording for sensitive workflows.
+- Never include prayer-request details, confidential pastoral notes, sensitive care narratives, passwords, PINs, recovery tokens or other secrets in SMS. Use neutral wording for sensitive workflows.
 - Bulk campaigns require a final review/confirmation step and audit record. Restrict campaign creation, audience selection and sending separately if the capability matrix requires it.
 - Automated messages must be opt-in/configurable by trigger and template, respect an approved quiet-hours policy; do not enable automated sending until that policy is configured, and be cancellable/pausable by authorized administrators.
 - Record and respect applicable consent, opt-out and Ghanaian telecommunications/provider requirements. Provider, sender-ID registration, pricing, throughput and regulatory setup must be validated before production.
@@ -159,8 +160,8 @@ Announcements may be delivered through in-app and SMS channels only where config
 - Keep prayer requests and pastoral notes private and scope them to authorized roles/assignments.
 - Do not export or share attendee lists or sensitive details through public channels.
 - Use role-, team-, event- and assignment-scoped access.
-- Sign out on shared devices; never share PINs.
-- Do not include passwords, PINs or private visitor data in support requests.
+- Sign out on shared devices; never share passwords or temporary credentials.
+- Do not include passwords, temporary credentials, recovery links or private visitor data in support requests.
 - Church-approved retention, correction, deletion and data-subject request processes govern records.
 - Audit sensitive access, account changes, role/capability changes, merges, exports, publication and other privileged actions.
 - RLS and trusted server-side authorization must enforce access. Frontend route guards are not security controls.
@@ -173,7 +174,7 @@ Announcements may be delivered through in-app and SMS channels only where config
 - Reliable duplicate handling and safe contact merging with preserved history.
 - Idempotent offline sync and conflict handling; do not silently discard captures.
 - Pagination and indexed search for growing contact/event/report records.
-- Secure sessions and credential handling; no plaintext PIN storage/logging.
+- Secure Supabase Auth sessions and credential handling; no plaintext password or token storage/logging.
 - Automated tests for role combinations, scope boundaries, prayer privacy, event permissions, offline sync and public/staff separation.
 - Use synthetic data during development and testing; production data requires church authorization and privacy controls.
 
@@ -197,7 +198,7 @@ The product is not ready for release until:
 
 The guide establishes the functional direction but does not define every technical or policy detail. Before production, record approval for:
 - exact permissions within each role and how multiple roles combine;
-- PIN format, expiry, reset/reissue and recovery process;
+- temporary-password expiry, first-login password replacement, administrator-reviewed reset, email delivery retry and session revocation;
 - church and branch identity/configuration;
 - event registration fields, capacity behaviour, cancellation and transport rules;
 - contact consent wording and retention/deletion policy;
