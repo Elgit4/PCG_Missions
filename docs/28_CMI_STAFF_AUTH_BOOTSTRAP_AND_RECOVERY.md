@@ -72,7 +72,7 @@ The current recovery implementation also serializes bootstrap/retry operations a
 
 - Do not create another administrator, delete the existing Auth identity, or rerun a database reset.
 - Keep the account gated; do not grant normal workspace access.
-- An operator may retry the protected bootstrap route only while exactly one Auth user exists, its email exactly matches the configured bootstrap email, and its active staff profile still has `must_change_password = true` and `password_changed_at IS NULL`.
+- An operator may retry the protected bootstrap route only while exactly one Auth user exists, its email exactly matches the configured bootstrap email, and its active staff profile email also matches that configured address, with `must_change_password = true` and `password_changed_at IS NULL`.
 - On this narrow recovery path, the function rotates the temporary Supabase Auth password before retrying email and refreshes the 24-hour setup expiry. A previously generated temporary password is therefore invalidated.
 - If the administrator has completed password setup, the bootstrap is consumed and retries return a conflict. Use the ordinary administrator-reviewed password-reset workflow instead.
 - If the Auth identity exists but the CMI staff profile does not, the function supports only the narrow Auth-created/profile-missing recovery. The database bootstrap RPC independently verifies that the church, branch and staff identity tables remain unprovisioned.
