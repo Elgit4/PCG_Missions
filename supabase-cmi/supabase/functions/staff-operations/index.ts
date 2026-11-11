@@ -134,10 +134,52 @@ function getBearer(request: Request): string | null {
 
 async function readJson(request: Request): Promise<unknown> {
   const contentType = request.headers.get("Content-Type") ?? "";
-  if (!contentType.toLowerCase().includes("application/json")) {
+  if (!/^application\\/json(?:\\s*;|$)/i.test(contentType)) {
     throw new Error("CONTENT_TYPE_REQUIRED");
   }
-  return await request.json();
+
+  // Contact and follow-up payloads are intentionally small. Enforce the limit
+  // while streaming so a missing or dishonest Content-Length cannot bypass it.
+  const maxBytes = 16 * 1024;
+  const declaredLength = request.headers.get("Content-Length");
+  if (declaredLength !== null) {
+    const parsedLength = Number(declaredLength);
+    if (!Number.isSafeInteger(parsedLength) || parsedLength < 0 || parsedLength > maxBytes) {
+      throw new Error("REQUEST_BODY_TOO_LARGE");
+    }
+  }
+
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error("REQUEST_BODY_REQUIRED");
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel();
+        throw new Error("REQUEST_BODY_TOO_LARGE");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (totalBytes === 0) throw new Error("REQUEST_BODY_REQUIRED");
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
+  } catch {
+    throw new Error("INVALID_JSON");
+  }
 }
 
 async function resolveStaff(
