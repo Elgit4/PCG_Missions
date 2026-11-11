@@ -64,12 +64,12 @@ Reference: https://supabase.com/changelog?types=breaking-change
 **No migration is currently approved or created.** The Supabase CLI is not installed in the execution environment used for this initial repository work. Supabase's CLI guidance requires creating migrations with `supabase migration new <descriptive_name>`; a migration must be created through that command in a configured local checkout, not by guessing a timestamped filename through the GitHub file API.
 
 ### Backend 2 — Identity and staff access
-- [ ] Implement approved email + PIN activation, private PIN establishment, sign-in, reset/reissue and deactivation.
+- [x] Implement Supabase email/password sign-in, temporary-password onboarding, forced first-login replacement, administrator-reviewed reset and deactivation; staging verification remains outstanding.
 - [ ] Implement server-controlled role assignments and capability evaluation.
 - [ ] Add session revocation and audit behaviour.
 - [ ] Prove stale JWTs and deactivated staff cannot access protected operations.
 
-The activation PIN lifecycle, PIN entropy/length, recovery verification, rate limits and Auth integration remain pending in the stakeholder decision register. No PIN verifier or credential endpoint should be implemented until this is approved and security-reviewed.
+The earlier PIN proposal is superseded. Supabase Auth is the only password verifier/session authority; do not introduce a custom PIN verifier or parallel credential store. The source branch implements temporary-password onboarding and recovery; verify the provider and full lifecycle in staging.
 
 ### Backend 3 — Organizational scope and core operations
 - [ ] Church/branch bootstrap and staff/team membership.
