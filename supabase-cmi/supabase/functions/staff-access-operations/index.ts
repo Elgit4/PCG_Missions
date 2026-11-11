@@ -140,7 +140,7 @@ Deno.serve(async (req: Request) => {
         id,
       );
     }
-    const path = new URL(req.url).pathname.replace(/\\/+$/, "").split("/")
+    const path = new URL(req.url).pathname.replace(/\/+$/, "").split("/")
         .filter(Boolean),
       action = path.at(-1) ?? "";
     let body: unknown;
