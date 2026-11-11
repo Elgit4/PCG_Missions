@@ -106,6 +106,9 @@ jobs:
 
       - name: Test staff operations request validation
         run: deno test supabase-cmi/supabase/functions/staff-operations/validation_test.ts
+ 
+      - name: Test bounded streaming JSON request bodies
+        run: deno test supabase-cmi/supabase/functions/_shared/request_body_test.ts
 
       - name: Type-check event operations Edge Function
         run: deno check supabase-cmi/supabase/functions/event-operations/index.ts

@@ -5,6 +5,7 @@ import {
   parseAnnouncementListQuery,
   parseAnnouncementPatch,
 } from "./validation.ts";
+import { readJson } from "../_shared/request_body.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
@@ -96,22 +97,6 @@ function bearerToken(request: Request): string | null {
     ? /^Bearer\s+([A-Za-z0-9._~-]+)$/i.exec(value.trim())
     : null;
   return match?.[1] ?? null;
-}
-
-async function readJson(request: Request): Promise<unknown> {
-  const contentType = request.headers.get("Content-Type") ?? "";
-  if (!contentType.toLowerCase().includes("application/json")) {
-    throw new Error("CONTENT_TYPE_REQUIRED");
-  }
-  const body = await request.text();
-  if (new TextEncoder().encode(body).byteLength > 32_768) {
-    throw new Error("BODY_TOO_LARGE");
-  }
-  try {
-    return JSON.parse(body) as unknown;
-  } catch {
-    throw new Error("INVALID_JSON");
-  }
 }
 
 type StaffResult =
