@@ -108,7 +108,6 @@ function bearerToken(request: Request): string | null {
   return match?.[1] ?? null;
 }
 
-
 type StaffResult =
   | {
     ok: true;
