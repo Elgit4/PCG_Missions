@@ -4,15 +4,15 @@
 **Source of truth:** `docs/00_MASTER_PRODUCT_SPECIFICATION.md`  
 **Supporting requirements:** `docs/01_FUNCTIONAL_REQUIREMENTS_AND_WORKFLOWS.md`, `docs/02_ROLES_PERMISSIONS_AND_SECURITY.md`, `docs/07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md`, `docs/08_CMI_PHYSICAL_DATABASE_SCHEMA_PROPOSAL.md`, `docs/11_CMI_STAKEHOLDER_DECISION_REGISTER.md`, `docs/12_RLS_POLICY_AND_SECURITY_TEST_PLAN.md`, `docs/16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md`.
 
-**Status:** Engineering implementation baseline selected from the requirements' recommended safe defaults. This document does not represent church-policy approval. R-01–R-12 and D-01–D-13 remain pending until the designated church stakeholders record approval in document 11.
+**Status:** Updated 11 November 2026. The product owner authorized implementation of the conservative defaults for R-01–R-12 and D-01–D-13; document 31 is authoritative. This is not church-board/pastoral/legal sign-off. Stakeholders may request later amendments through change control.
 
 ## 1. Governing rules
 
 1. The v2.1 CMI requirements supersede conflicting ChurchConnect-era requirements and schemas.
 2. Requirements describe target behaviour; source code, tests and deployment state must independently prove implementation.
 3. Implement unambiguous technical requirements directly.
-4. Where a requirement gives a safe engineering default but the church decision remains pending, build only fail-closed infrastructure. Do not activate grants, public access, automated communications or privileged workflows.
-5. Do not invent church policy, retention periods, consent wording, provider pricing, sender IDs, quiet hours, PIN entropy/length, or operational role permissions.
+4. Implement the product-owner-selected safe defaults now. Keep only unsupported, sensitive or compliance-dependent capabilities disabled; do not infer a broader permission from a role title.
+5. Do not invent legal basis, retention periods, consent wording, provider pricing, sender IDs, quiet hours or statutory requirements. Use the selected technical defaults in document 31 and leave legally/provider-dependent features disabled until verified.
 6. Every implemented behaviour must trace to a requirement, have positive and negative tests, and be reflected in implementation-status documentation.
 7. No hosted Supabase mutation, production migration, deployment, live SMS or use of real congregant data is included in this baseline.
 
@@ -28,8 +28,8 @@ These are the recommended technical options for implementation. Items marked app
 | Password lifecycle | Supabase Auth is the only password store and session authority. Enforce generic forgot-password responses, rate-limited admin-reviewed reset requests, one-time temporary passwords, expiry, forced replacement, session revocation and append-only audit. Never store plaintext credentials or expose service-role keys to the browser. | Staff-auth lifecycle SQL/Edge Function; docs 28 and 31 |
 | Authorization | Database-backed, server-authoritative capabilities. Active staff + capability + branch + applicable team/event/contact/assignment scope + field visibility + valid state transition must all pass. Deny by default. | Security §1–4; RLS plan §2 |
 | Multiple roles | Union only explicitly granted capabilities. Scope predicates, mandatory denies and sensitive-record assignment rules remain conjunctive. | Security §3; Matrix §1 |
-| Role grants | The product-owner-directed visitor/follow-up MVP baseline seeds 65 explicit grants across the six existing roles (18/14/14/12/7/0). This is a narrow implementation baseline, not church-board approval of the outstanding R/D decisions. No pastoral oversight, exports, SMS, capability-policy editing or other gated-domain grants are seeded until the relevant approvals are recorded. Never infer grants from role names. | Product-owner baseline in docs 31; Decision Register A/B remains pending for additional domains |
-| Pastoral data | Separate prayer and care data from ordinary contact notes. Deny direct browser narrative reads. Use narrow server-mediated reads, separate assignment/oversight checks and transactional append-only audit. | Functional §5; Security §5; DD-09; D-07 |
+| Role grants | The owner-directed baseline seeds 58 explicit grants across the six roles: ordinary visitor/follow-up grants with lower-role phone/email redaction, one assigned prayer-read grant for Prayer Intercessor, and two reason-coded/audited pastoral oversight-read grants for Admin/Pastor. No pastoral mutation, exports, SMS, capability-policy editing, offline or incomplete module grants are seeded. See docs 07 and 31. Never infer grants from role names. | Product-owner baseline in docs 31; Decision Register A/B remains pending for additional domains |
+| Pastoral data | Separate prayer and care data from ordinary contact notes. Deny direct browser narrative reads. Prayer Intercessor may read only actively assigned prayer text; Admin/Pastor may read prayer/care through explicit oversight capabilities with allowlisted reason codes and transactional append-only audit. No pastoral mutation/list capability is granted. | Functional §5; Security §5; DD-09; D-07 |
 | Contact fields | Enforce field minimization in server DTOs/column privileges or invoker-safe projections; do not assume RLS hides columns. Keep phone/email non-unique as person identifiers. | Security §9; DD-07; D-03/R-05 |
 | Contact duplicates | Suggest possible duplicates; perform only an authorized, audited merge that preserves relevant history. Do not globally equate people by phone/email. | Functional §2; D-03 |
 | Follow-up | One primary assignment target per task (staff OR team) until dual assignment is explicitly required. Preserve task lifecycle history. | Functional §4; D-04/DD-06 |
@@ -41,27 +41,27 @@ These are the recommended technical options for implementation. Items marked app
 | Automated SMS | Explicit allowlist of trigger types and recipient classes; disabled by default; approved template, timing and eligibility per rule; idempotent execution; bounded retry; administrator pause control. | Functional §9.3; R-09/D-10 |
 | SMS cost controls | Atomic campaign and church-wide budget reservation/reconciliation. Use provider-reported currency, segment count, rate and taxes. Never assume GH₵ price or invent caps. Keep dispatch disabled until budget values and provider contract are approved. | DD-20/DD-25; D-09/D-11 |
 | Provider callbacks | Provider-specific signature verification, timestamp/replay protection and idempotent delivery-event handling. Implement only after provider capabilities and webhook contract are confirmed. | Security §10; DD-21; D-09 |
-| Offline | Limited to queued field captures, cached pickers and previously opened event check-in data. No prayer/care narratives or full offline app. Device enrollment, encryption, expiry and recovery remain gated by D-08. Reauthorize at sync and use idempotency. | Functional §3; Security §8; DD-24 |
+| Offline | Disabled for the initial production release. Re-enable only after encrypted local storage, device/session binding, expiry, sign-out recovery, server-side reauthorization and conflict handling are implemented and tested. | Functional §3; Security §8; DD-24 |
 | Reports | Typed report definitions and scoped query paths; author/team/event visibility; separate review events; exports use the same scope and explicit export capability. Exact fields/review authority remain gated by D-12/R-12. | Functional §12; DD-22 |
 | Retention | Deactivation/archival before deletion; preserve operational history. Do not encode arbitrary retention durations. Apply a data-class schedule only after D-13 approval. | Security §9; DD-04/DD-23; D-13 |
 | Audit | Append-only, restricted read access; actor/action/target/time/request correlation; no secrets or sensitive narrative in generic metadata. Retention requires D-13. | Security §9; DD-23; D-13 |
 
 ## 3. Authentication implementation contract
 
-The implementation must preserve the product's email + PIN requirement and the security proposal's activation lifecycle:
+The selected authentication model is Supabase Auth email/password. The earlier email + private PIN proposal is superseded by the product-owner decision recorded on 10 November 2026.
 
-1. An authorized administrator provisions a staff identity and issues a one-time activation credential.
-2. The staff member completes activation and establishes a private PIN that the administrator cannot view or recover.
-3. Subsequent sign-in uses the staff email and private PIN through a trusted server-side verifier.
-4. The verifier never returns whether an email exists independently of a generic authentication result.
-5. Apply per-account and per-source rate limits, progressive delays and bounded lockout/recovery behaviour. Exact thresholds are configuration decisions, not invented constants.
-6. Store only a modern salted PIN verifier/hash in a protected server-only credential store if the approved Supabase integration requires one. Never duplicate plaintext credentials or place PINs in Auth metadata, profile rows, logs, analytics or URLs.
-7. Issue sessions only through a supported, documented Supabase-compatible mechanism. Verify session revocation/refresh semantics before implementation; do not mint ad-hoc JWTs.
-8. PIN reset/reissue uses a verified recovery path, invalidates prior credentials and revokes relevant sessions.
-9. Deactivation blocks protected requests even if an old access token remains valid; revoke/ban Auth sessions as an additional control.
-10. Role assignment is a separate audited authorization operation. A valid PIN never grants a role.
+1. Supabase Auth is the sole password hashing, verification and session authority.
+2. An authorized Admin/Pastor provisions a staff identity through a trusted server-side operation.
+3. The system generates a cryptographically random, short-lived temporary password and emails it only to the verified account address.
+4. The first authenticated action is mandatory permanent-password replacement. Workspace APIs remain gated until replacement succeeds.
+5. Admin/Pastor reviews recovery requests but never sees, chooses or stores the user's permanent password.
+6. Recovery responses are generic and rate-limited. Approved reset rotates the temporary password, gates the account and revokes existing sessions.
+7. First-admin delivery recovery is narrowly allowed only while the initial password-change gate remains incomplete; the operation is serialized across Edge Function instances and rotates the temporary password before retrying email delivery.
+8. Deactivation blocks protected requests even if an old access token remains valid; revoke/ban Auth sessions as an additional control.
+9. Never store plaintext passwords, temporary credentials, password hashes or recovery secrets in application tables, user metadata, logs, analytics or URLs.
+10. Test generic responses, rate limits, temporary-password expiry, forced replacement, delivery failure, stale sessions, deactivation and recovery concurrency.
 
-**Build gate:** before implementing reusable PIN verification, verify the current Supabase Auth documentation and supported custom-auth/session integration, complete a threat model for PIN entropy and online guessing, and add tests for enumeration, brute force, replay, reset, stale sessions and deactivated users. If the supported session model cannot safely satisfy email + PIN, present the exact conflict for product-owner approval rather than silently changing login to password or phone OTP.
+**Build/release gate:** configure the transactional email provider and verify onboarding/recovery end-to-end in staging before production. Do not implement a custom PIN verifier, parallel password store or custom JWT issuer.
 
 ## 4. Authorization implementation contract
 
@@ -72,7 +72,7 @@ The implementation must preserve the product's email + PIN requirement and the s
 - Role union adds eligible capabilities only; it never bypasses record assignment, field restrictions or pastoral privacy.
 - Keep browser access to identity/authorization tables closed. No direct client mutation of role assignments, grants, audit ledgers or restricted pastoral narratives.
 - Privileged database functions must be narrowly scoped, fixed-search-path, least-privilege, and explicitly granted; test PUBLIC/anon/authenticated execution denial. Prefer invoker rights. Any exception needs a documented security justification and negative tests.
-- Do not seed grants while D-01 and R-01–R-12 remain pending. The staff-access lifecycle API remains fail-closed until approved capability grants are provisioned.
+- Seed only the 58 explicit grants in the current owner-directed baseline. Unsupported modules remain fail-closed; do not infer access from role names. Church stakeholders may amend the baseline through change control.
 
 ## 5. SMS implementation contract
 
