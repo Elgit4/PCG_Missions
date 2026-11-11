@@ -41,7 +41,7 @@ The product owner confirmed Supabase email/password authentication on 10 Novembe
 
 The third slice covers event lifecycle, typed event staff/team assignments, registration, transport, check-in, closeout, typed calendar scope, typed announcement audiences, church public profile, welcome messages, sermons, daily word, digital tracts and typed external document links.
 
-All domain drafts preserve branch-consistent foreign keys, RLS and closed browser grants. No client table policies are created. The visitor MVP authorization baseline is being updated by PR #37 to 55 grants under the product-owner-directed safe-default decision record. Phone/email identity grants are removed from Coordinator, Team Leader, Field Worker and Follow-up Volunteer; pastoral oversight, exports, SMS and capability-policy editing remain ungranted. The event draft removes the unapproved waitlist state, requires idempotency for public registrations and check-ins, and avoids polymorphic scope/audience/content references.
+All domain drafts preserve branch-consistent foreign keys, RLS and closed browser grants. No client table policies are created. The visitor MVP authorization baseline is being updated by PR #37 to 58 grants under the product-owner-directed safe-default decision record, including assigned prayer reads for Prayer Intercessor and explicit audited prayer/care oversight reads for Admin/Pastor. Phone/email identity grants are removed from Coordinator, Team Leader, Field Worker and Follow-up Volunteer; pastoral oversight, exports, SMS and capability-policy editing remain ungranted. The event draft removes the unapproved waitlist state, requires idempotency for public registrations and check-ins, and avoids polymorphic scope/audience/content references.
 
 ## Validation
 
