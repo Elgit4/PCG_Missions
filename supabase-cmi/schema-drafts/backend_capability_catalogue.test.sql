@@ -29,7 +29,7 @@ select ok(
   ),
   'ordinary contact phone/email permissions are not granted to coordinator, team leader, field worker or follow-up volunteer'
 );
-select ok(
+select is(
   (select count(*)::integer
    from public.role_capability rc
    join public.role r on r.id = rc.role_id
