@@ -173,7 +173,7 @@ create table public.event_checkin (
     check (attendee_name_snapshot is null or length(btrim(attendee_name_snapshot)) between 2 and 180),
   checked_in_at timestamptz not null default now(),
   recorded_by uuid not null references public.staff_profile(auth_user_id) on delete restrict,
-  source text not null check (source in ('staff', 'event_workspace', 'offline_sync')),
+  source text not null check (source in ('staff', 'event_workspace')),
   client_request_id uuid not null,
   foreign key (event_id, branch_id) references public.event(id, branch_id) on delete restrict,
   foreign key (registration_id, event_id, branch_id)
