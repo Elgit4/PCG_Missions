@@ -81,8 +81,8 @@ select ok(
   'task transactions use caller privileges and do not elevate to the migration owner'
 );
 select ok(
-  (select count(*) = 65 from public.role_capability),
-  'the reviewed visitor MVP role baseline remains unchanged by the task transaction migration'
+  (select count(*) = 58 from public.role_capability),
+  'the owner-directed visitor MVP role baseline remains unchanged by the task transaction migration'
 );
 
 -- Test fixtures are synthetic and fully rolled back at the end of this file.
