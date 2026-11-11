@@ -113,26 +113,26 @@ Do not hard-code a provider or quote price until a provider contract is verified
 ## 6. Delivery sequence and release gates
 
 ### Phase A — source-of-truth and security foundation
-- Reconcile docs, schemas, migrations and API contracts against v2.1.
-- Complete the six-role capability catalogue and scope vocabulary without granting roles.
-- Add auth lifecycle state machine and testable session revocation boundaries after the Supabase integration review.
-- Keep staff access endpoints fail-closed without grants.
-- Add security regression tests for multi-role scope, stale sessions and direct browser access.
+- Reconcile docs, schemas, migrations and API contracts against v2.1 and owner-directed decision record 31.
+- Seed the 58 explicit least-privilege grants and test every role/scope boundary; no wildcard or inferred grants.
+- Maintain Supabase email/password lifecycle, temporary-password expiry, forced replacement, reset review, session revocation and delivery-failure recovery.
+- Keep browser table access closed; all business operations remain behind trusted Edge Functions and database checks.
+- Add security regression tests for multi-role scope, stale sessions, field redaction and direct browser access.
 
-### Phase B — unblocked domain workflows
-- Complete contact capture, scoped reads/updates, duplicate suggestions and audited merge transaction.
-- Complete follow-up list/task lifecycle and history.
-- Complete public-content draft and publication workflow only with approved publication capabilities.
-- Complete calendar, event draft and branch-scoped operational reads.
-- Add typed reports and offline receipts only after their field and retention boundaries are approved.
+### Phase B — currently enabled, non-sensitive workflows
+- Complete contact capture, scoped reads/updates, duplicate suggestions and audited merge transaction under the 58-grant baseline.
+- Complete follow-up list/task lifecycle and history with exactly one primary assignee (staff OR team).
+- Complete public-content draft/publication and calendar/event draft reads only through explicit staff capabilities; anonymous reads expose published projections only.
+- Keep public event registration, transport reservation, check-in and capacity mutations disabled until their trusted transactions and privacy controls pass tests.
+- Implement typed report schemas and scope-limited submission/review without exports; offline capture and sync remain disabled.
 
-### Phase C — policy-gated domains
-- Pastoral read/write/assignment lifecycle only after R-01/R-02/R-10/R-11/D-07 approvals.
-- Event registration, capacity, transport and check-in transactions only after D-05/D-06/D-13 decisions.
-- SMS schema, campaigns, consent, provider adapter and dispatch only after D-09/D-10/D-11 and R-06–R-09 approvals.
-- Full role grants only after D-01 and R-01–R-12 approvals.
-- Offline device enrollment and local retention only after D-08 approval.
-- Report review/export authority and retention only after D-12/R-12/D-13 approvals.
+### Phase C — features that remain disabled until technical/compliance gates pass
+- Pastoral reads use the source-controlled assigned-read and separate reason-coded/audited oversight paths. No prayer/care mutation, assignment management or care-worker access is granted until the corresponding workflow is implemented and tested.
+- Public registration remains disabled until the privacy notice, lawful purpose/basis, minimal intake, rate limits, abuse controls and trusted contact-link review are ready. Capacity reservation must be transactional before registration is enabled; no waitlist is provided.
+- SMS provider dispatch, campaigns and automation remain disabled until provider/sender verification, lawful handling/consent, suppression/opt-out, quiet hours, budget caps, separation of duties, callbacks and deployment tests pass.
+- Exports remain disabled until dedicated scoped export capabilities, masking, audit, confirmation and limits are implemented.
+- Offline mode remains disabled; no contact, attendance or pastoral data is queued or cached on devices.
+- Reports use typed fields and scope-limited review; retention/purge and report exports remain disabled until the relevant schedule and controls are approved.
 
 ### Phase D — release assurance
 - Clean local Supabase reset and complete migration replay.
@@ -153,14 +153,15 @@ Any code change implementing this baseline must include:
 - implementation-status update that distinguishes implemented, locally tested, approval-gated, deployed and production-verified;
 - explicit statement that no hosted resources or live SMS were changed unless separately authorized.
 
-If the requirements conflict or omit a necessary policy value, keep the feature disabled and record the exact missing decision. Do not fill the gap with an assumption.
+If a legal, provider, church-controller or operational value is still genuinely unknown (for example, retention duration, sender registration or approved quiet hours), keep only the affected feature disabled and record the exact missing prerequisite. Do not invent the value.
 
 ## 8. Approval status
 
-This document records the selected engineering recommendations requested for the implementation direction. It does **not** change the approval state in document 11.
+This document records the implementation baseline authorized by the product owner on 11 November 2026. It does **not** represent church-board, pastoral, legal or regulatory sign-off.
 
-- R-01–R-12: pending church/stakeholder approval.
-- D-01–D-13: pending church/stakeholder approval.
-- Email + PIN lifecycle/security integration: pending technical threat model and product/security approval.
+- R-01–R-12: conservative defaults selected for implementation; stakeholder amendments may be made through change control.
+- D-01–D-13: conservative defaults selected for implementation; stakeholder amendments may be made through change control.
+- Authentication: Supabase Auth email/password confirmed by the product owner on 10 November 2026; the former PIN proposal is superseded.
+- Source-controlled grants and code are not a production authorization to load real data or deploy sensitive features.
 - SMS provider, lawful basis/consent, sender ID, quiet hours, templates, budgets and trigger catalogue: pending.
 - Hosted Supabase deployment and production release: not authorized by this document.
