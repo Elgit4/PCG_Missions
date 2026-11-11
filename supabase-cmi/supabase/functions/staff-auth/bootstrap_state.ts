@@ -3,6 +3,7 @@ export interface BootstrapAuthUser {
 }
 
 export interface BootstrapStaffProfile {
+  email?: string | null;
   account_status?: string | null;
   must_change_password?: boolean | null;
   password_changed_at?: string | null;
@@ -27,6 +28,9 @@ export function resolveBootstrapPath(
   ) return "blocked";
 
   if (!profile) return "recover_partial_auth_user";
+  if ((profile.email ?? "").trim().toLowerCase() !== configuredEmail) {
+    return "blocked";
+  }
 
   // Permit credential re-issue only while the provisioned first administrator
   // is still gated behind the initial password change. Once a password has
