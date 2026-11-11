@@ -10,7 +10,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "",
   PUBLIC = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
     Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const origins = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "").split(",").map((x) => x.trim())
+  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app").split(",").map((x) => x.trim())
     .filter(Boolean),
 );
 function res(body: unknown, status: number, origin: string | null, id: string) {
