@@ -13,6 +13,7 @@ on:
       - "feat/cmi-*"
       - "design/cmi-*"
       - "backend/cmi-*"
+      - "fix/cmi-*"
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
