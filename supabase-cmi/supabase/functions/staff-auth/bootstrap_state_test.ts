@@ -69,21 +69,24 @@ Deno.test("inactive first administrator cannot use bootstrap recovery", () => {
   }
 });
 
-Deno.test("bootstrap recovery is blocked when the staff profile email differs", () => {
-  const result = resolveBootstrapPath(
-    [{ email: "admin@example.test" }],
-    "admin@example.test",
-    {
-      email: "different@example.test",
-      account_status: "active",
-      must_change_password: true,
-      password_changed_at: null,
-    },
-  );
-  if (result !== "blocked") {
-    throw new Error("mismatched profile identity must not be recoverable");
-  }
-});
+Deno.test(
+  "bootstrap recovery is blocked when the staff profile email differs",
+  () => {
+    const result = resolveBootstrapPath(
+      [{ email: "admin@example.test" }],
+      "admin@example.test",
+      {
+        email: "different@example.test",
+        account_status: "active",
+        must_change_password: true,
+        password_changed_at: null,
+      },
+    );
+    if (result !== "blocked") {
+      throw new Error("mismatched profile identity must not be recoverable");
+    }
+  },
+);
 
 Deno.test("bootstrap is blocked when any other Auth users exist", () => {
   const cases = [
