@@ -68,6 +68,8 @@ The bootstrap database function uses a transaction-scoped advisory lock and inde
 
 Email provider acceptance is not proof that a message reached the recipient's inbox. If the bootstrap endpoint reports an error or delivery is uncertain:
 
+The current recovery implementation also serializes bootstrap/retry operations across Edge Function instances using a private three-minute database lease. A concurrent authorized request receives a conflict response instead of rotating the password while another request is delivering it. The lease is released on completion/failure and can be taken over after expiry if the Edge Function runtime terminates unexpectedly. The lease table and RPCs are not accessible to browser roles.
+
 - Do not create another administrator, delete the existing Auth identity, or rerun a database reset.
 - Keep the account gated; do not grant normal workspace access.
 - An operator may retry the protected bootstrap route only while exactly one Auth user exists, its email exactly matches the configured bootstrap email, and its active staff profile still has `must_change_password = true` and `password_changed_at IS NULL`.
