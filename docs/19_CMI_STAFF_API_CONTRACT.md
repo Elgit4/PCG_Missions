@@ -188,7 +188,7 @@ The reassignment transaction locks the task, validates the actor and branch-leve
 
 Task notes are ordinary operational follow-up text only. Prayer/care narratives, contact identity values, credentials and unrelated sensitive information must never be stored in `task_note` or event metadata.
 
-The database RPCs are `SECURITY INVOKER`, pin `search_path` to `pg_catalog` and grant `EXECUTE` only to `service_role`. Browser roles have no direct table or RPC access. No role-capability grants are seeded; these routes remain denied until the pending authorization decisions are approved.
+The database RPCs are `SECURITY INVOKER`, pin `search_path` to `pg_catalog` and grant `EXECUTE` only to `service_role`. Browser roles have no direct table or RPC access. The owner-directed source baseline contains 58 explicit role-capability grants; each operation still checks current active role, branch, team, assignment and field scope. No additional capability is implied.
 
 ## 5. Capability catalogue and authorization
 
@@ -333,7 +333,7 @@ The following API families remain backend work and must not be represented as av
 - Typed ministry reporting, review workflow and scoped exports.
 - SMS consent/suppression, campaign approval, transactional outbox/dispatcher, budget reservation, automation rules and delivery-log API. An internal Hubtel Business SMS adapter and status-lookup helper now exist in source, but they are not wired to an endpoint or outbox and cannot send live messages.
 - Offline device registration, encrypted queue enrolment and authenticated sync reconciliation.
-- Staff invitation/activation, email+PIN establishment/reissue, account deactivation and initial church/branch bootstrap.
+- Staff invitation/activation, email/password temporary credential issuance and replacement, administrator-reviewed password reset, account deactivation and initial church/branch bootstrap.
 
 The blocked paths remain disabled until the required policy decisions, security review and integration prerequisites are recorded.
 
