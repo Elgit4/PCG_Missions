@@ -201,9 +201,9 @@ The proposed action-code catalogue is seeded as metadata only. No role-capabilit
 
 The presence of a role label is not authorization. Frontend navigation visibility is only a usability aid; every request is authorized server-side.
 
-## 6. Audited prayer and pastoral-care reads (merged; approval-gated)
+## 6. Audited prayer and pastoral-care reads (read-only; owner-directed safe-default grants)
 
-These endpoints are read-only. They do not create requests or records, change status, assign/reassign workers, archive, or delete pastoral data. The implementation was merged in PR #11. Its source remains in `main`, but these operations remain subject to the stakeholder approval gates below and are not deployed.
+These endpoints are read-only. They do not create requests or records, change status, assign/reassign workers, archive, or delete pastoral data. The product owner selected the conservative access defaults in document 31; PR #37 seeds only assigned prayer reads for Prayer Intercessor and reason-coded/audited prayer/care oversight reads for Admin/Pastor. The source remains unmerged and undeployed.
 
 ### `POST /pastoral-operations/prayer/requests/{requestId}/read`
 
@@ -242,14 +242,14 @@ The returned prayer projection contains the request narrative and workflow field
 
 Unknown or out-of-assignment records return 404. Missing capability or branch authorization returns 403. Invalid request fields or reason codes return 422. Both database functions use `SECURITY INVOKER`, pin `search_path` to `pg_catalog`, revoke execution from `PUBLIC`, `anon` and `authenticated`, and grant execution only to `service_role`. Direct browser table access remains revoked.
 
-**Approval gate:** R-01, R-10, R-11 and D-07 remain pending. No `role_capability` grants are seeded. These routes therefore deny real staff access until the required policy decisions are approved and approved grants are provisioned. Do not enable pastoral UI controls by role label or assume every Admin/Pastor, Coordinator or intercessor has access.
+**Current source grants:** `prayer.request.read.assigned` is granted only to Prayer Intercessor at `assigned` scope. `prayer.oversight.read` and `care.oversight.read` are granted only to Admin/Pastor at `oversight` scope. Every oversight read requires an allowlisted reason code and appends an audit event in the same transaction. Care assigned-read, all pastoral mutation/list workflows and Coordinator prayer metadata remain ungranted because their operational workflows are not implemented. Church stakeholders may amend the product-owner defaults through change control. These grants are source-only until PR #37 is reviewed, merged and deployed.
 
 ## 7. Public visitor API
 
 
 The existing `GET /public-content` function remains a read-only, allowlisted projection for published church profile, welcome messages, sermons, daily words, tracts, public announcements and public events. It does not expose staff tables or direct anonymous database grants.
 
-Public registration is not enabled by this contract. D-05/D-06/D-13 and consent-evidence/retention requirements must be approved first.
+Public registration is not enabled. The selected defaults require a narrow server transaction, a versioned privacy notice, lawful-purpose/basis review, rate limits and abuse controls before personal data can be collected.
 
 ## 7A. Event draft management (merged to main in PR #15)
 
@@ -259,7 +259,7 @@ The separate `event-operations` function implements a limited authoring API for 
 - New events are forced to `draft`, `private` and `registration_state='closed'`.
 - Capacity, public publication, assignments and all attendee/transport/check-in/closeout operations are excluded.
 
-The exact request fields, validation and error contract are in [document 20 — Event Draft Operations API Contract](20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md). No `role_capability` grants are seeded, so these endpoints remain denied until approved grants are provisioned. This slice does not satisfy or bypass the event transaction approval gate in document 17.
+The exact request fields, validation and error contract are in [document 20 — Event Draft Operations API Contract](20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md). No event read/manage grants are seeded in the current owner-directed baseline, so these draft endpoints remain denied. This slice does not implement registration, capacity, transport, check-in or closeout transactions.
 
 ## 7B. Announcement draft operations (merged to main in PR #16)
 
@@ -270,7 +270,7 @@ The separate `announcement-operations` function supports:
 
 List/detail requires `announcement.read.scoped` with branch scope. Create/edit requires `announcement.create.scoped` with branch scope. The server forces `status='draft'` and `is_public=false`; callers cannot set publication, audience, scheduling or delivery fields.
 
-The full request and error contract is in [document 21 — Announcement Draft Operations API Contract](21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this feature remains fail-closed until applicable church decisions and grants are approved. It has not been deployed.
+The full request and error contract is in [document 21 — Announcement Draft Operations API Contract](21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md). No announcement grants are seeded; this feature remains fail-closed until its authoring/publication workflows and grants are implemented. It has not been deployed.
 
 ## 7C. Visitor content draft operations (merged to main in PR #16)
 
@@ -278,7 +278,7 @@ The `content-operations` function adds branch-scoped draft list/detail/create/ed
 
 The API never accepts caller-supplied creator, status or publication fields and forces new rows to draft with null `published_at`. Daily Word, Digital Tracts and church-wide profile editing are excluded until global authoring scope is approved under D-02. Publication, scheduling and delivery are not implemented.
 
-See [document 22 — Visitor Content Draft Operations API Contract](22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded; this function remains fail-closed until the applicable decisions and grants are approved. It has not been deployed.
+See [document 22 — Visitor Content Draft Operations API Contract](22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md). No public-content authoring grants are seeded; this function remains fail-closed until publication authority and workflows are implemented. It has not been deployed.
 
 ## 7D. Branch calendar operations (merged to main in PR #16)
 
