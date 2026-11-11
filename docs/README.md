@@ -12,7 +12,7 @@ This directory is organized by function. Read the documents in the order below. 
 |---|---|---|
 | 00 | [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md) | Product scope, modules, roles, policies, constraints and acceptance gates |
 | 01 | [Functional Requirements & Workflows](01_FUNCTIONAL_REQUIREMENTS_AND_WORKFLOWS.md) | What each module must do and end-to-end user journeys |
-| 02 | [Roles, Permissions & Security](02_ROLES_PERMISSIONS_AND_SECURITY.md) | Six roles, multi-role access, record scope, prayer privacy, PIN security and SMS permissions |
+| 02 | [Roles, Permissions & Security](02_ROLES_PERMISSIONS_AND_SECURITY.md) | Six roles, multi-role access, record scope, prayer privacy, password security and SMS permissions |
 | 03 | [Data & Database Architecture](03_DATA_AND_DATABASE_ARCHITECTURE.md) | Target data domains, relationships, integrity and future ERD/schema work |
 | 04 | [Application Architecture & UI/UX](04_APPLICATION_ARCHITECTURE_AND_UI_UX.md) | Staff/public surfaces, navigation, frontend/backend boundaries and UX |
 | 05 | [Implementation & Deployment Plan](05_IMPLEMENTATION_AND_DEPLOYMENT_PLAN.md) | Phases, tests, release gates, environments and change control |
