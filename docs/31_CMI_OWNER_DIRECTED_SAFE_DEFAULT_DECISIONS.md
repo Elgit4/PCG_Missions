@@ -31,7 +31,7 @@ The baseline follows:
 | R-08 | Campaign creator and approver must be different active users. | Database/service operation rejects self-approval. No single-user emergency bypass is enabled by default. |
 | R-09 | Coordinator global SMS automation/provider configuration is disabled. | Automation rules and provider dispatch are disabled by default; only an explicitly allowlisted, reviewed rule can later be activated. |
 | R-10 | Care access is assignment-based, with separate Admin/Pastor oversight. | No assigned-care worker role exists among the six roles, so assigned care read/update remains ungranted. Admin/Pastor receives only the separate reason-coded, audited care oversight-read capability; no care mutation grant. |
-| R-11 | Intercessor may create a request only through the approved intake flow and read only actively assigned request text. | Grant only `prayer.request.read.assigned` at `assigned` scope; no request creation, assignment management, unassigned discovery or linked contact identity. |
+| R-11 | Intercessor has read-only access to actively assigned request text; request creation and assignment management are not granted. | Grant only `prayer.request.read.assigned` at `assigned` scope; no request creation, assignment management, unassigned discovery or linked contact identity. |
 | R-12 | Exports are disabled except for a dedicated Admin/Pastor export capability. | Export requires scope-filtered fields, masking, explicit confirmation, reason, audit and limits. No broad export grant is seeded. |
 
 ## 3. Logical data/workflow decisions D-01–D-13
@@ -71,7 +71,7 @@ These are not blockers to implementing the safe-default code, but they are block
 4. Staging deployment, restore rehearsal, monitoring and UAT.
 5. Stakeholder walkthrough and change request if church operating practice differs.
 6. Written retention schedule before automated deletion/purge.
-7. Independent security review of pastoral oversight before any oversight grant is activated.
+7. Independent security review of the source-controlled oversight path before it is deployed or used with real pastoral records.
 
 ## 6. External standards and sources
 
