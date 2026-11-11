@@ -24,24 +24,24 @@ The hosted Supabase project `cgwffpxlwgbnlinzwfoj` has the 11-table identity/aut
 
 The 11 informational `rls_enabled_no_policy` security-advisor notices are intentional fail-closed behavior pending approved policies. The performance advisor no longer reports unindexed foreign keys; unused-index notices are expected before application data and query traffic exist. This is an initial foundation migration only, not a complete application schema or production launch.
 
-The current email/password authentication source is non-conformant with the confirmed email + private PIN requirement and must not be deployed. See [the PIN authentication architecture proposal](../docs/30_CMI_PIN_AUTHENTICATION_ARCHITECTURE_PROPOSAL.md) and [bootstrap/recovery hold](../docs/28_CMI_STAFF_AUTH_BOOTSTRAP_AND_RECOVERY.md). Stakeholder decisions R-01–R-12 and D-01–D-13 remain pending. Production remains NO-GO.
+The product owner confirmed Supabase email/password authentication on 10 November 2026. The earlier email + PIN proposal is superseded; see [the current authentication baseline](../docs/31_VISITOR_MVP_AUTHENTICATION_AUTHORIZATION_BASELINE.md) and [handover decision](../docs/29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md). The password lifecycle has passing branch-level unit/integration tests, but first-admin delivery recovery, production Edge Function deployment, email configuration, staging/UAT and remaining module workflows are not complete. The domain schema sources have now been promoted into permanent ordered migration files on the feature branch; they have not been applied to the hosted project. Production remains NO-GO.
 
 ## Current source layout
 
-- `supabase/migrations/`: permanent CMI identity/authorization foundation and hosted RLS-helper privilege-remediation migrations. Domain schemas remain in `schema-drafts/`.
-- `supabase/tests/`: foundation pgTAP suite.
-- `schema-drafts/`: reviewable domain SQL and pgTAP drafts, not yet permanent migration history. The capability catalogue/contact-capture and follow-up task transactions are also validated from this workspace.
+- `supabase/migrations/`: ordered permanent CMI migrations for the identity foundation, contacts/follow-up, restricted pastoral records, events/attendance/public content, capability catalogue, trusted follow-up/pastoral operations, staff access/auth lifecycle, visitor authorization and hosted RLS-helper privilege remediation.
+- `supabase/tests/`: foundation pgTAP suite; the backend CI stages matching domain pgTAP suites from `schema-drafts/` before running the complete migration/test sequence.
+- `schema-drafts/`: retained as reviewable source copies and test fixtures. The SQL now has matching permanent migration files; do not create temporary duplicate migrations in CI.
 
-### Domain drafts
+### Domain schema sources
 
 1. `contacts_followup_domain.sql` and matching test.
 2. `restricted_pastoral_domain.sql` and matching test.
 3. `events_attendance_public_content.sql` and matching test.
-4. `backend_capability_catalogue.sql` and matching security test; it seeds capability metadata only and does not create role grants.
+4. `backend_capability_catalogue.sql` and matching security test; it seeds capability metadata only. The separate permanent visitor MVP authorization migration seeds 65 explicit role-capability grants for visitor/follow-up operations.
 
 The third slice covers event lifecycle, typed event staff/team assignments, registration, transport, check-in, closeout, typed calendar scope, typed announcement audiences, church public profile, welcome messages, sermons, daily word, digital tracts and typed external document links.
 
-All domain drafts preserve branch-consistent foreign keys, RLS and closed browser grants. No client policies or role-capability grants are created while stakeholder approvals remain pending. The event draft removes the unapproved waitlist state, requires idempotency for public registrations and check-ins, and avoids polymorphic scope/audience/content references.
+All domain drafts preserve branch-consistent foreign keys, RLS and closed browser grants. No client table policies are created. The visitor MVP authorization migration is the explicit product-owner-approved implementation baseline for 65 visitor/follow-up role grants; pastoral oversight, exports, SMS, capability-policy editing and other policy-gated grants remain absent pending church approval. The event draft removes the unapproved waitlist state, requires idempotency for public registrations and check-ins, and avoids polymorphic scope/audience/content references.
 
 ## Validation
 
@@ -171,9 +171,9 @@ The next unblocked engineering step is to restore a verifiable green CMI CI run 
 
 ## Staff access lifecycle — source branch
 
-The staff-access-operations Edge Function implements guarded role assignment, role revocation, staff account deactivation and reactivation. It requires access.role.assign or staff.account.manage with branch scope and delegates final checks/writes to service-role-only SECURITY DEFINER RPCs. The append-only staff_access_audit table records role and account-state changes. The first-admin bootstrap grants only the four minimal branch-scoped control-plane capabilities; all other business permissions remain absent until the church approves R-01–R-12 and D-01 and approved grants are provisioned. See document 24.
+The staff-access-operations Edge Function implements guarded role assignment, role revocation, staff account deactivation and reactivation. The staff-auth function also exposes administrator-only staff account creation, backed by `cmi_create_staff_account`, which verifies branch-scoped staff-account and role-assignment capabilities before creating a profile, assigning one of the six roles and writing an access-audit record. New staff receive a one-time temporary credential by email and must replace it at first sign-in. See document 24.
 
-The merged PR #26 authentication slice currently implements Supabase email/password sign-in, temporary-password bootstrap and administrator-reviewed password recovery. This does not conform to the product's email + private PIN baseline. Staff invitation/activation and the PIN verifier/private PIN setup/reissue flow remain unimplemented. Do not deploy the password implementation as a substitute for PIN authentication; resolve the credential decision and security review in documents 11 and 29 first.
+The current draft authentication slice implements Supabase email/password sign-in, one-time temporary-password bootstrap, Admin/Pastor-created staff accounts, forced first-login password replacement and administrator-reviewed temporary-password recovery. The product owner has referred to email + PIN authentication while describing a password-style first-login/reset workflow. The exact credential type therefore remains a release blocker: do not deploy this email/password implementation as a substitute for a PIN flow without explicit confirmation. If PIN is confirmed, replace the credential handling with the reviewed server-side PIN verifier while retaining Supabase Auth session authority.
 
 
 ## Requirements-driven engineering baseline

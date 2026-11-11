@@ -8,7 +8,10 @@ import {
   parseResetRequest,
   parseResetRequestId,
   parseResetReview,
+  parseStaffAccountCreate,
 } from "./validation.ts";
+import { generateTemporaryPassword } from "./temporary_password.ts";
+import { resolveBootstrapPath } from "./bootstrap_state.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -360,9 +363,10 @@ async function bootstrapAdmin(
     return { users: data?.users, error };
   });
   let authUserId: string;
-  let retry = false;
+  let createdNewAuthUser = false;
+  const bootstrapPath = resolveBootstrapPath(existingUsers, email, false);
 
-  if (existingUsers.length === 0) {
+  if (bootstrapPath === "create") {
     const { data: created, error: createError } = await service.auth.admin
       .createUser({
         email,
@@ -373,6 +377,7 @@ async function bootstrapAdmin(
       throw new Error("BOOTSTRAP_AUTH_USER_CREATE_FAILED");
     }
     authUserId = created.user.id;
+    createdNewAuthUser = true;
 
     const { error: bootstrapError } = await service.rpc(
       "cmi_bootstrap_first_admin",
@@ -388,67 +393,50 @@ async function bootstrapAdmin(
       await service.auth.admin.deleteUser(authUserId).catch(() => undefined);
       throw new Error("BOOTSTRAP_DATABASE_PROVISION_FAILED");
     }
-  } else if (
-    existingUsers.length === 1 &&
-    normalizeEmail(existingUsers[0].email) === email
-  ) {
+  } else if (bootstrapPath === "recover_partial_auth_user") {
     authUserId = existingUsers[0].id;
     const { data: profile, error: profileError } = await service
       .from("staff_profile")
-      .select("id,must_change_password,account_status")
+      .select("id")
       .eq("auth_user_id", authUserId)
       .maybeSingle();
     if (profileError) throw new Error("BOOTSTRAP_PROFILE_LOOKUP_FAILED");
 
-    if (!profile) {
-      // Recover only the narrowly defined partial state: one confirmed Auth
-      // user and no CMI profile/church/branch. The database transaction performs
-      // the authoritative empty-project check before creating any records.
-      const { error: bootstrapError } = await service.rpc(
-        "cmi_bootstrap_first_admin",
-        {
-          p_auth_user_id: authUserId,
-          p_email: email,
-          p_full_name: fullName,
-          p_church_name: churchName,
-          p_branch_name: branchName,
-        },
+    // A provisioned profile consumes bootstrap permanently. In particular, do
+    // not rotate/reissue a temporary credential on a repeated bootstrap call.
+    const verifiedPath = resolveBootstrapPath(existingUsers, email, !!profile);
+    if (verifiedPath !== "recover_partial_auth_user") {
+      return fail(
+        "BOOTSTRAP_ALREADY_USED",
+        "First-administrator bootstrap has already been consumed.",
+        409,
+        origin,
+        requestId,
       );
-      if (bootstrapError) {
-        throw new Error("BOOTSTRAP_DATABASE_PROVISION_FAILED");
-      }
-      const { error: passwordError } = await service.auth.admin.updateUserById(
-        authUserId,
-        {
-          password: temporaryPassword,
-        },
-      );
-      if (passwordError) {
-        throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
-      }
-      retry = true;
-    } else {
-      if (
-        !profile.must_change_password || profile.account_status !== "active"
-      ) {
-        return fail(
-          "BOOTSTRAP_ALREADY_USED",
-          "First-administrator bootstrap has already been completed.",
-          409,
-          origin,
-          requestId,
-        );
-      }
-      retry = true;
-      const { error: passwordError } = await service.auth.admin.updateUserById(
-        authUserId,
-        {
-          password: temporaryPassword,
-        },
-      );
-      if (passwordError) {
-        throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
-      }
+    }
+
+    // Recover only the narrow Auth-user-created / CMI-profile-not-created
+    // partial state. The database RPC independently checks that church,
+    // branch and staff tables are still empty before provisioning.
+    const { error: bootstrapError } = await service.rpc(
+      "cmi_bootstrap_first_admin",
+      {
+        p_auth_user_id: authUserId,
+        p_email: email,
+        p_full_name: fullName,
+        p_church_name: churchName,
+        p_branch_name: branchName,
+      },
+    );
+    if (bootstrapError) {
+      throw new Error("BOOTSTRAP_DATABASE_PROVISION_FAILED");
+    }
+    const { error: passwordError } = await service.auth.admin.updateUserById(
+      authUserId,
+      { password: temporaryPassword },
+    );
+    if (passwordError) {
+      throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
     }
   } else {
     return fail(
@@ -490,7 +478,7 @@ async function bootstrapAdmin(
   return response(
     {
       data: {
-        created: !retry,
+        created: createdNewAuthUser,
         temporary_password_sent: true,
         must_change_password: true,
         password_expires_in_hours: 24,
@@ -762,6 +750,137 @@ Deno.serve(async (request: Request) => {
     const { service } = required;
 
     if (
+      request.method === "POST" &&
+      route[0] === "admin" &&
+      route[1] === "staff" &&
+      route.length === 2
+    ) {
+      const parsed = parseStaffAccountCreate(await jsonBody(request));
+      if (!parsed.ok) {
+        return fail("INVALID_REQUEST", parsed.error, 400, origin, id);
+      }
+      if (!RESEND_API_KEY || !EMAIL_FROM) {
+        return fail(
+          "AUTH_EMAIL_NOT_CONFIGURED",
+          "Staff invitation email is not configured.",
+          503,
+          origin,
+          id,
+        );
+      }
+
+      const temporaryPassword = generateTemporaryPassword();
+      const { data: created, error: createError } = await service.auth.admin
+        .createUser({
+          email: parsed.value.email,
+          password: temporaryPassword,
+          email_confirm: true,
+          user_metadata: { full_name: parsed.value.full_name },
+        });
+      if (createError || !created.user) {
+        if (createError?.message?.toLowerCase().includes("already")) {
+          return fail(
+            "STAFF_EMAIL_ALREADY_EXISTS",
+            "An account with this email already exists. Review the staff directory before retrying.",
+            409,
+            origin,
+            id,
+          );
+        }
+        throw new Error("STAFF_AUTH_USER_CREATE_FAILED");
+      }
+
+      const { data: provisioned, error: provisionError } = await service.rpc(
+        "cmi_create_staff_account",
+        {
+          p_actor_auth_user_id: required.authUser.id,
+          p_target_auth_user_id: created.user.id,
+          p_full_name: parsed.value.full_name,
+          p_email: parsed.value.email,
+          p_branch_id: parsed.value.branch_id,
+          p_role_code: parsed.value.role_code,
+          p_reason: parsed.value.reason,
+        },
+      );
+      if (provisionError || !provisioned) {
+        await service.auth.admin.deleteUser(created.user.id);
+        if (provisionError?.code === "42501") {
+          return fail(
+            "FORBIDDEN",
+            "You are not authorised to create staff accounts or assign roles in this branch.",
+            403,
+            origin,
+            id,
+          );
+        }
+        if (provisionError?.code === "23505") {
+          return fail(
+            "STAFF_ACCOUNT_ALREADY_EXISTS",
+            "A staff profile already exists for this email.",
+            409,
+            origin,
+            id,
+          );
+        }
+        throw new Error("STAFF_PROFILE_PROVISION_FAILED");
+      }
+
+      const safeName = escapeHtml(parsed.value.full_name);
+      const safeEmail = escapeHtml(parsed.value.email);
+      const safePassword = escapeHtml(temporaryPassword);
+      try {
+        await sendEmail(
+          [parsed.value.email],
+          "Your PCG Missions staff account",
+          `<p>Hello ${safeName},</p>
+           <p>An administrator has created your PCG Missions staff account.</p>
+           <p><strong>Sign-in email:</strong> ${safeEmail}</p>
+           <p><strong>One-time temporary password:</strong><br><code>${safePassword}</code></p>
+           <p>Sign in using this email and temporary password. You must choose a new private password immediately after your first sign-in. This temporary password expires in 24 hours.</p>
+           <p>Do not forward this email. If you were not expecting this account, contact your church administrator.</p>`,
+          [
+            `Hello ${parsed.value.full_name},`,
+            "An administrator has created your PCG Missions staff account.",
+            `Sign-in email: ${parsed.value.email}`,
+            `One-time temporary password: ${temporaryPassword}`,
+            "Sign in with this email and temporary password. You must choose a new private password immediately after first sign-in. This temporary password expires in 24 hours.",
+            "Do not forward this email. If you were not expecting this account, contact your church administrator.",
+          ].join("\n"),
+        );
+      } catch {
+        console.error("staff invitation email delivery failed", {
+          request_id: id,
+          staff_profile_id: (provisioned as { staff_profile_id?: string })
+            ?.staff_profile_id,
+        });
+        return fail(
+          "STAFF_INVITATION_EMAIL_FAILED",
+          "The staff account was created, but the invitation email could not be delivered. The administrator should ask the user to submit Forgot password so a temporary password can be issued through the approved recovery process.",
+          503,
+          origin,
+          id,
+        );
+      }
+
+      return response(
+        {
+          data: {
+            staff_profile_id:
+              (provisioned as { staff_profile_id: string }).staff_profile_id,
+            email: parsed.value.email,
+            role_code: parsed.value.role_code,
+            invitation_email_sent: true,
+            must_change_password: true,
+          },
+          request_id: id,
+        },
+        201,
+        origin,
+        id,
+      );
+    }
+
+    if (
       request.method === "GET" && route[0] === "admin" &&
       route[1] === "password-reset-requests"
     ) {
@@ -886,48 +1005,66 @@ Deno.serve(async (request: Request) => {
       }
       if (claimError) throw new Error("PASSWORD_RESET_REQUEST_CLAIM_FAILED");
       const claimed = claim as
-        | { target_email?: string; target_name?: string }
+        | {
+          target_auth_user_id?: string;
+          target_email?: string;
+          target_name?: string;
+        }
         | null;
       const email = normalizeEmail(claimed?.target_email);
-      if (!email) throw new Error("PASSWORD_RESET_TARGET_INVALID");
+      const targetAuthUserId = parseResetRequestId(
+        claimed?.target_auth_user_id ?? "",
+      );
+      if (!email || !targetAuthUserId) {
+        throw new Error("PASSWORD_RESET_TARGET_INVALID");
+      }
+
+      // Claiming the request has already gated the target profile in the
+      // database. Keep it in processing state on any failure so an authorised
+      // administrator can retry after the 10-minute claim lease expires.
+      const temporaryPassword = generateTemporaryPassword();
+      const { error: passwordError } = await service.auth.admin.updateUserById(
+        targetAuthUserId,
+        { password: temporaryPassword },
+      );
+      if (passwordError) {
+        return fail(
+          "RESET_CREDENTIAL_UPDATE_FAILED",
+          "The temporary password could not be issued. The request remains restricted and can be retried by an administrator.",
+          503,
+          origin,
+          id,
+        );
+      }
 
       try {
-        const redirectTo = `${APP_URL}/?auth=recovery`;
-        const { data: linkData, error: linkError } = await service.auth.admin
-          .generateLink({
-            type: "recovery",
-            email,
-            options: { redirectTo },
-          });
-        const actionLink = linkData?.properties?.action_link;
-        if (linkError || !actionLink || typeof actionLink !== "string") {
-          throw new Error("AUTH_RECOVERY_LINK_GENERATION_FAILED");
-        }
         const safeName = escapeHtml(claimed?.target_name ?? "staff member");
-        const safeLink = escapeHtml(actionLink);
+        const safePassword = escapeHtml(temporaryPassword);
+        const textBody = [
+          `Hello ${claimed?.target_name ?? "staff member"},`,
+          "Your password-reset request has been approved by a church administrator.",
+          `Your temporary password is: ${temporaryPassword}`,
+          "Sign in with your registered email address. You must create a new private password before accessing PCG Missions.",
+          "Do not forward this message. If you did not request this reset, contact your church administrator immediately.",
+        ].join("\n");
         await sendEmail(
           [email],
-          "PCG Missions — password reset approved",
+          "PCG Missions — temporary password issued",
           `<p>Hello ${safeName},</p>
            <p>Your password-reset request has been approved by a church administrator.</p>
-           <p><a href="${safeLink}">Set a new PCG Missions password</a></p>
-           <p>This is a single-use recovery link. Do not forward it. If you did not request this reset, contact your church administrator immediately.</p>`,
-          `Hello ${
-            claimed?.target_name ?? "staff member"
-          },\nYour password-reset request has been approved. Use this single-use link to set a new password:\n${actionLink}\nDo not forward the link. If you did not request this reset, contact your church administrator immediately.`,
+           <p>Your temporary password is:</p>
+           <p><strong><code>${safePassword}</code></strong></p>
+           <p>Sign in with your registered email address and this temporary password. You must create a new private password before accessing PCG Missions.</p>
+           <p>This temporary password expires within the reset request's validity window. Do not forward it. If you did not request this reset, contact your church administrator immediately.</p>`,
+          textBody,
         );
       } catch {
-        await service.rpc("cmi_finish_staff_password_reset_request", {
-          p_actor_auth_user_id: required.authUser.id,
-          p_branch_id: parsed.branch_id,
-          p_request_id: requestId,
-          p_action: "pending",
-          p_reason:
-            "Recovery email delivery failed; request returned to pending review.",
+        console.error("staff temporary password email delivery failed", {
+          request_id: id,
         });
         return fail(
           "RESET_EMAIL_DELIVERY_FAILED",
-          "The recovery email could not be delivered. The request remains available for retry.",
+          "The temporary password could not be emailed. The account remains restricted and the request can be retried by an administrator.",
           503,
           origin,
           id,
@@ -945,11 +1082,21 @@ Deno.serve(async (request: Request) => {
         },
       );
       if (finishError) {
-        throw new Error("PASSWORD_RESET_REQUEST_APPROVAL_FAILED");
+        // The account was already gated at claim time and the temporary
+        // password was delivered. The user can complete the forced change;
+        // the database completion transaction also closes a processing request.
+        console.error("staff password reset approval finalization failed", {
+          request_id: id,
+        });
       }
+
       return response(
         {
-          data: { status: "approved", recovery_email_sent: true },
+          data: {
+            status: "approved",
+            temporary_password_sent: true,
+            must_change_password: true,
+          },
           request_id: id,
         },
         200,

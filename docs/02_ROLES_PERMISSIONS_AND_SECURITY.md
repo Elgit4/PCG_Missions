@@ -69,19 +69,18 @@ Anonymous visitors must not see:
 
 Public registration endpoints must validate event state, allowed fields, capacity and abuse controls without granting public access to the staff contact directory.
 
-## 7. Authentication and PIN security
-Staff sign in using email and administrator-issued PIN. PINs are secrets:
-- never store plaintext PINs;
-- never place PINs in logs, analytics, URLs or client-readable profile metadata;
-- validate through a trusted server-side authentication flow;
-- rate-limit attempts and apply progressive throttling/lockout controls;
-- provide a secure administrator reissue/reset and recovery process;
-- rotate/revoke sessions after credential reset or account deactivation;
-- use TLS and secure session storage;
-- do not treat the PIN or client-provided role as authorization evidence.
+## 7. Authentication and password security
 
-The PIN format, expiry, recovery verification and lockout thresholds require explicit security design and approval before production.
+Staff sign in using email and password through Supabase Auth. Passwords are managed and hashed only by Supabase Auth; the application must not create a parallel password store or custom token issuer.
 
+- Admin/Pastor provisions accounts through trusted server-side operations.
+- Initial access and approved resets use cryptographically random, short-lived temporary passwords delivered only to the verified account email.
+- The first authenticated action after temporary-password sign-in is to set a private permanent password; workspace APIs remain gated until this is complete.
+- Administrators never see, choose or store a staff member's permanent password.
+- Forgot-password responses must not reveal whether an account exists. Requests are rate-limited, audited and reviewed by Admin/Pastor.
+- Reset, deactivation and suspected compromise must revoke other active sessions.
+- Never log credentials, place them in URLs, return them to admin clients, or expose service-role keys to the browser.
+- Apply request throttling, generic failure responses, TLS and secure session handling.
 ## 8. Offline data protection
 - Queue only the approved capture payload and required picker metadata.
 - Minimize personal data stored on the device.

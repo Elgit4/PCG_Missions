@@ -5,6 +5,7 @@ import {
   parseResetRequest,
   parseResetRequestId,
   parseResetReview,
+  parseStaffAccountCreate,
 } from "./validation.ts";
 
 Deno.test("normalizes email before lookup", () => {
@@ -88,3 +89,63 @@ Deno.test("password change requires a strong replacement password and no extra f
     }
   }
 });
+
+Deno.test(
+  "administrator staff account creation validates all fields and only approved roles",
+  () => {
+    const valid = parseStaffAccountCreate({
+      branch_id: "3f5b7df0-30b4-4bcd-a893-a6b1b1a73a63",
+      full_name: "Ama Mensah",
+      email: "Ama.Mensah@example.com",
+      role_code: "field_worker",
+      reason: "Approved appointment by the branch administrator.",
+    });
+    if (!valid.ok || valid.value.email !== "ama.mensah@example.com") {
+      throw new Error("valid staff account request rejected");
+    }
+    for (
+      const invalid of [
+        {
+          branch_id: "branch-1",
+          full_name: "Ama Mensah",
+          email: "a@example.com",
+          role_code: "field_worker",
+          reason: "Valid reason for account creation",
+        },
+        {
+          branch_id: valid.ok ? valid.value.branch_id : "",
+          full_name: "A",
+          email: "a@example.com",
+          role_code: "field_worker",
+          reason: "Valid reason for account creation",
+        },
+        {
+          branch_id: valid.ok ? valid.value.branch_id : "",
+          full_name: "Ama Mensah",
+          email: "a@example.com",
+          role_code: "super_admin",
+          reason: "Valid reason for account creation",
+        },
+        {
+          branch_id: valid.ok ? valid.value.branch_id : "",
+          full_name: "Ama Mensah",
+          email: "a@example.com",
+          role_code: "field_worker",
+          reason: "short",
+        },
+        {
+          branch_id: valid.ok ? valid.value.branch_id : "",
+          full_name: "Ama Mensah",
+          email: "a@example.com",
+          role_code: "field_worker",
+          reason: "Valid reason for account creation",
+          password: "spoof",
+        },
+      ]
+    ) {
+      if (parseStaffAccountCreate(invalid).ok) {
+        throw new Error("invalid staff account request accepted");
+      }
+    }
+  },
+);

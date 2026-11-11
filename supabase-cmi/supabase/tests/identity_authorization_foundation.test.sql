@@ -25,8 +25,8 @@ select is(
 
 select is(
   (select count(*)::integer from public.role_capability),
-  0,
-  'no unapproved role-capability grants are seeded'
+  65,
+  'the reviewed visitor MVP role baseline is seeded'
 );
 
 select ok(

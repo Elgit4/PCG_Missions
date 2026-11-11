@@ -2,7 +2,7 @@
 
 ## Current application state
 
-The frontend now includes an email/password sign-in flow backed by Supabase Auth, a forced first-login password replacement screen, recovery-link handling, a privacy-preserving Forgot password request, and an Admin/Pastor password-reset review queue. These features are implemented on the `feat/cmi-admin-auth-lifecycle` branch and remain source-only until the database migration, Edge Function and server secrets are deployed in the approved order.
+The frontend includes Supabase Auth sign-in, forced first-login credential replacement, a privacy-preserving Forgot password request, an Admin/Pastor reset-review queue, and an Admin/Pastor staff-account creation screen. The account creation and temporary-credential delivery path is in the open authorization PR and remains source-only until its migrations, Edge Functions and secrets are deployed in the approved order.
 
 The live staff workspace is implemented in `src/components/StaffWorkspace.tsx` and connects to the typed `CmiApiClient`. It is mounted only after Supabase Auth succeeds and the server-issued staff session confirms an active profile and branch. The workspace is not available to accounts with a pending temporary-password or approved-recovery change.
 
@@ -22,7 +22,7 @@ Authentication uses Supabase Auth email/password credentials. The application do
 
 The first administrator is created only by a one-time server-only bootstrap route when the Auth project and CMI church/branch/profile tables are empty. It generates a random temporary password at runtime, emails it to the configured administrator mailbox, and records a 24-hour password-setup deadline. The temporary password is not committed to source, returned by the endpoint, or stored in Postgres. The first successful sign-in is restricted to password replacement before workspace access.
 
-Staff recovery is administrator-approved. A staff member submits an email address; the API responds identically whether or not the account exists. A matching active staff account creates a private, throttled and audited request and notifies the branch Admin/Pastor recipients by email. An authorised administrator records a review reason and approves or denies the request. Approval sends a single-use Supabase recovery link; the administrator never sees or chooses the staff member's replacement password. Approved recovery also gates staff access until the password has been changed.
+Staff recovery is administrator-approved. A staff member submits an email address; the API responds identically whether or not the account exists. A matching active staff account creates a private, throttled and audited request and notifies the branch Admin/Pastor recipients by email. An authorised administrator records a review reason and approves or denies the request. Approval generates a cryptographically random temporary password, replaces the Supabase Auth password, and emails the temporary credential to the staff member. The account is gated as soon as the administrator claims the request; a successful first sign-in must replace the temporary password before workspace access. The administrator never sees or chooses the staff member's permanent password. Failed credential/email operations remain gated and retryable after the processing lease expires.
 
 The staff workspace is mounted only after a valid session is verified through `GET /staff-session`; a missing staff profile, inactive account, pending password change, empty branch context or missing capability must never be treated as Admin access.
 
@@ -55,7 +55,7 @@ The backend has no role-capability grants at the current source baseline. An emp
 - Prayer/care endpoints provide audited individual reads only; they do not provide an approved list or mutation API.
 - Reports and exports have no approved API contract.
 - Event, announcement, visitor-content and calendar APIs are draft-only and approval-gated. They do not support publication, registration, capacity, check-in, closeout or message delivery.
-- Staff directory and role-management APIs do not provision Auth users or issue credentials.
+- Admin/Pastor staff provisioning creates the Supabase Auth identity, staff profile and branch role assignment, then emails a one-time temporary credential. The permanent credential is never returned to the administrator or stored in application tables.
 - Hubtel has a provider adapter only; there is no live outbox dispatcher or send API.
 - Offline data storage is intentionally not enabled.
 
@@ -70,7 +70,7 @@ The frontend does not present these as working business modules.
 The frontend source is not equivalent to a deployable production system. The repository handoff records that CMI Edge Functions are source-controlled but not deployed, domain SQL remains in schema drafts, and the production Supabase project has not received the corresponding CMI deployment. Before a production launch, complete and verify all of the following:
 
 1. Obtain stakeholder approvals and security review for the PIN lifecycle, capability matrix, data policies and branch model.
-2. Implement and security-test staff provisioning, activation, PIN setup/reissue and account recovery using the approved Supabase Auth flow; test first-login and recovery journeys.
+2. Confirm the credential type with the product owner (email + PIN versus email + password), then implement and security-test the matching staff activation, first-login replacement and administrator-reviewed recovery journeys. The current draft is email/password and must not be treated as a completed PIN implementation.
 3. Promote only approved domain schema drafts into reviewed permanent migrations and apply them through the agreed deployment process.
 4. Deploy required Edge Functions with production secrets, exact CORS origin allowlists and request/rate limits.
 5. Provision the initial church, active branch, staff profiles and approved capability grants through a trusted administrative process.

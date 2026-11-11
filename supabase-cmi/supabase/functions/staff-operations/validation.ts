@@ -340,21 +340,22 @@ export interface StaffDirectoryProfileRow {
 export interface StaffDirectoryMember {
   id: string;
   full_name: string;
+  account_status: "active" | "inactive";
   roles: Array<{ code: string; name: string }>;
 }
 
 /**
- * Projects active staff and their active role names for one branch.
+ * Projects staff and their active role names for one branch.
  * Only allowlisted fields are returned; Auth IDs, email and phone never enter
- * the directory response.
+ * the directory response. Account status is included for authorised account
+ * lifecycle controls; inactive accounts remain visible to authorised admins.
  */
 export function projectStaffDirectoryRows(
   rows: StaffDirectoryProfileRow[],
 ): StaffDirectoryMember[] {
   return rows
     .filter((row) =>
-      row.account_status === undefined ||
-      row.account_status === "active"
+      row.account_status === "active" || row.account_status === "inactive"
     )
     .map((row) => {
       const roles = new Map<string, string>();
@@ -374,6 +375,7 @@ export function projectStaffDirectoryRows(
       return {
         id: row.id,
         full_name: row.full_name,
+        account_status: row.account_status as "active" | "inactive",
         roles: [...roles.entries()]
           .map(([code, name]) => ({ code, name }))
           .sort((a, b) => a.code.localeCompare(b.code)),

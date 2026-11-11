@@ -17,7 +17,7 @@
 | 0 | Requirements and governance | Church approves roles, capability matrix, PIN lifecycle, branch scope, privacy, event rules and retention |
 | 1 | UX and information architecture | Mobile-first staff/public prototypes reviewed; all role journeys represented |
 | 2 | Target data model and security | New CMI ERD/schema reviewed; RLS tests cover roles, multi-role combinations and record scopes |
-| 3 | Foundation and authentication | Staff email+PIN sign-in, secure session, reset/reissue, deactivation and audit verified |
+| 3 | Foundation and authentication | Staff email/password sign-in, temporary-password onboarding, forced first-login replacement, admin-reviewed reset, session revocation and audit verified |
 | 4 | Team, roles and settings | Multi-role assignment, team/area scope and event-specific team assignment work |
 | 5 | Contacts and field capture | Online capture, picker configuration, duplicate review/merge and contact history pass |
 | 6 | Limited offline support | Queued capture and previously opened event check-in sync reliably with retry/conflict handling |

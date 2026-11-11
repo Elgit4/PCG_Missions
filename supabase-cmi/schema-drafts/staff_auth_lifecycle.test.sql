@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(43);
+select plan(49);
 
 select has_column(
   'public', 'staff_profile', 'must_change_password',
@@ -39,8 +39,8 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  0,
-  'no role permissions are granted before the one-time bootstrap is run'
+  65,
+  'the reviewed visitor MVP role baseline exists before first-admin bootstrap'
 );
 select ok(
   exists(select 1 from public.capability where code='staff.password_reset.manage' and is_active),
@@ -116,8 +116,8 @@ select is(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  4,
-  'bootstrap grants only the minimum Admin/Pastor control-plane capabilities'
+  65,
+  'bootstrap preserves the reviewed least-privilege role baseline'
 );
 select is(
   (select count(*)::integer
@@ -133,7 +133,7 @@ select is(
    from public.role_capability rc
    join public.capability cap on cap.id=rc.capability_id
    where cap.code in (
-     'contact.capture.create','prayer.oversight.read','care.oversight.read',
+     'prayer.oversight.read','care.oversight.read',
      'sms.campaign.send.scoped','report.export.scoped','access.capability.manage'
    )),
   0,
@@ -263,6 +263,13 @@ select is(
   'processing',
   'claiming a reset request records the processing state'
 );
+select ok(
+  (select must_change_password
+      and password_setup_expires_at > pg_catalog.now()
+    from public.staff_profile
+    where auth_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1'),
+  'the target account is gated immediately when an administrator claims the reset'
+);
 select lives_ok(
   $$select public.cmi_finish_staff_password_reset_request(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
@@ -347,6 +354,79 @@ select throws_ok(
   '55000',
   'password reset audit is append-only',
   'reset audit DELETE is rejected'
+);
+
+insert into auth.users(
+  instance_id, id, aud, role, email, encrypted_password,
+  email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+  created_at, updated_at
+)
+values (
+  '00000000-0000-0000-0000-000000000000',
+  'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+  'authenticated', 'authenticated', 'new-staff@example.test',
+  'not-a-real-password-hash', pg_catalog.now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,
+  '{}'::jsonb, pg_catalog.now(), pg_catalog.now()
+);
+
+select lives_ok(
+  $sql$select public.cmi_create_staff_account(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20',
+    'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    'New Staff Member',
+    'new-staff@example.test',
+    (select branch_id from public.staff_role_assignment assignment
+     join public.staff_profile administrator on administrator.id = assignment.staff_profile_id
+     where administrator.auth_user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'
+     limit 1),
+    'field_worker',
+    'Approved staff appointment for field ministry.'
+  )$sql$,
+  'an authorised Admin/Pastor can provision a staff account and assign a role'
+);
+select throws_ok(
+  $sql$select public.cmi_create_staff_account(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbb1',
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    'Unauthorised Staff',
+    'unauthorised-staff@example.test',
+    (select branch_id from public.staff_role_assignment assignment
+     join public.staff_profile actor on actor.id = assignment.staff_profile_id
+     where actor.auth_user_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'
+     limit 1),
+    'field_worker',
+    'Attempted account creation by a field worker.'
+  )$sql$,
+  '42501',
+  'staff provisioning is not authorised',
+  'a Field Worker cannot create staff accounts or assign roles'
+);
+select ok(
+  (select must_change_password
+      and password_setup_expires_at > pg_catalog.now()
+    from public.staff_profile
+    where auth_user_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'),
+  'new staff accounts must change their emailed temporary password within 24 hours'
+);
+select is(
+  (select role.code
+   from public.staff_role_assignment assignment
+   join public.role role on role.id = assignment.role_id
+   join public.staff_profile target on target.id = assignment.staff_profile_id
+   where target.auth_user_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+   limit 1),
+  'field_worker',
+  'the selected approved role is assigned to the new staff profile'
+);
+select is(
+  (select count(*)::integer
+   from public.staff_access_audit audit
+   join public.staff_profile target on target.id = audit.target_profile_id
+   where target.auth_user_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+     and audit.action = 'account_created'),
+  1,
+  'administrator account creation is recorded in the access audit'
 );
 
 select * from finish();

@@ -1,3 +1,5 @@
+> **SUPERSEDED — 10 November 2026:** The product owner subsequently confirmed Supabase email + password authentication for PCG Missions, with a generated temporary password, mandatory first-login password replacement and administrator-reviewed reset. This PIN proposal is retained only as historical decision context; it is not the current requirement and must not guide implementation. See [the current authentication and authorization baseline](31_VISITOR_MVP_AUTHENTICATION_AUTHORIZATION_BASELINE.md) and [the handover pack](29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md).
+
 # CMI email + private PIN authentication architecture proposal
 
 **Status:** Technical proposal only — not approved for production implementation or deployment.  

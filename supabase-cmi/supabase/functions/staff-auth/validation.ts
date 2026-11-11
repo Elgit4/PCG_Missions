@@ -92,3 +92,72 @@ export function parsePasswordChange(
   }
   return { ok: true, password: value.password };
 }
+
+const STAFF_ROLES = new Set([
+  "admin_pastor",
+  "coordinator",
+  "team_leader",
+  "field_worker",
+  "follow_up_volunteer",
+  "prayer_intercessor",
+]);
+
+export interface StaffAccountCreateInput {
+  branch_id: string;
+  full_name: string;
+  email: string;
+  role_code: string;
+  reason: string;
+}
+
+export function parseStaffAccountCreate(
+  value: unknown,
+): { ok: true; value: StaffAccountCreateInput } | { ok: false; error: string } {
+  if (!object(value)) return { ok: false, error: "A JSON object is required." };
+  const allowed = new Set([
+    "branch_id",
+    "full_name",
+    "email",
+    "role_code",
+    "reason",
+  ]);
+  if (
+    Object.keys(value).length !== allowed.size ||
+    Object.keys(value).some((key) => !allowed.has(key))
+  ) {
+    return {
+      ok: false,
+      error: "Provide branch, name, email, role and reason.",
+    };
+  }
+  const branchId = parseBranchId(
+    typeof value.branch_id === "string" ? value.branch_id : null,
+  );
+  const email = normalizeEmail(value.email);
+  const fullName = typeof value.full_name === "string"
+    ? value.full_name.trim()
+    : "";
+  const roleCode = typeof value.role_code === "string" ? value.role_code : "";
+  const reason = typeof value.reason === "string" ? value.reason.trim() : "";
+  if (!branchId) return { ok: false, error: "A valid branch_id is required." };
+  if (fullName.length < 2 || fullName.length > 180) {
+    return { ok: false, error: "full_name must contain 2 to 180 characters." };
+  }
+  if (!email) return { ok: false, error: "Enter a valid email address." };
+  if (!STAFF_ROLES.has(roleCode)) {
+    return { ok: false, error: "Choose one of the six approved staff roles." };
+  }
+  if (reason.length < 10 || reason.length > 500) {
+    return { ok: false, error: "reason must contain 10 to 500 characters." };
+  }
+  return {
+    ok: true,
+    value: {
+      branch_id: branchId,
+      full_name: fullName,
+      email,
+      role_code: roleCode,
+      reason,
+    },
+  };
+}

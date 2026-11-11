@@ -58,8 +58,8 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  0,
-  'No stakeholder role grants exist before synthetic fixtures'
+  65,
+  'the reviewed visitor MVP role baseline exists before synthetic fixtures'
 );
 select ok(
   has_function_privilege(

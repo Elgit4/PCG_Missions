@@ -299,7 +299,7 @@ Deno.test("staff directory query rejects duplicate and out-of-range parameters",
   }
 });
 
-Deno.test("staff directory projection deduplicates roles and excludes inactive staff", () => {
+Deno.test("staff directory projection deduplicates roles and includes account status", () => {
   const projected = projectStaffDirectoryRows([
     {
       id: "30000000-0000-4000-8000-000000000001",
@@ -329,8 +329,18 @@ Deno.test("staff directory projection deduplicates roles and excludes inactive s
       ],
     },
   ]);
-  if (projected.length !== 1) {
-    throw new Error("Inactive staff or empty role projections were returned.");
+  if (projected.length !== 2) {
+    throw new Error(
+      "Active and inactive staff with active role assignments must be returned.",
+    );
+  }
+  if (
+    projected.find((member) => member.id.endsWith("0001"))?.account_status !==
+      "active" ||
+    projected.find((member) => member.id.endsWith("0002"))?.account_status !==
+      "inactive"
+  ) {
+    throw new Error("Staff account status was not projected accurately.");
   }
   if (
     projected[0].roles.length !== 1 ||

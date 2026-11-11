@@ -55,7 +55,7 @@ These are implementation gates alongside R/D decisions:
 
 | Area | Decision required | Recommended safe default | Status |
 |---|---|---|---|
-| Email + PIN authentication | Activation PIN lifecycle, private PIN establishment, PIN length/entropy, rate limits, reset/reissue, recovery and Supabase Auth integration | One-time administrator-issued activation credential; staff establishes a private PIN unknown to administrators; secure server-side verification and throttling. Preserve email + PIN sign-in unless the product owner explicitly changes it. | Pending |
+| Staff authentication | Email/password sign-in, one-time temporary-password onboarding, mandatory first-login password replacement, administrator-reviewed reset and session revocation | Supabase Auth manages passwords and sessions; temporary passwords are random, short-lived and emailed only to the verified account address. Administrators never see or set a user's permanent password. | Confirmed by product owner — 10 Nov 2026 |
 | Branch model | Confirm branch count and whether branch scope applies to all operational records | One configured branch context unless church leadership confirms additional branches. | Pending |
 | Public site | Exact public fields, publication authority, abuse/rate limits and contact-form retention | Published content only; no anonymous directory access. | Pending |
 | SMS content | Sender identity, template approval, opt-out language, service-message classification and inbound keyword handling | No dispatch until provider capabilities and lawful handling are confirmed. | Pending |

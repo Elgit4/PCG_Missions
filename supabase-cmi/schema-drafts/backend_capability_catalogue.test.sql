@@ -12,8 +12,8 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  0,
-  'No role grants are seeded while stakeholder approval is pending'
+  65,
+  'the approved visitor MVP role baseline contains 65 least-privilege grants'
 );
 select has_function(
   'public',
@@ -102,7 +102,8 @@ select r.id, c.id, 'assigned'
 from public.role r
 cross join public.capability c
 where r.code = 'field_worker'
-  and c.code = 'contact.capture.create';
+  and c.code = 'contact.capture.create'
+on conflict do nothing;
 
 insert into public.staff_role_assignment(
   staff_profile_id, role_id, branch_id, assigned_by, starts_at, ends_at
@@ -202,6 +203,14 @@ select extensions.is(
   'identical retry does not duplicate contact capture provenance'
 );
 
+
+-- Remove the baseline assigned identity grant only within this rollback-only
+-- test so the following assertion can prove that team scope alone is insufficient.
+delete from public.role_capability rc
+using public.role r, public.capability c
+where rc.role_id = r.id and rc.capability_id = c.id
+  and r.code = 'field_worker' and c.code = 'contact.identity.capture'
+  and rc.scope_mode = 'assigned';
 
 insert into public.role_capability(role_id, capability_id, scope_mode)
 select r.id, c.id, 'team'

@@ -81,8 +81,8 @@ select ok(
   'task transactions use caller privileges and do not elevate to the migration owner'
 );
 select ok(
-  (select count(*) = 0 from public.role_capability),
-  'no role-capability grants are introduced by the task transaction migration'
+  (select count(*) = 65 from public.role_capability),
+  'the reviewed visitor MVP role baseline remains unchanged by the task transaction migration'
 );
 
 -- Test fixtures are synthetic and fully rolled back at the end of this file.
@@ -183,7 +183,8 @@ select r.id, c.id, 'assigned'
 from public.role r
 cross join public.capability c
 where r.code = 'field_worker'
-  and c.code in ('followup.task.create', 'followup.task.update.scoped');
+  and c.code in ('followup.task.create', 'followup.task.update.scoped')
+on conflict do nothing;
 
 insert into public.role_capability(role_id, capability_id, scope_mode)
 select r.id, c.id, 'branch'

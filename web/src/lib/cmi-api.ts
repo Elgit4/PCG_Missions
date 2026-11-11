@@ -43,6 +43,21 @@ export interface StaffSession {
   password_setup_expires_at: string | null;
 }
 
+export interface StaffDirectoryEntry {
+  id: string;
+  full_name: string;
+  account_status: "active" | "inactive";
+  roles: Array<{ code: string; name: string }>;
+}
+
+export interface StaffAccountCreateInput {
+  branch_id: string;
+  full_name: string;
+  email: string;
+  role_code: "admin_pastor" | "coordinator" | "team_leader" | "field_worker" | "follow_up_volunteer" | "prayer_intercessor";
+  reason: string;
+}
+
 export interface StaffPasswordResetRequest {
   id: string;
   email: string;
@@ -266,9 +281,38 @@ export class CmiApiClient {
   }
 
   listStaffDirectory(branchId: string, options: { limit?: number; offset?: number; search?: string } = {}) {
-    return this.request<unknown[]>("staff-operations", "/staff", {
+    return this.request<StaffDirectoryEntry[]>("staff-operations", "/staff", {
       query: { branch_id: branchId, limit: options.limit ?? 25, offset: options.offset ?? 0, search: options.search },
     });
+  }
+
+  createStaffAccount(input: StaffAccountCreateInput) {
+    return this.request<{
+      staff_profile_id: string;
+      email: string;
+      role_code: StaffAccountCreateInput["role_code"];
+      invitation_email_sent: boolean;
+      must_change_password: boolean;
+    }>("staff-auth", "/admin/staff", { method: "POST", body: input });
+  }
+
+    setStaffAccountStatus(
+    staffProfileId: string,
+    branchId: string,
+    status: "active" | "inactive",
+    reason: string,
+  ) {
+    const action = status === "active" ? "reactivate" : "deactivate";
+    return this.request<{
+      staff_profile_id: string;
+      branch_id: string;
+      account_status: "active" | "inactive";
+      no_change?: boolean;
+    }>(
+      "staff-access-operations",
+      `/staff/${encodeURIComponent(staffProfileId)}/accounts/${action}`,
+      { method: "POST", body: { branch_id: branchId, reason } },
+    );
   }
 
   listStaffPasswordResetRequests(branchId: string) {
@@ -279,7 +323,7 @@ export class CmiApiClient {
     );
   }
   approveStaffPasswordResetRequest(branchId: string, requestId: string, reason: string) {
-    return this.request<{ status: string; recovery_email_sent: boolean }>(
+    return this.request<{ status: string; temporary_password_sent: boolean; must_change_password: boolean }>(
       "staff-auth",
       `/admin/password-reset-requests/${encodeURIComponent(requestId)}/approve`,
       { method: "POST", body: { branch_id: branchId, reason } },

@@ -138,7 +138,7 @@ export default function App() {
     setNotice("");
     try {
       await auth.requestPasswordReset(email);
-      setNotice("If this address belongs to an active staff account, the church administrators have been notified. You will receive a recovery link after they approve the request.");
+      setNotice("If this address belongs to an active staff account, the church administrators have been notified. If approved, the administrator will email you a temporary password that you must replace after signing in.");
     } catch (cause) {
       setError(messageFor(cause));
     } finally {

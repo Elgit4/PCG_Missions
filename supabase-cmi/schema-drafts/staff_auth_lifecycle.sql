@@ -94,7 +94,7 @@ create trigger staff_password_reset_audit_no_truncate
 insert into public.capability(code, description, sensitivity)
 values (
   'staff.password_reset.manage',
-  'Review staff password-reset requests and initiate a one-time recovery link.',
+  'Review staff password-reset requests and issue one-time temporary passwords by email.',
   'restricted'
 )
 on conflict (code) do update set
@@ -192,12 +192,11 @@ begin
     pg_catalog.now(), 'Initial one-time PCG Missions administrator bootstrap'
   );
 
-  -- The first administrator receives only the minimum control-plane
-  -- capabilities needed to view the staff directory, manage existing staff
-  -- account status, assign the six approved roles, and review account recovery. Business-domain capabilities (contacts,
-  -- events, prayer/care, SMS, reports, exports and oversight) remain empty
-  -- until the client signs off the role matrix. Capability-policy editing is
-  -- deliberately excluded to prevent self-escalation.
+  -- The reviewed visitor MVP authorization migration seeds the role matrix.
+  -- Bootstrap only ensures that the first Admin/Pastor retains the minimum
+  -- branch-scoped control-plane capabilities needed to manage staff accounts,
+  -- assign the six approved roles and review account recovery. It does not
+  -- grant capability-policy editing or expand any other role's permissions.
   insert into public.role_capability(role_id, capability_id, scope_mode)
   select v_role_id, cap.id, 'branch'
   from public.capability cap
@@ -222,6 +221,215 @@ $$;
 revoke all on function public.cmi_bootstrap_first_admin(uuid, text, text, text, text)
   from public, anon, authenticated, service_role;
 grant execute on function public.cmi_bootstrap_first_admin(uuid, text, text, text, text)
+  to service_role;
+
+create or replace function public.cmi_create_staff_account(
+  p_actor_auth_user_id uuid,
+  p_target_auth_user_id uuid,
+  p_full_name text,
+  p_email text,
+  p_branch_id uuid,
+  p_role_code text,
+  p_reason text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $staff_account$
+declare
+  v_actor_profile_id uuid;
+  v_role_id uuid;
+  v_profile_id uuid;
+  v_email text;
+begin
+  v_email := pg_catalog.lower(pg_catalog.btrim(coalesce(p_email, '')));
+  if p_actor_auth_user_id is null
+    or p_target_auth_user_id is null
+    or p_branch_id is null
+    or pg_catalog.length(pg_catalog.btrim(coalesce(p_full_name, ''))) not between 2 and 180
+    or pg_catalog.length(v_email) not between 6 and 254
+    or v_email !~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$'
+    or p_role_code not in (
+      'admin_pastor',
+      'coordinator',
+      'team_leader',
+      'field_worker',
+      'follow_up_volunteer',
+      'prayer_intercessor'
+    )
+    or pg_catalog.length(pg_catalog.btrim(coalesce(p_reason, ''))) not between 10 and 500
+  then
+    raise exception using errcode = '22023', message = 'invalid staff account request';
+  end if;
+
+  select id into v_actor_profile_id
+  from public.staff_profile
+  where auth_user_id = p_actor_auth_user_id
+    and account_status = 'active'
+    and not must_change_password
+    and (password_setup_expires_at is null or password_setup_expires_at > pg_catalog.now());
+
+  if v_actor_profile_id is null
+    or not exists (
+      select 1
+      from public.staff_role_assignment assignment
+      join public.role assigned_role
+        on assigned_role.id = assignment.role_id
+       and assigned_role.is_active
+      join public.role_capability grant_row
+        on grant_row.role_id = assigned_role.id
+       and grant_row.scope_mode = 'branch'
+      join public.capability capability_row
+        on capability_row.id = grant_row.capability_id
+       and capability_row.is_active
+      where assignment.staff_profile_id = v_actor_profile_id
+        and assignment.branch_id = p_branch_id
+        and assignment.starts_at <= pg_catalog.now()
+        and (assignment.ends_at is null or assignment.ends_at > pg_catalog.now())
+        and assignment.revoked_at is null
+        and capability_row.code = 'staff.account.manage'
+    )
+    or not exists (
+      select 1
+      from public.staff_role_assignment assignment
+      join public.role assigned_role
+        on assigned_role.id = assignment.role_id
+       and assigned_role.is_active
+      join public.role_capability grant_row
+        on grant_row.role_id = assigned_role.id
+       and grant_row.scope_mode = 'branch'
+      join public.capability capability_row
+        on capability_row.id = grant_row.capability_id
+       and capability_row.is_active
+      where assignment.staff_profile_id = v_actor_profile_id
+        and assignment.branch_id = p_branch_id
+        and assignment.starts_at <= pg_catalog.now()
+        and (assignment.ends_at is null or assignment.ends_at > pg_catalog.now())
+        and assignment.revoked_at is null
+        and capability_row.code = 'access.role.assign'
+    )
+  then
+    raise exception using errcode = '42501', message = 'staff provisioning is not authorised';
+  end if;
+
+  if not exists (
+    select 1
+    from public.branch branch
+    join public.church church
+      on church.id = branch.church_id
+     and church.is_configured_instance
+    where branch.id = p_branch_id
+      and branch.is_active
+  ) then
+    raise exception using errcode = '42501', message = 'active configured branch required';
+  end if;
+
+  select id into v_role_id
+  from public.role
+  where code = p_role_code
+    and is_active;
+
+  if v_role_id is null then
+    raise exception using errcode = '22023', message = 'active role not found';
+  end if;
+
+  if p_role_code = 'admin_pastor'
+    and not exists (
+      select 1
+      from public.staff_role_assignment assignment
+      join public.role assigned_role
+        on assigned_role.id = assignment.role_id
+      where assignment.staff_profile_id = v_actor_profile_id
+        and assignment.branch_id = p_branch_id
+        and assigned_role.code = 'admin_pastor'
+        and assignment.starts_at <= pg_catalog.now()
+        and (assignment.ends_at is null or assignment.ends_at > pg_catalog.now())
+        and assignment.revoked_at is null
+    )
+  then
+    raise exception using errcode = '42501', message = 'Admin/Pastor assignment required to create another administrator';
+  end if;
+
+  if exists (
+    select 1 from public.staff_profile
+    where auth_user_id = p_target_auth_user_id
+  ) or exists (
+    select 1 from public.staff_profile
+    where lower(email) = v_email
+  ) then
+    raise exception using errcode = '23505', message = 'staff account already exists';
+  end if;
+
+  insert into public.staff_profile(
+    auth_user_id,
+    full_name,
+    email,
+    account_status,
+    must_change_password,
+    password_setup_expires_at,
+    password_changed_at
+  )
+  values (
+    p_target_auth_user_id,
+    pg_catalog.btrim(p_full_name),
+    v_email,
+    'active',
+    true,
+    pg_catalog.now() + interval '24 hours',
+    null
+  )
+  returning id into v_profile_id;
+
+  insert into public.staff_role_assignment(
+    staff_profile_id,
+    role_id,
+    branch_id,
+    assigned_by,
+    starts_at,
+    reason
+  )
+  values (
+    v_profile_id,
+    v_role_id,
+    p_branch_id,
+    v_actor_profile_id,
+    pg_catalog.now(),
+    pg_catalog.btrim(p_reason)
+  );
+
+  insert into public.staff_access_audit(
+    branch_id,
+    actor_profile_id,
+    target_profile_id,
+    action,
+    reason,
+    metadata
+  )
+  values (
+    p_branch_id,
+    v_actor_profile_id,
+    v_profile_id,
+    'account_created',
+    pg_catalog.btrim(p_reason),
+    pg_catalog.jsonb_build_object('role_code', p_role_code, 'email', v_email)
+  );
+
+  return pg_catalog.jsonb_build_object(
+    'staff_profile_id', v_profile_id,
+    'auth_user_id', p_target_auth_user_id,
+    'branch_id', p_branch_id,
+    'role_code', p_role_code,
+    'account_status', 'active',
+    'must_change_password', true,
+    'password_setup_expires_at', pg_catalog.now() + interval '24 hours'
+  );
+end;
+$staff_account$;
+
+revoke all on function public.cmi_create_staff_account(uuid, uuid, text, text, uuid, text, text)
+  from public, anon, authenticated;
+grant execute on function public.cmi_create_staff_account(uuid, uuid, text, text, uuid, text, text)
   to service_role;
 
 create or replace function public.cmi_request_staff_password_reset(
@@ -543,6 +751,14 @@ begin
       reviewed_at = pg_catalog.now()
   where id = p_request_id;
 
+  -- Lock the target out of ordinary staff operations immediately, before any
+  -- external email or Auth password operation is attempted. A failed delivery
+  -- remains retryable after the processing lease expires.
+  update public.staff_profile
+  set must_change_password = true,
+      password_setup_expires_at = v_request.expires_at
+  where id = v_request.target_profile_id;
+
   return pg_catalog.jsonb_build_object(
     'request_id', v_request.id,
     'target_auth_user_id', v_target_auth_user_id,
@@ -675,7 +891,7 @@ begin
         select 1
         from private.staff_password_reset_request req
         where req.target_profile_id = sp.id
-          and req.status = 'approved'
+          and req.status in ('approved', 'processing')
           and req.expires_at > pg_catalog.now()
       )
     )
@@ -689,7 +905,7 @@ begin
     update private.staff_password_reset_request
     set status = 'completed', completed_at = pg_catalog.now()
     where target_profile_id = v_profile_id
-      and status = 'approved'
+      and status in ('approved', 'processing')
     returning id, branch_id
   )
   insert into private.staff_password_reset_audit(
