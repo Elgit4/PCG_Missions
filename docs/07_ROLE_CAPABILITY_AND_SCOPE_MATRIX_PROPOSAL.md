@@ -1,9 +1,9 @@
 # CMI Follow-up — Role, Capability & Scope Matrix (Proposal)
 
-**Version:** 0.1 | **Baseline:** CMI Follow-up v2.1 | **Status:** Proposed for stakeholder approval
+**Version:** 0.2 | **Baseline:** CMI Follow-up v2.1 | **Status:** Product-owner safe-default baseline selected for implementation; church policy may amend through change control
 **Branch:** design/cmi-logical-data-model
 
-> This matrix translates the v2.1 role descriptions into testable authorization rules. It is a proposal, not an approved grant schedule. Where the requirements do not specify exact actions or scope, access is marked conditional and requires approval.
+> This matrix translates the v2.1 role descriptions into testable authorization rules. The product owner has authorized implementation of the conservative defaults in document 31. Conditional or sensitive capabilities remain ungranted until their technical and compliance gates are met.
 
 ## 1. Authorization model
 
@@ -194,7 +194,7 @@ Legend: **G** proposed default grant; **S** scoped grant; **P** privileged Admin
 | Care summaries/interactions | Assigned care workers and separately authorized, audited oversight; exact roles require approval |
 | SMS body and recipient number | Authorized message operators only; mask numbers in broad delivery views |
 | SMS consent/suppression evidence | Restricted communication administration; dispatch reads only eligibility fields it needs |
-| PIN/credential metadata | Never client-readable; never store plaintext PIN |
+| Password/credential metadata | Never client-readable; never store plaintext passwords or temporary credentials |
 | Audit metadata | Privileged readers; no secrets or sensitive narrative |
 | Public content | Anonymous read only when explicitly published/active |
 | Public registration | Narrow create workflow; no public contact-directory lookup |
@@ -210,7 +210,7 @@ Audit sensitive access without copying sensitive text into audit rows. Record ac
 - Automation configuration is limited to approved trigger types, recipient classes, template versions, quiet hours and caps.
 - Pause stops future queueing; already submitted provider messages may not be recallable.
 - Provider configuration is Admin/Pastor-only and server-side; credentials must never be returned to a browser.
-- Recommended separation: campaign creator should not approve their own bulk campaign where a second approver exists. If staffing prevents dual control, record an approved exception and use a lower cap. This is a proposal requiring approval.
+- Default separation: campaign creator and approver must be different active users. No self-approval exception is enabled. A later documented church policy may add a constrained emergency workflow with explicit limits and audit.
 
 ## 7. Non-role public access
 
@@ -265,7 +265,7 @@ Use operation-specific policies, not one broad FOR ALL policy.
 | AUTH-023 | Deactivated staff attempts export | Denied and audited |
 | AUTH-024 | Offline operation replayed | Idempotent; no duplicate mutation |
 
-## 10. Decisions requiring explicit approval
+## 10. Selected owner-directed defaults and remaining enablement gates
 
 | ID | Approval question | Recommended default for review |
 |---|---|---|
@@ -294,7 +294,7 @@ R-01–R-12 are cross-referenced with the broader logical-model decisions D-01�
 
 ## 13. Next engineering gate
 
-After R-01 through R-12 and the matrix are approved:
+The product owner selected the standard conservative defaults in [document 31](31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md). Implementation follows those defaults; provider/legal/stakeholder gates remain before enabling sensitive live operations.
 
 1. Freeze capability codes and role assignments.
 2. Finalize contact sharing, care assignments, capability grants and audit-reason entities.
