@@ -74,7 +74,11 @@ Deno.serve(async (request: Request) => {
 
   if (!supabase) {
     // Fail closed when the server-side credentials are not configured.
-    return response({ error: "Public content service is not configured." }, 503, origin);
+    return response(
+      { error: "Public content service is not configured." },
+      503,
+      origin,
+    );
   }
 
   const parsed = parsePublicContentRequest(new URL(request.url));
@@ -134,6 +138,10 @@ Deno.serve(async (request: Request) => {
       resource: parsed.value.resource,
       error: error instanceof Error ? error.message : "unknown",
     });
-    return response({ error: "Unable to retrieve public content." }, 500, origin);
+    return response(
+      { error: "Unable to retrieve public content." },
+      500,
+      origin,
+    );
   }
 });
