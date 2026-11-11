@@ -227,6 +227,6 @@ The database security gate passes only when:
 - [ ] SMS eligibility, suppression, approval, budgets and callback verification are tested.
 - [ ] Offline sync reauthorization and idempotency are tested.
 - [ ] Clean database reset, migrations and CI tests pass.
-- [ ] Security review signs off on the email + PIN threat model and provider integration.
+- [ ] Security review signs off on Supabase email/password onboarding, temporary-password expiry, administrator-reviewed reset, delivery-failure recovery and provider integration.
 
 **Current status:** Test plan authored only. No RLS policies, pgTAP tests, local database tests or hosted Supabase changes have been executed.
