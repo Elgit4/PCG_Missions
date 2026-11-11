@@ -219,19 +219,19 @@ The client handover is complete only when the following evidence is attached:
 - [ ] Backup/restore and incident response responsibilities recorded.
 - [ ] Client signs the final acceptance and go-live record.
 
-## 12. Current engineering evidence (10 November 2026)
+## 12. Current engineering evidence (11 November 2026)
 
 - PR #24, PR #25 and PR #26 are merged into `main`.
 - The integrated frontend is in `web/`; backend and Edge Function source is in `supabase-cmi/`.
 - The RLS-helper privilege-remediation migration is present in the hosted migration history.
-- Hosted Supabase now contains 11 identity/authorization foundation tables and three recorded migrations; zero CMI Edge Functions are deployed. All 11 tables have RLS enabled, exactly six approved roles are seeded, and `role_capability` remains empty.
+- Hosted Supabase contains 11 identity/authorization foundation tables and three recorded migrations; zero CMI Edge Functions are deployed. All 11 tables have RLS enabled, exactly six roles are seeded, and `role_capability` remains empty in the hosted project. The 58-grant owner-directed baseline exists only on PR #37's source branch and has not been deployed.
 - The RLS helper is not directly executable by `anon`, `authenticated` or `service_role`.
 - The latest backend CI run passed at current main commit `2528205046b48d1cca7b4c59f800780ce442a2cf` in [GitHub Actions run 42827620899](https://github.com/Elgit4/PCG_Missions/actions/runs/42827620899). The preceding run for the index migration was cancelled because the newer main-branch run superseded it. CI success validates repository workflows; it does not imply Edge Function deployment or application readiness.
 - A dedicated frontend CI workflow passed on commit `7b5b497278209e3b56f8b13761462f2aad57fa66` in [GitHub Actions run 42825681902](https://github.com/Elgit4/PCG_Missions/actions/runs/42825681902), covering locked dependency installation, TypeScript type-check, ESLint, Vitest and Vite production build.
 - The hosted migration history is `20261110130847` (RLS-helper privilege remediation), `20261110134538` (identity/authorization foundation) and `20261110134606` (supporting foreign-key indexes). Seven supporting FK indexes are present; no unindexed-FK advisor findings remain. The security advisor's 11 informational `rls_enabled_no_policy` notices are intentional because client policies remain withheld pending approval.
-- No production staff accounts, church/branch/team records, business role grants or Edge Functions have been provisioned/deployed. The 11 foundation tables contain no operational data; only the six-row role catalogue is seeded.
+- No production staff accounts, church/branch/team records, business role grants or CMI Edge Functions have been provisioned/deployed. The 11 foundation tables contain no operational data; only the six-row role catalogue is seeded. PR #33 separately implements first-admin email-delivery recovery and passed backend CI with 14 migrations/355 pgTAP assertions on its prior exact head; PR #37 implements the 58-grant safe-default matrix and is undergoing exact-head verification.
 
-**Decision:** Production release remains **NO-GO** until all approval and technical release gates above are complete.
+**Decision:** Production release remains **NO-GO** until the source branches are reviewed/integrated, provider configuration and independent pastoral security review are complete, staging/UAT and backup/restore evidence exist, and the required data-protection and operational controls are verified. Product-owner implementation defaults are selected; formal church sign-off and later change requests remain separately recorded.
 
 ## 13. Formal client approval record
 
