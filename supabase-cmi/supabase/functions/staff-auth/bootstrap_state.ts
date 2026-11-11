@@ -28,7 +28,9 @@ export function resolveBootstrapPath(
   ) return "blocked";
 
   if (!profile) return "recover_partial_auth_user";
-  if ((profile.email ?? "").trim().toLowerCase() !== configuredEmail) {
+  if (
+    (profile.email ?? "").trim().toLowerCase() !== configuredEmail
+  ) {
     return "blocked";
   }
 
