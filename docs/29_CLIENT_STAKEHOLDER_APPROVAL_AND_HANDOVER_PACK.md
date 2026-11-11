@@ -4,7 +4,7 @@
 **Repository:** `Elgit4/PCG_Missions`  
 **Baseline:** CMI Follow-up v2.1  
 **Prepared:** 10 November 2026  
-**Document status:** Client review and sign-off required  
+**Document status:** Product-owner implementation defaults selected; church stakeholder review and sign-off remain available  
 **Release status:** NOT approved for production deployment
 
 ---
@@ -15,7 +15,7 @@ This pack converts the outstanding CMI stakeholder questions into a concrete, re
 
 It does **not** claim that the church has approved these choices. The developer cannot approve church policy on the client's behalf. The client must select **Approve**, **Amend** or **Reject**, name the approver and date, and record any exception before business permissions are activated in production.
 
-The system is designed to fail closed until that approval exists. The first administrator bootstrap is the sole exception and receives only the minimum branch-scoped account-control permissions documented in section 4.
+The system uses the owner-directed least-privilege baseline and continues to fail closed for any capability not explicitly implemented and enabled. The first administrator bootstrap is the sole exception and receives only the minimum branch-scoped account-control permissions documented in section 4.
 
 ## 2. Non-negotiable system rules
 
@@ -26,7 +26,7 @@ The system is designed to fail closed until that approval exists. The first admi
 5. Prayer and care narratives are restricted data. Ordinary contact, team, coordinator or event access never implies pastoral narrative access.
 6. Service-role Edge Functions must independently authorize the caller; service-role RLS bypass is not business authorization.
 7. Anonymous visitors can only read explicitly published public content and submit narrow validated registration forms. They cannot search staff, contacts, prayer, care, attendance or private records.
-8. SMS, exports, offline access to restricted data and bulk operations remain disabled until their separate controls are approved and tested.
+8. SMS dispatch, exports, offline access and bulk operations remain disabled until their separate controls are implemented, configured and tested.
 9. No passwords, PINs, tokens, provider keys or recovery links may be exposed in browser-readable records, audit metadata or logs.
 10. All privileged access, account changes, role changes, sensitive reads and approved exports must produce append-only audit evidence.
 
@@ -41,7 +41,7 @@ The system is designed to fail closed until that approval exists. The first admi
 | `follow_up_volunteer` | Follow-up Volunteer | Assigned follow-up work and minimum contact fields |
 | `prayer_intercessor` | Prayer Intercessor | Prayer requests actively assigned to that intercessor; no general contact directory |
 
-The database role catalogue constrains role codes to these six values. The current visitor-management MVP migration seeds 65 branch/team/assigned-scoped role-capability grants across the six roles (Admin/Pastor 18, Coordinator 14, Team Leader 14, Field Worker 12, Follow-up Volunteer 7, Prayer Intercessor 0). These are the limited visitor/follow-up permissions recorded in the product-owner implementation baseline; they do not approve the separate pending church-policy decisions for pastoral oversight, exports, SMS, offline access or the remaining modules.
+The database role catalogue constrains role codes to these six values. The owner-directed visitor-management baseline seeds 52 branch/team/assigned-scoped role-capability grants across the six roles after removing default phone/email identity grants from Coordinator, Team Leader, Field Worker and Follow-up Volunteer. Admin/Pastor retains explicit branch-scoped identity capabilities; lower roles receive minimized projections. These are the limited visitor/follow-up permissions recorded in the current product-owner implementation baseline. Pastoral narrative, SMS, exports and offline capabilities remain ungranted/disabled pending their specific technical and compliance gates.
 
 ## 4. Implemented first-administrator baseline
 
@@ -61,7 +61,7 @@ The bootstrap explicitly does **not** grant:
 - SMS provider configuration, campaign approval, campaign sending or automation;
 - any unapproved business-domain permission.
 
-The bootstrap-specific database assertions verify that the first administrator receives the four staff-control-plane capabilities and does not receive capability-policy editing, pastoral narrative oversight, SMS or export permissions. The role's separate visitor/follow-up grants are verified by the visitor MVP authorization tests. This technical baseline is not a substitute for church sign-off of the pending R/D decisions.
+The bootstrap-specific database assertions verify that the first administrator receives the four staff-control-plane capabilities and does not receive capability-policy editing, pastoral narrative oversight, SMS or export permissions. The role's separate visitor/follow-up grants and minimized contact identity defaults are verified by pgTAP. This technical baseline remains amendable through stakeholder change control.
 
 ## 5. Recommended role permission baseline for client approval
 
@@ -105,7 +105,7 @@ The following is the proposed operational baseline. Every entry is a recommendat
 
 ## 6. Authorization decisions R-01 to R-12
 
-For each item, the client should approve the recommended default or enter an alternative. The corresponding production grants remain inactive until approval is recorded.
+The product owner has selected the defaults in document 31 for the current implementation. The client may confirm or request changes at handover. Production enablement remains subject to the release gates recorded in document 31.
 
 | ID | Decision | Recommended client default | Risk if left unresolved | Client decision |
 |---|---|---|---|---|
