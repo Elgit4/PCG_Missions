@@ -4,7 +4,7 @@
 **Repository:** `Elgit4/PCG_Missions`  
 **Baseline:** CMI Follow-up v2.1  
 **Prepared:** 10 November 2026  
-**Document status:** Client review and sign-off required  
+**Document status:** Product-owner implementation defaults selected; church stakeholder review and sign-off remain available  
 **Release status:** NOT approved for production deployment
 
 ---
@@ -13,9 +13,9 @@
 
 This pack converts the outstanding CMI stakeholder questions into a concrete, reviewable least-privilege baseline. It is intended for a decision meeting with the church's authorised representative(s), pastoral lead, ministry coordinator and technical owner.
 
-It does **not** claim that the church has approved these choices. The developer cannot approve church policy on the client's behalf. The client must select **Approve**, **Amend** or **Reject**, name the approver and date, and record any exception before business permissions are activated in production.
+The product owner has directed the engineering team to implement the conservative defaults in [document 31](31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md) now. This does not claim church-board or pastoral-lead sign-off. The client may select **Accept**, **Amend** or **Reject** during handover; any later change will be handled through change control. The system remains fail-closed for capabilities that are not implemented and enabled.
 
-The system is designed to fail closed until that approval exists. The first administrator bootstrap is the sole exception and receives only the minimum branch-scoped account-control permissions documented in section 4.
+The system uses the owner-directed least-privilege baseline and continues to fail closed for any capability not explicitly implemented and enabled. The first administrator bootstrap is the sole exception and receives only the minimum branch-scoped account-control permissions documented in section 4.
 
 ## 2. Non-negotiable system rules
 
@@ -26,7 +26,7 @@ The system is designed to fail closed until that approval exists. The first admi
 5. Prayer and care narratives are restricted data. Ordinary contact, team, coordinator or event access never implies pastoral narrative access.
 6. Service-role Edge Functions must independently authorize the caller; service-role RLS bypass is not business authorization.
 7. Anonymous visitors can only read explicitly published public content and submit narrow validated registration forms. They cannot search staff, contacts, prayer, care, attendance or private records.
-8. SMS, exports, offline access to restricted data and bulk operations remain disabled until their separate controls are approved and tested.
+8. SMS dispatch, exports, offline access and bulk operations remain disabled until their separate controls are implemented, configured and tested.
 9. No passwords, PINs, tokens, provider keys or recovery links may be exposed in browser-readable records, audit metadata or logs.
 10. All privileged access, account changes, role changes, sensitive reads and approved exports must produce append-only audit evidence.
 
@@ -41,7 +41,7 @@ The system is designed to fail closed until that approval exists. The first admi
 | `follow_up_volunteer` | Follow-up Volunteer | Assigned follow-up work and minimum contact fields |
 | `prayer_intercessor` | Prayer Intercessor | Prayer requests actively assigned to that intercessor; no general contact directory |
 
-The database role catalogue constrains role codes to these six values. The current visitor-management MVP migration seeds 65 branch/team/assigned-scoped role-capability grants across the six roles (Admin/Pastor 18, Coordinator 14, Team Leader 14, Field Worker 12, Follow-up Volunteer 7, Prayer Intercessor 0). These are the limited visitor/follow-up permissions recorded in the product-owner implementation baseline; they do not approve the separate pending church-policy decisions for pastoral oversight, exports, SMS, offline access or the remaining modules.
+The database role catalogue constrains role codes to these six values. The owner-directed baseline in PR #37 seeds 58 explicit grants: 55 ordinary visitor/follow-up grants after removing lower-role phone/email identity access, plus one assigned prayer-read grant for Prayer Intercessor and two explicit audited pastoral oversight-read grants for Admin/Pastor. Admin/Pastor retains explicit branch-scoped identity capabilities; lower roles receive minimized projections. These are the limited visitor/follow-up permissions recorded in the current product-owner implementation baseline. Pastoral mutation, Coordinator prayer metadata, assigned-care access, SMS, exports and offline capabilities remain ungranted/disabled pending their implementation and compliance gates.
 
 ## 4. Implemented first-administrator baseline
 
@@ -61,7 +61,7 @@ The bootstrap explicitly does **not** grant:
 - SMS provider configuration, campaign approval, campaign sending or automation;
 - any unapproved business-domain permission.
 
-The bootstrap-specific database assertions verify that the first administrator receives the four staff-control-plane capabilities and does not receive capability-policy editing, pastoral narrative oversight, SMS or export permissions. The role's separate visitor/follow-up grants are verified by the visitor MVP authorization tests. This technical baseline is not a substitute for church sign-off of the pending R/D decisions.
+The bootstrap-specific database assertions verify that the first administrator receives the four staff-control-plane capabilities and does not receive capability-policy editing, pastoral narrative oversight, SMS or export permissions. The role's separate visitor/follow-up grants and minimized contact identity defaults are verified by pgTAP. This technical baseline remains amendable through stakeholder change control.
 
 ## 5. Recommended role permission baseline for client approval
 
@@ -105,7 +105,7 @@ The following is the proposed operational baseline. Every entry is a recommendat
 
 ## 6. Authorization decisions R-01 to R-12
 
-For each item, the client should approve the recommended default or enter an alternative. The corresponding production grants remain inactive until approval is recorded.
+The product owner has selected the defaults in document 31 for the current implementation. The client may confirm or request changes at handover. Production enablement remains subject to the release gates recorded in document 31.
 
 | ID | Decision | Recommended client default | Risk if left unresolved | Client decision |
 |---|---|---|---|---|
@@ -115,12 +115,12 @@ For each item, the client should approve the recommended default or enter an alt
 | R-04 | Team leader administration | Own team and explicitly assigned events only; no cross-team membership changes or exports | Cross-team data exposure and unauthorised staff changes | Pending |
 | R-05 | Field worker/volunteer contact fields | Minimum assigned-contact fields; phone/email separately approved | Personal contact details unnecessarily exposed | Pending |
 | R-06 | Individual SMS by field workers/volunteers | Disabled at launch | Uncontrolled messages, cost and consent risk | Pending |
-| R-07 | Team leader bulk SMS | Team/event-scoped draft only; dispatch by a separate authorised sender after approval | Unapproved bulk messaging | Pending |
+| R-07 | Team leader bulk SMS | Team/event-scoped draft only; no approval or dispatch | Unapproved bulk messaging | Owner-directed default selected; SMS remains disabled |
 | R-08 | Campaign creator/approver separation | Different active users; logged exception only when operationally unavoidable | Self-approved campaigns and uncontrolled spend | Pending |
-| R-09 | Coordinator automated SMS configuration | Allowlisted triggers/templates only; no global provider control | Unintended automated messages and spend | Pending |
+| R-09 | Coordinator automated SMS configuration | Disabled; empty trigger catalogue; no provider/global enablement | Unintended automated messages and spend | Owner-directed default selected; SMS remains disabled |
 | R-10 | Care record read/update | Assigned care workers only; Admin/Pastor oversight separate and audited | Unauthorised access to sensitive care details | Pending |
-| R-11 | Intercessor creation and linked identity | Create requests if authorised; assigned request text only; linked identity minimised | Unnecessary disclosure of requester's identity/contact | Pending |
-| R-12 | Contact/report exports | Off by default; Admin/Pastor export-specific grant, masked fields, reason and audit | Bulk extraction of personal or pastoral information | Pending |
+| R-11 | Intercessor creation and linked identity | Approved intake only; assigned request text; no linked phone/email projection | Unnecessary disclosure of requester's identity/contact | Owner-directed default selected; implementation pending |
+| R-12 | Contact/report exports | Disabled until dedicated capability, masking, limits and audit are implemented | Bulk extraction of personal or pastoral information | Owner-directed default selected; export remains disabled |
 
 ## 7. Logical data and workflow decisions D-01 to D-13
 
@@ -153,9 +153,9 @@ For each item, the client should approve the recommended default or enter an alt
 - Forgot password creates a generic-response, rate-limited request and notifies the authorised Admin/Pastor. The administrator approves or denies with a reason; approval issues a fresh temporary password by email and forces password replacement.
 - Temporary passwords must never be stored in plaintext, returned to the admin UI, written to logs or included in audit metadata. Supabase Auth manages password hashing and sessions.
 - Credential reset/deactivation must revoke other active sessions. Failed email delivery must leave access gated and provide a safe, audited retry path.
-- The one-time first-admin bootstrap must never be rerun to recover uncertain email delivery. A separate operator-controlled recovery mechanism is required before production launch.
+- The one-time first-admin bootstrap must never be used to create a second identity. PR #33 adds a narrowly bounded, serialized recovery path for an undelivered first-admin temporary password; it rotates the temporary credential and retries delivery only while the account remains behind the mandatory first-password-change gate. It is unmerged and requires staging verification.
 
-**Production status:** The selected password flow has passing branch-level automated tests, but first-admin email-delivery recovery, production email configuration, deployment and staging/UAT remain release gates.
+**Production status:** The selected password flow and PR #33 recovery/concurrency implementation passed branch-level backend CI, including 355 pgTAP assertions. PR #33 remains unmerged; production email configuration, staging verification, deployment and UAT remain release gates.
 ## 9. Client configuration and operational inputs
 
 The client must supply or approve these before staging/production configuration:
@@ -165,7 +165,7 @@ The client must supply or approve these before staging/production configuration:
 | Authorised church approver and pastoral data owner | Name, role, approval date |
 | Canonical church name and initial branch name | Exact display names |
 | Initial Admin/Pastor mailbox | Verified email controlled by the client |
-| Staff login model | Email + private PIN (confirmed product baseline); approve PIN/security parameters |
+| Staff login model | Supabase Auth email + password; temporary-password onboarding and forced first-login replacement |
 | Production domain and hosting owner | HTTPS domain and DNS access |
 | Verified transactional email sender | Domain/sender approval and delivery owner |
 | SMS provider account | Provider account owner, sender ID approval, consent and budget |
@@ -219,19 +219,19 @@ The client handover is complete only when the following evidence is attached:
 - [ ] Backup/restore and incident response responsibilities recorded.
 - [ ] Client signs the final acceptance and go-live record.
 
-## 12. Current engineering evidence (10 November 2026)
+## 12. Current engineering evidence (11 November 2026)
 
 - PR #24, PR #25 and PR #26 are merged into `main`.
 - The integrated frontend is in `web/`; backend and Edge Function source is in `supabase-cmi/`.
 - The RLS-helper privilege-remediation migration is present in the hosted migration history.
-- Hosted Supabase now contains 11 identity/authorization foundation tables and three recorded migrations; zero CMI Edge Functions are deployed. All 11 tables have RLS enabled, exactly six approved roles are seeded, and `role_capability` remains empty.
+- Hosted Supabase contains 11 identity/authorization foundation tables and three recorded migrations; zero CMI Edge Functions are deployed. All 11 tables have RLS enabled, exactly six roles are seeded, and `role_capability` remains empty in the hosted project. The 58-grant owner-directed baseline exists only on PR #37's source branch and has not been deployed.
 - The RLS helper is not directly executable by `anon`, `authenticated` or `service_role`.
 - The latest backend CI run passed at current main commit `2528205046b48d1cca7b4c59f800780ce442a2cf` in [GitHub Actions run 42827620899](https://github.com/Elgit4/PCG_Missions/actions/runs/42827620899). The preceding run for the index migration was cancelled because the newer main-branch run superseded it. CI success validates repository workflows; it does not imply Edge Function deployment or application readiness.
 - A dedicated frontend CI workflow passed on commit `7b5b497278209e3b56f8b13761462f2aad57fa66` in [GitHub Actions run 42825681902](https://github.com/Elgit4/PCG_Missions/actions/runs/42825681902), covering locked dependency installation, TypeScript type-check, ESLint, Vitest and Vite production build.
 - The hosted migration history is `20261110130847` (RLS-helper privilege remediation), `20261110134538` (identity/authorization foundation) and `20261110134606` (supporting foreign-key indexes). Seven supporting FK indexes are present; no unindexed-FK advisor findings remain. The security advisor's 11 informational `rls_enabled_no_policy` notices are intentional because client policies remain withheld pending approval.
-- No production staff accounts, church/branch/team records, business role grants or Edge Functions have been provisioned/deployed. The 11 foundation tables contain no operational data; only the six-row role catalogue is seeded.
+- No production staff accounts, church/branch/team records, business role grants or CMI Edge Functions have been provisioned/deployed. The 11 foundation tables contain no operational data; only the six-row role catalogue is seeded. PR #33 separately implements first-admin email-delivery recovery and passed backend CI with 14 migrations/355 pgTAP assertions on its prior exact head; PR #37 implements the 58-grant safe-default matrix and is undergoing exact-head verification.
 
-**Decision:** Production release remains **NO-GO** until all approval and technical release gates above are complete.
+**Decision:** Production release remains **NO-GO** until the source branches are reviewed/integrated, provider configuration and independent pastoral security review are complete, staging/UAT and backup/restore evidence exist, and the required data-protection and operational controls are verified. Product-owner implementation defaults are selected; formal church sign-off and later change requests remain separately recorded.
 
 ## 13. Formal client approval record
 
@@ -244,7 +244,7 @@ The client handover is complete only when the following evidence is attached:
 | Meeting date | Pending |
 | Approved R-01–R-12 | Pending |
 | Approved D-01–D-13 | Pending |
-| Authentication model | Email + private PIN (product baseline); security parameters pending approval |
+| Authentication model | Supabase Auth email + password; product-owner decision confirmed 10 Nov 2026 |
 | Approved role matrix revision | Pending |
 | Approved retention schedule | Pending |
 | Exceptions and conditions | Pending |
