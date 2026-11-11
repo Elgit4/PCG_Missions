@@ -24,7 +24,8 @@ These artifacts are committed on `main` and are **proposals for review**, not ap
 
 - [Logical Data Model Proposal](06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md) — entity inventory, relationships, candidate constraints, RLS design notes and data decisions.
 - [CMI Logical Crow's Foot ERD](database/CMI_Follow_Up_Logical_ERD_v0.1.drawio) — editable diagrams.net file with separate domain pages.
-- [Role, Capability & Scope Matrix Proposal](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md) — proposed capability catalogue, role grants, scope rules, sensitive-data restrictions, SMS separation of duties and authorization tests.
+- [Role, Capability & Scope Matrix](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md) — owner-directed capability catalogue, role grants, scope rules, sensitive-data restrictions, SMS separation of duties and authorization tests.
+- [Owner-Directed Safe-Default Decision Baseline](31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md) — selected implementation defaults for all R-01–R-12 and D-01–D-13, with release gates and change control.
 - [Physical PostgreSQL Schema Proposal](08_CMI_PHYSICAL_DATABASE_SCHEMA_PROPOSAL.md) — proposed table inventory, constraints, indexes, RLS architecture, SMS lifecycle and migration sequence; not executable SQL.
 - [Database Design Validation Report](09_DATABASE_DESIGN_VALIDATION_REPORT.md) — cross-document consistency review, design risks, corrections and outstanding approval gates.
 - [ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md) — maps all 53 ERD entities to proposed physical tables and lists remaining reconciliation work.
