@@ -11,4 +11,3 @@
 > - Production personal-data use remains gated on church-controller privacy obligations, privacy notice/lawful-purpose confirmation, operational email provider configuration, independent pastoral security review, staging/UAT, restore rehearsal, monitoring and named administrator provisioning.
 >
 > The dated sections below record implementation history and may describe the state at the time they were written. Use this current production checkpoint and the latest deployment/database verification for release decisions.
-record implementation history and may describe the state at the time they were written. Use this current status block and the latest production audit for release decisions.
