@@ -22,6 +22,7 @@ Deno.test("first administrator can safely reissue an undelivered temporary crede
     [{ email: "admin@example.test" }],
     "admin@example.test",
     {
+      email: "admin@example.test",
       account_status: "active",
       must_change_password: true,
       password_changed_at: null,
@@ -39,6 +40,7 @@ Deno.test("bootstrap cannot reissue after the administrator changes password", (
     [{ email: "admin@example.test" }],
     "admin@example.test",
     {
+      email: "admin@example.test",
       account_status: "active",
       must_change_password: false,
       password_changed_at: "2026-11-11T10:00:00.000Z",
@@ -54,6 +56,7 @@ Deno.test("inactive first administrator cannot use bootstrap recovery", () => {
     [{ email: "admin@example.test" }],
     "admin@example.test",
     {
+      email: "admin@example.test",
       account_status: "inactive",
       must_change_password: true,
       password_changed_at: null,
@@ -63,6 +66,22 @@ Deno.test("inactive first administrator cannot use bootstrap recovery", () => {
     throw new Error(
       "inactive profile must not be eligible for bootstrap recovery",
     );
+  }
+});
+
+Deno.test("bootstrap recovery is blocked when the staff profile email differs", () => {
+  const result = resolveBootstrapPath(
+    [{ email: "admin@example.test" }],
+    "admin@example.test",
+    {
+      email: "different@example.test",
+      account_status: "active",
+      must_change_password: true,
+      password_changed_at: null,
+    },
+  );
+  if (result !== "blocked") {
+    throw new Error("mismatched profile identity must not be recoverable");
   }
 });
 
