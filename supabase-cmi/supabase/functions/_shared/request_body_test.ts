@@ -34,7 +34,11 @@ Deno.test("rejects missing and incorrect content types", async () => {
 });
 
 Deno.test("rejects an empty body and malformed JSON", async () => {
-  await assertRejects(() => readJson(makeRequest(null)), Error, "REQUEST_BODY_REQUIRED");
+  await assertRejects(
+    () => readJson(makeRequest(null)),
+    Error,
+    "REQUEST_BODY_REQUIRED",
+  );
   await assertRejects(() => readJson(makeRequest("{")), Error, "INVALID_JSON");
 });
 
@@ -53,13 +57,14 @@ Deno.test("rejects an oversized payload without Content-Length", async () => {
 
 Deno.test("rejects a declared oversized payload before reading", async () => {
   await assertRejects(
-    () => readJson(
-      makeRequest("{}", {
-        "Content-Type": "application/json",
-        "Content-Length": "100",
-      }),
-      16,
-    ),
+    () =>
+      readJson(
+        makeRequest("{}", {
+          "Content-Type": "application/json",
+          "Content-Length": "100",
+        }),
+        16,
+      ),
     Error,
     "BODY_TOO_LARGE",
   );
@@ -67,12 +72,13 @@ Deno.test("rejects a declared oversized payload before reading", async () => {
 
 Deno.test("rejects malformed Content-Length", async () => {
   await assertRejects(
-    () => readJson(
-      makeRequest("{}", {
-        "Content-Type": "application/json",
-        "Content-Length": "not-a-number",
-      }),
-    ),
+    () =>
+      readJson(
+        makeRequest("{}", {
+          "Content-Type": "application/json",
+          "Content-Length": "not-a-number",
+        }),
+      ),
     Error,
     "INVALID_CONTENT_LENGTH",
   );
