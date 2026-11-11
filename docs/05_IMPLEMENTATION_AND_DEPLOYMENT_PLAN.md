@@ -14,7 +14,7 @@
 
 | Phase | Work package | Exit criteria |
 |---|---|---|
-| 0 | Requirements and governance | Church approves roles, capability matrix, PIN lifecycle, branch scope, privacy, event rules and retention |
+| 0 | Requirements and governance | Church approves roles, capability matrix, branch scope, privacy, event rules and retention; product-owner-confirmed email/password lifecycle is implemented and technically verified |
 | 1 | UX and information architecture | Mobile-first staff/public prototypes reviewed; all role journeys represented |
 | 2 | Target data model and security | New CMI ERD/schema reviewed; RLS tests cover roles, multi-role combinations and record scopes |
 | 3 | Foundation and authentication | Staff email/password sign-in, temporary-password onboarding, forced first-login replacement, admin-reviewed reset, session revocation and audit verified |
@@ -44,7 +44,7 @@
 A release is blocked by:
 - any cross-team/event/assignment data leak;
 - prayer request exposure to an unauthorized user;
-- plaintext PIN storage/logging or insecure credential recovery;
+- plaintext password/temporary-credential storage or logging, exposed secrets, or insecure credential recovery;
 - duplicate contact creation on offline retry;
 - public exposure of draft/private content;
 - registration that bypasses event enablement or capacity;
