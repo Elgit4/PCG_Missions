@@ -3,8 +3,8 @@ select plan(12);
 
 select is(
   (select count(*)::integer from public.role_capability),
-  65,
-  'MVP has the exact expected role-capability grant count'
+  58,
+  'MVP has the exact owner-directed role-capability grant count'
 );
 
 select ok(
@@ -59,7 +59,9 @@ select ok(
 
 select is(
   (select count(*)::integer from public.role_capability rc
-   join public.role r on r.id=rc.role_id where r.code='prayer_intercessor'),
+   join public.role r on r.id=rc.role_id
+   join public.capability c on c.id=rc.capability_id
+   where r.code='prayer_intercessor' and (c.code like 'contact.%' or c.code like 'followup.task.%')), 
   0,
   'Prayer Intercessor has no visitor CRM permissions'
 );
@@ -77,9 +79,9 @@ select is(
   (select count(*)::integer from public.role_capability rc
    join public.role r on r.id=rc.role_id
    join public.capability c on c.id=rc.capability_id
-   where c.code in ('contact.export.scoped','report.export.scoped','sms.campaign.send.scoped','sms.provider.configure','prayer.oversight.read','care.oversight.read','access.capability.manage')),
+   where c.code in ('contact.export.scoped','report.export.scoped','sms.campaign.send.scoped','sms.provider.configure','prayer.oversight.manage','care.oversight.manage','prayer.request.create','prayer.request.update.assigned','care.record.read.assigned','care.record.update.assigned','access.capability.manage')),
   0,
-  'MVP does not grant exports, SMS, pastoral oversight or policy editing'
+  'MVP does not grant exports, SMS, pastoral mutation, care assignment access or policy editing'
 );
 
 select ok(
