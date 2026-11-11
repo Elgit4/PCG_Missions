@@ -99,8 +99,6 @@ Deno.test("enforces the streaming limit when Content-Length is absent", async ()
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: stream,
-    // @ts-ignore Node/Deno RequestInit supports streaming bodies with duplex.
-    duplex: "half",
   });
   await assertRejects(() => readJson(request, 8), Error, "BODY_TOO_LARGE");
 });
