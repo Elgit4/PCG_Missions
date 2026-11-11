@@ -18,7 +18,7 @@ Use this guide with the role and permissions assigned to your account. The speci
 
 The app supports the full follow-up workflow for a service, outreach, or event - from capture and assignment to care, prayer, and reports.
 
-Sign in with the email and PIN provided by your administrator. Your access is limited to the pages and records permitted for your role.
+Sign in with your staff email and the temporary password sent to your verified email address. On first sign-in, create your own private permanent password. Your access is limited to the pages and records permitted for your assigned role and scope.
 
 If you use a shared device, sign out when finished. Do not share your PIN.
 
@@ -206,7 +206,7 @@ The optional seeker-facing AI tools, interactive gospel journey, anonymous Q&A, 
 
 Multi-church network administration is not enabled. The current service is configured for the church instance and branch.
 
-Offline mode is limited to queued field captures, cached capture pickers, and previously opened event check-in data. It is not a full offline copy of the application.
+Offline mode is disabled for the initial release. Do not store contact, attendance or pastoral information on a shared or personal device for later synchronization.
 
 ---
 
