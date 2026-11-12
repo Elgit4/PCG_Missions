@@ -23,6 +23,7 @@ interface StaffLoginProps {
   onSignIn: (email: string, password: string) => Promise<void>;
   onRequestReset: (email: string) => Promise<void>;
   onSetPassword: (password: string) => Promise<void>;
+  onTestConnection: () => Promise<void>;
 }
 
 export function StaffLogin({
@@ -35,6 +36,7 @@ export function StaffLogin({
   onSignIn,
   onRequestReset,
   onSetPassword,
+  onTestConnection,
 }: StaffLoginProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -274,6 +276,16 @@ export function StaffLogin({
                 onViewChange("forgot-password");
               }}>
                 Forgot password?
+              </button>
+            )}
+            {view === "sign-in" && (
+              <button
+                type="button"
+                className="staff-login-inline-link"
+                disabled={busy}
+                onClick={() => void onTestConnection()}
+              >
+                Test sign-in connection
               </button>
             )}
             {view !== "sign-in" && view !== "change-password" && (
