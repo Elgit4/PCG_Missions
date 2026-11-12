@@ -201,7 +201,13 @@ export class CmiApiClient {
       throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
     }
     const suffix = path ? (path.startsWith("/") ? path : `/${path}`) : "";
-    const url = new URL(`${this.baseUrl}/${functionName}${suffix}`);
+    const useSameOriginSessionProxy = functionName === "staff-session" &&
+      typeof window !== "undefined" &&
+      window.location.hostname !== "localhost" &&
+      window.location.hostname !== "127.0.0.1";
+    const url = useSameOriginSessionProxy
+      ? new URL("/api/auth?resource=staff-session", window.location.origin)
+      : new URL(`${this.baseUrl}/${functionName}${suffix}`);
     for (const [key, value] of Object.entries(options.query ?? {})) {
       if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
     }

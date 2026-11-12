@@ -39,7 +39,7 @@ describe("PcgAuthClient", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
 
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("https://pcg-test.supabase.co/auth/v1/token?grant_type=password");
+    expect(url).toBe("/api/auth?grant_type=password");
     expect(new Headers(init.headers).get("apikey")).toBe(config.key);
     expect(JSON.parse(String(init.body))).toEqual({
       email: "staff@example.test",
@@ -76,7 +76,7 @@ describe("PcgAuthClient", () => {
 
     await expect(client.requestPasswordReset("staff@example.test")).resolves.toBeUndefined();
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("https://pcg-test.supabase.co/functions/v1/staff-auth/request-password-reset");
+    expect(url).toBe("/api/auth?resource=request-password-reset");
     expect(new Headers(init.headers).has("Authorization")).toBe(false);
     expect(JSON.parse(String(init.body))).toEqual({ email: "staff@example.test" });
   });
@@ -92,7 +92,7 @@ describe("PcgAuthClient", () => {
     await client.completePasswordChange("A-strong-New-Password-2026!");
 
     const [url, init] = fetcher.mock.calls[1] as unknown as [string, RequestInit];
-    expect(url).toBe("https://pcg-test.supabase.co/functions/v1/staff-auth/complete-password-change");
+    expect(url).toBe("/api/auth?resource=complete-password-change");
     expect(init.method).toBe("POST");
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-test");
     expect(JSON.parse(String(init.body))).toEqual({ password: "A-strong-New-Password-2026!" });
@@ -122,7 +122,7 @@ describe("PcgAuthClient", () => {
 
     expect(storage.has("pcg-missions.auth.v1")).toBe(false);
     const [url, init] = fetcher.mock.calls[1] as unknown as [string, RequestInit];
-    expect(url).toBe("https://pcg-test.supabase.co/auth/v1/logout?scope=global");
+    expect(url).toBe("/api/auth?resource=logout");
     expect(init.method).toBe("POST");
   });
 

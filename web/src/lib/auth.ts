@@ -96,6 +96,18 @@ export class PcgAuthClient {
     this.baseUrl = normalizedUrl;
   }
 
+  private isLocalDevelopment(): boolean {
+    return typeof window !== "undefined" &&
+      (window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1");
+  }
+
+  private authEndpoint(proxyQuery: string, directPath: string): string {
+    return this.isLocalDevelopment()
+      ? `${this.baseUrl}${directPath}`
+      : `/api/auth?${proxyQuery}`;
+  }
+
   private saveSession(session: AuthSession | null): void {
     this.session = session;
     if (!this.storage) return;
@@ -124,7 +136,10 @@ export class PcgAuthClient {
   ): Promise<T> {
     let response: Response;
     try {
-      response = await this.fetcher(`${this.baseUrl}/auth/v1/${path}`, {
+      const query = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
+      response = await this.fetcher(
+        this.authEndpoint(query, `/auth/v1/${path}`),
+        {
         ...init,
         headers: new Headers({
           apikey: this.publishableKey,
@@ -133,7 +148,8 @@ export class PcgAuthClient {
           ...(init.headers as Record<string, string> | undefined),
         }),
         cache: "no-store",
-      });
+        },
+      );
     } catch {
       throw new AuthClientError(0, "NETWORK_ERROR", "Unable to reach the secure sign-in service.");
     }
@@ -194,7 +210,7 @@ export class PcgAuthClient {
   private async getUser(accessToken: string): Promise<AuthUser> {
     let response: Response;
     try {
-      response = await this.fetcher(`${this.baseUrl}/auth/v1/user`, {
+      response = await this.fetcher(this.authEndpoint("resource=user", "/auth/v1/user"), {
         method: "GET",
         headers: {
           apikey: this.publishableKey,
@@ -276,7 +292,9 @@ export class PcgAuthClient {
     if (!token) throw new AuthClientError(401, "AUTH_REQUIRED", "Sign in again before changing your password.");
     let result: Response;
     try {
-      result = await this.fetcher(`${this.baseUrl}/functions/v1/staff-auth/complete-password-change`, {
+      result = await this.fetcher(
+        this.authEndpoint("resource=complete-password-change", "/functions/v1/staff-auth/complete-password-change"),
+        {
         method: "POST",
         headers: {
           apikey: this.publishableKey,
@@ -286,7 +304,8 @@ export class PcgAuthClient {
         },
         body: JSON.stringify({ password }),
         cache: "no-store",
-      });
+        },
+      );
     } catch {
       throw new AuthClientError(0, "NETWORK_ERROR", "Unable to save the new password.");
     }
@@ -303,7 +322,9 @@ export class PcgAuthClient {
   async requestPasswordReset(email: string): Promise<void> {
     let result: Response;
     try {
-      result = await this.fetcher(`${this.baseUrl}/functions/v1/staff-auth/request-password-reset`, {
+      result = await this.fetcher(
+        this.authEndpoint("resource=request-password-reset", "/functions/v1/staff-auth/request-password-reset"),
+        {
         method: "POST",
         headers: {
           apikey: this.publishableKey,
@@ -312,7 +333,8 @@ export class PcgAuthClient {
         },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
         cache: "no-store",
-      });
+        },
+      );
     } catch {
       throw new AuthClientError(0, "NETWORK_ERROR", "Unable to send the password-reset request.");
     }
@@ -326,7 +348,7 @@ export class PcgAuthClient {
     this.saveSession(null);
     if (!token) return;
     try {
-      await this.fetcher(`${this.baseUrl}/auth/v1/logout?scope=global`, {
+      await this.fetcher(this.authEndpoint("resource=logout", "/auth/v1/logout?scope=global"), {
         method: "POST",
         headers: {
           apikey: this.publishableKey,
