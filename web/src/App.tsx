@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { StaffLogin, type StaffAuthView } from "./components/StaffLogin";
 import { StaffWorkspace } from "./components/StaffWorkspace";
-import { DemoWorkspace } from "./components/DemoWorkspace";
 import { AuthClientError, PcgAuthClient } from "./lib/auth";
 import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
-import { createDemoPreview, DEMO_LOGIN_EMAIL, DEMO_LOGIN_PASSWORD } from "./lib/demo-preview";
 
 export default function App() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
@@ -35,7 +33,6 @@ export default function App() {
   const [initializing, setInitializing] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [demoPreview, setDemoPreview] = useState<ReturnType<typeof createDemoPreview> | null>(null);
 
   const messageFor = useCallback((cause: unknown): string => {
     if (cause instanceof AuthClientError) return cause.message;
@@ -113,14 +110,6 @@ export default function App() {
   }, [auth, api, configurationError, loadStaffSession, messageFor, clearAuthentication]);
 
   const handleSignIn = async (email: string, password: string) => {
-    // This public demo credential pair opens a fictional, in-memory workspace only.
-    // It never creates a Supabase session or invokes a production Edge Function.
-    if (email.trim().toLowerCase() === DEMO_LOGIN_EMAIL && password === DEMO_LOGIN_PASSWORD) {
-      setError("");
-      setNotice("");
-      setDemoPreview(createDemoPreview());
-      return;
-    }
     if (!auth) {
       setError(configurationError || "The sign-in service is not configured.");
       return;
@@ -195,21 +184,6 @@ export default function App() {
         </div>
         <p className="cmi-loading-message">Preparing your ministry workspace</p>
       </main>
-    );
-  }
-
-  if (demoPreview) {
-    return (
-      <DemoWorkspace
-        api={demoPreview.api}
-        session={demoPreview.session}
-        onExit={async () => {
-          setDemoPreview(null);
-          setView("sign-in");
-          setError("");
-          setNotice("");
-        }}
-      />
     );
   }
 
