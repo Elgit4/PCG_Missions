@@ -1188,10 +1188,13 @@ Deno.serve(async (request: Request) => {
         try {
           raw = await readJson(request, 16 * 1024);
         } catch (error) {
-          const tooLarge = error instanceof Error && error.message === "BODY_TOO_LARGE";
+          const tooLarge = error instanceof Error &&
+            error.message === "BODY_TOO_LARGE";
           return fail(
             tooLarge ? "BODY_TOO_LARGE" : "INVALID_JSON",
-            tooLarge ? "The request body exceeds the 16 KB limit." : "A valid JSON request body is required.",
+            tooLarge
+              ? "The request body exceeds the 16 KB limit."
+              : "A valid JSON request body is required.",
             tooLarge ? 413 : 400,
             origin,
             id,
@@ -1234,7 +1237,9 @@ Deno.serve(async (request: Request) => {
       if (isContactInteractionsCollection && request.method === "GET") {
         const { data, error } = await auth.service
           .from("contact_interaction")
-          .select("id,interaction_type,occurred_at,outcome_code,summary,next_action_at,created_at")
+          .select(
+            "id,interaction_type,occurred_at,outcome_code,summary,next_action_at,created_at",
+          )
           .eq("contact_id", contactRecordId)
           .eq("branch_id", branchId)
           .order("occurred_at", { ascending: false })
@@ -1279,10 +1284,13 @@ Deno.serve(async (request: Request) => {
         try {
           raw = await readJson(request, 16 * 1024);
         } catch (error) {
-          const tooLarge = error instanceof Error && error.message === "BODY_TOO_LARGE";
+          const tooLarge = error instanceof Error &&
+            error.message === "BODY_TOO_LARGE";
           return fail(
             tooLarge ? "BODY_TOO_LARGE" : "INVALID_JSON",
-            tooLarge ? "The request body exceeds the 16 KB limit." : "A valid JSON request body is required.",
+            tooLarge
+              ? "The request body exceeds the 16 KB limit."
+              : "A valid JSON request body is required.",
             tooLarge ? 413 : 400,
             origin,
             id,
@@ -1305,7 +1313,9 @@ Deno.serve(async (request: Request) => {
             summary: input.summary,
             next_action_at: input.next_action_at,
           })
-          .select("id,interaction_type,occurred_at,outcome_code,summary,next_action_at,created_at")
+          .select(
+            "id,interaction_type,occurred_at,outcome_code,summary,next_action_at,created_at",
+          )
           .single();
         if (error) throw new Error("CONTACT_INTERACTION_CREATE_FAILED");
         return response({ data, request_id: id }, 201, origin, id);
