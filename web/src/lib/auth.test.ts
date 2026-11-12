@@ -63,7 +63,7 @@ describe("PcgAuthClient", () => {
       open() {}
       setRequestHeader() {}
       getAllResponseHeaders() {
-        return "content-type: application/json\\r\\ncache-control: no-store\\r\\n";
+        return "content-type: application/json\r\ncache-control: no-store\r\n";
       }
       send() {
         queueMicrotask(() => this.onload?.());
