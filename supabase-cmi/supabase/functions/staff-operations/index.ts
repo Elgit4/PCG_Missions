@@ -5,8 +5,8 @@ import {
 } from "../_shared/idempotency.ts";
 import {
   canReadContactNote,
-  deriveContactNotePlacement,
   type ContactNoteVisibilityRow,
+  deriveContactNotePlacement,
   isUuid,
   parseContactCreate,
   parseContactInteractionCreate,
@@ -361,9 +361,11 @@ async function assignedContactTeamIds(
     .or(`ends_at.is.null,ends_at.gt.${now}`);
   if (error) throw new Error("CONTACT_NOTE_ASSIGNMENT_LOOKUP_FAILED");
   return [
-    ...new Set((data ?? []).flatMap((row: { team_id: string | null }) =>
-      row.team_id ? [row.team_id] : []
-    )),
+    ...new Set(
+      (data ?? []).flatMap((row: { team_id: string | null }) =>
+        row.team_id ? [row.team_id] : []
+      ),
+    ),
   ];
 }
 
