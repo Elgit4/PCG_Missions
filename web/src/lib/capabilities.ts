@@ -1,11 +1,24 @@
 import type { StaffSession } from "./cmi-api";
 
-export type StaffPage = "Overview" | "Contacts" | "Follow-up" | "Events" | "Team" | "Prayer" | "Reports";
+export type StaffPage =
+  | "Overview"
+  | "Contacts"
+  | "Follow-up"
+  | "Events"
+  | "Calendar"
+  | "Announcements"
+  | "Content"
+  | "Team"
+  | "Prayer"
+  | "Reports";
 
 const PAGE_CAPABILITIES: Partial<Record<StaffPage, readonly string[]>> = {
   Contacts: ["contact.read.scoped"],
   "Follow-up": ["followup.task.read.scoped"],
-  Events: ["event.read.scoped", "calendar.read.scoped"],
+  Events: ["event.read.scoped", "event.manage.scoped"],
+  Calendar: ["calendar.read.scoped", "calendar.manage.scoped"],
+  Announcements: ["announcement.read.scoped", "announcement.create.scoped"],
+  Content: ["content.manage.draft"],
   Team: ["staff.directory.read"],
 };
 
@@ -45,7 +58,16 @@ export function canOpenStaffPage(
 
 export function getAvailableStaffPages(session: StaffSession, branchId?: string): StaffPage[] {
   if (!branchId) return [];
-  const candidates: StaffPage[] = ["Overview", "Contacts", "Follow-up", "Events", "Team"];
+  const candidates: StaffPage[] = [
+    "Overview",
+    "Contacts",
+    "Follow-up",
+    "Events",
+    "Calendar",
+    "Announcements",
+    "Content",
+    "Team",
+  ];
   return candidates.filter((page) => canOpenStaffPage(session, page, branchId));
 }
 
