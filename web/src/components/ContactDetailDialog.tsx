@@ -12,13 +12,13 @@ import {
   ShieldCheck,
   X,
 } from "lucide-react";
+import { CmiApiError } from "../lib/cmi-api";
 import type {
   ContactInteraction,
   ContactInteractionCreateInput,
   ContactNote,
   ContactRecord,
   CmiApiClient,
-  CmiApiError,
 } from "../lib/cmi-api";
 
 interface ContactDetailDialogProps {
