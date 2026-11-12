@@ -87,7 +87,7 @@ export default async function handler(req, res) {
   const body = requestBody(req);
   let upstreamPath = "";
   let expectedMethod = "";
-    !/^Bearer\s+[A-Za-z0-9._~+/-]+=*$/i.test(authorization.trim())
+  let requiresBearer = false;
   let outgoingBody;
 
   if (grantType === "password" || grantType === "refresh_token") {
@@ -147,7 +147,7 @@ export default async function handler(req, res) {
     }
     expectedMethod = selected.method;
     upstreamPath = selected.path;
-    !/^Bearer\s+[A-Za-z0-9._~+/-]+=*$/i.test(authorization.trim())
+  let requiresBearer = false;
     if (
       (resource === "complete-password-change" || resource === "request-password-reset") &&
       !body
@@ -203,7 +203,7 @@ export default async function handler(req, res) {
     apikey: publishableKey,
     Accept: "application/json",
   };
-    !/^Bearer\s+[A-Za-z0-9._~+/-]+=*$/i.test(authorization.trim())
+  let requiresBearer = false;
   if (outgoingBody !== undefined) headers["Content-Type"] = "application/json";
 
   try {
