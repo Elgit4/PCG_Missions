@@ -171,6 +171,48 @@ function assertExactlyOneTaskTarget(
   }
 }
 
+function xhrRequest(url: string | URL, init: RequestInit): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    if (typeof XMLHttpRequest === "undefined") {
+      reject(new TypeError("XMLHttpRequest is unavailable in this browser."));
+      return;
+    }
+    const request = new XMLHttpRequest();
+    request.open(init.method ?? "GET", String(url), true);
+    request.timeout = 15000;
+    new Headers(init.headers).forEach((value, key) => request.setRequestHeader(key, value));
+    request.onload = () => {
+      if (request.status === 0) {
+        reject(new TypeError("XMLHttpRequest completed without an HTTP response."));
+        return;
+      }
+      const responseHeaders = new Headers();
+      for (const line of request.getAllResponseHeaders().trim().split(/[\\r\\n]+/)) {
+        const separator = line.indexOf(":");
+        if (separator > 0) responseHeaders.append(line.slice(0, separator).trim(), line.slice(separator + 1).trim());
+      }
+      resolve(new Response(request.responseText, {
+        status: request.status,
+        statusText: request.statusText,
+        headers: responseHeaders,
+      }));
+    };
+    request.onerror = () => reject(new TypeError("XMLHttpRequest network error."));
+    request.ontimeout = () => reject(new TypeError("XMLHttpRequest timed out."));
+    request.onabort = () => reject(new TypeError("XMLHttpRequest was aborted."));
+    if (init.body === undefined || init.body === null) request.send();
+    else request.send(init.body as XMLHttpRequestBodyInit);
+  });
+}
+
+function requestErrorDetail(error: unknown): string {
+  if (error instanceof Error) {
+    const message = error.message.replace(/[\\r\\n]+/g, " ").slice(0, 140);
+    return message ? `${error.name}: ${message}` : error.name;
+  }
+  return "Unknown network error";
+}
+
 export class CmiApiClient {
   private readonly baseUrl: string;
 
@@ -188,6 +230,23 @@ export class CmiApiClient {
       throw new Error("The Supabase URL must use HTTPS outside local development.");
     }
     this.baseUrl = `${supabaseUrl}/functions/v1`;
+  }
+
+  private async sendWithBrowserFallback(url: string | URL, init: RequestInit): Promise<Response> {
+    try {
+      return await this.fetcher(url, init);
+    } catch (fetchError) {
+      try {
+        return await xhrRequest(url, init);
+      } catch (xhrError) {
+        throw new CmiApiError(
+          0,
+          "NETWORK_ERROR",
+          `Browser request failed. Fetch: ${requestErrorDetail(fetchError)}; XMLHttpRequest: ${requestErrorDetail(xhrError)}.`,
+          null,
+        );
+      }
+    }
   }
 
   private async request<T>(
@@ -226,21 +285,24 @@ export class CmiApiClient {
     };
     let response: Response;
     try {
-      response = await this.fetcher(url, requestInit);
-    } catch {
-      if (!useSameOriginSessionProxy) {
-        throw new CmiApiError(0, "NETWORK_ERROR", "Unable to reach PCG Missions. Check your connection and try again.", null);
-      }
-      // Keep the session lookup working if the same-origin proxy is blocked;
-      // the request still goes to this configured Supabase project's function.
+      response = await this.sendWithBrowserFallback(url, requestInit);
+    } catch (proxyError) {
+      if (!useSameOriginSessionProxy) throw proxyError;
+      // Keep session lookup available through the project's own HTTPS endpoint
+      // if the same-origin Vercel path is unavailable to this browser.
       const directUrl = new URL(`${this.baseUrl}/${functionName}${suffix}`);
       for (const [key, value] of Object.entries(options.query ?? {})) {
         if (value !== undefined && value !== "") directUrl.searchParams.set(key, String(value));
       }
       try {
-        response = await this.fetcher(directUrl, requestInit);
-      } catch {
-        throw new CmiApiError(0, "NETWORK_ERROR", "Unable to reach PCG Missions. Check your connection and try again.", null);
+        response = await this.sendWithBrowserFallback(directUrl, requestInit);
+      } catch (directError) {
+        throw new CmiApiError(
+          0,
+          "NETWORK_ERROR",
+          `Unable to reach PCG Missions. Proxy: ${requestErrorDetail(proxyError)}; Supabase: ${requestErrorDetail(directError)}.`,
+          null,
+        );
       }
     }
 
