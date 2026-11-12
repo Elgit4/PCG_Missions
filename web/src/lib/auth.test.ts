@@ -47,6 +47,41 @@ describe("PcgAuthClient", () => {
     });
   });
 
+  it("completes the XHR fallback when response headers use CRLF separators", async () => {
+    const storage = createMemoryStorage();
+    const fetcher = vi.fn(async () => { throw new TypeError("Failed to fetch"); });
+
+    class FakeXMLHttpRequest {
+      status = 200;
+      statusText = "OK";
+      responseText = JSON.stringify(sessionPayload());
+      timeout = 0;
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      ontimeout: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      open() {}
+      setRequestHeader() {}
+      getAllResponseHeaders() {
+        return "content-type: application/json\\r\\ncache-control: no-store\\r\\n";
+      }
+      send() {
+        queueMicrotask(() => this.onload?.());
+      }
+    }
+
+    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
+    try {
+      const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
+      const session = await client.signIn("staff@example.test", "temporary-password");
+      expect(session.access_token).toBe("access-test");
+      expect(await client.getAccessToken()).toBe("access-test");
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("keeps the authenticated session in memory when browser storage is blocked", async () => {
     const blockedStorage = {
       getItem: () => { throw new DOMException("Storage disabled", "SecurityError"); },
