@@ -71,7 +71,7 @@ export interface ContactRecord {
   id: string;
   branch_id: string;
   first_name: string;
-  last_name: string;
+  last_name?: string | null;
   preferred_name?: string | null;
   phone_e164?: string | null;
   phone_display?: string | null;
