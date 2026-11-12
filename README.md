@@ -4,7 +4,7 @@
 **Repository status:** Requirements and architecture documentation consolidated to CMI Follow-up v2.1  
 **Source of truth:** [Master Product Specification](docs/00_MASTER_PRODUCT_SPECIFICATION.md)
 
-CMI Follow-up supports church field capture, contacts, follow-up, prayer and care, events, attendance, calendar, announcements, visitor-facing content, ministry reports and team administration.
+The CMI Follow-up v2.1 target scope covers church field capture, contacts, follow-up, prayer and care, events, attendance, calendar, announcements, visitor-facing content, ministry reports and team administration. The scope below describes intended product capability; see the deployment snapshot before treating a feature as operational.
 
 ## Current product baseline
 
@@ -18,6 +18,14 @@ CMI Follow-up supports church field capture, contacts, follow-up, prayer and car
 - **Offline:** disabled for the initial production release until encrypted local storage, device binding, expiry and conflict-recovery tests pass.
 - **Communications:** Hubtel server-side adapter is present; live SMS dispatch, campaigns and automation remain disabled until consent, sender, provider, cost and authorization controls are complete.
 - **Out of scope:** multi-church network administration and the future/held capabilities listed in the master specification.
+
+## Current implementation and deployment snapshot — 12 November 2026
+
+The deployed staff workspace is a foundation release, not the complete v2.1 product. The current interface provides Overview, scoped Contacts listing/search/capture, Follow-up task listing and updates, and staff-account/password-reset administration where granted. The contact-detail, notes and interaction-history workflow is being added on the isolated `feat/usable-staff-workspace` branch; its new Edge Function routes are not production-ready until backend CI, deployment and authenticated endpoint verification pass.
+
+The hosted Supabase project currently records 15 ordered migrations, 50 RLS-enabled public tables, 58 explicit role-capability grants across six roles, and ten active Edge Functions. Those counts describe the technical foundation, not completion of every business module.
+
+The following remain incomplete, disabled or approval/security-gated: full contact merge and history lifecycle; pastoral prayer/care operations; event public registration, capacity, transport, attendance/check-in and closeout; announcements/publication and full content publishing; reports/review/exports; live SMS, campaigns and automation; offline capture/sync. Do not load real congregant data or represent these features as available until the documented privacy, security, UAT and production release gates have been met.
 
 ## Proposed database design (committed review artifacts)
 
