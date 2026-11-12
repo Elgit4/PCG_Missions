@@ -47,6 +47,22 @@ describe("PcgAuthClient", () => {
     });
   });
 
+  it("keeps the authenticated session in memory when browser storage is blocked", async () => {
+    const blockedStorage = {
+      getItem: () => { throw new DOMException("Storage disabled", "SecurityError"); },
+      setItem: () => { throw new DOMException("Storage disabled", "SecurityError"); },
+      removeItem: () => { throw new DOMException("Storage disabled", "SecurityError"); },
+    };
+    const fetcher = vi.fn(async () => new Response(JSON.stringify(sessionPayload()), { status: 200 }));
+    const client = new PcgAuthClient(config.url, config.key, blockedStorage, fetcher as typeof fetch);
+
+    const session = await client.signIn("staff@example.test", "temporary-password");
+
+    expect(session.access_token).toBe("access-test");
+    expect(await client.getAccessToken()).toBe("access-test");
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
   it("tests the browser sign-in POST without using real credentials", async () => {
     const storage = createMemoryStorage();
     const fetcher = vi.fn(async () => new Response(JSON.stringify({
