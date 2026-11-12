@@ -2,6 +2,8 @@ import {
   isUuid,
   parseContactCreate,
   parseContactPatch,
+  parseContactNoteCreate,
+  parseContactInteractionCreate,
   parseFollowupTaskAssignment,
   parseFollowupTaskCreate,
   parseFollowupTaskPatch,
@@ -364,5 +366,62 @@ Deno.test("staff directory projection deduplicates roles and includes account st
         `Sensitive field leaked into directory response: ${sensitive}`,
       );
     }
+  }
+});
+
+
+Deno.test("contact note create accepts and trims an ordinary note body", () => {
+  const parsed = parseContactNoteCreate({ body: "  Spoke after Sunday service.  " });
+  if (!parsed.ok) throw new Error(parsed.error);
+  if (parsed.value.body !== "Spoke after Sunday service.") {
+    throw new Error("The note body was not normalized.");
+  }
+});
+
+Deno.test("contact note create rejects empty, oversized and privileged fields", () => {
+  for (const input of [
+    { body: "   " },
+    { body: "x".repeat(4001) },
+    { body: "Follow up", author_user_id: "10000000-0000-4000-8000-000000000015" },
+    { body: "Follow up", visibility: "branch_scope" },
+    { body: "Follow up", team_id: "10000000-0000-4000-8000-000000000016" },
+    { body: "Follow up", branch_id },
+  ]) {
+    const parsed = parseContactNoteCreate(input);
+    if (parsed.ok) throw new Error("Invalid or caller-controlled note input was accepted.");
+  }
+});
+
+Deno.test("contact interaction create accepts normalized fields and explicit timezone", () => {
+  const parsed = parseContactInteractionCreate({
+    interaction_type: "call",
+    occurred_at: "2026-11-12T18:30:00+00:00",
+    outcome_code: "answered",
+    summary: "Agreed to attend the next service.",
+    next_action_at: "2026-11-15T09:00:00Z",
+  });
+  if (!parsed.ok) throw new Error(parsed.error);
+  if (parsed.value.occurred_at !== "2026-11-12T18:30:00.000Z") {
+    throw new Error("Interaction time was not normalized to UTC.");
+  }
+  if (parsed.value.next_action_at !== "2026-11-15T09:00:00.000Z") {
+    throw new Error("Next action time was not normalized to UTC.");
+  }
+});
+
+Deno.test("contact interaction create rejects unsupported, sensitive and malformed fields", () => {
+  for (const input of [
+    { interaction_type: "prayer" },
+    { interaction_type: "call", actor_user_id: "10000000-0000-4000-8000-000000000015" },
+    { interaction_type: "call", contact_id: "10000000-0000-4000-8000-000000000016" },
+    { interaction_type: "call", branch_id },
+    { interaction_type: "call", occurred_at: "2026-11-12T18:30:00" },
+    { interaction_type: "call", next_action_at: "yesterday" },
+    { interaction_type: "call", outcome_code: "Contact was reached" },
+    { interaction_type: "call", summary: "x".repeat(1001) },
+    { interaction_type: "call", visibility: "branch_scope" },
+  ]) {
+    const parsed = parseContactInteractionCreate(input);
+    if (parsed.ok) throw new Error("Unsupported or invalid interaction input was accepted.");
   }
 });
