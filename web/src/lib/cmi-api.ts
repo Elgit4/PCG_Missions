@@ -67,6 +67,108 @@ export interface StaffPasswordResetRequest {
   status: "pending" | "processing";
 }
 
+export interface EventDraftRecord {
+  id: string;
+  branch_id: string;
+  title: string;
+  description: string | null;
+  starts_at: string;
+  ends_at: string;
+  timezone: string;
+  location: string | null;
+  status: "draft";
+  visibility: "private";
+  registration_state: "closed";
+  created_at: string;
+  updated_at: string;
+}
+export interface EventDraftCreateInput {
+  branch_id: string;
+  title: string;
+  description: string | null;
+  starts_at: string;
+  ends_at: string;
+  timezone: string;
+  location: string | null;
+}
+export type EventDraftPatchInput = Partial<Omit<EventDraftCreateInput, "branch_id">>;
+
+export interface CalendarEntryRecord {
+  id: string;
+  branch_id: string;
+  entry_type: "service" | "event" | "other";
+  title: string;
+  starts_at: string;
+  ends_at: string | null;
+  scope_type: "branch";
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+export interface CalendarEntryCreateInput {
+  branch_id: string;
+  entry_type: CalendarEntryRecord["entry_type"];
+  title: string;
+  starts_at: string;
+  ends_at: string | null;
+}
+export type CalendarEntryPatchInput = Partial<Omit<CalendarEntryCreateInput, "branch_id">>;
+
+export interface AnnouncementDraftRecord {
+  id: string;
+  branch_id: string;
+  title: string;
+  body: string;
+  is_public: false;
+  status: "draft";
+  created_at: string;
+  updated_at: string;
+}
+export interface AnnouncementDraftCreateInput {
+  branch_id: string;
+  title: string;
+  body: string;
+}
+export type AnnouncementDraftPatchInput = Partial<Pick<AnnouncementDraftCreateInput, "title" | "body">>;
+
+export interface SermonDraftRecord {
+  id: string;
+  branch_id: string;
+  title: string;
+  body: string;
+  public_slug: string;
+  status: "draft";
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface SermonDraftCreateInput {
+  branch_id: string;
+  title: string;
+  body: string;
+  public_slug: string;
+}
+export type SermonDraftPatchInput = Partial<Pick<SermonDraftCreateInput, "title" | "body" | "public_slug">>;
+
+export interface WelcomeMessageDraftRecord {
+  id: string;
+  branch_id: string;
+  title: string;
+  body: string;
+  display_order: number;
+  status: "draft";
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+export interface WelcomeMessageDraftCreateInput {
+  branch_id: string;
+  title: string;
+  body: string;
+  display_order: number;
+}
+export type WelcomeMessageDraftPatchInput = Partial<Pick<WelcomeMessageDraftCreateInput, "title" | "body" | "display_order">>;
+
 export interface ContactRecord {
   id: string;
   branch_id: string;
@@ -502,6 +604,76 @@ export class CmiApiClient {
       { method: "POST", body: { branch_id: branchId, reason } },
     );
   }
+  listEventDrafts(branchId: string, options: { limit?: number; offset?: number } = {}) {
+    return this.request<EventDraftRecord[]>("event-operations", "/events", {
+      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0 },
+    });
+  }
+  createEventDraft(input: EventDraftCreateInput) {
+    return this.request<EventDraftRecord>("event-operations", "/events", { method: "POST", body: input });
+  }
+  updateEventDraft(branchId: string, eventId: string, input: EventDraftPatchInput) {
+    return this.request<EventDraftRecord>("event-operations", "/events/" + encodeURIComponent(eventId), {
+      method: "PATCH", query: { branch_id: branchId }, body: input,
+    });
+  }
+
+  listCalendarEntries(branchId: string, options: { limit?: number; offset?: number } = {}) {
+    return this.request<CalendarEntryRecord[]>("calendar-operations", "/entries", {
+      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0 },
+    });
+  }
+  createCalendarEntry(input: CalendarEntryCreateInput) {
+    return this.request<CalendarEntryRecord>("calendar-operations", "/entries", { method: "POST", body: input });
+  }
+  updateCalendarEntry(branchId: string, entryId: string, input: CalendarEntryPatchInput) {
+    return this.request<CalendarEntryRecord>("calendar-operations", "/entries/" + encodeURIComponent(entryId), {
+      method: "PATCH", query: { branch_id: branchId }, body: input,
+    });
+  }
+
+  listAnnouncementDrafts(branchId: string, options: { limit?: number; offset?: number } = {}) {
+    return this.request<AnnouncementDraftRecord[]>("announcement-operations", "/announcements", {
+      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0 },
+    });
+  }
+  createAnnouncementDraft(input: AnnouncementDraftCreateInput) {
+    return this.request<AnnouncementDraftRecord>("announcement-operations", "/announcements", { method: "POST", body: input });
+  }
+  updateAnnouncementDraft(branchId: string, announcementId: string, input: AnnouncementDraftPatchInput) {
+    return this.request<AnnouncementDraftRecord>("announcement-operations", "/announcements/" + encodeURIComponent(announcementId), {
+      method: "PATCH", query: { branch_id: branchId }, body: input,
+    });
+  }
+
+  listSermonDrafts(branchId: string, options: { limit?: number; offset?: number } = {}) {
+    return this.request<SermonDraftRecord[]>("content-operations", "/sermons", {
+      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0 },
+    });
+  }
+  createSermonDraft(input: SermonDraftCreateInput) {
+    return this.request<SermonDraftRecord>("content-operations", "/sermons", { method: "POST", body: input });
+  }
+  updateSermonDraft(branchId: string, sermonId: string, input: SermonDraftPatchInput) {
+    return this.request<SermonDraftRecord>("content-operations", "/sermons/" + encodeURIComponent(sermonId), {
+      method: "PATCH", query: { branch_id: branchId }, body: input,
+    });
+  }
+
+  listWelcomeMessageDrafts(branchId: string, options: { limit?: number; offset?: number } = {}) {
+    return this.request<WelcomeMessageDraftRecord[]>("content-operations", "/welcome-messages", {
+      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0 },
+    });
+  }
+  createWelcomeMessageDraft(input: WelcomeMessageDraftCreateInput) {
+    return this.request<WelcomeMessageDraftRecord>("content-operations", "/welcome-messages", { method: "POST", body: input });
+  }
+  updateWelcomeMessageDraft(branchId: string, messageId: string, input: WelcomeMessageDraftPatchInput) {
+    return this.request<WelcomeMessageDraftRecord>("content-operations", "/welcome-messages/" + encodeURIComponent(messageId), {
+      method: "PATCH", query: { branch_id: branchId }, body: input,
+    });
+  }
+
   readPrayerRequest(branchId: string, requestId: string, accessMode: "assigned" | "oversight", reasonCode?: string) {
     return this.request<unknown>("pastoral-operations", `/prayer/requests/${encodeURIComponent(requestId)}/read`, {
       method: "POST", body: { branch_id: branchId, access_mode: accessMode, ...(reasonCode ? { reason_code: reasonCode } : {}) },
