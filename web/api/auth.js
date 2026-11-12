@@ -74,10 +74,51 @@ export default async function handler(req, res) {
   );
 
   if (!supabaseUrl || !publishableKey) {
+    if (requestUrl.searchParams.get("health") === "1") {
+      return sendJson(res, 503, {
+        ok: false,
+        service: "pcg-missions-auth-proxy",
+        release: process.env.VERCEL_GIT_COMMIT_SHA || null,
+        configuration: {
+          supabaseUrlPresent: Boolean(supabaseUrl),
+          publishableKeyPresent: Boolean(publishableKey),
+          upstreamReachable: false,
+        },
+      });
+    }
     return sendJson(res, 503, {
       error: {
         code: "AUTH_PROXY_NOT_CONFIGURED",
         message: "The secure sign-in service is not configured on the server.",
+      },
+    });
+  }
+
+  if (requestUrl.searchParams.get("health") === "1") {
+    let upstreamStatus = null;
+    let upstreamReachable = false;
+    try {
+      const healthResponse = await fetch(`${supabaseUrl}/auth/v1/settings`, {
+        method: "GET",
+        headers: { apikey: publishableKey, Accept: "application/json" },
+        cache: "no-store",
+        signal: AbortSignal.timeout(10000),
+      });
+      upstreamStatus = healthResponse.status;
+      upstreamReachable = healthResponse.ok;
+      await healthResponse.body?.cancel().catch(() => {});
+    } catch {
+      upstreamReachable = false;
+    }
+    return sendJson(res, upstreamReachable ? 200 : 503, {
+      ok: upstreamReachable,
+      service: "pcg-missions-auth-proxy",
+      release: process.env.VERCEL_GIT_COMMIT_SHA || null,
+      configuration: {
+        supabaseUrlPresent: true,
+        publishableKeyPresent: true,
+        upstreamReachable,
+        upstreamStatus,
       },
     });
   }
