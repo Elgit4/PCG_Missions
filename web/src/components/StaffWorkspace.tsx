@@ -5,7 +5,7 @@ import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreat
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 
 type Page = "Overview" | "Contacts" | "Follow-up" | "Staff" | "Access requests";
-interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void>; demoMode?: boolean }
+interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void> }
 
 function messageFor(error: unknown): string {
   if (error instanceof CmiApiError) {
@@ -33,7 +33,7 @@ function statusLabel(status: string): string {
   return status.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-export function StaffWorkspace({ api, session, onSignOut, demoMode = false }: StaffWorkspaceProps) {
+export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps) {
   const [branchId, setBranchId] = useState(session.branches[0]?.id ?? "");
   const [page, setPage] = useState<Page>(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "access-requests") return "Access requests";
@@ -231,9 +231,7 @@ export function StaffWorkspace({ api, session, onSignOut, demoMode = false }: St
     setSaving(true); setActionError(""); setActionNotice("");
     try {
       const result = await api.createStaffAccount(input);
-      setActionNotice(demoMode
-        ? `Demo staff account added locally for ${result.data.email}. No invitation email was sent.`
-        : `Staff account created. The temporary sign-in details were emailed to ${result.data.email}. The user must change the temporary password at first sign-in.`);
+      setActionNotice(`Staff account created. The temporary sign-in details were emailed to ${result.data.email}. The user must change the temporary password at first sign-in.`);
       setShowStaffForm(false);
       const directory = await api.listStaffDirectory(branchId, { limit: 100, offset: 0 });
       setStaffMembers(directory.data);
