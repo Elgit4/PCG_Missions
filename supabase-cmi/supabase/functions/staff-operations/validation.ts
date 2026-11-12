@@ -666,18 +666,27 @@ export function parseContactInteractionCreate(
   }
   if (
     typeof value.interaction_type !== "string" ||
-    !CONTACT_INTERACTION_TYPES.has(value.interaction_type as ContactInteractionType)
+    !CONTACT_INTERACTION_TYPES.has(
+      value.interaction_type as ContactInteractionType,
+    )
   ) {
     return { ok: false, error: "Invalid interaction_type." };
   }
 
   const occurredAt = parseTaskDueAt(value.occurred_at);
   if (!occurredAt.ok) {
-    return { ok: false, error: "occurred_at must be an ISO timestamp with an explicit timezone." };
+    return {
+      ok: false,
+      error: "occurred_at must be an ISO timestamp with an explicit timezone.",
+    };
   }
   const nextActionAt = parseTaskDueAt(value.next_action_at);
   if (!nextActionAt.ok) {
-    return { ok: false, error: "next_action_at must be an ISO timestamp with an explicit timezone." };
+    return {
+      ok: false,
+      error:
+        "next_action_at must be an ISO timestamp with an explicit timezone.",
+    };
   }
 
   const outcome = optionalText(value.outcome_code, "outcome_code", 60);
@@ -732,7 +741,9 @@ export function deriveContactNotePlacement(
   }
   if (scopes.includes("team")) {
     const contactTeams = new Set(contactTeamIds);
-    const sharedTeamId = actorTeamIds.find((teamId) => contactTeams.has(teamId));
+    const sharedTeamId = actorTeamIds.find((teamId) =>
+      contactTeams.has(teamId)
+    );
     if (sharedTeamId) {
       return { visibility: "team_scope", team_id: sharedTeamId };
     }
@@ -772,4 +783,3 @@ export function canReadContactNote(
   }
   return false;
 }
-
