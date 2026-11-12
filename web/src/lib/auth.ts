@@ -176,7 +176,9 @@ export class PcgAuthClient {
       if (session) this.storage.setItem(SESSION_KEY, JSON.stringify(session));
       else this.storage.removeItem(SESSION_KEY);
     } catch {
-      throw new AuthClientError(0, "SESSION_STORAGE_UNAVAILABLE", "Secure browser session storage is unavailable.");
+      // Keep the authenticated session in memory when browser storage is
+      // disabled by privacy settings, sandboxing, or an extension. This tab
+      // can continue securely; a page reload will simply require sign-in again.
     }
   }
 
