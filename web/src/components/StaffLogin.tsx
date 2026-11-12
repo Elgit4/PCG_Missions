@@ -1,5 +1,4 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { DEMO_LOGIN_EMAIL, DEMO_LOGIN_PASSWORD } from "../lib/demo-preview";
 import {
   ArrowLeft,
   CalendarDays,
@@ -267,25 +266,6 @@ export function StaffLogin({
             </button>
           </form>
 
-          {view === "sign-in" && (
-            <section className="staff-login-demo-card" aria-label="Administrator preview access">
-              <div className="staff-login-demo-heading">
-                <div><strong>Administrator preview access</strong><small>Fictional sample records · no real church data</small></div>
-                <span>PREVIEW</span>
-              </div>
-              <div className="staff-login-demo-credentials">
-                <div><small>EMAIL</small><code>{DEMO_LOGIN_EMAIL}</code></div>
-                <div><small>PASSWORD</small><code>{DEMO_LOGIN_PASSWORD}</code></div>
-              </div>
-              <button
-                type="button"
-                className="staff-login-demo-fill"
-                disabled={busy}
-                onClick={() => void onSignIn(DEMO_LOGIN_EMAIL, DEMO_LOGIN_PASSWORD)}
-              >Open administrator preview</button>
-              <p>Opens the workspace immediately. All changes use fictional data kept only in this browser session.</p>
-            </section>
-          )}
 
           <div className="staff-login-auth-bottom">
             {view === "sign-in" && (
@@ -313,7 +293,7 @@ export function StaffLogin({
 
           <div className="staff-login-support">
             <span>{view === "sign-in" ? "First administrator access?" : "Need help accessing the portal?"}</span>
-            <p>{view === "sign-in" ? "The live first-administrator account has not been provisioned in the connected database yet. Use Administrator Preview above to open the workspace with fictional records." : "Password reset requests are reviewed and recorded by an authorised church administrator before a temporary password is issued."}</p>
+            <p>{view === "sign-in" ? "If you do not yet have a staff account, contact an authorised church administrator to arrange access." : "Password reset requests are reviewed and recorded by an authorised church administrator before a temporary password is issued."}</p>
           </div>
         </div>
 
