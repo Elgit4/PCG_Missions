@@ -4,6 +4,8 @@ import {
   parseContactPatch,
   parseContactNoteCreate,
   parseContactInteractionCreate,
+  deriveContactNotePlacement,
+  canReadContactNote,
   parseFollowupTaskAssignment,
   parseFollowupTaskCreate,
   parseFollowupTaskPatch,
@@ -423,5 +425,57 @@ Deno.test("contact interaction create rejects unsupported, sensitive and malform
   ]) {
     const parsed = parseContactInteractionCreate(input);
     if (parsed.ok) throw new Error("Unsupported or invalid interaction input was accepted.");
+  }
+});
+
+
+Deno.test("contact note visibility is derived from the strongest valid scope", () => {
+  const branch = deriveContactNotePlacement(["assigned", "branch"], [], []);
+  if (branch?.visibility !== "branch_scope" || branch.team_id !== null) {
+    throw new Error("Branch-scoped note placement was not selected.");
+  }
+  const team = deriveContactNotePlacement(
+    ["team"],
+    ["team-a", "team-b"],
+    ["team-b"],
+  );
+  if (team?.visibility !== "team_scope" || team.team_id !== "team-b") {
+    throw new Error("A matching active team was not selected.");
+  }
+  const assigned = deriveContactNotePlacement(["team", "assigned"], ["team-a"], ["team-b"]);
+  if (assigned?.visibility !== "assigned_scope") {
+    throw new Error("The assignment scope should be used when no team assignment overlaps.");
+  }
+  if (deriveContactNotePlacement(["team"], ["team-a"], ["team-b"]) !== null) {
+    throw new Error("A team note was allowed without a shared team assignment.");
+  }
+});
+
+Deno.test("contact note visibility is checked against current author, scope and team overlap", () => {
+  const note = {
+    author_user_id: "user-a",
+    visibility: "team_scope" as const,
+    team_id: "team-a",
+  };
+  if (!canReadContactNote(note, "user-b", ["team"], ["team-a"], ["team-a"])) {
+    throw new Error("A current member of the assigned team should read its note.");
+  }
+  if (canReadContactNote(note, "user-b", ["team"], ["team-a"], ["team-b"])) {
+    throw new Error("A team note was exposed without a matching contact assignment.");
+  }
+  if (canReadContactNote(note, "user-b", ["assigned"], ["team-a"], ["team-a"])) {
+    throw new Error("A team note was exposed to an assigned-only scope.");
+  }
+  if (!canReadContactNote({ ...note, visibility: "branch_scope" }, "user-b", ["branch"], [], [])) {
+    throw new Error("A branch-scoped reader should read branch notes.");
+  }
+  if (canReadContactNote({ ...note, visibility: "branch_scope" }, "user-b", ["team"], ["team-a"], ["team-a"])) {
+    throw new Error("Team scope must not read branch-only notes.");
+  }
+  if (!canReadContactNote({ ...note, visibility: "author_only" }, "user-a", ["team"], [], [])) {
+    throw new Error("An author should read their author-only note.");
+  }
+  if (canReadContactNote({ ...note, visibility: "author_only" }, "user-b", ["branch"], [], [])) {
+    throw new Error("Branch scope must not override author-only visibility.");
   }
 });
