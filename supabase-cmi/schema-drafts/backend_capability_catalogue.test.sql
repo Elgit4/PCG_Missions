@@ -1,5 +1,5 @@
 begin;
-select plan(26);
+select plan(28);
 
 select has_table('public', 'capability', 'Capability catalogue exists');
 select ok(
@@ -378,6 +378,54 @@ select extensions.throws_ok(
   'reusing an idempotency key with a changed digest returns a conflict'
 );
 
+
+
+select is(
+  (select count(*)::integer
+   from public.role_capability rc
+   join public.role r on r.id = rc.role_id
+   join public.capability c on c.id = rc.capability_id
+   where r.code = 'admin_pastor'
+     and c.code in (
+       'event.read.scoped',
+       'event.manage.scoped',
+       'calendar.read.scoped',
+       'calendar.manage.scoped',
+       'announcement.read.scoped',
+       'announcement.create.scoped',
+       'content.manage.draft'
+     )
+     and rc.scope_mode = 'branch'
+     and c.is_active),
+  7,
+  'Admin/Pastor receives seven explicit branch-scoped draft-workspace grants'
+);
+select ok(
+  not exists (
+    select 1
+    from public.role_capability rc
+    join public.role r on r.id = rc.role_id
+    join public.capability c on c.id = rc.capability_id
+    where r.code = 'admin_pastor'
+      and (
+        c.code in (
+          'announcement.publish.scoped',
+          'content.publish',
+          'event.registration.manage.scoped',
+          'event.checkin.scoped',
+          'event.closeout.submit',
+          'event.closeout.review',
+          'report.export.scoped',
+          'contact.export.scoped',
+          'team.manage',
+          'prayer.oversight.manage',
+          'care.oversight.manage'
+        )
+        or c.code like 'sms.%'
+      )
+  ),
+  'Draft workspace grants do not enable publication, registration, attendance, exports, team management, pastoral mutation or SMS'
+);
 
 select * from finish();
 rollback;
