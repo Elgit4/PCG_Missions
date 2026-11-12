@@ -59,6 +59,30 @@ describe("capability-driven staff navigation", () => {
     expect(canOpenStaffPage(session, "Reports", "branch-a")).toBe(false);
   });
 
+  it("shows event drafts only with event read or management grants", () => {
+    const noGrant = { ...baseSession, capabilities: [] };
+    const readGrant = { ...baseSession, capabilities: [{ code: "event.read.scoped", scope_mode: "branch", branch_id: "branch-a" }] };
+    const manageGrant = { ...baseSession, capabilities: [{ code: "event.manage.scoped", scope_mode: "branch", branch_id: "branch-a" }] };
+    expect(canOpenStaffPage(noGrant, "Events", "branch-a")).toBe(false);
+    expect(canOpenStaffPage(readGrant, "Events", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(manageGrant, "Events", "branch-a")).toBe(true);
+  });
+
+  it("keeps calendar, announcement and draft-content pages separately permissioned", () => {
+    const session = {
+      ...baseSession,
+      capabilities: [
+        { code: "calendar.read.scoped", scope_mode: "branch", branch_id: "branch-a" },
+        { code: "announcement.create.scoped", scope_mode: "branch", branch_id: "branch-a" },
+        { code: "content.manage.draft", scope_mode: "branch", branch_id: "branch-a" },
+      ],
+    };
+    expect(canOpenStaffPage(session, "Calendar", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(session, "Announcements", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(session, "Content", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(session, "Announcements", "branch-b")).toBe(false);
+  });
+
   it("checks identity visibility separately from contact directory access", () => {
     const session = {
       ...baseSession,
