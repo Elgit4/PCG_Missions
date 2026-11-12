@@ -20,6 +20,7 @@ import {
   type WelcomeMessageDraftRecord,
 } from "../lib/cmi-api";
 import { hasCapability } from "../lib/capabilities";
+import { formatBranchDate, toBranchLocalInput, branchLocalInputToIso } from "../lib/branch-time";
 
 type OperationsSection = "Events" | "Calendar" | "Announcements" | "Content";
 type ContentKind = "sermons" | "welcome-messages";
@@ -32,91 +33,6 @@ interface OperationsWorkspaceProps {
   api: CmiApiClient;
   session: import("../lib/cmi-api").StaffSession;
   onSessionExpired: () => void;
-}
-
-function toBranchLocalInput(value: string | null | undefined, timeZone: string): string {
-  if (!value) return "";
-  try {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(new Date(value));
-    const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
-    return part("year") + "-" + part("month") + "-" + part("day") + "T" + part("hour") + ":" + part("minute");
-  } catch {
-    return "";
-  }
-}
-
-/**
- * datetime-local values are wall-clock times, not UTC timestamps. Convert
- * using the selected branch's IANA zone instead of the browser's local zone.
- * Non-existent times during a daylight-saving transition are rejected.
- */
-function branchLocalInputToIso(value: string, timeZone: string): string | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(value);
-  if (!match) return null;
-  const target = Date.UTC(
-    Number(match[1]),
-    Number(match[2]) - 1,
-    Number(match[3]),
-    Number(match[4]),
-    Number(match[5]),
-  );
-  if (!Number.isFinite(target)) return null;
-
-  let guess = target;
-  try {
-    const formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    });
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const parts = formatter.formatToParts(new Date(guess));
-      const part = (type: string) => Number(parts.find((item) => item.type === type)?.value);
-      const represented = Date.UTC(
-        part("year"),
-        part("month") - 1,
-        part("day"),
-        part("hour"),
-        part("minute"),
-      );
-      const offset = represented - guess;
-      if (offset === 0) break;
-      guess = target - offset;
-    }
-    const check = formatter.formatToParts(new Date(guess));
-    const part = (type: string) => check.find((item) => item.type === type)?.value ?? "";
-    const matches = part("year") === match[1] &&
-      part("month") === match[2] &&
-      part("day") === match[3] &&
-      part("hour") === match[4] &&
-      part("minute") === match[5];
-    return matches ? new Date(guess).toISOString() : null;
-  } catch {
-    return null;
-  }
-}
-
-function formatDate(value: string | null, timeZone: string): string {
-  if (!value) return "No end time";
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "Date unavailable";
-  return new Intl.DateTimeFormat("en-GH", {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone,
-  }).format(date);
 }
 
 function shortText(value: string, max = 150): string {
@@ -423,7 +339,7 @@ export function OperationsWorkspace({
             {events.map((item) => (
               <article className="cmi-task-row" key={item.id}>
                 <div className="cmi-task-symbol"><CalendarDays size={18} /></div>
-                <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatDate(item.starts_at, timeZone)} – {formatDate(item.ends_at, timeZone)}{item.location ? " · " + item.location : ""}</p><small>{shortText(item.description ?? "No description added.")}</small></div>
+                <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.starts_at, timeZone)} – {formatBranchDate(item.ends_at, timeZone)}{item.location ? " · " + item.location : ""}</p><small>{shortText(item.description ?? "No description added.")}</small></div>
                 <span className="cmi-task-status status-open">Private draft</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
@@ -437,7 +353,7 @@ export function OperationsWorkspace({
             {entries.map((item) => (
               <article className="cmi-task-row" key={item.id}>
                 <div className="cmi-task-symbol"><CalendarClock size={18} /></div>
-                <div className="cmi-task-copy"><strong>{item.title}</strong><p>{item.entry_type.replaceAll("_", " ")} · {formatDate(item.starts_at, timeZone)} – {formatDate(item.ends_at, timeZone)}</p></div>
+                <div className="cmi-task-copy"><strong>{item.title}</strong><p>{item.entry_type.replaceAll("_", " ")} · {formatBranchDate(item.starts_at, timeZone)} – {formatBranchDate(item.ends_at, timeZone)}</p></div>
                 <span className="cmi-task-status status-open">Scheduled</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
@@ -451,7 +367,7 @@ export function OperationsWorkspace({
             {announcements.map((item) => (
               <article className="cmi-task-row" key={item.id}>
                 <div className="cmi-task-symbol"><Megaphone size={18} /></div>
-                <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatDate(item.updated_at, timeZone)} · {shortText(item.body)}</p></div>
+                <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.updated_at, timeZone)} · {shortText(item.body)}</p></div>
                 <span className="cmi-task-status status-open">Private draft</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
@@ -465,7 +381,7 @@ export function OperationsWorkspace({
             {sermons.map((item) => (
               <article className="cmi-task-row" key={item.id}>
                 <div className="cmi-task-symbol"><BookOpen size={18} /></div>
-                <div className="cmi-task-copy"><strong>{item.title}</strong><p>/{item.public_slug} · Updated {formatDate(item.updated_at, timeZone)}</p><small>{shortText(item.body)}</small></div>
+                <div className="cmi-task-copy"><strong>{item.title}</strong><p>/{item.public_slug} · Updated {formatBranchDate(item.updated_at, timeZone)}</p><small>{shortText(item.body)}</small></div>
                 <span className="cmi-task-status status-open">Private draft</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
@@ -479,7 +395,7 @@ export function OperationsWorkspace({
             {welcomeMessages.map((item) => (
               <article className="cmi-task-row" key={item.id}>
                 <div className="cmi-task-symbol"><BookOpen size={18} /></div>
-                <div className="cmi-task-copy"><strong>{item.title}</strong><p>Display order {item.display_order} · Updated {formatDate(item.updated_at, timeZone)}</p><small>{shortText(item.body)}</small></div>
+                <div className="cmi-task-copy"><strong>{item.title}</strong><p>Display order {item.display_order} · Updated {formatBranchDate(item.updated_at, timeZone)}</p><small>{shortText(item.body)}</small></div>
                 <span className="cmi-task-status status-open">Private draft</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
