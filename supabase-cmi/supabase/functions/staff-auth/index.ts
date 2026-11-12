@@ -18,7 +18,8 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const ALLOWED_ORIGINS = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "").split(",")
+  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
+    .split(",")
     .map((value) => value.trim()).filter(Boolean),
 );
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -128,6 +129,10 @@ async function sendEmail(
       html,
       text: textBody,
     }),
+    // Keep provider latency well below the three-minute first-admin lease.
+    // This bounds credential-delivery work and allows the lease to be released
+    // before another recovery attempt can legitimately take over.
+    signal: AbortSignal.timeout(15_000),
   });
   if (!result.ok) {
     // Never log the provider response body or recipient credentials.
@@ -362,11 +367,33 @@ async function bootstrapAdmin(
     });
     return { users: data?.users, error };
   });
-  let authUserId: string;
+  let authUserId = existingUsers.length === 1 ? existingUsers[0].id : "";
   let createdNewAuthUser = false;
-  const bootstrapPath = resolveBootstrapPath(existingUsers, email, false);
+  let existingProfile: {
+    id: string;
+    account_status: string;
+    must_change_password: boolean;
+    password_changed_at: string | null;
+  } | null = null;
 
-  if (bootstrapPath === "create") {
+  if (existingUsers.length === 1) {
+    const { data: profile, error: profileError } = await service
+      .from("staff_profile")
+      .select(
+        "id,email,account_status,must_change_password,password_changed_at",
+      )
+      .eq("auth_user_id", authUserId)
+      .maybeSingle();
+    if (profileError) throw new Error("BOOTSTRAP_PROFILE_LOOKUP_FAILED");
+    existingProfile = profile;
+  }
+
+  const verifiedPath = resolveBootstrapPath(
+    existingUsers,
+    email,
+    existingProfile,
+  );
+  if (verifiedPath === "create") {
     const { data: created, error: createError } = await service.auth.admin
       .createUser({
         email,
@@ -393,31 +420,9 @@ async function bootstrapAdmin(
       await service.auth.admin.deleteUser(authUserId).catch(() => undefined);
       throw new Error("BOOTSTRAP_DATABASE_PROVISION_FAILED");
     }
-  } else if (bootstrapPath === "recover_partial_auth_user") {
-    authUserId = existingUsers[0].id;
-    const { data: profile, error: profileError } = await service
-      .from("staff_profile")
-      .select("id")
-      .eq("auth_user_id", authUserId)
-      .maybeSingle();
-    if (profileError) throw new Error("BOOTSTRAP_PROFILE_LOOKUP_FAILED");
-
-    // A provisioned profile consumes bootstrap permanently. In particular, do
-    // not rotate/reissue a temporary credential on a repeated bootstrap call.
-    const verifiedPath = resolveBootstrapPath(existingUsers, email, !!profile);
-    if (verifiedPath !== "recover_partial_auth_user") {
-      return fail(
-        "BOOTSTRAP_ALREADY_USED",
-        "First-administrator bootstrap has already been consumed.",
-        409,
-        origin,
-        requestId,
-      );
-    }
-
-    // Recover only the narrow Auth-user-created / CMI-profile-not-created
-    // partial state. The database RPC independently checks that church,
-    // branch and staff tables are still empty before provisioning.
+  } else if (verifiedPath === "recover_partial_auth_user") {
+    // Recover only Auth-user-created / CMI-profile-not-created state. The
+    // database RPC independently verifies the project is still unprovisioned.
     const { error: bootstrapError } = await service.rpc(
       "cmi_bootstrap_first_admin",
       {
@@ -438,10 +443,34 @@ async function bootstrapAdmin(
     if (passwordError) {
       throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
     }
+  } else if (verifiedPath === "recover_undelivered_credential") {
+    // The account exists, but the first-admin password gate has never been
+    // completed. Rotate the temporary password before retrying delivery so a
+    // previous possibly-delivered credential can no longer be used.
+    const { error: passwordError } = await service.auth.admin.updateUserById(
+      authUserId,
+      { password: temporaryPassword },
+    );
+    if (passwordError) {
+      throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
+    }
+    const { error: expiryError } = await service
+      .from("staff_profile")
+      .update({
+        password_setup_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000)
+          .toISOString(),
+      })
+      .eq("id", existingProfile!.id)
+      .eq("account_status", "active")
+      .eq("must_change_password", true)
+      .is("password_changed_at", null);
+    if (expiryError) {
+      throw new Error("BOOTSTRAP_PASSWORD_EXPIRY_REFRESH_FAILED");
+    }
   } else {
     return fail(
       "BOOTSTRAP_ALREADY_USED",
-      "First-administrator bootstrap is only available on an empty Auth project.",
+      "First-administrator bootstrap has already been consumed or is not eligible for recovery.",
       409,
       origin,
       requestId,
@@ -491,6 +520,62 @@ async function bootstrapAdmin(
   );
 }
 
+async function bootstrapAdminWithLease(
+  request: Request,
+  origin: string | null,
+  requestId: string,
+): Promise<Response> {
+  // Authenticate the operator before taking the shared lock. An invalid
+  // request must not be able to block a legitimate bootstrap attempt.
+  const configuredToken = Deno.env.get("CMI_BOOTSTRAP_TOKEN") ?? "";
+  const suppliedToken = bearerToken(request) ?? "";
+  if (
+    configuredToken.length < 32 || !suppliedToken ||
+    !await constantTimeEqual(configuredToken, suppliedToken)
+  ) {
+    return fail(
+      "BOOTSTRAP_NOT_AUTHORIZED",
+      "Bootstrap authorization failed.",
+      401,
+      origin,
+      requestId,
+    );
+  }
+
+  const { service } = clients();
+  const leaseId = crypto.randomUUID();
+  const { data: acquired, error: acquireError } = await service.rpc(
+    "cmi_acquire_first_admin_bootstrap_lease",
+    { p_lease_id: leaseId },
+  );
+  if (acquireError) throw new Error("BOOTSTRAP_LEASE_ACQUIRE_FAILED");
+  if (acquired !== true) {
+    return fail(
+      "BOOTSTRAP_IN_PROGRESS",
+      "A first-administrator setup or recovery operation is already in progress. Wait briefly and retry.",
+      409,
+      origin,
+      requestId,
+    );
+  }
+
+  try {
+    return await bootstrapAdmin(request, origin, requestId);
+  } finally {
+    const { error: releaseError } = await service.rpc(
+      "cmi_release_first_admin_bootstrap_lease",
+      { p_lease_id: leaseId },
+    );
+    if (releaseError) {
+      // The lease expires automatically after three minutes if the runtime
+      // terminates before release. Never log the bearer token or credentials.
+      console.error("first-admin bootstrap lease release failed", {
+        request_id: requestId,
+      });
+    }
+  }
+}
+
 Deno.serve(async (request: Request) => {
   const id = crypto.randomUUID();
   const origin = request.headers.get("Origin");
@@ -516,7 +601,7 @@ Deno.serve(async (request: Request) => {
   const action = route.join("/");
   try {
     if (request.method === "POST" && action === "bootstrap-admin") {
-      return await bootstrapAdmin(request, origin, id);
+      return await bootstrapAdminWithLease(request, origin, id);
     }
 
     if (request.method === "POST" && action === "request-password-reset") {

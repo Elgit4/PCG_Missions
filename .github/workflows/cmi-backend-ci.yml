@@ -13,6 +13,7 @@ on:
       - "feat/cmi-*"
       - "design/cmi-*"
       - "backend/cmi-*"
+      - "fix/cmi-*"
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
@@ -106,6 +107,9 @@ jobs:
 
       - name: Test staff operations request validation
         run: deno test supabase-cmi/supabase/functions/staff-operations/validation_test.ts
+ 
+      - name: Test bounded streaming JSON request bodies
+        run: deno test supabase-cmi/supabase/functions/_shared/request_body_test.ts
 
       - name: Type-check event operations Edge Function
         run: deno check supabase-cmi/supabase/functions/event-operations/index.ts
@@ -174,6 +178,7 @@ jobs:
           cp supabase-cmi/schema-drafts/restricted_pastoral_domain.test.sql supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
           cp supabase-cmi/schema-drafts/events_attendance_public_content.test.sql supabase-cmi/supabase/tests/cmi_events_attendance_public_content.test.sql
           cp supabase-cmi/schema-drafts/pastoral_read_operations.test.sql supabase-cmi/supabase/tests/cmi_pastoral_read_operations.test.sql
+          cp supabase-cmi/schema-drafts/first_admin_bootstrap_lease.test.sql supabase-cmi/supabase/tests/cmi_first_admin_bootstrap_lease.test.sql
 
       - name: Start isolated local CMI stack and apply CMI migrations
         run: supabase --workdir supabase-cmi start
@@ -197,3 +202,4 @@ jobs:
           rm -f supabase-cmi/supabase/tests/cmi_restricted_pastoral_domain.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_events_attendance_public_content.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_pastoral_read_operations.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_first_admin_bootstrap_lease.test.sql

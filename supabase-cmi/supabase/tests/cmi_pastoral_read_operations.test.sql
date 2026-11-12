@@ -58,8 +58,8 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  65,
-  'the reviewed visitor MVP role baseline exists before synthetic fixtures'
+  58,
+  'the owner-directed visitor MVP role baseline exists before synthetic fixtures'
 );
 select ok(
   has_function_privilege(
@@ -156,10 +156,7 @@ insert into public.role_capability(role_id, capability_id, scope_mode)
 select r.id, c.id, g.scope_mode
 from (
   values
-    ('prayer_intercessor', 'prayer.request.read.assigned', 'assigned'),
-    ('follow_up_volunteer', 'care.record.read.assigned', 'assigned'),
-    ('admin_pastor', 'prayer.oversight.read', 'oversight'),
-    ('admin_pastor', 'care.oversight.read', 'oversight')
+    ('follow_up_volunteer', 'care.record.read.assigned', 'assigned')
 ) as g(role_code, capability_code, scope_mode)
 join public.role r on r.code = g.role_code
 join public.capability c on c.code = g.capability_code;

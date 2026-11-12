@@ -13,6 +13,7 @@ import {
   parseStaffDirectoryQuery,
   projectStaffDirectoryRows,
 } from "./validation.ts";
+import { readJson } from "../_shared/request_body.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
@@ -30,7 +31,7 @@ const FOLLOWUP_IDEMPOTENCY_KEY_VERSION = Number(
   Deno.env.get("CMI_FOLLOWUP_IDEMPOTENCY_KEY_VERSION") ?? "1",
 );
 const allowedOrigins = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "")
+  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
@@ -130,14 +131,6 @@ function getBearer(request: Request): string | null {
     ? /^Bearer\s+([A-Za-z0-9._~-]+)$/i.exec(value.trim())
     : null;
   return match?.[1] ?? null;
-}
-
-async function readJson(request: Request): Promise<unknown> {
-  const contentType = request.headers.get("Content-Type") ?? "";
-  if (!contentType.toLowerCase().includes("application/json")) {
-    throw new Error("CONTENT_TYPE_REQUIRED");
-  }
-  return await request.json();
 }
 
 async function resolveStaff(
@@ -730,12 +723,16 @@ Deno.serve(async (request: Request) => {
 
       let raw: unknown;
       try {
-        raw = await readJson(request);
-      } catch {
+        raw = await readJson(request, 16 * 1024);
+      } catch (error) {
+        const tooLarge = error instanceof Error &&
+          error.message === "BODY_TOO_LARGE";
         return fail(
-          "INVALID_JSON",
-          "A valid JSON request body is required.",
-          400,
+          tooLarge ? "BODY_TOO_LARGE" : "INVALID_JSON",
+          tooLarge
+            ? "The request body exceeds the 16 KB limit."
+            : "A valid JSON request body is required.",
+          tooLarge ? 413 : 400,
           origin,
           id,
         );
@@ -817,14 +814,20 @@ Deno.serve(async (request: Request) => {
     if (request.method === "POST" && isFollowupTaskCollection) {
       let raw: unknown;
       try {
-        raw = await readJson(request);
+        raw = await readJson(request, 16 * 1024);
       } catch (error) {
         return fail(
           error instanceof Error && error.message === "CONTENT_TYPE_REQUIRED"
             ? "CONTENT_TYPE_REQUIRED"
+            : error instanceof Error && error.message === "BODY_TOO_LARGE"
+            ? "BODY_TOO_LARGE"
             : "INVALID_JSON",
-          "A valid JSON request body is required.",
-          400,
+          error instanceof Error && error.message === "BODY_TOO_LARGE"
+            ? "The request body exceeds the 16 KB limit."
+            : "A valid JSON request body is required.",
+          error instanceof Error && error.message === "BODY_TOO_LARGE"
+            ? 413
+            : 400,
           origin,
           id,
         );
@@ -965,12 +968,16 @@ Deno.serve(async (request: Request) => {
       }
       let raw: unknown;
       try {
-        raw = await readJson(request);
-      } catch {
+        raw = await readJson(request, 16 * 1024);
+      } catch (error) {
+        const tooLarge = error instanceof Error &&
+          error.message === "BODY_TOO_LARGE";
         return fail(
-          "INVALID_JSON",
-          "A valid JSON request body is required.",
-          400,
+          tooLarge ? "BODY_TOO_LARGE" : "INVALID_JSON",
+          tooLarge
+            ? "The request body exceeds the 16 KB limit."
+            : "A valid JSON request body is required.",
+          tooLarge ? 413 : 400,
           origin,
           id,
         );
@@ -1179,14 +1186,20 @@ Deno.serve(async (request: Request) => {
     if (request.method === "POST" && last === "contacts") {
       let raw: unknown;
       try {
-        raw = await readJson(request);
+        raw = await readJson(request, 16 * 1024);
       } catch (error) {
         return fail(
           error instanceof Error && error.message === "CONTENT_TYPE_REQUIRED"
             ? "CONTENT_TYPE_REQUIRED"
+            : error instanceof Error && error.message === "BODY_TOO_LARGE"
+            ? "BODY_TOO_LARGE"
             : "INVALID_JSON",
-          "A valid JSON request body is required.",
-          400,
+          error instanceof Error && error.message === "BODY_TOO_LARGE"
+            ? "The request body exceeds the 16 KB limit."
+            : "A valid JSON request body is required.",
+          error instanceof Error && error.message === "BODY_TOO_LARGE"
+            ? 413
+            : 400,
           origin,
           id,
         );
@@ -1392,12 +1405,16 @@ Deno.serve(async (request: Request) => {
       }
       let raw: unknown;
       try {
-        raw = await readJson(request);
-      } catch {
+        raw = await readJson(request, 16 * 1024);
+      } catch (error) {
+        const tooLarge = error instanceof Error &&
+          error.message === "BODY_TOO_LARGE";
         return fail(
-          "INVALID_JSON",
-          "A valid JSON request body is required.",
-          400,
+          tooLarge ? "BODY_TOO_LARGE" : "INVALID_JSON",
+          tooLarge
+            ? "The request body exceeds the 16 KB limit."
+            : "A valid JSON request body is required.",
+          tooLarge ? 413 : 400,
           origin,
           id,
         );

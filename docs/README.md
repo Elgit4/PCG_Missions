@@ -24,7 +24,8 @@ These artifacts are committed on `main` and are **proposals for review**, not ap
 
 - [Logical Data Model Proposal](06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md) — entity inventory, relationships, candidate constraints, RLS design notes and data decisions.
 - [CMI Logical Crow's Foot ERD](database/CMI_Follow_Up_Logical_ERD_v0.1.drawio) — editable diagrams.net file with separate domain pages.
-- [Role, Capability & Scope Matrix Proposal](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md) — proposed capability catalogue, role grants, scope rules, sensitive-data restrictions, SMS separation of duties and authorization tests.
+- [Role, Capability & Scope Matrix](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md) — owner-directed capability catalogue, role grants, scope rules, sensitive-data restrictions, SMS separation of duties and authorization tests.
+- [Owner-Directed Safe-Default Decision Baseline](31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md) — selected implementation defaults for all R-01–R-12 and D-01–D-13, with release gates and change control.
 - [Physical PostgreSQL Schema Proposal](08_CMI_PHYSICAL_DATABASE_SCHEMA_PROPOSAL.md) — proposed table inventory, constraints, indexes, RLS architecture, SMS lifecycle and migration sequence; not executable SQL.
 - [Database Design Validation Report](09_DATABASE_DESIGN_VALIDATION_REPORT.md) — cross-document consistency review, design risks, corrections and outstanding approval gates.
 - [ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md) — maps all 53 ERD entities to proposed physical tables and lists remaining reconciliation work.
@@ -37,7 +38,7 @@ These artifacts are committed on `main` and are **proposals for review**, not ap
 
 ## Backend implementation
 
-The CMI-only backend is developed in `../supabase-cmi/`, isolated from the historical ChurchConnect workspace. The permanent migrations contain the identity/authorization foundation and the hosted RLS-helper privilege remediation. Domain SQL/pgTAP drafts remain under `schema-drafts/` and CI validates them on an isolated local Supabase stack; they must not be promoted to permanent domain migrations until the relevant physical-design and stakeholder decisions are approved. The integrated frontend is source-controlled under `../web/`, and PRs #24–#26 are merged; source presence is not deployment evidence. The hosted Supabase project currently has zero CMI public application tables and zero deployed CMI Edge Functions.
+The CMI-only backend is developed in `../supabase-cmi/`, isolated from the historical ChurchConnect workspace. The connected production Supabase project has 15 ordered migrations, 50 public tables with RLS enabled, 58 explicit role-capability grants and nine active Edge Functions. Direct browser database access is intentionally deny-by-default; staff business operations use trusted Edge Functions. No Auth users, church, branch or staff profile records have been provisioned, so first-admin sign-in is not yet available. The frontend is maintained under `../web/` and deployed through Vercel at https://pcg-missions.vercel.app. Live SMS dispatch is disabled; first-admin bootstrap uses email only and does not call an SMS provider. See `../supabase-cmi/IMPLEMENTATION_STATUS.md` for exact module and deployment gaps.
 
 - [16 — Schema Reconciliation & Decision Crosswalk](16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) — tracks DD-01–DD-25, their proposed dispositions and approval dependencies.
 - [Isolated CMI Supabase workspace](../supabase-cmi/README.md) — separate CLI configuration, migration history and test workspace.

@@ -1,9 +1,9 @@
 # CMI Follow-up — Role, Capability & Scope Matrix (Proposal)
 
-**Version:** 0.1 | **Baseline:** CMI Follow-up v2.1 | **Status:** Proposed for stakeholder approval
+**Version:** 0.2 | **Baseline:** CMI Follow-up v2.1 | **Status:** Product-owner safe-default baseline selected for implementation; church policy may amend through change control
 **Branch:** design/cmi-logical-data-model
 
-> This matrix translates the v2.1 role descriptions into testable authorization rules. It is a proposal, not an approved grant schedule. Where the requirements do not specify exact actions or scope, access is marked conditional and requires approval.
+> This matrix translates the v2.1 role descriptions into testable authorization rules. The product owner has authorized implementation of the conservative defaults in document 31. Conditional or sensitive capabilities remain ungranted until their technical and compliance gates are met.
 
 ## 1. Authorization model
 
@@ -100,55 +100,40 @@ Every capability must still be combined with scope predicates and field restrict
 
 ## 4. Proposed role-to-capability grant matrix
 
-Legend: **G** proposed default grant; **S** scoped grant; **P** privileged Admin/Pastor grant; **C** conditional pending approval; **—** no grant proposed.
+Legend: **G** active grant in the current owner-directed source baseline; **S** active scoped grant; **P** active privileged grant; **C** reserved/conditional and not granted; **—** no grant. This table describes the actual current source grant set, not a promise that an unimplemented module is available.
 
 | Capability group | Admin / Pastor | Coordinator | Team leader | Field worker | Follow-up volunteer | Prayer intercessor |
 |---|---:|---:|---:|---:|---:|---:|
-| Staff directory read | G | S | S | — | — | — |
-| Staff account provision/activation | P | — | — | — | — | — |
+| Staff directory read | P | — | — | — | — | — |
+| Staff account lifecycle | P | — | — | — | — | — |
 | Role assignment | P | — | — | — | — | — |
-| Capability/policy administration | P | — | — | — | — | — |
-| Team management | P | C | C | — | — | — |
-| Service area configuration/coverage | P | C | C | — | — | — |
-| Contact capture create | G | G | S | S | C | — |
+| Capability/policy administration | — | — | — | — | — | — |
+| Team/service-area administration | — | — | — | — | — | — |
+| Contact capture create | G | G | S | S | — | — |
 | Ordinary contact read | G | S | S | S | S | — |
 | Ordinary contact update | G | S | S | S | S | — |
-| Contact merge | P | C | — | — | — | — |
-| Contact export | P | C | C | — | — | — |
+| Contact phone/email capture/read/update | P (branch) | — | — | — | — | — |
+| Contact merge/export | — | — | — | — | — | — |
 | Ordinary notes read/create | G | S | S | S | S | — |
 | Contact interactions record | G | S | S | S | S | — |
-| Contact assignment/reassignment | P | S | S | C | C | — |
-| Follow-up task create/read/update | G | S | S | S | S | — |
-| Follow-up task assign/reassign | P | S | S | C | C | — |
-| Prayer request create | G | G | C | C | C | G |
-| Assigned prayer read/update | P* | C* | C* | — | — | S |
-| Prayer workflow coordination | P | C | — | — | — | — |
-| Prayer privileged oversight | P | — | — | — | — | — |
-| Care directory/groups | P | C | C | — | — | — |
-| Assigned care record read/update | P* | C* | C* | — | — | — |
-| Care privileged oversight | P | — | — | — | — | — |
-| Event read/manage | G | G | S | S | C | — |
-| Registration management | G | G | S | S | C | — |
-| Event check-in | G | G | S | S | C | — |
-| Event closeout submit | G | S | S | C | — | — |
-| Event closeout review | P | S | C | — | — | — |
-| Calendar management | G | S | S | C | C | C |
-| Announcement create/publish | G | S | S | — | — | — |
-| Manual individual SMS | P | S | S | C | C | — |
-| Bulk campaign create | P | S | S | — | — | — |
-| Bulk campaign approve | P | C | — | — | — | — |
-| Bulk campaign send | P | S | S | — | — | — |
-| SMS automation configure/pause | P | C | — | — | — | — |
-| SMS delivery metadata read | P | S | S | C | C | — |
-| Provider/sender configuration | P | — | — | — | — | — |
-| Public content draft management | G | S | C | — | — | — |
-| Public content publish | P | C | — | — | — | — |
-| Report submit | G | G | S | S | S | C |
-| Report read | G | S | S | S | S | C |
-| Report review | P | S | C | — | — | — |
-| Report export | P | C | C | — | — | — |
-| Privileged audit read | P | — | — | — | — | — |
-| Church-wide settings | P | — | — | — | — | — |
+| Contact assignment/reassignment | P | S | S | — | — | — |
+| Follow-up task create/read/update | G | S | S | S | S (read/update) | — |
+| Follow-up task assign/reassign | P | S | S | — | — | — |
+| Prayer request create/update | — | — | — | — | — | — |
+| Assigned prayer request read | — | — | — | — | — | S |
+| Prayer workflow metadata | — | — | — | — | — | — |
+| Prayer privileged oversight read | P (reason-coded/audited) | — | — | — | — | — |
+| Care directory/groups | — | — | — | — | — | — |
+| Assigned care read/update | — (no care-worker role provisioned) | — | — | — | — | — |
+| Care privileged oversight read | P (reason-coded/audited) | — | — | — | — | — |
+| Events, registration, transport, check-in and closeout | — | — | — | — | — | — |
+| Calendar management | — | — | — | — | — | — |
+| Announcements/publication | — | — | — | — | — | — |
+| Manual/bulk/automated SMS and provider configuration | — | — | — | — | — | — |
+| Public content authoring/publication | — | — | — | — | — | — |
+| Reports and exports | — | — | — | — | — | — |
+| Privileged audit log read | — | — | — | — | — | — |
+| Church-wide settings | — | — | — | — | — | — |
 
 * Admin/Pastor oversight is a separate explicit capability, not an unconditional bypass of assignment/privacy rules. The P notation here means the role may be granted that separate oversight capability subject to audit and approved policy.
 
@@ -180,9 +165,9 @@ Legend: **G** proposed default grant; **S** scoped grant; **P** privileged Admin
 - Individual SMS remains conditional.
 
 **Prayer intercessor**
-- Read/update only prayer requests actively assigned to them.
-- No general contact directory access. Any linked contact projection is minimized to fields needed for the assignment.
-- No care records, contact exports or SMS campaign privileges by default.
+- Read only prayer-request text actively assigned to them.
+- No request creation, update, assignment management, unassigned discovery or linked contact identity.
+- No general contact directory, care records, contact exports or SMS campaign privileges.
 
 ## 5. Cross-domain and field-level restrictions
 
@@ -194,7 +179,7 @@ Legend: **G** proposed default grant; **S** scoped grant; **P** privileged Admin
 | Care summaries/interactions | Assigned care workers and separately authorized, audited oversight; exact roles require approval |
 | SMS body and recipient number | Authorized message operators only; mask numbers in broad delivery views |
 | SMS consent/suppression evidence | Restricted communication administration; dispatch reads only eligibility fields it needs |
-| PIN/credential metadata | Never client-readable; never store plaintext PIN |
+| Password/credential metadata | Never client-readable; never store plaintext passwords or temporary credentials |
 | Audit metadata | Privileged readers; no secrets or sensitive narrative |
 | Public content | Anonymous read only when explicitly published/active |
 | Public registration | Narrow create workflow; no public contact-directory lookup |
@@ -210,7 +195,7 @@ Audit sensitive access without copying sensitive text into audit rows. Record ac
 - Automation configuration is limited to approved trigger types, recipient classes, template versions, quiet hours and caps.
 - Pause stops future queueing; already submitted provider messages may not be recallable.
 - Provider configuration is Admin/Pastor-only and server-side; credentials must never be returned to a browser.
-- Recommended separation: campaign creator should not approve their own bulk campaign where a second approver exists. If staffing prevents dual control, record an approved exception and use a lower cap. This is a proposal requiring approval.
+- Default separation: campaign creator and approver must be different active users. No self-approval exception is enabled. A later documented church policy may add a constrained emergency workflow with explicit limits and audit.
 
 ## 7. Non-role public access
 
@@ -265,7 +250,7 @@ Use operation-specific policies, not one broad FOR ALL policy.
 | AUTH-023 | Deactivated staff attempts export | Denied and audited |
 | AUTH-024 | Offline operation replayed | Idempotent; no duplicate mutation |
 
-## 10. Decisions requiring explicit approval
+## 10. Selected owner-directed defaults and remaining enablement gates
 
 | ID | Approval question | Recommended default for review |
 |---|---|---|
@@ -275,14 +260,14 @@ Use operation-specific policies, not one broad FOR ALL policy.
 | R-04 | Can Team leaders create contacts, assign across teams, manage membership and export? | Team-scoped create/work; no cross-team actions/export by default |
 | R-05 | Which contact fields can Field workers and Follow-up volunteers read/update? | Minimum necessary fields; phone/email access separately considered |
 | R-06 | Can Field workers/Follow-up volunteers send individual SMS? | Off by default pending purpose, consent, cap and approval |
-| R-07 | Can Team leaders create/approve/send bulk campaigns? | Create/send only for own team/event; approval by Coordinator or Admin/Pastor |
+| R-07 | Can Team leaders create/approve/send bulk campaigns? | Draft only for own team/event; no approval or dispatch |
 | R-08 | Must campaign creator and approver be different? | Yes where second approver exists; logged exception otherwise |
-| R-09 | Can Coordinator configure automated SMS? | Approved trigger catalogue/templates only; Admin/Pastor controls provider/global enablement |
+| R-09 | Can Coordinator configure automated SMS? | Disabled; empty trigger catalogue; no provider/global enablement |
 | R-10 | Which roles can read/update care records? | Assigned care workers only; Admin/Pastor oversight separately audited |
-| R-11 | Can intercessors create requests and see linked contact name/phone? | Create allowed; linked identity minimized; phone only if justified |
-| R-12 | Which roles may export contact/report data and what masking applies? | Admin/Pastor by default; scoped report export only after approval |
+| R-11 | Can intercessors create requests and see linked contact name/phone? | Create only through approved intake; assigned request text only; no linked phone/email projection |
+| R-12 | Which roles may export contact/report data and what masking applies? | Export disabled until dedicated audited capability, masking and release gate are implemented |
 
-No migration should encode conditional grants until these decisions are approved.
+The source baseline contains 58 explicit active grants as recorded in document 31. No conditional, SMS, export, capability-policy administration, prayer/care mutation or incomplete-module grants are seeded. Hosted deployment remains separate and requires the release gates in document 31.
 
 ## 11. Approval record
 
@@ -294,7 +279,7 @@ R-01–R-12 are cross-referenced with the broader logical-model decisions D-01�
 
 ## 13. Next engineering gate
 
-After R-01 through R-12 and the matrix are approved:
+The product owner selected the standard conservative defaults in [document 31](31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md). Implementation follows those defaults; provider/legal/stakeholder gates remain before enabling sensitive live operations.
 
 1. Freeze capability codes and role assignments.
 2. Finalize contact sharing, care assignments, capability grants and audit-reason entities.

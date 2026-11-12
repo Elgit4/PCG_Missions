@@ -5,13 +5,15 @@ import {
   parsePathUuid,
   parseRoleAssignment,
 } from "./validation.ts";
+import { readJson } from "../_shared/request_body.ts";
+
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "",
   SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   PUBLIC = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
     Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const origins = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "").split(",").map((x) => x.trim())
-    .filter(Boolean),
+  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
+    .split(",").map((x) => x.trim()).filter(Boolean),
 );
 function res(body: unknown, status: number, origin: string | null, id: string) {
   const h = new Headers({
@@ -140,8 +142,23 @@ Deno.serve(async (req: Request) => {
     }
     const path = new URL(req.url).pathname.replace(/\/+$/, "").split("/")
         .filter(Boolean),
-      action = path.at(-1) ?? "",
-      body = await req.json().catch(() => null);
+      action = path.at(-1) ?? "";
+    let body: unknown;
+    try {
+      body = await readJson(req);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "INVALID_JSON";
+      const tooLarge = code === "BODY_TOO_LARGE";
+      return fail(
+        tooLarge ? "BODY_TOO_LARGE" : "INVALID_REQUEST",
+        tooLarge
+          ? "Request body is too large."
+          : "A valid JSON request body is required.",
+        tooLarge ? 413 : 400,
+        origin,
+        id,
+      );
+    }
     if (path.at(-2) === "roles" && action === "assign") {
       const p = parseRoleAssignment(body);
       if (!p.ok) return fail("INVALID_REQUEST", p.error, 400, origin, id);

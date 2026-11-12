@@ -34,7 +34,7 @@ The authoritative CMI documentation is now aligned to the v2.1 baseline for the 
 | Product scope | Aligned | Master specification is authoritative; supporting docs now reflect SMS v2.1. |
 | Six roles | Aligned with open capability detail | Six roles are named consistently. Admin / Pastor is one combined role. The detailed capability matrix remains an approval item. |
 | Multi-role authorization | Consistent principle | Union of capabilities remains constrained by team, event, assignment and sensitive-record predicates. |
-| Staff authentication | Target only | Email + administrator-issued PIN is documented, but the secure credential-exchange and recovery design remains to be approved and implemented. |
+| Staff authentication | Source implementation in review branches | Supabase Auth email/password; generated temporary password, forced first-login replacement, administrator-reviewed reset and bounded first-admin email-delivery recovery. Provider setup and staging verification remain release gates. |
 | Contacts and follow-up | Requirements documented | No implementation proof was established in this audit. |
 | Prayer and care privacy | Requirements documented | Strict intercessor assignment and privileged oversight are specified; RLS proof is still required. |
 | Events and public registration | Requirements documented | Registration, capacity, transport and check-in are described; schema/API proof is still required. |
@@ -55,7 +55,7 @@ The authoritative CMI documentation is now aligned to the v2.1 baseline for the 
 - **No verified SMS integration:** no provider adapter, server-side send endpoint, transactional outbox worker, verified webhook handler or provider configuration was demonstrated.
 - **No deployment proof:** the audit did not establish a working application build, staging environment or production deployment.
 - **Authorization matrix incomplete:** each role still needs explicit capability grants, scope rules and negative tests, including multi-role combinations and privileged pastoral access.
-- **Email + PIN authentication design incomplete:** PIN format, credential verification, reset/reissue, recovery, throttling, session revocation and compatibility with the selected identity provider need an approved technical design.
+- **Authentication release gate:** email/password lifecycle is selected and source implemented; verify transactional email delivery, first-admin recovery, session revocation and forced password change end-to-end in staging before production.
 - **SMS consent and Ghana readiness unresolved:** select a provider, verify sender-ID requirements, approve consent/lawful-basis wording, opt-out handling, message retention, quiet hours, templates, campaign caps and budget controls before enabling sends.
 - **Automated SMS recipient policy unresolved:** every trigger must define recipient class, event source, timing, eligibility and lawful basis. In particular, follow-up reminders must not ambiguously target either staff or visitors.
 

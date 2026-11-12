@@ -2,16 +2,16 @@
 
 **Version:** 0.1  
 **Baseline:** CMI Follow-up v2.1  
-**Status:** Engineering proposal for stakeholder and security review — **not approved SQL and not applied to Supabase**  
+**Status:** Physical design reference aligned to the product-owner-selected engineering baseline; this document is not itself executable SQL and has not been applied to hosted Supabase  
 **Depends on:** [Logical Data Model](06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md), [Role/Capability Matrix](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md), [Data Architecture](03_DATA_AND_DATABASE_ARCHITECTURE.md)
 
 ## 1. Purpose and non-goals
 
 This document translates the approved-product direction and proposed logical model into a PostgreSQL-oriented physical design. It defines candidate schemas, tables, keys, constraints, indexes, row-level security (RLS), migration sequencing and operational safeguards.
 
-It is not an executable migration. No database has been changed, no Supabase project has been selected or connected, and no production permissions are being granted. Names and types below are proposed conventions to validate against the final ERD and stakeholder decisions. The entity-by-entity crosswalk is maintained in [10 — ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md). Typed column-level data dictionary slices are documented in [13 — Foundation, Contacts & Follow-up](13_FOUNDATION_CONTACT_FOLLOWUP_DATA_DICTIONARY.md), [14 — Restricted Pastoral, Events & Public Content](14_PASTORAL_EVENTS_PUBLIC_CONTENT_DATA_DICTIONARY.md), and [15 — SMS, Reporting, Audit & Offline](15_SMS_REPORTING_AUDIT_OFFLINE_DATA_DICTIONARY.md). Findings DD-01–DD-25 must be reconciled before migration drafting.
+It is not an executable migration. The corresponding source-controlled migrations are maintained under `supabase-cmi/supabase/migrations/` and validated in isolated CI. This design remains a reference for schema reconciliation; no hosted production migration or production permissions are authorized by this document. The entity-by-entity crosswalk is maintained in [10 — ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md). Typed column-level data dictionary slices are documented in [13 — Foundation, Contacts & Follow-up](13_FOUNDATION_CONTACT_FOLLOWUP_DATA_DICTIONARY.md), [14 — Restricted Pastoral, Events & Public Content](14_PASTORAL_EVENTS_PUBLIC_CONTENT_DATA_DICTIONARY.md), and [15 — SMS, Reporting, Audit & Offline](15_SMS_REPORTING_AUDIT_OFFLINE_DATA_DICTIONARY.md). Findings DD-01–DD-25 must be reconciled before migration drafting.
 
-The design targets one church instance with a configured branch context. It does not introduce multi-church network administration. It supports the six operational roles, multi-role users, public visitor content and registration, staff workflows, limited offline queues, and manual/bulk/automated SMS. It does not imply full offline operation or WhatsApp automation.
+The design targets one configured church instance and branch context. It does not introduce multi-church network administration. It supports six operational roles and multi-role users. Public registration, offline queues, live SMS, exports and incomplete sensitive workflows remain disabled until their implementation and compliance gates pass.
 
 ## 2. PostgreSQL conventions
 
@@ -58,7 +58,7 @@ Church/branch configuration is administered by the privileged settings workflow.
 
 ### 3.2 Identity, roles, capabilities and scope
 
-Supabase Auth owns credential verification and sessions. The application stores a profile linked 1:1 to `auth.users.id`; it must not store plaintext PINs or duplicate password hashes.
+Supabase Auth owns email/password verification and sessions. The application stores a profile linked to `auth.users.id`; it must not store plaintext passwords, temporary credentials or duplicate password hashes.
 
 | Table | Candidate columns and constraints |
 |---|---|
@@ -190,7 +190,7 @@ The exact message-body storage approach (encrypted database column, server-side 
 | `audit_event` | `id uuid PK`; `actor_user_id uuid NULL`; `action_code text`; `target_type text`; `target_id uuid NULL`; `branch_id uuid NULL`; `occurred_at`; `request_id`; `safe_metadata jsonb`. Append-only; exclude secrets, prayer text, care narratives and unnecessary phone/message content. |
 | `offline_sync_receipt` | `id uuid PK`; `user_id FK`; `device_key_id text`; `client_request_id uuid UNIQUE`; `payload_hash text`; `result_state text CHECK`; `server_record_id uuid NULL`; `received_at`; `expires_at`. Do not store full unsynced payload indefinitely. |
 
-Offline support remains deliberately limited to queued field captures, cached picker data and previously opened event check-in data. Queue only approved minimal payloads. Do not queue prayer requests or care narratives. The server must re-authenticate, re-authorize and validate current field rules on sync; an old local permission snapshot is not authority. Define device encryption, sign-out recovery and expiry before release.
+Offline mode is disabled for the initial production release. Do not cache personal records or event attendance on devices. Re-enable only after encrypted local storage, device/session binding, short expiry, sign-out recovery, reauthorization at sync and conflict-resolution tests pass.
 
 ## 4. Constraints and indexes
 
@@ -295,19 +295,20 @@ Use pgTAP or equivalent database tests with seeded synthetic users for all six r
 - opt-out and suppression block subsequent SMS dispatch;
 - duplicate webhook/capture/registration/dispatch events are idempotently ignored.
 
-## 6. Authentication and staff PIN implications
+## 6. Authentication and staff password lifecycle
 
-The product baseline is staff sign-in using **email plus PIN**, with the PIN treated as a private credential and never as a role or authorization claim. The database must not store plaintext PINs or duplicate credential hashes.
+The product-owner-confirmed baseline is Supabase Auth **email plus password**. Supabase Auth owns password verification, hashing and sessions. The application must not store plaintext passwords, temporary passwords or duplicate password hashes.
 
 A safe provisioning pattern is:
-1. Admin creates the staff identity and issues a one-time activation PIN/invitation.
-2. On first activation, the staff member establishes a private PIN that the administrator cannot view or recover.
-3. Subsequent sign-in uses email plus the private PIN through a server-validated authentication flow, if that is the approved product decision.
-4. PIN reset/reissue uses a verified recovery process and invalidates previous credentials/sessions as appropriate.
+1. Admin provisions the staff identity through a trusted server-side operation and issues a cryptographically random, short-lived temporary password to the verified email address.
+2. First login is gated until the staff member sets a private permanent password.
+3. Administrators never see, choose or store the permanent password.
+4. Recovery is generic-response and rate-limited; an authorized Admin/Pastor reviews the request and the system issues a new temporary password to the verified email address.
+5. Reset/deactivation revokes existing sessions and protected requests re-check active account status.
 
-The exact Supabase Auth integration for reusable PIN sign-in is a security design decision, not something to improvise by passing a short PIN directly as a password. Before implementation, threat-model PIN entropy, rate limits, progressive throttling/lockout, secure hashing/verification, session issuance, recovery, device sharing and credential stuffing. A custom verifier must run only in a trusted server environment and must not expose a user-enumeration oracle. Never put PINs in user metadata, logs or browser-readable tables, and never allow role changes through client-editable metadata.
+The earlier reusable-PIN proposal is superseded by the product owner's 10 November 2026 email/password decision. Before release, test temporary-password entropy and expiry, email delivery failure recovery, rate limits, generic responses, forced password replacement, session revocation, stale-token behaviour and deactivated accounts. Never put credentials in user metadata, logs or browser-readable tables, and never allow role changes through client-editable metadata.
 
-If the product owner instead chooses one-time PIN activation followed by a different sign-in secret, that changes the stated email-plus-PIN login requirement and must be explicitly approved rather than silently substituted.
+Do not implement a custom PIN verifier or parallel credential store. A future change to the authentication model requires a product-owner change request, security review and migration plan.
 
 ## 7. Mapping unresolved decisions R-01 to R-12
 
@@ -342,7 +343,7 @@ No migration files should be generated from this proposal until the logical ERD,
 6. **Events:** events, public registration endpoint, transport, check-in and closeout.
 7. **Public content/calendar:** publication workflows and anonymous read policies for approved published records only.
 8. **SMS foundation:** preference/suppression, templates/versioning, campaign approval, outbox, automation execution, callback verification, budgets and dry-run tests; provider integration remains disabled until approved.
-9. **Reports/offline:** reports, review events, minimal offline sync receipts and expiry controls.
+9. **Reports:** typed reports and review events. Offline sync receipts and device-local queues are excluded from the initial release and may be designed later after the D-08 security gate.
 10. **Hardening:** indexes/query plans, grants audit, RLS test matrix, backups/restore rehearsal, retention controls and staged deployment.
 
 Each migration must be reviewed, versioned, reproducible in a clean local database and accompanied by tests. Use synthetic data. Run Supabase security advisors and test both authenticated and anonymous access. Do not apply schema changes to a hosted project without explicit project identification and user approval.
@@ -359,7 +360,7 @@ Before implementation sign-off, reviewers must approve:
 - [ ] Role/capability matrix and R-01 to R-12.
 - [ ] Branch ownership and scope rules.
 - [ ] Prayer/care separation, intercessor field visibility and Admin/Pastor oversight.
-- [ ] PIN/authentication flow and account recovery.
+- [x] Supabase email/password authentication and account recovery design; production email provider and staging verification remain release gates.
 - [ ] Public registration privacy, capacity and abuse controls.
 - [ ] SMS recipient classes, consent/lawful basis, opt-out, quiet hours, caps, provider and creator/approver separation.
 - [ ] Offline encryption, expiry and sign-out recovery.
@@ -378,4 +379,4 @@ Before implementation sign-off, reviewers must approve:
 
 ## 11. Verification status
 
-This is a design artifact only. It has not been parsed or applied as SQL, tested against a PostgreSQL instance, checked with Supabase advisors, or validated against a running application. It makes no claim that repository code or a hosted database currently implements this design. The next gate is stakeholder approval and a traceable schema-to-ERD reconciliation; only then should executable migration drafts and RLS tests be created.
+This remains a design reference, not executable SQL. Related source migrations and pgTAP suites are maintained in `supabase-cmi/` and must be verified at the exact PR head. It does not claim that the hosted database or deployed application implements the full target design. The next gate is exact-head CI, schema-to-ERD reconciliation, code review and staging validation.

@@ -174,7 +174,7 @@ The staff session is the source of UI capability hints, not a replacement for se
 ### Safe to build against current source contracts
 - Public visitor site and public-content data adapter.
 - Responsive staff app shell and navigation framework.
-- Session-loading/expired/unauthorized states (not production PIN login).
+- Session-loading/expired/unauthorized states and the Supabase email/password sign-in and forced-password-change flow.
 - Contacts and follow-up screens with capability-aware empty/denied states.
 - Event, announcement, sermon/welcome draft interfaces.
 - Branch calendar UI.
@@ -182,7 +182,7 @@ The staff session is the source of UI capability hints, not a replacement for se
 - Error handling, request correlation, accessibility and responsive behavior.
 
 ### Must remain disabled/placeholder until backend/policy completion
-- Email+PIN sign-in, invitation, activation, PIN setup/reset/recovery.
+- Production email-provider configuration, staff invitation delivery, first-admin delivery recovery and administrator-reviewed password reset; these must be tested in staging before launch.
 - Active role/capability administration until approved grants are provisioned.
 - Prayer/care lists, creation, assignment and updates.
 - Contact merge/reversal.

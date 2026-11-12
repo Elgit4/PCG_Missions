@@ -20,11 +20,11 @@ Supabase CLI v3 is local-first. Do not add `--remote`, hosted credentials or `--
 
 ## Hosted production status — verified 10 November 2026
 
-The hosted Supabase project `cgwffpxlwgbnlinzwfoj` has the 11-table identity/authorization foundation and three recorded migrations (RLS-helper privilege remediation, identity/authorization foundation and supporting foreign-key indexes). All 11 tables have RLS enabled; anonymous and authenticated clients cannot SELECT staff profiles. The six approved roles are seeded, while `role_capability` remains empty. No church, branch, staff or team records have been provisioned, and no CMI Edge Functions are deployed.
+The hosted Supabase project `cgwffpxlwgbnlinzwfoj` has 15 ordered migrations and 50 public tables; all 50 have RLS enabled. The six approved roles have 58 explicit capability grants. Anonymous and authenticated clients have no direct business-table access; the public schema intentionally has zero RLS policies while trusted Edge Functions enforce authentication, branch scope and capabilities. No Auth users, church, branch or staff profile records have been provisioned, so first-admin sign-in is not available yet. Nine Edge Functions are active: public-content, staff-session, staff-operations, staff-auth, staff-access-operations, event-operations, announcement-operations, content-operations and calendar-operations. The pastoral-operations function remains held for independent security review.
 
-The 11 informational `rls_enabled_no_policy` security-advisor notices are intentional fail-closed behavior pending approved policies. The performance advisor no longer reports unindexed foreign keys; unused-index notices are expected before application data and query traffic exist. This is an initial foundation migration only, not a complete application schema or production launch.
+The earlier foundation-stage `rls_enabled_no_policy` advisor notices reflect the current fail-closed design: browser roles have no direct table access and business operations must pass through trusted Edge Functions. This does not remove the need to test every function's JWT validation, branch scope, capability check and audit behaviour. The database schema is deployed, but the overall application is not yet ready for staff use because no accounts are provisioned and several business workflows remain incomplete.
 
-The product owner confirmed Supabase email/password authentication on 10 November 2026. The earlier email + PIN proposal is superseded; see [the current authentication baseline](../docs/31_VISITOR_MVP_AUTHENTICATION_AUTHORIZATION_BASELINE.md) and [handover decision](../docs/29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md). The password lifecycle has passing branch-level unit/integration tests, but first-admin delivery recovery, production Edge Function deployment, email configuration, staging/UAT and remaining module workflows are not complete. The domain schema sources have now been promoted into permanent ordered migration files on the feature branch; they have not been applied to the hosted project. Production remains NO-GO.
+The product owner confirmed Supabase email/password authentication on 10 November 2026. The earlier email + PIN proposal is superseded; see [the current authentication baseline](../docs/31_VISITOR_MVP_AUTHENTICATION_AUTHORIZATION_BASELINE.md) and [handover decision](../docs/29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md). First-admin bootstrap and delivery-failure recovery use a serialized operator-only lease and a generated temporary password sent by email. The production Edge Function is deployed, but required operator/email secrets are not yet configured and no first-admin account exists. SMS is not part of first-admin provisioning and no SMS provider call is made. Production remains NO-GO pending email configuration, first-admin provisioning, end-to-end tests, staging/UAT, monitoring and remaining module workflows.
 
 ## Current source layout
 
@@ -37,17 +37,17 @@ The product owner confirmed Supabase email/password authentication on 10 Novembe
 1. `contacts_followup_domain.sql` and matching test.
 2. `restricted_pastoral_domain.sql` and matching test.
 3. `events_attendance_public_content.sql` and matching test.
-4. `backend_capability_catalogue.sql` and matching security test; it seeds capability metadata only. The separate permanent visitor MVP authorization migration seeds 65 explicit role-capability grants for visitor/follow-up operations.
+4. `backend_capability_catalogue.sql` and matching security test; it seeds capability metadata only. The owner-directed visitor MVP authorization baseline in PR #38 seeds 55 ordinary visitor/follow-up grants plus three sensitive read grants (58 total).
 
 The third slice covers event lifecycle, typed event staff/team assignments, registration, transport, check-in, closeout, typed calendar scope, typed announcement audiences, church public profile, welcome messages, sermons, daily word, digital tracts and typed external document links.
 
-All domain drafts preserve branch-consistent foreign keys, RLS and closed browser grants. No client table policies are created. The visitor MVP authorization migration is the explicit product-owner-approved implementation baseline for 65 visitor/follow-up role grants; pastoral oversight, exports, SMS, capability-policy editing and other policy-gated grants remain absent pending church approval. The event draft removes the unapproved waitlist state, requires idempotency for public registrations and check-ins, and avoids polymorphic scope/audience/content references.
+All domain drafts preserve branch-consistent foreign keys, RLS and closed browser grants. No client table policies are created. The visitor MVP authorization baseline is updated by PR #38 through a forward-only migration to 58 grants under the product-owner-directed safe-default decision record, including assigned prayer reads for Prayer Intercessor and explicit audited prayer/care oversight reads for Admin/Pastor. Phone/email identity grants are removed from Coordinator, Team Leader, Field Worker and Follow-up Volunteer; pastoral oversight, exports, SMS and capability-policy editing remain ungranted. The event draft removes the unapproved waitlist state, requires idempotency for public registrations and check-ins, and avoids polymorphic scope/audience/content references.
 
 ## Validation
 
 The first three suites passed in [GitHub Actions run 42436473154](https://github.com/Elgit4/PCG_Missions/actions/runs/42436473154): 14 + 24 + 20 = 58 assertions. The events/attendance/public-content draft is included in the isolated local CI workflow with an expanded 46-assertion suite. The original 36 assertions passed in [run 42437731467](https://github.com/Elgit4/PCG_Missions/actions/runs/42437731467); the expanded 46 assertions and the full 104-assertion workflow passed in [run 42439672140](https://github.com/Elgit4/PCG_Missions/actions/runs/42439672140).
 
-CI generates temporary migration filenames using `supabase migration new`, copies the drafts into the isolated CLI project, applies them locally, runs pgTAP, then removes the temporary files. Draft SQL is not yet promoted to permanent migrations.
+The current authorization/domain feature branch contains permanent ordered migration files. CI replays them on an isolated local Supabase stack and runs the pgTAP suites. These migrations are applied in the hosted production project and are also replayed on an isolated local Supabase stack in CI for reproducible validation.
 
 ## Edge Functions
 
@@ -59,7 +59,7 @@ Run its input-validation tests with:
 deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
 ```
 
-Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and exact `PUBLIC_CONTENT_ALLOWED_ORIGINS` only in the Edge Function's server environment. The service-role key bypasses RLS; the function's fixed query allowlist is therefore security-critical. It exposes only church-wide welcome messages and omits event capacity from public event responses. Do not reuse it for staff operations. Platform rate limiting and production origin configuration are required before deployment. At the PR #5 milestone, Deno type-check and request-validation tests passed in [run 42438088374](https://github.com/Elgit4/PCG_Missions/actions/runs/42438088374) and the expanded event/public-content suite contributed to 104 database assertions in [run 42439672140](https://github.com/Elgit4/PCG_Missions/actions/runs/42439672140). Those are historical validation checkpoints; the later PR #8 exact-head run [42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750) passed the current 129-assertion total and current Deno checks. This function is not deployed.
+Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and exact `PUBLIC_CONTENT_ALLOWED_ORIGINS` only in the Edge Function's server environment. The service-role key bypasses RLS; the function's fixed query allowlist is therefore security-critical. It exposes only church-wide welcome messages and omits event capacity from public event responses. Do not reuse it for staff operations. Platform rate limiting and production origin configuration are required before deployment. At the PR #5 milestone, Deno type-check and request-validation tests passed in [run 42438088374](https://github.com/Elgit4/PCG_Missions/actions/runs/42438088374) and the expanded event/public-content suite contributed to 104 database assertions in [run 42439672140](https://github.com/Elgit4/PCG_Missions/actions/runs/42439672140). Those are historical validation checkpoints; the later PR #8 exact-head run [42449272750](https://github.com/Elgit4/PCG_Missions/actions/runs/42449272750) passed the current 129-assertion total and current Deno checks. This fixed read-only public-content function is deployed in the connected production project; its projections remain allowlisted and must not expose underlying staff or private tables.
 
 ## Event draft operations (merged to main in PR #15)
 
@@ -67,25 +67,25 @@ The `event-operations` Edge Function adds branch-scoped list/detail and private-
 
 New events are always created as private drafts with registration closed. The API does not accept capacity, publication, assignment, registration, transport, check-in or closeout fields. It therefore does not implement the decision-gated event transactions in document 17.
 
-See [document 20 — Event Draft Operations API Contract](../docs/20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md). The function is source-only and remains inaccessible until approved capability grants are provisioned. It has not been deployed.
+See [document 20 — Event Draft Operations API Contract](../docs/20_EVENT_DRAFT_OPERATIONS_API_CONTRACT.md). The `event-operations` function is active in production for restricted branch-scoped private event draft operations. It does not implement public registration, transactional capacity, transport, attendance/check-in or closeout workflows.
 
 ## Announcement draft operations (merged to main in PR #16)
 
 The `announcement-operations` Edge Function provides branch-scoped draft list/detail, create and creator-only edit operations. New announcements are forced to private draft state; publication flags, scheduling, audience links and all delivery channels are excluded.
 
-See [document 21 — Announcement Draft Operations API Contract](../docs/21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded, so the API stays fail-closed until the applicable church decisions are approved. It has not been deployed.
+See [document 21 — Announcement Draft Operations API Contract](../docs/21_ANNOUNCEMENT_DRAFT_OPERATIONS_API_CONTRACT.md). The `announcement-operations` function is active in production for private draft list/detail/create/edit operations; publication and message delivery remain outside its contract. The API continues to fail closed unless the caller has the required branch-scoped capability.
 
 ## Visitor content draft operations (merged to main in PR #16)
 
 The `content-operations` Edge Function implements branch-scoped draft list/detail, create and creator-only edit for sermons and welcome messages. It requires `content.manage.draft` with explicit branch scope and only exposes the authenticated user's own drafts. Publication fields remain server-controlled and every new record is a private draft.
 
-Daily Word, Digital Tracts and church-wide public profile editing are excluded until their global authoring scope and approval rules are defined under D-02. Publishing remains a separate restricted capability and is not enabled. See [document 22 — Visitor Content Draft Operations API Contract](../docs/22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md). No role grants are seeded and the function has not been deployed.
+Daily Word, Digital Tracts and church-wide public profile editing are excluded until their global authoring scope and approval rules are defined under D-02. Publishing remains a separate restricted capability and is not enabled. See [document 22 — Visitor Content Draft Operations API Contract](../docs/22_VISITOR_CONTENT_DRAFT_OPERATIONS_API_CONTRACT.md). The `content-operations` function is active in production for restricted sermon and welcome-message draft operations. Daily Word, Digital Tracts, church-wide profile editing and publication remain separate capabilities and are not enabled by this endpoint.
 
 ## Branch calendar operations (merged to main in PR #16)
 
 The `calendar-operations` Edge Function provides branch-scoped list/detail/create/update for `calendar_entry`. It requires `calendar.read.scoped` or `calendar.manage.scoped` with explicit branch scope. New rows are forced to `scope_type='branch'`; caller-supplied scope and identity fields are rejected. Team/event/own scopes, `followup` and `prayer_schedule` entry types, and deletion are excluded.
 
-See [document 23 — Branch Calendar Operations API Contract](../docs/23_BRANCH_CALENDAR_OPERATIONS_API_CONTRACT.md). No role grants are seeded; the function has not been deployed.
+See [document 23 — Branch Calendar Operations API Contract](../docs/23_BRANCH_CALENDAR_OPERATIONS_API_CONTRACT.md). The `calendar-operations` function is active in production for branch-scoped calendar entry operations and continues to enforce the `calendar.read.scoped` or `calendar.manage.scoped` capability.
 
 ## Staff API (merged to main)
 
@@ -93,13 +93,13 @@ PR #10 merged the `feat/cmi-staff-session-api` implementation into `main` on 202
 - `staff-session`: validates a Supabase Auth access token, checks the active staff profile and returns branch, role and approved capability projections.
 - `staff-operations`: scoped contact list/detail, idempotent contact capture and ordinary-field update endpoints.
 - The same Edge Function now provides scoped follow-up task list/detail, idempotent creation and atomic note/priority/due-date/status updates. It never changes assignment targets through PATCH.
-- Capability definitions are seeded as metadata only. Before first-administrator bootstrap, `role_capability` is empty. Bootstrap then grants only four branch-scoped Admin/Pastor control-plane capabilities: `staff.directory.read`, `staff.account.manage`, `access.role.assign` and `staff.password_reset.manage`. No business-domain, pastoral oversight, export, SMS or capability-policy-editing grants are seeded.
+- The role/capability catalogue contains 58 explicit grants across the six roles. First-admin bootstrap creates the initial church, branch, staff profile and Admin/Pastor branch assignment; it does not create arbitrary role grants or enable SMS, exports or capability-policy editing. Effective capabilities come from the reviewed role-capability matrix and remain scope-checked by the server.
 - Phone/email capture, read and update use separate identity capabilities. Without the appropriate grant, identity fields are not returned.
 - Team-scoped capture requires active team membership. Assigned-only capture creates an assignment to the capturing staff member in the same transaction.
 
 Task creation uses a separate HMAC idempotency key and exactly one primary assignment target (staff member or team). Branch/team/assigned/self scope is evaluated on the server. Task updates append lifecycle events atomically; event history is protected against update, delete and truncate.
 
-See [the Staff API Contract](../docs/19_CMI_STAFF_API_CONTRACT.md). These functions and their capability/contact/follow-up task transaction drafts are source-controlled but have not been deployed or applied to a hosted database.
+See [the Staff API Contract](../docs/19_CMI_STAFF_API_CONTRACT.md). `staff-session`, `staff-operations`, `staff-access-operations` and `staff-auth` are active in production. Contact and follow-up operations are implemented behind trusted server-side authorization; event/content/calendar functions currently provide restricted draft workflows only.
 
 ## Security and approval gates
 
@@ -109,7 +109,7 @@ See [the Staff API Contract](../docs/19_CMI_STAFF_API_CONTRACT.md). These functi
 - Public registration and public content require narrow server-mediated projections; no base-table public grants.
 - Registration snapshot retention, walk-in identity, event waitlist, transport pickup model and data retention remain decision-gated.
 - SMS uses one future canonical outbox/campaign state machine; announcement delivery must not duplicate SMS lifecycle state.
-- No hosted Supabase project has been linked or modified.
+- The connected hosted Supabase project is live; see `IMPLEMENTATION_STATUS.md` for the current production snapshot.
 
 See `IMPLEMENTATION_STATUS.md` and `../docs/16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md` for detailed status and design gates.
 
@@ -119,7 +119,7 @@ The event schema's attendee and public-profile phone constraints use the correct
 
 ## Event integrity test status
 
-At the PR #7 milestone, the event-domain suite contained **53 pgTAP assertions**, including registration/contact identity consistency on check-in and append-only closeout history protections. The latest PR #7 head passed all four database suites (**112 assertions total**) plus Deno checks in [run 42448742945](https://github.com/Elgit4/PCG_Missions/actions/runs/42448742945). PR #8 subsequently expanded the event/idempotency suite to 71 assertions. These changes are source-control only; they are not deployed and no hosted project was changed.
+At the PR #7 milestone, the event-domain suite contained **53 pgTAP assertions**, including registration/contact identity consistency on check-in and append-only closeout history protections. The latest PR #7 head passed all four database suites (**112 assertions total**) plus Deno checks in [run 42448742945](https://github.com/Elgit4/PCG_Missions/actions/runs/42448742945). PR #8 subsequently expanded the event/idempotency suite to 71 assertions. This paragraph is a historical PR #7 test milestone. The current hosted state is recorded above: the event-operations function is deployed for restricted draft operations, while public registration, capacity reservation, transport, attendance/check-in and closeout remain incomplete.
 
 
 ## Event idempotency ledger
@@ -139,7 +139,7 @@ The three commits after the tested implementation commit changed status/contract
 
 Task due dates require an explicit timezone. RPC task responses omit the internal client request key and versioned HMAC digest. All temporary migration and test copies were removed after local verification.
 
-Business-domain `role_capability` grants are not seeded; operational access remains denied until R-01–R-12 and D-01 are approved. The hosted Supabase project has received only the RLS-helper privilege-remediation migration; it currently has zero CMI public application tables and zero deployed CMI Edge Functions. The frontend source is present in `../web/`, but has not been deployed. No production Auth configuration, first administrator, SMS credentials or live messaging has been activated.
+The hosted Supabase project has 58 explicit role-capability grants, 15 ordered migrations, 50 public tables with RLS enabled and nine active Edge Functions. No Auth users, staff profiles, church or branch records have been provisioned yet. The frontend is deployed through Vercel at https://pcg-missions.vercel.app. Bootstrap/email secrets have not been configured, so no first administrator exists. Live SMS dispatch remains disabled, and the bootstrap path sends email only.
 
 
 ## Audited pastoral reads — merged to main (2026-11-09)
@@ -153,7 +153,7 @@ The database RPCs independently validate the active staff profile, active branch
 
 Both RPCs are `SECURITY DEFINER`, pin `search_path` to `pg_catalog`, and are executable only by `service_role`. Browser table grants remain closed. The SQL remains in `schema-drafts/`, not permanent migration history. CI applies it only through temporary CLI-generated migrations on the disposable local CMI stack. PR #11's exact-head run [42594351467](https://github.com/Elgit4/PCG_Missions/actions/runs/42594351467) passed the initial 30-assertion pastoral suite (208 assertions total). Subsequent hardening expanded it to 46 assertions (224 total) in main CI run [42596909576](https://github.com/Elgit4/PCG_Missions/actions/runs/42596909576). PR #13 then added three tests for the bounded 100-interaction projection and absence of audit rows after denied reads. Its exact-head run [42600705230](https://github.com/Elgit4/PCG_Missions/actions/runs/42600705230) passed all seven pgTAP files (**227 assertions**), Deno formatting/lint/type-checks and all 58 Deno unit tests. PR #13 is merged as [b8843c2](https://github.com/Elgit4/PCG_Missions/commit/b8843c2ea09561ccaf712222dccb282490126fd6); the post-merge `main` workflow [42601107555](https://github.com/Elgit4/PCG_Missions/actions/runs/42601107555) also passed.
 
-No role-capability grants are seeded. R-01, R-10, R-11 and D-07 remain pending; these reads remain denied for actual staff until decisions are approved and the approved grants are provisioned. No create, list, update, assignment, archive, delete or retention endpoints are included. The functions remain undeployed; nothing has been applied to a hosted Supabase project.
+The owner-directed baseline grants only actively assigned prayer reads to Prayer Intercessors and separate reason-coded/audited prayer/care oversight reads to Admin/Pastor. No pastoral mutation, list, care-assignee or assignment-management capability is granted. The audited-read function remains deliberately undeployed pending independent security review; nine other Edge Functions are active in production. The production schema and 58 role-capability grants have been applied.
 
 
 ## Current backend readiness snapshot — 2026-11-09
@@ -162,9 +162,9 @@ No role-capability grants are seeded. R-01, R-10, R-11 and D-07 remain pending; 
 - Latest `main` workflow run: [42671972079](https://github.com/Elgit4/PCG_Missions/actions/runs/42671972079) concluded `failure`. GitHub's jobs endpoint returned an empty job list for that run, so there is no job log or identified failing step available from the current run record. Treat `main` CI as not verified green until a new run succeeds.
 - The CMI schema foundation is the only permanent CMI migration. The six domain SQL drafts and matching pgTAP suites are validated through temporary migrations on the isolated local CI stack; they are not permanent migration history.
 - Source-only Edge Functions currently cover public-content projections, staff session/operations, pastoral audited reads, private event drafts, announcement drafts, sermon/welcome drafts and branch calendar operations.
-- No role-capability grants are seeded. R-01–R-12, D-01–D-13 and authentication/SMS/offline/audit approvals remain pending. Do not infer access rules or activate messaging.
-- Staff invitation/activation and private PIN lifecycle, complete prayer/care management, event registration/capacity/transport/check-in transactions, reporting, offline sync and SMS dispatch remain incomplete or approval-gated.
-- No frontend application is present in `main`; no hosted Supabase project has been linked or modified; no production migration or Edge Function has been deployed.
+- PR #38 implements the product-owner-directed safe-default baseline: 58 explicit grants, lower-role phone/email redaction, assigned-only intercessor reads and reason-coded/audited Admin/Pastor oversight reads. Church stakeholders may later amend the defaults through change control. SMS dispatch, exports, offline operation and public registration remain disabled; pastoral oversight requires independent security review before deployment with real records.
+- Complete prayer/care mutation workflows, event registration/capacity/transport/check-in transactions, reporting and role-scoped event workflows remain incomplete. Offline sync and live SMS dispatch are intentionally disabled by the selected baseline.
+- The frontend is maintained in `web/` and deployed via Vercel. Production has 15 migrations, 50 RLS-enabled public tables and nine active Edge Functions. No staff Auth accounts, church/branch records or first administrator are provisioned yet.
 
 The next unblocked engineering step is to restore a verifiable green CMI CI run and keep documentation aligned. Feature work requiring the outstanding church policy decisions must remain blocked until those decisions are recorded.
 
@@ -173,12 +173,12 @@ The next unblocked engineering step is to restore a verifiable green CMI CI run 
 
 The staff-access-operations Edge Function implements guarded role assignment, role revocation, staff account deactivation and reactivation. The staff-auth function also exposes administrator-only staff account creation, backed by `cmi_create_staff_account`, which verifies branch-scoped staff-account and role-assignment capabilities before creating a profile, assigning one of the six roles and writing an access-audit record. New staff receive a one-time temporary credential by email and must replace it at first sign-in. See document 24.
 
-The current draft authentication slice implements Supabase email/password sign-in, one-time temporary-password bootstrap, Admin/Pastor-created staff accounts, forced first-login password replacement and administrator-reviewed temporary-password recovery. The product owner has referred to email + PIN authentication while describing a password-style first-login/reset workflow. The exact credential type therefore remains a release blocker: do not deploy this email/password implementation as a substitute for a PIN flow without explicit confirmation. If PIN is confirmed, replace the credential handling with the reviewed server-side PIN verifier while retaining Supabase Auth session authority.
+The current authentication slice implements Supabase email/password sign-in, one-time temporary-password bootstrap, Admin/Pastor-created staff accounts, forced first-login password replacement and administrator-reviewed temporary-password recovery. The product owner confirmed email/password on 10 November 2026; the earlier PIN proposal is superseded. Production email configuration, first-admin recovery review, staging validation and deployment remain outstanding.
 
 
 ## Requirements-driven engineering baseline
 
-See [document 25](../docs/25_CMI_REQUIREMENTS_DRIVEN_ENGINEERING_BASELINE.md) for the source-traced decisions governing authentication, authorization, SMS, offline boundaries, pastoral privacy, public access, events and retention. It distinguishes selected technical defaults from church-policy approvals. Do not create role grants, activate SMS dispatch, implement a PIN verifier or promote policy-gated domain migrations merely because a recommendation is documented. The approval state remains in document 11.
+See [document 25](../docs/25_CMI_REQUIREMENTS_DRIVEN_ENGINEERING_BASELINE.md) and [document 31](../docs/31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md) for the selected owner-directed defaults. Do not activate SMS dispatch, exports, offline sync or privileged pastoral access until their implementation and compliance gates pass.
 
 
 ## Frontend integration contract

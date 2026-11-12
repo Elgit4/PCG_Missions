@@ -36,7 +36,7 @@ The function fails closed if server credentials are absent. Supabase service-rol
 
 ## staff-session
 
-`GET /staff-session` validates a Supabase Auth access token, resolves the active staff profile and returns the current active branch, role and capability projection. The capability projection is empty while `role_capability` has no approved grants. This function requires a JWT at the Supabase gateway and validates the bearer token again with Auth.
+`GET /staff-session` validates a Supabase Auth access token, resolves the active staff profile and returns the current active branch, role and capability projection. The capability projection is populated from the current database-backed role grants for the authenticated staff member. The product-owner baseline currently seeds 58 explicit grants across six roles; users without an active role assignment still receive an empty capability projection. This function requires a JWT at the Supabase gateway and validates the bearer token again with Auth.
 
 ### Shared staff-function environment
 

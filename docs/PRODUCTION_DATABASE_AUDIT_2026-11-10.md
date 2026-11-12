@@ -63,7 +63,7 @@ The repository contains the CMI v2.1 product specification, logical and physical
 
 The permanent CMI migrations in source now include the identity/authorization foundation, hosted RLS-helper privilege remediation and supporting foreign-key indexes. The hosted project records all three. The remaining domain SQL slices are still under `supabase-cmi/schema-drafts/` and have been tested on isolated local CI stacks using temporary migrations. These drafts are not permanent migration history and are not deployed to hosted production.
 
-PRs #24 and #25 have since been merged, and the integrated frontend source is present under `web/`. PR #26 has also been merged and adds first-administrator bootstrap and administrator-reviewed password recovery source. This updates the repository-source finding only: the frontend is not deployed; the current authentication source is email/password and is non-conformant with the confirmed email + private PIN requirement; the authentication lifecycle is not configured or deployed; the hosted project has only the 11-table identity/authorization foundation and zero deployed CMI Edge Functions; and no production administrator has been bootstrapped.
+PRs #24 and #25 have since been merged, and the integrated frontend source is present under `web/`. PR #26 has also been merged and adds first-administrator bootstrap and administrator-reviewed password recovery source. This updates the repository-source finding only: the frontend is not deployed; the current authentication source uses the product-owner-confirmed email/password model; the authentication lifecycle is not configured or deployed; the hosted project has only the 11-table identity/authorization foundation and zero deployed CMI Edge Functions; and no production administrator has been bootstrapped.
 
 ## Release-blocking governance and engineering gaps
 
@@ -77,7 +77,7 @@ The formal stakeholder decision register still marks R-01–R-12 and D-01–D-13
 - Contact duplicate/merge, public registration and capacity rules.
 - Care/prayer retention, offline device protection and data retention.
 - Report fields and review authority.
-- PIN activation, private PIN setup, reset/reissue and recovery security. The email + private PIN architecture proposal is now documented in `docs/30_CMI_PIN_AUTHENTICATION_ARCHITECTURE_PROPOSAL.md`; PIN length/format, KDF parameters, throttling thresholds, session lifetime and recovery proof remain unresolved.
+- Email/password provider configuration, first-admin delivery recovery, temporary-password expiry and administrator-reviewed reset must be verified in staging. The earlier PIN proposal was superseded by the product-owner decision on 10 November 2026.
 
 The six roles are confirmed as fixed. That confirmation does not itself approve these sensitive permission and data-governance decisions. The system must remain fail-closed: no role-capability grants should be invented, no broad RLS policies should be introduced, and no sensitive prayer/care narrative should be exposed.
 
@@ -105,7 +105,7 @@ The following source and client-readiness changes were made after the initial ho
 - Added [document 29 — Client Stakeholder Approval & Handover Pack](29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md), which consolidates the proposed least-privilege six-role baseline, R-01–R-12 and D-01–D-13 recommendations, authentication decision, client configuration inputs, UAT cases and formal approval record. The document is a review pack; it does not forge or imply church approval.
 - Corrected the first-administrator bootstrap design. After the one-time bootstrap, the first Admin/Pastor receives only four branch-scoped control-plane capabilities: `staff.directory.read`, `staff.account.manage`, `access.role.assign` and `staff.password_reset.manage`. It does not receive capability-policy editing, contact export, pastoral oversight, SMS, or other business-domain grants. Staff invitation/account creation remains unimplemented.
 - Added isolated database assertions that the bootstrap grants exactly those four capabilities and leaves pastoral oversight, SMS, exports and capability-policy editing ungranted.
-- Clarified that the merged PR #26 sign-in flow currently uses email/password, while the product baseline specifies email + private PIN. This is a conformance blocker, not a decision to silently change the product requirement.
+- The 10 November 2026 product-owner decision confirmed email/password through Supabase Auth. The earlier email + PIN mismatch note is superseded; the remaining authentication gates are provider configuration, delivery recovery, staging validation and deployment.
 - Updated the root README, backend workspace guide and documentation index to reflect the merged frontend source, the hosted security-only migration and the current non-deployed state.
 
 The isolated CMI backend CI run completed successfully at commit `6b7aa14c50467989dbeafa0244c15596e8f0071c`: [GitHub Actions run 42825105544](https://github.com/Elgit4/PCG_Missions/actions/runs/42825105544). The job passed Edge Function lint/type-check/request-validation tests, the isolated Supabase migration application and pgTAP database tests. This verifies the source at that exact SHA, not a hosted production deployment. Subsequent changes after that SHA are documentation-only; a final current-head run should still be observed before release.
@@ -114,7 +114,7 @@ A dedicated frontend workflow was added at `.github/workflows/cmi-web-ci.yml`. T
 
 The hosted production snapshot remains unchanged: zero CMI public application tables, one hosted security-remediation migration, zero deployed CMI Edge Functions, and no production Auth users or CMI records created by this work. Security, performance and health advisors returned no lints; the RLS-helper direct-execution checks remain false for `anon`, `authenticated` and `service_role`.
 
-**Release decision remains NO-GO.** The client must approve the role/data/authentication decisions, the email+PIN mismatch must be resolved and implemented, staff invitation/activation must be completed, domain migrations must be promoted and tested in staging, and the application must be deployed and accepted before production launch.
+**Release decision remains NO-GO.** The client must approve the role/data/authentication decisions, the confirmed email/password lifecycle must be configured and verified in staging, staff invitation/activation must be completed, domain migrations must be promoted and tested in staging, and the application must be deployed and accepted before production launch.
 
 
 ## Post-migration verification addendum — 10 November 2026
@@ -150,4 +150,4 @@ The supporting-index migration added indexes for the seven previously unindexed 
 
 The current backend CI run for commit `2528205046b48d1cca7b4c59f800780ce442a2cf` passed: [GitHub Actions run 42827620899](https://github.com/Elgit4/PCG_Missions/actions/runs/42827620899). The immediately preceding run for the index-migration commit was cancelled when the newer main-branch run superseded it; the successful current-head run is the relevant result.
 
-**Release decision remains NO-GO.** This is only the identity/authorization foundation, not the complete CMI schema or application. No administrator, church/branch records, Edge Functions, authentication flow, domain tables, business role grants or production staff have been provisioned. Stakeholder approvals and the email + private PIN authentication conformance work remain release blockers.
+**Release decision remains NO-GO.** This is only the identity/authorization foundation, not the complete CMI schema or application. No administrator, church/branch records, Edge Functions, authentication flow, domain tables, business role grants or production staff have been provisioned. Stakeholder approvals, email-provider configuration, staging/UAT and production deployment remain release blockers.
