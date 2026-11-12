@@ -1997,22 +1997,29 @@ html[data-theme="dark"] .activity-panel { background-image: none !important; }
   .staff-login-main {
     min-height: 100svh;
     justify-content: flex-start;
-    padding: 28px 24px 18px;
+    padding: max(24px, env(safe-area-inset-top)) 24px max(18px, env(safe-area-inset-bottom));
   }
-  .staff-login-mobile-brand { display: flex; align-self: flex-start; margin-bottom: clamp(54px, 12vh, 92px); }
-  .staff-login-brand-mark { flex-basis: 40px; width: 40px; height: 40px; border-radius: 9px; }
-  .staff-login-brand-mark img { width: 31px; height: 34px; }
+  .staff-login-mobile-brand {
+    display: flex;
+    align-self: center;
+    justify-content: center;
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto clamp(28px, 7vh, 52px);
+  }
+  .staff-login-brand-mark { flex-basis: 42px; width: 42px; height: 42px; border-radius: 10px; }
+  .staff-login-brand-mark img { width: 32px; height: 36px; }
   .staff-login-brand-copy strong { color: #102b42; font-size: 11px; }
   .staff-login-brand-copy small { color: #73879a; }
   .staff-login-form-wrap { width: min(100%, 430px); margin: 0 auto; }
-  .staff-login-heading { margin-top: 28px; margin-bottom: 28px; }
+  .staff-login-heading { margin-top: 26px; margin-bottom: 26px; }
   .staff-login-heading h2 { font-size: 34px; }
-  .staff-login-support { margin-top: 30px; }
-  .staff-login-footer { margin-top: auto; padding-top: 48px; }
+  .staff-login-support { margin-top: 26px; }
+  .staff-login-footer { margin-top: auto; padding-top: 32px; }
 }
 @media (max-width: 380px) {
   .staff-login-main { padding-right: 18px; padding-left: 18px; }
-  .staff-login-mobile-brand { margin-bottom: 48px; }
+  .staff-login-mobile-brand { margin-bottom: clamp(24px, 6vh, 40px); }
   .staff-login-heading h2 { font-size: 31px; }
   .staff-login-input-wrap { padding-right: 11px; padding-left: 11px; }
 }
