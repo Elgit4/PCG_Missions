@@ -21,6 +21,7 @@ interface StaffLoginProps {
   busy?: boolean;
   onViewChange: (view: StaffAuthView) => void;
   onSignIn: (email: string, password: string) => Promise<void>;
+  onRetryWorkspace?: () => Promise<void>;
   onRequestReset: (email: string) => Promise<void>;
   onSetPassword: (password: string) => Promise<void>;
   onTestConnection: () => Promise<void>;
@@ -34,6 +35,7 @@ export function StaffLogin({
   busy = false,
   onViewChange,
   onSignIn,
+  onRetryWorkspace,
   onRequestReset,
   onSetPassword,
   onTestConnection,
@@ -286,6 +288,16 @@ export function StaffLogin({
                 onClick={() => void onTestConnection()}
               >
                 Test sign-in connection
+              </button>
+            )}
+            {view === "sign-in" && onRetryWorkspace && (
+              <button
+                type="button"
+                className="staff-login-inline-link"
+                disabled={busy}
+                onClick={() => void onRetryWorkspace()}
+              >
+                Retry workspace connection
               </button>
             )}
             {view !== "sign-in" && view !== "change-password" && (
