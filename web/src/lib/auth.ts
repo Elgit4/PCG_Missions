@@ -290,9 +290,10 @@ export class PcgAuthClient {
     }
 
     const raw = await response.text().catch(() => "");
-    let payload: { error_code?: string; code?: string; error?: string; msg?: string } | null = null;
+    type DiagnosticPayload = { error_code?: string; code?: string; error?: string; msg?: string };
+    let payload: DiagnosticPayload | null = null;
     try {
-      payload = raw ? JSON.parse(raw) as typeof payload : null;
+      payload = raw ? JSON.parse(raw) as DiagnosticPayload : null;
     } catch {
       payload = null;
     }
