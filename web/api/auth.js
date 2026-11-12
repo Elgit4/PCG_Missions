@@ -182,11 +182,11 @@ export default async function handler(req, res) {
     });
   }
 
-  const authorization = headerValue(req.headers.authorization);
+  const bearerHeaderValue = headerValue(req.headers.authorization);
   if (requiresBearer && (
-    typeof authorization !== "string" ||
-    !authorization.trim().toLowerCase().startsWith("bearer ") ||
-    authorization.trim().slice(7).length === 0
+    typeof bearerHeaderValue !== "string" ||
+    !bearerHeaderValue.trim().toLowerCase().startsWith("bearer ") ||
+    bearerHeaderValue.trim().slice(7).length === 0
   )) {
     return sendJson(res, 401, {
       error: { code: "AUTH_REQUIRED", message: "A valid sign-in session is required." },
@@ -203,7 +203,7 @@ export default async function handler(req, res) {
     apikey: publishableKey,
     Accept: "application/json",
   };
-  if (requiresBearer) headers.Authorization = authorization;
+  if (requiresBearer) headers.Authorization = bearerHeaderValue;
   if (outgoingBody !== undefined) headers["Content-Type"] = "application/json";
 
   try {
