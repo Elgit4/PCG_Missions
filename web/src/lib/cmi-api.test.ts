@@ -85,4 +85,66 @@ describe("CmiApiClient", () => {
     expect(url.searchParams.get("search")).toBe("Ama Mensah");
     expect(url.searchParams.get("limit")).toBe("10");
   });
+
+  it("lists contact notes through the authenticated, branch-scoped staff API", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: [{ id: "note-1", body: "Called after service", created_at: "2026-11-12T10:00:00Z" }], request_id: "note-list" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.listContactNotes("branch-a", "contact/a");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/staff-operations/contacts/contact%2Fa/notes");
+    expect(url.searchParams.get("branch_id")).toBe("branch-a");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
+    expect(result.data[0]?.body).toBe("Called after service");
+  });
+
+  it("creates only the note body and never accepts browser-supplied note visibility", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "note-2", body: "Will call tomorrow", created_at: "2026-11-12T11:00:00Z" }, request_id: "note-create" }),
+      { status: 201 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.createContactNote("branch-a", "contact-1", { body: "Will call tomorrow" });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.searchParams.get("branch_id")).toBe("branch-a");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ body: "Will call tomorrow" });
+  });
+
+  it("lists the scoped operational interaction history", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: [{ id: "interaction-1", interaction_type: "visit", occurred_at: "2026-11-12T09:00:00Z" }], request_id: "interaction-list" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.listContactInteractions("branch-a", "contact-2");
+    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/staff-operations/contacts/contact-2/interactions");
+    expect(url.searchParams.get("branch_id")).toBe("branch-a");
+    expect(result.data[0]?.interaction_type).toBe("visit");
+  });
+
+  it("records an allowlisted interaction payload", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "interaction-2", interaction_type: "call" }, request_id: "interaction-create" }),
+      { status: 201 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.createContactInteraction("branch-a", "contact-2", {
+      interaction_type: "call",
+      outcome_code: "answered",
+      summary: "Agreed to attend service.",
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.searchParams.get("branch_id")).toBe("branch-a");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      interaction_type: "call",
+      outcome_code: "answered",
+      summary: "Agreed to attend service.",
+    });
+  });
+
 });

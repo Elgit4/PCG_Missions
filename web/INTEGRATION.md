@@ -1,81 +1,92 @@
 # PCG Missions frontend integration and release boundary
 
-## Current application state
+**Product baseline:** CMI Follow-up v2.1  
+**Last reconciled:** 12 November 2026
 
-The frontend includes Supabase Auth sign-in, forced first-login credential replacement, a privacy-preserving Forgot password request, an Admin/Pastor reset-review queue, and an Admin/Pastor staff-account creation screen. The account creation and temporary-credential delivery path is in the open authorization PR and remains source-only until its migrations, Edge Functions and secrets are deployed in the approved order.
+This file distinguishes deployed functionality, source-controlled implementation and capabilities still held behind release/security gates. It must not be used to imply that a schema, API contract or draft function is a complete operational feature.
 
-The live staff workspace is implemented in `src/components/StaffWorkspace.tsx` and connects to the typed `CmiApiClient`. It is mounted only after Supabase Auth succeeds and the server-issued staff session confirms an active profile and branch. The workspace is not available to accounts with a pending temporary-password or approved-recovery change.
+## Current production boundary
 
-The workspace implementation includes:
-- server-provided staff session and branch context;
-- capability-gated contacts and follow-up screens;
-- contact listing/search/pagination and capture with separate identity-capture gating;
-- follow-up task list/pagination, self-assignment only where the grant scope safely permits it, and task completion;
-- explicit branch switching with prior-branch data cleared;
-- session-expiry handling that clears in-memory staff data and returns to the access screen;
-- create idempotency keys reused for retries of the same logical payload;
-- safe API error messages and request-correlation IDs.
+The production PWA is hosted at [https://pcg-missions.vercel.app](https://pcg-missions.vercel.app). The React frontend is in `web/` and uses Supabase Auth plus the typed `CmiApiClient`. Staff business data is served through authenticated Supabase Edge Functions; the browser does not query protected Postgres tables directly.
+
+The deployed staff UI currently provides:
+- Overview and branch selection;
+- scoped Contacts listing, search, pagination and online capture;
+- scoped Follow-up task listing, pagination and status updates;
+- staff directory/account operations where capability is granted;
+- password-reset request review where capability is granted;
+- first-login mandatory password replacement.
+
+The staff workspace only mounts after a Supabase Auth session and a server-issued `GET /staff-session` response confirm an active staff profile and branch. A pending temporary-password change blocks normal workspace access.
+
+The initial Admin/Pastor identity and role assignment have been provisioned in the hosted Supabase project. Authentication responses were accepted by Supabase during the latest troubleshooting, but the full browser transition from sign-in to the staff workspace has not yet been confirmed. A Vercel READY deployment or a successful Auth token response alone is not end-to-end login verification.
+
+## Core staff workflow enhancement in this feature branch
+
+This branch adds the next practical workflow around the existing contact/follow-up foundation:
+- a contact-detail dialog that refreshes the server-authorised contact projection;
+- permission-gated ordinary contact notes;
+- chronological call/visit/message/meeting interaction history;
+- server-derived note author, branch, team and visibility;
+- contact-note scope intersected with the actor's current contact-read scope;
+- interaction writes intersected with current visible-contact scope;
+- follow-up status filters and explicit Start/Complete actions;
+- overview counts clearly labelled as loaded records rather than branch totals;
+- improved mobile capture fields and responsive detail layout.
+
+The browser API methods and Edge Function routes are source-controlled on this feature branch. **They are not live in production until the updated `staff-operations` Edge Function is deployed and its authenticated endpoints are verified.** Vercel frontend preview success is not proof that the corresponding Supabase function has been deployed.
 
 ## Authentication boundary
 
-Authentication uses Supabase Auth email/password credentials. The application does not implement a custom PIN verifier, browser-side token issuer, PIN-as-password shortcut, or administrator-known permanent password.
+Authentication uses Supabase Auth email/password. The frontend does not implement a custom PIN verifier, browser-side token issuer, PIN-as-password shortcut or administrator-known permanent password.
 
-The first administrator is created only by a one-time server-only bootstrap route when the Auth project and CMI church/branch/profile tables are empty. It generates a random temporary password at runtime, emails it to the configured administrator mailbox, and records a 24-hour password-setup deadline. The temporary password is not committed to source, returned by the endpoint, or stored in Postgres. The first successful sign-in is restricted to password replacement before workspace access.
-
-Staff recovery is administrator-approved. A staff member submits an email address; the API responds identically whether or not the account exists. A matching active staff account creates a private, throttled and audited request and notifies the branch Admin/Pastor recipients by email. An authorised administrator records a review reason and approves or denies the request. Approval generates a cryptographically random temporary password, replaces the Supabase Auth password, and emails the temporary credential to the staff member. The account is gated as soon as the administrator claims the request; a successful first sign-in must replace the temporary password before workspace access. The administrator never sees or chooses the staff member's permanent password. Failed credential/email operations remain gated and retryable after the processing lease expires.
-
-The staff workspace is mounted only after a valid session is verified through `GET /staff-session`; a missing staff profile, inactive account, pending password change, empty branch context or missing capability must never be treated as Admin access.
-
-## Browser configuration
-
-Copy `.env.example` to `.env.local` for local development. Only browser-safe project values may use the `VITE_` prefix:
-
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_PUBLISHABLE_KEY`
-
-Never put a service-role key, secret key, database password, Hubtel credentials, HMAC key or webhook secret in a Vite environment variable. The API adapter validates HTTPS outside local development.
+Initial access and administrator-approved recovery use random, short-lived temporary credentials delivered to the verified email address. The first authenticated step is permanent-password replacement. The administrator never sees, chooses or stores a staff member's permanent password. Do not recreate the existing administrator or expose credentials in support messages.
 
 ## API adapter and authorization
 
 `src/lib/cmi-api.ts` is the typed browser adapter for CMI Edge Function contracts. It:
-- calls `/functions/v1/{function-name}`;
-- sends the publishable key and a Supabase Auth bearer token supplied by the approved future session provider;
-- uses `Cache-Control: no-store` for staff data;
-- preserves backend error codes and request correlation IDs;
+- sends the publishable key and the current Supabase Auth bearer token;
+- calls `/functions/v1/{function-name}`, or the same-origin auth/session proxy where configured;
+- preserves safe backend error codes and request correlation IDs;
 - never connects directly to Postgres;
-- validates exactly one task assignment target at runtime and in TypeScript;
-- models `contact_status` in the contact projection.
+- uses no browser service-role key or provider secrets;
+- bounds list requests to server-supported limits.
 
-`src/lib/capabilities.ts` requires an explicit branch ID present in the current session before a branch-scoped capability can expose a page or field. Role names never grant access. UI checks are convenience only; Edge Functions and the database remain the authorization authority.
+`src/lib/capabilities.ts` controls only what the UI offers. It requires an explicit branch ID included in the server-issued session and exact capability grants. Role names do not grant access. Edge Functions must independently authenticate each request, resolve current staff/branch assignments and enforce record scope.
 
-The backend has no role-capability grants at the current source baseline. An empty capability list is a valid authenticated state. The frontend does not create synthetic permissions or infer Admin access.
+## Data protection and scope
 
-## Features not enabled as operational screens
+- Public/authenticated browser roles do not have direct access to protected business tables.
+- Identity fields are returned only through server projections authorised for the identity capability; the UI must preserve redaction.
+- Contact, note and interaction operations must be restricted to the active branch and current contact visibility.
+- Note author, visibility, branch and team scope are server-derived. Note visibility must not exceed the intersection of the current contact scope and note-specific capability scope.
+- Ordinary notes and task notes are not places for prayer requests, pastoral care narratives, credentials or secrets.
+- Contact interaction actor identity is derived from the verified Auth user.
+- Contact and pastoral data must not be written to local storage, analytics or URLs.
 
-- Prayer/care endpoints provide audited individual reads only; they do not provide an approved list or mutation API.
-- Reports and exports have no approved API contract.
-- Event, announcement, visitor-content and calendar APIs are draft-only and approval-gated. They do not support publication, registration, capacity, check-in, closeout or message delivery.
-- Admin/Pastor staff provisioning creates the Supabase Auth identity, staff profile and branch role assignment, then emails a one-time temporary credential. The permanent credential is never returned to the administrator or stored in application tables.
-- Hubtel has a provider adapter only; there is no live outbox dispatcher or send API.
-- Offline data storage is intentionally not enabled.
+## Capabilities deliberately unavailable
 
-The frontend does not present these as working business modules.
+Do not present these as operational until their contracts, authorization, testing and production release gates are complete:
+- prayer/care lists, creation, assignment or mutation; the restricted pastoral function remains held for independent security review;
+- duplicate contact merge/reversal and the complete note/assignment/outcome lifecycle where not yet surfaced;
+- public event publication, registration, capacity, transport reservation, check-in and closeout;
+- announcement publication, scheduled delivery and channel dispatch;
+- published Daily Word, tract authoring and full public-content administration;
+- ministry reports, review/approval and exports;
+- manual/bulk/automated SMS dispatch, consent/suppression, campaigns and delivery receipts;
+- offline capture and synchronization.
 
-## CI
+Private draft APIs for events, announcements, sermons/welcome messages and branch calendar entries do not implement the full visitor-facing or ministry workflow. A provider adapter is not an SMS dispatcher. Database tables are not user-facing screens.
 
-`.github/workflows/cmi-frontend-ci.yml` runs locked dependency installation followed by TypeScript typecheck, ESLint, Vitest and the Vite production build for frontend changes and pull requests into `main`.
+## Verification and release gates
 
-## Production release gates
+The feature branch must pass:
+1. frontend TypeScript typecheck, ESLint, Vitest and Vite production build;
+2. backend Deno format, lint, type-check and staff-operations tests;
+3. the repository's isolated Supabase migration/pgTAP workflow;
+4. preview deployment checks and responsive UI review;
+5. authenticated positive/negative scope tests for note and interaction endpoints.
 
-The frontend source is not equivalent to a deployable production system. The repository handoff records that CMI Edge Functions are source-controlled but not deployed, domain SQL remains in schema drafts, and the production Supabase project has not received the corresponding CMI deployment. Before a production launch, complete and verify all of the following:
+Before production rollout, deploy the updated `staff-operations` Edge Function separately from the Vercel frontend, then verify the exact endpoints with approved test accounts and the current hosted schema. Do not change production schema or grants for this workflow. Maintain staging/UAT, restore rehearsal, monitoring and data-protection gates for the broader release.
 
-1. Apply the product-owner-directed safe-default baseline; obtain church stakeholder review and change requests through controlled change management.
-2. Complete email-provider configuration and verify staff invitation, temporary-password delivery, forced replacement and administrator-reviewed recovery in staging.
-3. Promote only approved domain schema drafts into reviewed permanent migrations and apply them through the agreed deployment process.
-4. Deploy required Edge Functions with production secrets, exact CORS origin allowlists and request/rate limits.
-5. Provision the initial church, active branch, staff profiles and approved capability grants through a trusted administrative process.
-6. Configure the production Vite environment with the Supabase URL and publishable key; never deploy browser secrets.
-7. Run frontend and backend CI against the release commit, then execute end-to-end tests against a staging Supabase project with approved test identities and grants.
-8. Verify security, accessibility, mobile/responsive behaviour, session revocation, backup/restore and operational monitoring before production cutover.
-
-Until those external backend and policy gates are complete, the staff workspace remains intentionally inaccessible. The current source must not be represented as ready for live church operations.
+See [DESIGN.md](DESIGN.md), [UX-CONTRACT.md](UX-CONTRACT.md), [Master Product Specification](../docs/00_MASTER_PRODUCT_SPECIFICATION.md), [Owner-Directed Safe Defaults](../docs/31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md) and [Backend Implementation Status](../supabase-cmi/IMPLEMENTATION_STATUS.md).

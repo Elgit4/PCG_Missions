@@ -1,6 +1,10 @@
 import {
+  canReadContactNote,
+  deriveContactNotePlacement,
   isUuid,
   parseContactCreate,
+  parseContactInteractionCreate,
+  parseContactNoteCreate,
   parseContactPatch,
   parseFollowupTaskAssignment,
   parseFollowupTaskCreate,
@@ -364,5 +368,177 @@ Deno.test("staff directory projection deduplicates roles and includes account st
         `Sensitive field leaked into directory response: ${sensitive}`,
       );
     }
+  }
+});
+
+Deno.test("contact note create accepts and trims an ordinary note body", () => {
+  const parsed = parseContactNoteCreate({
+    body: "  Spoke after Sunday service.  ",
+  });
+  if (!parsed.ok) throw new Error(parsed.error);
+  if (parsed.value.body !== "Spoke after Sunday service.") {
+    throw new Error("The note body was not normalized.");
+  }
+});
+
+Deno.test("contact note create rejects empty, oversized and privileged fields", () => {
+  for (
+    const input of [
+      { body: "   " },
+      { body: "x".repeat(4001) },
+      {
+        body: "Follow up",
+        author_user_id: "10000000-0000-4000-8000-000000000015",
+      },
+      { body: "Follow up", visibility: "branch_scope" },
+      { body: "Follow up", team_id: "10000000-0000-4000-8000-000000000016" },
+      { body: "Follow up", branch_id: branchId },
+    ]
+  ) {
+    const parsed = parseContactNoteCreate(input);
+    if (parsed.ok) {
+      throw new Error("Invalid or caller-controlled note input was accepted.");
+    }
+  }
+});
+
+Deno.test("contact interaction create accepts normalized fields and explicit timezone", () => {
+  const parsed = parseContactInteractionCreate({
+    interaction_type: "call",
+    occurred_at: "2026-11-12T18:30:00+00:00",
+    outcome_code: "answered",
+    summary: "Agreed to attend the next service.",
+    next_action_at: "2026-11-15T09:00:00Z",
+  });
+  if (!parsed.ok) throw new Error(parsed.error);
+  if (parsed.value.occurred_at !== "2026-11-12T18:30:00.000Z") {
+    throw new Error("Interaction time was not normalized to UTC.");
+  }
+  if (parsed.value.next_action_at !== "2026-11-15T09:00:00.000Z") {
+    throw new Error("Next action time was not normalized to UTC.");
+  }
+});
+
+Deno.test("contact interaction create rejects unsupported, sensitive and malformed fields", () => {
+  for (
+    const input of [
+      { interaction_type: "prayer" },
+      {
+        interaction_type: "call",
+        actor_user_id: "10000000-0000-4000-8000-000000000015",
+      },
+      {
+        interaction_type: "call",
+        contact_id: "10000000-0000-4000-8000-000000000016",
+      },
+      { interaction_type: "call", branch_id: branchId },
+      { interaction_type: "call", occurred_at: "2026-11-12T18:30:00" },
+      { interaction_type: "call", next_action_at: "yesterday" },
+      { interaction_type: "call", outcome_code: "Contact was reached" },
+      { interaction_type: "call", summary: "x".repeat(1001) },
+      { interaction_type: "call", visibility: "branch_scope" },
+    ]
+  ) {
+    const parsed = parseContactInteractionCreate(input);
+    if (parsed.ok) {
+      throw new Error("Unsupported or invalid interaction input was accepted.");
+    }
+  }
+});
+
+Deno.test("contact note visibility is derived from the strongest valid scope", () => {
+  const branch = deriveContactNotePlacement(["assigned", "branch"], [], []);
+  if (branch?.visibility !== "branch_scope" || branch.team_id !== null) {
+    throw new Error("Branch-scoped note placement was not selected.");
+  }
+  const team = deriveContactNotePlacement(
+    ["team"],
+    ["team-a", "team-b"],
+    ["team-b"],
+  );
+  if (team?.visibility !== "team_scope" || team.team_id !== "team-b") {
+    throw new Error("A matching active team was not selected.");
+  }
+  const assigned = deriveContactNotePlacement(
+    ["team", "assigned"],
+    ["team-a"],
+    ["team-b"],
+  );
+  if (assigned?.visibility !== "assigned_scope") {
+    throw new Error(
+      "The assignment scope should be used when no team assignment overlaps.",
+    );
+  }
+  if (deriveContactNotePlacement(["team"], ["team-a"], ["team-b"]) !== null) {
+    throw new Error(
+      "A team note was allowed without a shared team assignment.",
+    );
+  }
+});
+
+Deno.test("contact note visibility is checked against current author, scope and team overlap", () => {
+  const note = {
+    author_user_id: "user-a",
+    visibility: "team_scope" as const,
+    team_id: "team-a",
+  };
+  if (!canReadContactNote(note, "user-b", ["team"], ["team-a"], ["team-a"])) {
+    throw new Error(
+      "A current member of the assigned team should read its note.",
+    );
+  }
+  if (canReadContactNote(note, "user-b", ["team"], ["team-a"], ["team-b"])) {
+    throw new Error(
+      "A team note was exposed without a matching contact assignment.",
+    );
+  }
+  if (
+    canReadContactNote(note, "user-b", ["assigned"], ["team-a"], ["team-a"])
+  ) {
+    throw new Error("A team note was exposed to an assigned-only scope.");
+  }
+  if (
+    !canReadContactNote(
+      { ...note, visibility: "branch_scope" },
+      "user-b",
+      ["branch"],
+      [],
+      [],
+    )
+  ) {
+    throw new Error("A branch-scoped reader should read branch notes.");
+  }
+  if (
+    canReadContactNote(
+      { ...note, visibility: "branch_scope" },
+      "user-b",
+      ["team"],
+      ["team-a"],
+      ["team-a"],
+    )
+  ) {
+    throw new Error("Team scope must not read branch-only notes.");
+  }
+  if (
+    !canReadContactNote(
+      { ...note, visibility: "author_only" },
+      "user-a",
+      ["team"],
+      [],
+      [],
+    )
+  ) {
+    throw new Error("An author should read their author-only note.");
+  }
+  if (
+    canReadContactNote(
+      { ...note, visibility: "author_only" },
+      "user-b",
+      ["branch"],
+      [],
+      [],
+    )
+  ) {
+    throw new Error("Branch scope must not override author-only visibility.");
   }
 });

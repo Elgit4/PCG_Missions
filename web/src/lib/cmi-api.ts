@@ -71,7 +71,7 @@ export interface ContactRecord {
   id: string;
   branch_id: string;
   first_name: string;
-  last_name: string;
+  last_name: string | null;
   preferred_name?: string | null;
   phone_e164?: string | null;
   phone_display?: string | null;
@@ -89,13 +89,13 @@ export interface ContactCreateInput {
   branch_id: string;
   client_request_id: string;
   first_name: string;
-  last_name: string;
+  last_name?: string | null;
   preferred_name?: string | null;
   phone_e164?: string | null;
   phone_display?: string | null;
   email_normalized?: string | null;
   age_range?: string | null;
-  preferred_language?: string;
+  preferred_language?: string | null;
   service_area_id?: string | null;
   team_id?: string | null;
   source_metadata?: Record<string, unknown>;
@@ -103,7 +103,7 @@ export interface ContactCreateInput {
 
 export interface ContactUpdateInput {
   first_name?: string;
-  last_name?: string;
+  last_name?: string | null;
   preferred_name?: string | null;
   age_range?: string | null;
   preferred_language?: string | null;
@@ -111,6 +111,35 @@ export interface ContactUpdateInput {
   phone_e164?: string | null;
   phone_display?: string | null;
   email_normalized?: string | null;
+}
+
+export interface ContactNote {
+  id: string;
+  body: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface ContactInteraction {
+  id: string;
+  interaction_type: "call" | "visit" | "message" | "meeting" | "other";
+  occurred_at: string;
+  outcome_code: string | null;
+  summary: string | null;
+  next_action_at: string | null;
+  created_at: string;
+}
+
+export interface ContactNoteCreateInput {
+  body: string;
+}
+
+export interface ContactInteractionCreateInput {
+  interaction_type: ContactInteraction["interaction_type"];
+  occurred_at?: string | null;
+  outcome_code?: string | null;
+  summary?: string | null;
+  next_action_at?: string | null;
 }
 
 export interface FollowUpTask {
@@ -361,6 +390,39 @@ export class CmiApiClient {
     return this.request<ContactRecord>("staff-operations", `/contacts/${encodeURIComponent(contactId)}`, {
       method: "PATCH", query: { branch_id: branchId }, body: input,
     });
+  }
+
+  listContactNotes(branchId: string, contactId: string) {
+    return this.request<ContactNote[]>(
+      "staff-operations",
+      `/contacts/${encodeURIComponent(contactId)}/notes`,
+      { query: { branch_id: branchId } },
+    );
+  }
+  createContactNote(branchId: string, contactId: string, input: ContactNoteCreateInput) {
+    return this.request<ContactNote>(
+      "staff-operations",
+      `/contacts/${encodeURIComponent(contactId)}/notes`,
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+  listContactInteractions(branchId: string, contactId: string) {
+    return this.request<ContactInteraction[]>(
+      "staff-operations",
+      `/contacts/${encodeURIComponent(contactId)}/interactions`,
+      { query: { branch_id: branchId } },
+    );
+  }
+  createContactInteraction(
+    branchId: string,
+    contactId: string,
+    input: ContactInteractionCreateInput,
+  ) {
+    return this.request<ContactInteraction>(
+      "staff-operations",
+      `/contacts/${encodeURIComponent(contactId)}/interactions`,
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
   }
 
   listFollowUpTasks(branchId: string, options: { limit?: number; offset?: number; status?: FollowUpTask["status"] } = {}) {
