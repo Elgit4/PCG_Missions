@@ -6,6 +6,7 @@ import {
 import {
   canReadContactNote,
   deriveContactNotePlacement,
+  type ContactNoteVisibilityRow,
   isUuid,
   parseContactCreate,
   parseContactInteractionCreate,
@@ -16,7 +17,6 @@ import {
   parseFollowupTaskPatch,
   parseStaffDirectoryQuery,
   projectStaffDirectoryRows,
-  type ContactNoteVisibilityRow,
 } from "./validation.ts";
 import { readJson } from "../_shared/request_body.ts";
 
