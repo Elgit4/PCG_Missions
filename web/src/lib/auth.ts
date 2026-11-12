@@ -147,6 +147,22 @@ export class PcgAuthClient {
         window.location.hostname === "127.0.0.1");
   }
 
+  private async sendWithBrowserFallback(url: string, init: RequestInit): Promise<Response> {
+    try {
+      return await this.fetcher(url, init);
+    } catch (fetchError) {
+      try {
+        return await xhrRequest(url, init);
+      } catch (xhrError) {
+        throw new AuthClientError(
+          0,
+          "NETWORK_ERROR",
+          `Browser request failed. Fetch: ${errorDetail(fetchError)}; XMLHttpRequest: ${errorDetail(xhrError)}.`,
+        );
+      }
+    }
+  }
+
   private authEndpoint(proxyQuery: string, directPath: string): string {
     return this.isLocalDevelopment()
       ? `${this.baseUrl}${directPath}`
@@ -192,22 +208,22 @@ export class PcgAuthClient {
       cache: "no-store",
     };
     try {
-      response = await this.fetcher(
+      response = await this.sendWithBrowserFallback(
         this.authEndpoint(query, `/auth/v1/${path}`),
         requestInit,
       );
-    } catch {
-      // If the same-origin Vercel proxy is unavailable in a browser/network
-      // environment, retry against the configured Supabase Auth origin.
-      // The publishable key and user credentials are sent only to this
-      // explicitly configured HTTPS Supabase project.
-      if (this.isLocalDevelopment()) {
-        throw new AuthClientError(0, "NETWORK_ERROR", "Unable to reach the secure sign-in service.");
-      }
+    } catch (proxyError) {
+      // Retry the same configured project directly only after both browser
+      // transports failed against the same-origin proxy.
+      if (this.isLocalDevelopment()) throw proxyError;
       try {
-        response = await this.fetcher(`${this.baseUrl}/auth/v1/${path}`, requestInit);
-      } catch {
-        throw new AuthClientError(0, "NETWORK_ERROR", "Unable to reach the secure sign-in service.");
+        response = await this.sendWithBrowserFallback(`${this.baseUrl}/auth/v1/${path}`, requestInit);
+      } catch (directError) {
+        throw new AuthClientError(
+          0,
+          "NETWORK_ERROR",
+          `Unable to reach the secure sign-in service. Proxy: ${errorDetail(proxyError)}; Supabase: ${errorDetail(directError)}.`,
+        );
       }
     }
     const raw = await response.text();
@@ -267,7 +283,7 @@ export class PcgAuthClient {
   private async getUser(accessToken: string): Promise<AuthUser> {
     let response: Response;
     try {
-      response = await this.fetcher(this.authEndpoint("resource=user", "/auth/v1/user"), {
+      response = await this.sendWithBrowserFallback(this.authEndpoint("resource=user", "/auth/v1/user"), {
         method: "GET",
         headers: {
           apikey: this.publishableKey,
@@ -427,18 +443,18 @@ export class PcgAuthClient {
     if (!token) throw new AuthClientError(401, "AUTH_REQUIRED", "Sign in again before changing your password.");
     let result: Response;
     try {
-      result = await this.fetcher(
+      result = await this.sendWithBrowserFallback(
         this.authEndpoint("resource=complete-password-change", "/functions/v1/staff-auth/complete-password-change"),
         {
-        method: "POST",
-        headers: {
-          apikey: this.publishableKey,
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({ password }),
-        cache: "no-store",
+          method: "POST",
+          headers: {
+            apikey: this.publishableKey,
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ password }),
+          cache: "no-store",
         },
       );
     } catch {
@@ -457,17 +473,17 @@ export class PcgAuthClient {
   async requestPasswordReset(email: string): Promise<void> {
     let result: Response;
     try {
-      result = await this.fetcher(
+      result = await this.sendWithBrowserFallback(
         this.authEndpoint("resource=request-password-reset", "/functions/v1/staff-auth/request-password-reset"),
         {
-        method: "POST",
-        headers: {
-          apikey: this.publishableKey,
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({ email: email.trim().toLowerCase() }),
-        cache: "no-store",
+          method: "POST",
+          headers: {
+            apikey: this.publishableKey,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify({ email: email.trim().toLowerCase() }),
+          cache: "no-store",
         },
       );
     } catch {
@@ -483,7 +499,7 @@ export class PcgAuthClient {
     this.saveSession(null);
     if (!token) return;
     try {
-      await this.fetcher(this.authEndpoint("resource=logout", "/auth/v1/logout?scope=global"), {
+      await this.sendWithBrowserFallback(this.authEndpoint("resource=logout", "/auth/v1/logout?scope=global"), {
         method: "POST",
         headers: {
           apikey: this.publishableKey,
