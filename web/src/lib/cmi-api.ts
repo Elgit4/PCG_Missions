@@ -218,16 +218,30 @@ export class CmiApiClient {
     if (token) headers.set("Authorization", `Bearer ${token}`);
     if (options.body !== undefined) headers.set("Content-Type", "application/json");
 
+    const requestInit: RequestInit = {
+      method: options.method ?? "GET",
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      cache: "no-store",
+    };
     let response: Response;
     try {
-      response = await this.fetcher(url, {
-        method: options.method ?? "GET",
-        headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
-        cache: "no-store",
-      });
+      response = await this.fetcher(url, requestInit);
     } catch {
-      throw new CmiApiError(0, "NETWORK_ERROR", "Unable to reach PCG Missions. Check your connection and try again.", null);
+      if (!useSameOriginSessionProxy) {
+        throw new CmiApiError(0, "NETWORK_ERROR", "Unable to reach PCG Missions. Check your connection and try again.", null);
+      }
+      // Keep the session lookup working if the same-origin proxy is blocked;
+      // the request still goes to this configured Supabase project's function.
+      const directUrl = new URL(`${this.baseUrl}/${functionName}${suffix}`);
+      for (const [key, value] of Object.entries(options.query ?? {})) {
+        if (value !== undefined && value !== "") directUrl.searchParams.set(key, String(value));
+      }
+      try {
+        response = await this.fetcher(directUrl, requestInit);
+      } catch {
+        throw new CmiApiError(0, "NETWORK_ERROR", "Unable to reach PCG Missions. Check your connection and try again.", null);
+      }
     }
 
     const payload = parseJson(await response.text()) as (ApiEnvelope<T> & ApiErrorBody) | null;
