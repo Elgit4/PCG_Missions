@@ -203,7 +203,7 @@ export default async function handler(req, res) {
     apikey: publishableKey,
     Accept: "application/json",
   };
-  let requiresBearer = false;
+  if (requiresBearer) headers.Authorization = authorization;
   if (outgoingBody !== undefined) headers["Content-Type"] = "application/json";
 
   try {
