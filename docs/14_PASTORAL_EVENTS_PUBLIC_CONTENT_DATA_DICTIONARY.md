@@ -240,7 +240,7 @@ Enforce event/branch equality through composite keys. Prevent duplicate active r
 | `attendee_name_snapshot` | text | Yes | — | Required when neither registration nor contact is present |
 | `checked_in_at` | timestamptz | No | DEFAULT now() | Check-in instant |
 | `recorded_by` | uuid | No | FK → staff_profile | Staff actor |
-| `source` | text | No | CHECK | staff, event_workspace, offline_sync |
+| `source` | text | No | CHECK | staff, event_workspace; offline_sync is excluded from the initial release |
 | `client_request_id` | uuid | Yes | — | Idempotency key |
 
 Require at least one of registration_id, contact_id or a non-empty attendee_name_snapshot. If registration_id is present, it must belong to event_id and branch_id. Prevent duplicate check-in for same attendee/event using a canonical attendee identity key or transactionally deduplicated operation ID; D-06/traceability item remains to approve the walk-in rule.
@@ -437,7 +437,7 @@ No PDF binary storage is introduced. Existing public HTTPS PDFs may be linked th
 | DD-09 | Per-read prayer/care audit requires mediated reads; ordinary RLS SELECT would bypass audit insertion. | Use separate append-only `prayer_access_audit` and `care_access_audit` relations; deny direct REST/table reads and implement trusted transactional audited-read endpoints. |
 | DD-10 | Event walk-in check-in identity and duplicate prevention need a canonical idempotency rule. | Decide whether name-only walk-in check-in is allowed and how duplicate detection works. |
 | DD-11 | Event registration snapshots and linked contact fields depend on D-05 and retention decision D-13. | Approve exact fields, retention and canonical contact linking workflow. |
-| DD-12 | Waitlist state appears as a possible event status but D-06 safe default says no waitlist until approved. | Remove waitlist_only until explicitly approved or record D-06 decision. |
+| DD-12 | Waitlist state appears as a possible event status but D-06 owner-directed default is no waitlist in the initial release. | No waitlist state or waitlist operation is implemented. |
 | DD-13 | Calendar scope, announcement audience and external_document_link use polymorphic references. | Replace with typed FK/scope tables before executable schema. |
 | DD-14 | Announcement SMS delivery duplicates SMS outbox tracking if treated as a separate provider lifecycle. | Make announcement delivery reference outbox/campaign, or restrict to non-SMS channels. |
 | DD-15 | Event assignment currently has team/user target ambiguity (DD-02 in document 13). | Resolve once in the ERD and dictionary; do not implement inconsistent target semantics. |

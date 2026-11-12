@@ -28,12 +28,12 @@ A guide description is a target capability description, not proof that a feature
 ## 3. Product boundaries
 
 ### Included
-- Staff authentication using registered **email and password** through Supabase Auth.
+- Staff authentication using Supabase Auth **email and password**, short-lived temporary-password onboarding and mandatory first-login replacement.
 - Six operational roles, with users permitted to hold more than one role.
 - Permission- and scope-controlled staff workspace.
 - Contact directory, field capture, notes, history, duplicate review/merge and assignment.
 - Follow-up lists and items with due dates, priorities, notes, completion and overdue visibility.
-- Limited offline capture queue, cached capture pickers and previously opened event check-in data.
+- Offline capture is a future capability and is disabled for the initial production release until device-local security and sync recovery controls pass.
 - Restricted prayer requests and pastoral care records, including assignment and expiry.
 - Care contacts, groups, care summaries and call/visit outcome recording.
 - Events, public registration when enabled, optional capacity, transport reservations, check-in, event assignments and closeout.
@@ -64,12 +64,12 @@ Do not advertise or promise excluded capabilities as available.
 
 The application has six operational roles:
 
-1. **Admin / Pastor** — church-wide administration, team and settings management, exports, oversight and privileged care workflows.
+1. **Admin / Pastor** — church-wide administration and account governance, with only explicitly granted operational permissions. Restricted pastoral oversight is a separate reason-coded, audited capability; exports remain disabled until a dedicated export workflow is implemented and authorized.
 2. **Coordinator** — event coordination, church contact access, follow-up, reports, announcements, prayer management and permitted team communication.
 3. **Team leader** — team-scoped contacts and reports, event management, follow-up and team communication.
 4. **Field worker** — field capture and own contact/report access.
 5. **Follow-up volunteer** — assigned/own contact follow-up and reports.
-6. **Prayer intercessor** — private messages and prayer requests specifically assigned to them.
+6. **Prayer intercessor** — read-only access to prayer-request text actively assigned to them. No general contact identity, unassigned prayer discovery, request creation or assignment management by default.
 
 A user may hold multiple roles. Effective capabilities are combined, but this does not remove record, church, team, event or assignment scope restrictions. Role labels alone must not grant unrestricted access. The exact capability matrix and administrator exceptions must be explicit, testable and enforced by trusted backend/database authorization, not merely by hiding UI controls.
 
@@ -78,15 +78,14 @@ Prayer requests and care notes are sensitive pastoral information. Access must b
 ## 5. Authentication and account lifecycle
 
 - Staff sign in using email and password through Supabase Auth. Administrators issue only random, short-lived temporary passwords; users set and retain their own permanent passwords.
-- Supabase Auth is the sole identity, password-hashing and session authority; do not build a parallel password store or custom token issuer.
-- Administrators provision accounts through trusted server-side operations and issue only cryptographically random, short-lived temporary passwords by email.
-- Staff members establish their own private permanent password on first sign-in; workspace APIs remain gated until the change is complete.
-- Administrator-reviewed password resets issue a new temporary password to the verified account email. Administrators never see or choose a permanent password.
-- Rate-limit sign-in and recovery, return generic public recovery responses, audit privileged actions, and revoke other sessions after credential changes where supported.
-- Never expose passwords, recovery tokens, access tokens, refresh tokens or service-role keys in browser-readable records, URLs, analytics or logs.
+- Passwords are private credentials and must never be shared or exposed in support requests.
+- Administrators provision and manage staff access according to their authority.
+- Sign-out is required on shared devices; device locking is recommended.
+- Use Supabase Auth for password hashing and sessions; never store or log plaintext passwords or temporary credentials. Apply generic rate-limited recovery, forced first-login password replacement, session revocation and audit events.
+- A password must not be treated as a role or authorization claim.
 - Public visitor pages and event registration do not require staff sign-in.
 
-The email/password decision was confirmed by the product owner on 10 November 2026. The temporary-password delivery failure and retry path is addressed in the current staff-auth implementation proposal; provider configuration and production verification remain release gates.
+The temporary-password expiry, email delivery, forced replacement and administrator-reviewed recovery lifecycle are specified in the current authentication runbook and must pass staging tests before production.
 
 ## 6. Functional modules
 
@@ -114,13 +113,13 @@ Detailed functional flows and acceptance criteria are in [01 — Functional Requ
 A permitted staff member captures a contact from Contacts or an event workspace. Required fields remain minimal for field speed. Capture pickers provide configured source, area, age range and other options. A duplicate is reviewed and merged through the record actions when appropriate. Contacts retain notes, assignments and follow-up history.
 
 ### 7.2 Offline field capture
-When connection is unavailable, the queued capture form stores a pending capture locally. Cached capture pickers support entry. Pending captures sync when connection returns and must expose pending, syncing, synced and failed/conflict states. Offline support is limited to queued field captures, cached pickers and previously opened event check-in data; do not imply general offline access.
+Offline mode is disabled for the initial production release. Do not store contact, pastoral or attendance records on devices. Re-enable only after encrypted local storage, device/session binding, expiry, sign-out recovery, reauthorization at sync and conflict handling are verified.
 
 ### 7.3 Follow-up
 Contacts are organized into follow-up lists. Lists/items are assigned to team members according to permissions. Items can include scheduled date, priority and notes. Assignees see work in their assigned workspace. Completion is recorded after contact is made; overdue items remain visible until cleared, completed or reassigned under authorized rules.
 
 ### 7.4 Prayer and care
-Prayer requests can be created from Prayer or a linked contact, assigned to an intercessor and optionally given an expiry date. Authorized users can update, mark answered or remove requests. Care workflows record call/visit outcomes and update the existing contact/care status rather than creating duplicates.
+The target product supports prayer-request intake, assignment, expiry and status management. Under the current owner-directed grant baseline, only assigned prayer reads and separate audited Admin/Pastor oversight reads are enabled; creation, assignment, update, answered-status and deletion operations remain unavailable until their trusted workflows and grants are implemented. Care reads are limited to the same separate audited oversight path; assigned-care access and care mutation are not granted because no care-worker role is defined.
 
 ### 7.5 Events
 Authorized staff create events with date, location and capacity. Registration and transport reservations may be enabled. Public event pages allow visitor registration when enabled. Staff use event check-in to record attendance, then event workspaces for assigned follow-up, event team access and closeout. Public links and QR codes are shared as generated by the application.
@@ -133,7 +132,7 @@ Staff submit daily evangelism, event evangelism and weekly ministry reports. Aut
 
 ## 8. Communications and SMS policy
 
-SMS is an approved product capability in three modes:
+SMS is a planned product capability in three modes, but all live dispatch modes are disabled until the provider, lawful basis/consent, sender, suppression, campaign controls and authorization gates are satisfied:
 1. **Manual SMS:** an authorized staff member composes and sends an individual message from a permitted contact record.
 2. **Bulk SMS:** an authorized user selects an allowed audience (for example, a team, event registrants or contacts within their scope), reviews recipient count and message, and explicitly confirms the campaign.
 3. **Automated SMS:** approved system events can enqueue configured messages, such as event registration confirmation, event updates/reminders, or follow-up task reminders. Each trigger must be explicitly enabled, configurable and auditable; no unapproved trigger may send.
@@ -145,7 +144,7 @@ SMS requirements:
 - Store message intent, sender/trigger, template/version, recipient reference, provider message ID, queued/submitted/delivered/failed/undeliverable status, timestamps and failure code. Do not treat provider acceptance as delivery.
 - Use an outbox/queue, idempotency keys, bounded retries and rate limits to avoid duplicate sends. Failed messages must be visible to authorized operators.
 - Enforce role, team, event and contact scope at send time, not just when selecting recipients.
-- Never include prayer-request details, confidential pastoral notes, sensitive care narratives, passwords, temporary credentials, recovery tokens or other secrets in SMS. Use neutral wording for sensitive workflows.
+- Never include prayer-request details, confidential pastoral notes, sensitive care narratives, PINs or other secrets in SMS. Use neutral wording for sensitive workflows.
 - Bulk campaigns require a final review/confirmation step and audit record. Restrict campaign creation, audience selection and sending separately if the capability matrix requires it.
 - Automated messages must be opt-in/configurable by trigger and template, respect an approved quiet-hours policy; do not enable automated sending until that policy is configured, and be cancellable/pausable by authorized administrators.
 - Record and respect applicable consent, opt-out and Ghanaian telecommunications/provider requirements. Provider, sender-ID registration, pricing, throughput and regulatory setup must be validated before production.
@@ -160,8 +159,8 @@ Announcements may be delivered through in-app and SMS channels only where config
 - Keep prayer requests and pastoral notes private and scope them to authorized roles/assignments.
 - Do not export or share attendee lists or sensitive details through public channels.
 - Use role-, team-, event- and assignment-scoped access.
-- Sign out on shared devices; never share passwords or temporary credentials.
-- Do not include passwords, temporary credentials, recovery links or private visitor data in support requests.
+- Sign out on shared devices; never share passwords.
+- Do not include passwords, temporary credentials or private visitor data in support requests.
 - Church-approved retention, correction, deletion and data-subject request processes govern records.
 - Audit sensitive access, account changes, role/capability changes, merges, exports, publication and other privileged actions.
 - RLS and trusted server-side authorization must enforce access. Frontend route guards are not security controls.
@@ -170,11 +169,11 @@ Announcements may be delivered through in-app and SMS channels only where config
 
 - Mobile-first responsive PWA; core field workflows must be usable on small phones.
 - Accessible forms, labels, keyboard operation, focus states, readable typography and sufficient contrast.
-- Clear loading, empty, validation, offline, sync, error and success states.
+- Clear loading, empty, validation, error and success states; offline/sync states are required only if offline mode is later enabled.
 - Reliable duplicate handling and safe contact merging with preserved history.
-- Idempotent offline sync and conflict handling; do not silently discard captures.
+- If offline mode is later enabled, require idempotent sync and conflict handling; do not silently discard captures.
 - Pagination and indexed search for growing contact/event/report records.
-- Secure Supabase Auth sessions and credential handling; no plaintext password or token storage/logging.
+- Secure sessions and credential handling; no plaintext password or temporary-credential storage/logging.
 - Automated tests for role combinations, scope boundaries, prayer privacy, event permissions, offline sync and public/staff separation.
 - Use synthetic data during development and testing; production data requires church authorization and privacy controls.
 
@@ -182,9 +181,9 @@ Announcements may be delivered through in-app and SMS channels only where config
 
 The product is not ready for release until:
 1. All six roles and multi-role combinations have an approved capability/scope matrix.
-2. Supabase email/password authentication, temporary-password onboarding, first-login replacement, administrator-reviewed recovery and session revocation pass security tests.
+2. Supabase email/password authentication, temporary-password onboarding, first-login replacement, administrator-reviewed recovery and session revocation pass staging security tests.
 3. Contact capture, duplicate merge and follow-up history work on mobile.
-4. Offline queue reliably syncs and reports failures without losing data.
+4. Offline mode remains disabled unless the encrypted device queue and sync recovery have passed security and reliability tests.
 5. Prayer isolation is verified with positive and negative authorization tests.
 6. Public registration, transport reservation and event check-in work when enabled.
 7. Event-specific assignments do not leak data across events.
@@ -194,21 +193,24 @@ The product is not ready for release until:
 11. Manual, bulk and automated SMS pass consent, scope, queue, delivery-status, opt-out, cost-control and security tests; WhatsApp automation and all other listed future/held features remain absent or clearly disabled.
 12. User guide, release notes and support procedures match the deployed application.
 
-## 12. Decisions requiring confirmation
+## 12. Current owner-directed implementation baseline and remaining gates
 
-The guide establishes the functional direction but does not define every technical or policy detail. Before production, record approval for:
-- exact permissions within each role and how multiple roles combine;
-- temporary-password expiry, first-login password replacement, administrator-reviewed reset, email delivery retry and session revocation;
-- church and branch identity/configuration;
-- event registration fields, capacity behaviour, cancellation and transport rules;
-- contact consent wording and retention/deletion policy;
-- offline queue conflict resolution and device-local data protection;
-- SMS provider, sender ID/registration, pricing, throughput, consent/opt-out wording, approved templates, automation triggers, quiet hours and campaign permissions;
-- report review/approval authority and report retention;
-- public-content moderation and publication authority;
-- hosting, backups, monitoring and incident response.
+On 11 November 2026, the product owner authorized implementation of conservative standard defaults for all outstanding R-01–R-12 and D-01–D-13 decisions. The selected engineering baseline is recorded in [31 — Owner-Directed Safe-Default Decision Baseline](31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md) and summarized in the [decision register](11_CMI_STAKEHOLDER_DECISION_REGISTER.md). These defaults may be amended later through documented change control; they are not represented as church-board, pastoral, legal or regulatory sign-off.
 
-Track these in [02 — Roles, Permissions & Security](02_ROLES_PERMISSIONS_AND_SECURITY.md) and [05 — Implementation & Deployment Plan](05_IMPLEMENTATION_AND_DEPLOYMENT_PLAN.md).
+The current implementation defaults are:
+- One church and one configured operational branch; no multi-tenant administration.
+- Least-privilege role/capability grants, scope checks on every request, minimized contact projections and separate reason-coded/audited pastoral reads.
+- Supabase email/password with short-lived temporary onboarding credentials and mandatory first-login replacement.
+- No public registration until privacy notice, lawful purpose/basis, minimal fields, rate limits, abuse controls and trusted intake/review are ready.
+- Transactional event capacity, separate transport reservations and attendance, no waitlist.
+- Offline mode disabled for the initial release.
+- SMS provider dispatch, automation and campaigns disabled until Ghana-specific provider/sender, consent/suppression, quiet-hours, budget and security controls are verified.
+- No exports, automated deletion or retention purge until their dedicated capability/workflow and approved schedule exist.
+- Typed report fields and scope-limited review; no arbitrary JSON for core facts.
+
+Remaining release gates are operational rather than unresolved engineering defaults: data-protection/controller compliance and privacy notice before real personal-data processing; provider and sender approvals before SMS; production email configuration; staging, backup/restore rehearsal, monitoring, independent security review of pastoral access, and user acceptance. Do not treat a target module description as proof that the module is live.
+
+Track implementation and deployment status in [02 — Roles, Permissions & Security](02_ROLES_PERMISSIONS_AND_SECURITY.md), [05 — Implementation & Deployment Plan](05_IMPLEMENTATION_AND_DEPLOYMENT_PLAN.md) and [31 — Owner-Directed Safe-Default Decision Baseline](31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md).
 
 ## 13. Documentation map
 

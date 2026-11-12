@@ -69,8 +69,8 @@ The frontend does not present these as working business modules.
 
 The frontend source is not equivalent to a deployable production system. The repository handoff records that CMI Edge Functions are source-controlled but not deployed, domain SQL remains in schema drafts, and the production Supabase project has not received the corresponding CMI deployment. Before a production launch, complete and verify all of the following:
 
-1. Obtain stakeholder approvals and security review for the PIN lifecycle, capability matrix, data policies and branch model.
-2. Confirm the credential type with the product owner (email + PIN versus email + password), then implement and security-test the matching staff activation, first-login replacement and administrator-reviewed recovery journeys. The current draft is email/password and must not be treated as a completed PIN implementation.
+1. Apply the product-owner-directed safe-default baseline; obtain church stakeholder review and change requests through controlled change management.
+2. Complete email-provider configuration and verify staff invitation, temporary-password delivery, forced replacement and administrator-reviewed recovery in staging.
 3. Promote only approved domain schema drafts into reviewed permanent migrations and apply them through the agreed deployment process.
 4. Deploy required Edge Functions with production secrets, exact CORS origin allowlists and request/rate limits.
 5. Provision the initial church, active branch, staff profiles and approved capability grants through a trusted administrative process.

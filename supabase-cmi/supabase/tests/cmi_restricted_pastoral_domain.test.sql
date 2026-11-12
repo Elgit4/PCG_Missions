@@ -67,8 +67,8 @@ select extensions.ok(
 
 select extensions.is(
   (select count(*)::integer from public.role_capability),
-  65,
-  'the reviewed visitor MVP role baseline remains present'
+  58,
+  'the owner-directed visitor MVP role baseline remains present'
 );
 
 insert into auth.users (

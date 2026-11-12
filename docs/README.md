@@ -12,7 +12,7 @@ This directory is organized by function. Read the documents in the order below. 
 |---|---|---|
 | 00 | [Master Product Specification](00_MASTER_PRODUCT_SPECIFICATION.md) | Product scope, modules, roles, policies, constraints and acceptance gates |
 | 01 | [Functional Requirements & Workflows](01_FUNCTIONAL_REQUIREMENTS_AND_WORKFLOWS.md) | What each module must do and end-to-end user journeys |
-| 02 | [Roles, Permissions & Security](02_ROLES_PERMISSIONS_AND_SECURITY.md) | Six roles, multi-role access, record scope, prayer privacy, password security and SMS permissions |
+| 02 | [Roles, Permissions & Security](02_ROLES_PERMISSIONS_AND_SECURITY.md) | Six roles, multi-role access, record scope, prayer privacy, PIN security and SMS permissions |
 | 03 | [Data & Database Architecture](03_DATA_AND_DATABASE_ARCHITECTURE.md) | Target data domains, relationships, integrity and future ERD/schema work |
 | 04 | [Application Architecture & UI/UX](04_APPLICATION_ARCHITECTURE_AND_UI_UX.md) | Staff/public surfaces, navigation, frontend/backend boundaries and UX |
 | 05 | [Implementation & Deployment Plan](05_IMPLEMENTATION_AND_DEPLOYMENT_PLAN.md) | Phases, tests, release gates, environments and change control |
@@ -24,7 +24,8 @@ These artifacts are committed on `main` and are **proposals for review**, not ap
 
 - [Logical Data Model Proposal](06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md) — entity inventory, relationships, candidate constraints, RLS design notes and data decisions.
 - [CMI Logical Crow's Foot ERD](database/CMI_Follow_Up_Logical_ERD_v0.1.drawio) — editable diagrams.net file with separate domain pages.
-- [Role, Capability & Scope Matrix Proposal](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md) — proposed capability catalogue, role grants, scope rules, sensitive-data restrictions, SMS separation of duties and authorization tests.
+- [Role, Capability & Scope Matrix](07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md) — owner-directed capability catalogue, role grants, scope rules, sensitive-data restrictions, SMS separation of duties and authorization tests.
+- [Owner-Directed Safe-Default Decision Baseline](31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md) — selected implementation defaults for all R-01–R-12 and D-01–D-13, with release gates and change control.
 - [Physical PostgreSQL Schema Proposal](08_CMI_PHYSICAL_DATABASE_SCHEMA_PROPOSAL.md) — proposed table inventory, constraints, indexes, RLS architecture, SMS lifecycle and migration sequence; not executable SQL.
 - [Database Design Validation Report](09_DATABASE_DESIGN_VALIDATION_REPORT.md) — cross-document consistency review, design risks, corrections and outstanding approval gates.
 - [ERD-to-Physical Schema Traceability](10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md) — maps all 53 ERD entities to proposed physical tables and lists remaining reconciliation work.
@@ -37,7 +38,7 @@ These artifacts are committed on `main` and are **proposals for review**, not ap
 
 ## Backend implementation
 
-The CMI-only backend is developed in `../supabase-cmi/`, isolated from the historical ChurchConnect workspace. The current authorization feature branch contains 13 ordered permanent CMI migrations covering the foundation, contacts/follow-up, restricted pastoral records, events/attendance/public content, capability grants, task operations, audited pastoral reads, visitor MVP authorization and staff access/auth lifecycle. The 13-migration authorization baseline passed isolated local CI with 343 pgTAP assertions across 10 files. PR #33 extends that branch with a 14th permanent first-admin bootstrap-lease migration; its backend CI passed with 355 pgTAP assertions. Both remain subject to code review and church approval before any hosted production migration. The integrated frontend is source-controlled under `../web/`; source presence is not deployment evidence. The hosted Supabase project currently has 11 foundation tables, only 3 recorded migrations, no CMI domain records and zero deployed CMI Edge Functions.
+The CMI-only backend is developed in `../supabase-cmi/`, isolated from the historical ChurchConnect workspace. The permanent migrations contain the identity/authorization foundation and the hosted RLS-helper privilege remediation. Domain SQL/pgTAP drafts remain under `schema-drafts/` and CI validates them on an isolated local Supabase stack; they must not be promoted to permanent domain migrations until the relevant physical-design and stakeholder decisions are approved. The integrated frontend is source-controlled under `../web/`, and PRs #24–#26 are merged; source presence is not deployment evidence. The hosted Supabase project currently has zero CMI public application tables and zero deployed CMI Edge Functions.
 
 - [16 — Schema Reconciliation & Decision Crosswalk](16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) — tracks DD-01–DD-25, their proposed dispositions and approval dependencies.
 - [Isolated CMI Supabase workspace](../supabase-cmi/README.md) — separate CLI configuration, migration history and test workspace.
@@ -65,7 +66,7 @@ The CMI-only backend is developed in `../supabase-cmi/`, isolated from the histo
 4. Use document 03 before changing the database or generating an ERD.
 5. Review the proposed logical model and ERD after understanding documents 00–03.
 6. Review the physical schema, validation report, traceability crosswalk and stakeholder decision register.
-7. Resolve approval gates before applying the feature-branch migrations to hosted production or enabling production access.
+7. Resolve approval gates before creating executable domain migrations or enabling production access.
 8. Use document 04 for frontend and backend implementation.
 9. Use document 05 to plan and verify delivery.
 10. Use document 06 for staff operating instructions.
@@ -85,7 +86,7 @@ The following files were created for the earlier ChurchConnect two-role requirem
 - `database/ChurchConnect_ERD_v1.0.drawio`
 - `database/ChurchConnect_ERD_v1.1.drawio`
 
-The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role schema and are not the target CMI database. They are not evidence of CMI six-role, event registration, transport, public-content or offline-queue implementation. The CMI ERD and logical/physical design proposals remain subject to stakeholder approval and reconciliation. The separate 13-migration implementation set on the authorization feature branch has passed isolated local CI, but is not yet approved or applied to hosted production.
+The old ERDs, SQL migrations and pgTAP suite represent the earlier two-role schema and are not the target CMI database. They are not evidence of CMI six-role, event registration, transport, public-content or offline-queue implementation. The current CMI ERD and schema proposals are committed on `main`, but remain proposals pending approval and reconciliation; the validated SQL drafts are not yet the approved production schema.
 
 ## Baseline rules
 

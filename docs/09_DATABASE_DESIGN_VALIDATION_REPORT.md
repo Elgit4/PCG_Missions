@@ -16,7 +16,7 @@ The logical model, authorization matrix and physical schema proposal are directi
 
 | ID | Finding | Risk if unresolved | Disposition |
 |---|---|---|---|
-| VAL-01 | Historical PIN wording conflicted with the product owner's later email/password decision. | Authentication drift between requirements, frontend, backend and deployment configuration. | Product owner confirmed email/password on 10 Nov 2026. Supabase Auth owns passwords and sessions; temporary passwords are generated and emailed for first login/reset, then replaced privately by the staff member. PIN proposal document 30 is superseded. Master specification and handover documents must remain aligned. |
+| VAL-01 | Historical PIN guidance conflicted with the selected Supabase email/password lifecycle. | Requirements drift and unsafe dual-authentication ambiguity. | Resolved 10 November 2026: Supabase Auth email/password, short-lived temporary password, mandatory first-login replacement and administrator-reviewed reset; historical PIN proposal is superseded. |
 | VAL-02 | RLS SELECT policies do not automatically create an audit record for every permitted read. | A claim of audited prayer/care narrative access could be false while direct table reads remain possible. | Updated physical proposal: if every narrative read must be audited, route reads through a narrow trusted server-side function/Edge Function that authorizes, writes the audit event and returns minimal fields; block alternate direct read paths. |
 | VAL-03 | Branch IDs on both parent and child records did not explicitly guarantee that their branch values match. | Cross-branch relational inconsistencies even when each row independently passes RLS. | Added composite unique/FK guidance for branch-consistent relationships. |
 | VAL-04 | The logical model includes visitor-facing welcome messages, but the physical table inventory did not name a corresponding table. | Feature omission or ad hoc storage during implementation. | Added `welcome_message` to the physical inventory. |
@@ -37,7 +37,7 @@ The logical model, authorization matrix and physical schema proposal are directi
 | Events | Public registration when enabled, capacity, optional transport, check-in and closeout | Separate event, registration, transport, check-in and closeout records are present. |
 | Public content | Profile, welcome content, sermons/daily words, tracts and external PDF links | Physical inventory includes public profile, welcome messages, sermons, daily words, tracts and external links; no PDF hosting is introduced. |
 | SMS | Manual, bulk and automated SMS | Outbox send modes, campaign recipients, automation executions, preference/suppression, delivery callbacks and audit are modelled. |
-| Offline | Limited capture queue, cached pickers and previously opened event check-in data | Design remains bounded; no full offline mode or queued prayer/care narrative is proposed. |
+| Offline | Offline mode disabled for the initial release | No local contact, event-attendance or pastoral data queue/cache is permitted. Re-enable only after encrypted device/session-bound storage, expiry, sign-out and conflict recovery pass review. |
 | Excluded scope | No WhatsApp automation, AI features or full offline operation | These remain outside the proposed schema. |
 
 ## 4. Approval items still open
@@ -79,7 +79,7 @@ These are recorded in [06 — Logical Data Model Proposal](06_CMI_LOGICAL_DATA_M
 - D-12: Report payload fields and review authority.
 - D-13: Retention periods across contacts, pastoral records, messages, delivery events and audit.
 
-Approval of R-01 to R-12 does not automatically approve D-01 to D-13. Both sets require recorded decisions. The password lifecycle, transactional-email delivery/retry and provider-specific integration require security review and production verification.
+Approval of R-01 to R-12 does not automatically approve D-01 to D-13. Both sets require recorded decisions. The PIN lifecycle and provider-specific integration also require explicit security review.
 
 ## 5. Recommended safe defaults pending approval
 
@@ -92,7 +92,7 @@ Approval of R-01 to R-12 does not automatically approve D-01 to D-13. Both sets 
 7. Public registration uses a narrow trusted endpoint and cannot enumerate the contact directory.
 8. Branch consistency is enforced by relational constraints as well as RLS.
 9. Sensitive narrative reads are mediated and audited if per-read audit is a requirement.
-10. No full offline access; no prayer/care narrative in local queues.
+10. Offline mode is disabled; no contact, event-attendance or pastoral data is queued or cached locally.
 11. No production grants are inferred from role labels or client-supplied metadata.
 12. No migration is applied to a hosted Supabase project without explicit project identification and user approval.
 
@@ -104,7 +104,7 @@ Before executable migrations:
 1. Record approvals for R-01 through R-12 and D-01 through D-13.
 2. Approve the ERD revision and reconcile every logical entity to its physical table and key.
 3. Finalize field-level contact requirements, retention, public registration fields and event capacity state machine.
-4. Reconcile all documents to the confirmed email/password model; verify temporary-password activation, administrator-reviewed reset, delivery-failure recovery and session revocation against Supabase Auth.
+4. Verify Supabase email/password temporary-credential onboarding, forced password replacement, administrator-reviewed recovery, delivery-failure recovery and session revocation in staging.
 5. Select SMS provider and settle Ghana-specific sender identity, lawful basis/consent, opt-out, quiet hours, price/caps and callback protocol.
 6. Produce a traceable physical data dictionary and executable migration drafts.
 7. Build automated tests for RLS, cross-branch integrity, sensitive read auditing, public registration, SMS idempotency and negative role combinations.

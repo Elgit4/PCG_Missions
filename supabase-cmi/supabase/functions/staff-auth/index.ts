@@ -18,7 +18,8 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const ALLOWED_ORIGINS = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "").split(",")
+  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
+    .split(",")
     .map((value) => value.trim()).filter(Boolean),
 );
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -128,6 +129,10 @@ async function sendEmail(
       html,
       text: textBody,
     }),
+    // Keep provider latency well below the three-minute first-admin lease.
+    // This bounds credential-delivery work and allows the lease to be released
+    // before another recovery attempt can legitimately take over.
+    signal: AbortSignal.timeout(15_000),
   });
   if (!result.ok) {
     // Never log the provider response body or recipient credentials.
