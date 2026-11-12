@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Activity, CalendarClock, CheckCircle2, ClipboardList, KeyRound, LogOut, Plus, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { Activity, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, KeyRound, LogOut, Megaphone, Plus, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { OperationsWorkspace } from "./OperationsWorkspace";
 import { ContactDetailDialog } from "./ContactDetailDialog";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
 import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 
-type Page = "Overview" | "Contacts" | "Follow-up" | "Staff" | "Access requests";
+type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Staff" | "Access requests";
 type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue";
 interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void> }
 
@@ -17,6 +18,9 @@ function messageFor(error: unknown): string {
     if (error.status === 409) return "This operation conflicts with an existing request or a recent record change. Refresh the data before trying again.";
     if (error.status === 422) return "Some submitted fields need correction. Review the form and try again.";
     if (error.status === 429) return "Too many requests were made. Wait a moment before trying again.";
+    if (error.code === "IDEMPOTENCY_NOT_CONFIGURED") {
+      return "This operation is disabled because its secure request-signing secret is missing or invalid in Supabase Edge Function secrets. Configure CMI_CONTACT_IDEMPOTENCY_HMAC_KEY for contact capture and CMI_FOLLOWUP_IDEMPOTENCY_HMAC_KEY for follow-up creation (each at least 32 characters). No record was saved.";
+    }
     if (error.code === "STAFF_INVITATION_EMAIL_FAILED") {
       return "The staff account was created, but its invitation email was not delivered. Do not create the account again. Check the Staff list, then have the person use Forgot password after the church email sender has been fixed.";
     }
@@ -97,8 +101,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canCreateStaffAccounts = hasCapability(session, "staff.account.manage", branchId) && hasCapability(session, "access.role.assign", branchId);
   const availablePages = useMemo(() => {
     const pages: Page[] = getAvailableStaffPages(session, branchId)
-      .filter((candidate): candidate is "Overview" | "Contacts" | "Follow-up" =>
-        candidate === "Overview" || candidate === "Contacts" || candidate === "Follow-up"
+      .filter((candidate): candidate is Exclude<Page, "Staff" | "Access requests"> =>
+        candidate !== "Team" && candidate !== "Prayer" && candidate !== "Reports"
       );
     if (canCreateContacts && !pages.includes("Contacts")) pages.push("Contacts");
     if (canReadStaffDirectory) pages.push("Staff");
@@ -481,9 +485,9 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         <div className="cmi-sidebar-label">WORKSPACE</div>
         <nav className="cmi-nav" aria-label="Staff workspace">
           {availablePages.map((item) => <button key={item} type="button" className={page === item ? "active" : ""} aria-current={page === item ? "page" : undefined} onClick={() => setPage(item)}>
-            {item === "Overview" ? <Activity size={19} /> : item === "Contacts" ? <Users size={19} /> : item === "Access requests" ? <KeyRound size={19} /> : item === "Staff" ? <Users size={19} /> : <ClipboardList size={19} />}
-            <span className="cmi-nav-desktop-label">{item === "Follow-up" ? "Follow-up tasks" : item}</span>
-            <span className="cmi-nav-mobile-label">{item === "Overview" ? "Home" : item === "Contacts" ? "People" : item === "Access requests" ? "Access" : item === "Staff" ? "Staff" : "Tasks"}</span>
+            {item === "Overview" ? <Activity size={19} /> : item === "Contacts" ? <Users size={19} /> : item === "Access requests" ? <KeyRound size={19} /> : item === "Staff" ? <Users size={19} /> : item === "Events" ? <CalendarDays size={19} /> : item === "Calendar" ? <CalendarClock size={19} /> : item === "Announcements" ? <Megaphone size={19} /> : item === "Content" ? <BookOpen size={19} /> : <ClipboardList size={19} />}
+            <span className="cmi-nav-desktop-label">{item === "Follow-up" ? "Follow-up tasks" : item === "Content" ? "Visitor content" : item}</span>
+            <span className="cmi-nav-mobile-label">{item === "Overview" ? "Home" : item === "Contacts" ? "People" : item === "Access requests" ? "Access" : item === "Staff" ? "Staff" : item === "Events" ? "Events" : item === "Calendar" ? "Calendar" : item === "Announcements" ? "Updates" : item === "Content" ? "Content" : "Tasks"}</span>
             {item === "Follow-up" && openTasks.length > 0 ? <em>{openTasks.length}</em> : null}
           </button>)}
         </nav>
@@ -757,6 +761,10 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             </div>
           </div>}
 
+          {page === "Events" && availablePages.includes("Events") && <OperationsWorkspace key={branchId + ":events"} section="Events" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Calendar" && availablePages.includes("Calendar") && <OperationsWorkspace key={branchId + ":calendar"} section="Calendar" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Announcements" && availablePages.includes("Announcements") && <OperationsWorkspace key={branchId + ":announcements"} section="Announcements" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Content" && availablePages.includes("Content") && <OperationsWorkspace key={branchId + ":content"} section="Content" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
           {!canReadContacts && !canCreateContacts && page === "Contacts" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Contact access is not granted</h3><p>Your assigned role has no contact-read capability for this branch.</p></div>}
           {!canReadTasks && page === "Follow-up" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Follow-up access is not granted</h3><p>Your assigned role has no follow-up-read capability for this branch.</p></div>}
           {!availablePages.includes(page) && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>This section is unavailable</h3><p>Your session does not contain an active permission for this section.</p></div>}
