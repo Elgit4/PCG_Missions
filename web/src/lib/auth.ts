@@ -135,23 +135,35 @@ export class PcgAuthClient {
     fallback: string,
   ): Promise<T> {
     let response: Response;
+    const query = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
+    const requestInit: RequestInit = {
+      ...init,
+      headers: new Headers({
+        apikey: this.publishableKey,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(init.headers as Record<string, string> | undefined),
+      }),
+      cache: "no-store",
+    };
     try {
-      const query = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
       response = await this.fetcher(
         this.authEndpoint(query, `/auth/v1/${path}`),
-        {
-        ...init,
-        headers: new Headers({
-          apikey: this.publishableKey,
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          ...(init.headers as Record<string, string> | undefined),
-        }),
-        cache: "no-store",
-        },
+        requestInit,
       );
     } catch {
-      throw new AuthClientError(0, "NETWORK_ERROR", "Unable to reach the secure sign-in service.");
+      // If the same-origin Vercel proxy is unavailable in a browser/network
+      // environment, retry against the configured Supabase Auth origin.
+      // The publishable key and user credentials are sent only to this
+      // explicitly configured HTTPS Supabase project.
+      if (this.isLocalDevelopment()) {
+        throw new AuthClientError(0, "NETWORK_ERROR", "Unable to reach the secure sign-in service.");
+      }
+      try {
+        response = await this.fetcher(`${this.baseUrl}/auth/v1/${path}`, requestInit);
+      } catch {
+        throw new AuthClientError(0, "NETWORK_ERROR", "Unable to reach the secure sign-in service.");
+      }
     }
     const raw = await response.text();
     let payload: T | null = null;
