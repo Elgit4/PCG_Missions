@@ -485,6 +485,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           <div className="cmi-topbar-actions">
             <label className="cmi-branch-picker"><span>BRANCH</span><select aria-label="Active branch" value={branchId} onChange={(event) => {
                 setContacts([]);
+                setSelectedContact(null);
                 setTasks([]);
                 setResetRequests([]);
                 setStaffMembers([]);
@@ -514,10 +515,16 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           {page === "Overview" && (
             <>
               <div className="cmi-welcome"><div><p className="cmi-eyebrow">YOUR MINISTRY WORKSPACE</p><h2>Welcome, {session.staff.full_name.split(/\s+/)[0]}.</h2><p>Here is the current activity available to your account in {activeBranch?.name ?? "your branch"}.</p></div><div className="cmi-welcome-mark"><ShieldCheck size={30} /></div></div>
-              <div className="cmi-stat-grid">
-                <article className="cmi-stat-card"><span>VISIBLE CONTACTS</span><strong>{canReadContacts ? contacts.length : "—"}</strong><small>{canReadContacts ? "Records within your access scope" : "Contact access not granted"}</small></article>
-                <article className="cmi-stat-card"><span>OPEN FOLLOW-UPS</span><strong>{canReadTasks ? openTasks.length : "—"}</strong><small>{canReadTasks ? "Open or in-progress tasks" : "Task access not granted"}</small></article>
-                <article className="cmi-stat-card"><span>COMPLETED TASKS</span><strong>{canReadTasks ? completedTasks.length : "—"}</strong><small>{canReadTasks ? "Completed in loaded records" : "Task access not granted"}</small></article>
+              <div className="cmi-stat-grid cmi-stat-grid-four">
+                <article className="cmi-stat-card"><span>LOADED CONTACTS</span><strong>{canReadContacts ? contacts.length : "—"}</strong><small>{canReadContacts ? (contactsHasMore ? "More records available" : "Within your current access scope") : "Contact access not granted"}</small></article>
+                <article className="cmi-stat-card"><span>OPEN FOLLOW-UPS</span><strong>{canReadTasks ? openTasks.length : "—"}</strong><small>{canReadTasks ? "In the loaded task records" : "Task access not granted"}</small></article>
+                <article className="cmi-stat-card"><span>OVERDUE TASKS</span><strong>{canReadTasks ? overdueTasks.length : "—"}</strong><small>{canReadTasks ? "Open tasks past their due time" : "Task access not granted"}</small></article>
+                <article className="cmi-stat-card"><span>COMPLETED TASKS</span><strong>{canReadTasks ? completedTasks.length : "—"}</strong><small>{canReadTasks ? "In the loaded task records" : "Task access not granted"}</small></article>
+              </div>
+              <div className="cmi-quick-actions">
+                <span>QUICK ACCESS</span>
+                {canReadContacts && <button type="button" onClick={() => setPage("Contacts")}><Users size={15} /> Open contacts</button>}
+                {canReadTasks && <button type="button" onClick={() => setPage("Follow-up")}><ClipboardList size={15} /> Review follow-up</button>}
               </div>
               <div className="cmi-panel"><div className="cmi-panel-heading"><div><p className="cmi-eyebrow">ACCESS SUMMARY</p><h3>What you can work with</h3></div></div>
                 <div className="cmi-permission-list">
@@ -567,21 +574,27 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             {!canReadContacts && <p className="cmi-scope-note">You can capture new contacts, but your current access does not include browsing existing contact records.</p>}
             {showContactForm && canCreateContacts && <form className="cmi-form-grid" onSubmit={createContact}>
               <label>First name<input name="first_name" required maxLength={120} autoComplete="given-name" /></label>
-              <label>Last name<input name="last_name" required maxLength={120} autoComplete="family-name" /></label>
+              <label>Last name <span>Optional</span><input name="last_name" maxLength={120} autoComplete="family-name" /></label>
               <label>Preferred name <span>Optional</span><input name="preferred_name" maxLength={120} /></label>
-              {canCaptureIdentity && <label>Phone number <span>Optional · restricted identity field</span><input name="phone" type="tel" autoComplete="tel" maxLength={40} /></label>}
+              <label>Age range <span>Optional</span><select name="age_range" defaultValue=""><option value="">Not recorded</option><option value="under_18">Under 18</option><option value="18_24">18–24</option><option value="25_34">25–34</option><option value="35_44">35–44</option><option value="45_54">45–54</option><option value="55_64">55–64</option><option value="65_plus">65+</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>
+              <label>Preferred language <span>Optional</span><select name="preferred_language" defaultValue="en"><option value="en">English</option><option value="tw">Twi</option><option value="ga">Ga</option><option value="ee">Ewe</option><option value="dag">Dagbani</option><option value="other">Other</option></select></label>
+              {canCaptureIdentity && <>
+                <label>Phone number <span>Optional · international E.164 format</span><input name="phone" type="tel" autoComplete="tel" maxLength={16} placeholder="+233241234567" /></label>
+                <label>Email address <span>Optional · restricted identity field</span><input name="email" type="email" autoComplete="email" maxLength={254} /></label>
+              </>}
               <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowContactForm(false)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Save contact"}</button></div>
+              <p className="cmi-field-wide cmi-scope-note">Identity fields are available only with the required permission. Add only information needed for ministry follow-up.</p>
             </form>}
             {canReadContacts && <>
               <div className="cmi-table-wrap"><table className="cmi-table"><caption className="cmi-sr-only">Contacts visible in the current branch and access scope</caption><thead><tr><th scope="col">CONTACT</th><th scope="col">STATUS</th><th scope="col">LANGUAGE</th><th scope="col">IDENTITY</th></tr></thead><tbody>
-                {visibleContacts.map((contact) => <tr key={contact.id}><td data-label="Contact"><strong>{displayName(contact)}</strong><small>{contact.id}</small></td><td data-label="Status"><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td data-label="Language">{contact.preferred_language || "Not recorded"}</td><td data-label="Identity">{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
+                {visibleContacts.map((contact) => <tr key={contact.id}><td data-label="Contact"><button type="button" className="cmi-contact-open" onClick={() => setSelectedContact(contact)} aria-label={`Open contact record for ${displayName(contact)}`}>{displayName(contact)}</button><small>{contact.id}</small></td><td data-label="Status"><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td data-label="Language">{contact.preferred_language || "Not recorded"}</td><td data-label="Identity">{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
               </tbody></table>{!visibleContacts.length && !loading && <p className="cmi-empty-row">No contacts are available for this search and access scope.</p>}</div>
               {contactsHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreContacts()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more contacts"}</button></div>}
             </>}
           </div>}
 
           {page === "Follow-up" && canReadTasks && <div className="cmi-panel">
-            <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h3>Follow-up tasks</h3><p>Task records are filtered by the backend using your active branch and scope.</p></div>
+            <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h3>Follow-up tasks</h3><p>Filter tasks in your current branch and assignment scope. Counts reflect the loaded records.</p></div>
               {canSelfAssignTask && <button className="cmi-button cmi-button-primary" onClick={() => setShowTaskForm((value) => !value)} disabled={!canReadContacts || !contacts.length}><Plus size={16} />New task</button>}
               {canCreateTasks && !canSelfAssignTask && <span className="cmi-scope-note">Task creation is granted, but a supported team assignment target is not available in this workspace.</span>}
             </div>
@@ -592,14 +605,30 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               <label className="cmi-field-wide">Operational note <span>Do not enter pastoral narratives or sensitive identity data</span><textarea name="task_note" rows={3} maxLength={1000} /></label>
               <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowTaskForm(false)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Create task"}</button></div>
             </form>}
-            <div className="cmi-task-list">{tasks.map((task) => {
+            <div className="cmi-followup-toolbar">
+              <label>Show
+                <select aria-label="Filter follow-up tasks" value={taskStatusFilter} onChange={(event) => setTaskStatusFilter(event.target.value as TaskStatusFilter)}>
+                  <option value="all">All tasks</option>
+                  <option value="open">Open</option>
+                  <option value="in_progress">In progress</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </label>
+              <span>{filteredTasks.length} shown · {tasks.length} loaded</span>
+            </div>
+            <div className="cmi-task-list">{filteredTasks.map((task) => {
               const contact = contactById.get(task.contact_id);
               return <article className="cmi-task-row" key={task.id}><div className="cmi-task-symbol"><CalendarClock size={18} /></div>
                 <div className="cmi-task-copy"><strong>{contact ? displayName(contact) : "Contact details restricted"}</strong><p>{task.task_note || "No operational note"}</p><small>{formatDate(task.due_at, branchTimeZone)} · Priority {task.priority}</small></div>
-                <span className={`cmi-task-status status-${task.status}`}>{statusLabel(task.status)}</span>
-                {canUpdateTasks && (task.status === "open" || task.status === "in_progress") && <button className="cmi-complete-button" onClick={() => void completeTask(task)} aria-label={`Mark ${contact ? displayName(contact) : "follow-up"} task complete`} title="Mark task complete"><CheckCircle2 size={18} /></button>}
+                <span className={`cmi-task-status status-${isOverdue(task) ? "overdue" : task.status}`}>{isOverdue(task) ? "Overdue" : statusLabel(task.status)}</span>
+                {canUpdateTasks && (task.status === "open" || task.status === "in_progress") && <div className="cmi-task-actions">
+                  {task.status === "open" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => void updateTaskStatus(task, "in_progress")}>Start</button>}
+                  <button type="button" className="cmi-button cmi-button-primary" onClick={() => void updateTaskStatus(task, "completed")}><CheckCircle2 size={14} /> Complete</button>
+                </div>}
               </article>;
-            })}{!tasks.length && !loading && <p className="cmi-empty-row">No follow-up tasks are visible in this branch scope.</p>}</div>
+            })}{!filteredTasks.length && !loading && <p className="cmi-empty-row">{tasks.length ? "No tasks match this filter in the loaded records." : "No follow-up tasks are visible in this branch scope."}</p>}</div>
             {tasksHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreTasks()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more tasks"}</button></div>}
           </div>}
 
@@ -675,6 +704,20 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         </section>
         <footer className="cmi-footer"><span>PCG Missions · Staff operations</span><span>Powered by ElTech</span></footer>
       </main>
+      {selectedContact && <ContactDetailDialog
+        key={`${branchId}:${selectedContact.id}`}
+        open={!!selectedContact}
+        onOpenChange={(open) => { if (!open) setSelectedContact(null); }}
+        branchId={branchId}
+        timeZone={branchTimeZone}
+        contact={selectedContact}
+        api={api}
+        canReadIdentity={canReadIdentity}
+        canReadNotes={canReadContactNotes}
+        canCreateNotes={canCreateContactNotes}
+        canRecordInteraction={canRecordContactInteraction}
+        onSessionExpired={expireSession}
+      />}
     </div>
   );
 }
