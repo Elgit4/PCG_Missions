@@ -597,3 +597,106 @@ export function parseFollowupTaskAssignment(
     },
   };
 }
+
+export interface ContactNoteCreateInput {
+  body: string;
+}
+
+/** Accepts note text only. The server derives author, branch, team and visibility. */
+export function parseContactNoteCreate(
+  value: unknown,
+): { ok: true; value: ContactNoteCreateInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const keys = Object.keys(value);
+  if (keys.length !== 1 || keys[0] !== "body") {
+    return { ok: false, error: "Only an ordinary note body is accepted." };
+  }
+  const body = requiredText(value.body, "body", 4000);
+  if (!body.ok) return body;
+  return { ok: true, value: { body: body.value } };
+}
+
+export type ContactInteractionType =
+  | "call"
+  | "visit"
+  | "message"
+  | "meeting"
+  | "other";
+
+export interface ContactInteractionCreateInput {
+  interaction_type: ContactInteractionType;
+  occurred_at: string | null;
+  outcome_code: string | null;
+  summary: string | null;
+  next_action_at: string | null;
+}
+
+const CONTACT_INTERACTION_TYPES = new Set<ContactInteractionType>([
+  "call",
+  "visit",
+  "message",
+  "meeting",
+  "other",
+]);
+
+/** Accepts operational interaction details only; actor and branch are server-derived. */
+export function parseContactInteractionCreate(
+  value: unknown,
+): { ok: true; value: ContactInteractionCreateInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const allowed = new Set([
+    "interaction_type",
+    "occurred_at",
+    "outcome_code",
+    "summary",
+    "next_action_at",
+  ]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    return { ok: false, error: "Unsupported contact interaction field." };
+  }
+  if (
+    typeof value.interaction_type !== "string" ||
+    !CONTACT_INTERACTION_TYPES.has(value.interaction_type as ContactInteractionType)
+  ) {
+    return { ok: false, error: "Invalid interaction_type." };
+  }
+
+  const occurredAt = parseTaskDueAt(value.occurred_at);
+  if (!occurredAt.ok) {
+    return { ok: false, error: "occurred_at must be an ISO timestamp with an explicit timezone." };
+  }
+  const nextActionAt = parseTaskDueAt(value.next_action_at);
+  if (!nextActionAt.ok) {
+    return { ok: false, error: "next_action_at must be an ISO timestamp with an explicit timezone." };
+  }
+
+  const outcome = optionalText(value.outcome_code, "outcome_code", 60);
+  if (!outcome.ok) return outcome;
+  if (outcome.value !== null && !/^[a-z][a-z0-9_]{1,59}$/.test(outcome.value)) {
+    return { ok: false, error: "outcome_code must be a lowercase code." };
+  }
+  const summary = optionalText(value.summary, "summary", 1000);
+  if (!summary.ok) return summary;
+
+  return {
+    ok: true,
+    value: {
+      interaction_type: value.interaction_type as ContactInteractionType,
+      occurred_at: occurredAt.value,
+      outcome_code: outcome.value,
+      summary: summary.value,
+      next_action_at: nextActionAt.value,
+    },
+  };
+}
+
