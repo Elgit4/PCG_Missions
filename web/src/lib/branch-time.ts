@@ -32,7 +32,7 @@ export function toBranchLocalInput(
 /**
  * Converts a wall-clock datetime-local value to UTC. Rejects invalid IANA
  * zones, invalid calendar dates and non-existent local times at DST changes.
- * Ambiguous repeated local times resolve to the first valid matching offset.
+ * Ambiguous repeated wall-clock times resolve deterministically from the initial UTC-anchored guess; callers must not assume this selects the earlier occurrence.
  */
 export function branchLocalInputToIso(
   value: string,
