@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Activity, CalendarClock, CheckCircle2, ClipboardList, KeyRound, LogOut, Plus, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { ContactDetailDialog } from "./ContactDetailDialog";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
 import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 
 type Page = "Overview" | "Contacts" | "Follow-up" | "Staff" | "Access requests";
+type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue";
 interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void> }
 
 function messageFor(error: unknown): string {
@@ -32,6 +34,10 @@ function formatDate(value: string | null, timeZone: string): string {
 function statusLabel(status: string): string {
   return status.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
+function isOverdue(task: FollowUpTask): boolean {
+  return (task.status === "open" || task.status === "in_progress") &&
+    !!task.due_at && new Date(task.due_at).getTime() < Date.now();
+}
 
 export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps) {
   const [branchId, setBranchId] = useState(session.branches[0]?.id ?? "");
@@ -40,7 +46,9 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     return "Overview";
   });
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
+  const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
   const [tasks, setTasks] = useState<FollowUpTask[]>([]);
+  const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatusFilter>("all");
   const [resetRequests, setResetRequests] = useState<StaffPasswordResetRequest[]>([]);
   const [staffMembers, setStaffMembers] = useState<StaffDirectoryEntry[]>([]);
   const [showStaffForm, setShowStaffForm] = useState(false);
@@ -67,6 +75,9 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canReadContacts = canOpenStaffPage(session, "Contacts", branchId);
   const canReadTasks = canOpenStaffPage(session, "Follow-up", branchId);
   const canCreateContacts = hasCapability(session, "contact.capture.create", branchId);
+  const canReadContactNotes = hasCapability(session, "contact.note.read.scoped", branchId);
+  const canCreateContactNotes = hasCapability(session, "contact.note.create", branchId);
+  const canRecordContactInteraction = hasCapability(session, "contact.interaction.record", branchId);
   const taskCreateGrant = session.capabilities.find((grant) =>
     grant.code === "followup.task.create" && grant.branch_id === branchId
   );
@@ -95,6 +106,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
   const expireSession = useCallback(() => {
     setContacts([]);
+    setSelectedContact(null);
     setTasks([]);
     setContactsHasMore(false);
     setTasksHasMore(false);
@@ -192,6 +204,11 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
   const openTasks = tasks.filter((task) => task.status === "open" || task.status === "in_progress");
   const completedTasks = tasks.filter((task) => task.status === "completed");
+  const overdueTasks = tasks.filter(isOverdue);
+  const filteredTasks = tasks.filter((task) => {
+    if (taskStatusFilter === "overdue") return isOverdue(task);
+    return taskStatusFilter === "all" || task.status === taskStatusFilter;
+  });
 
   const refresh = async () => {
     if (!branchId) return;
@@ -327,15 +344,24 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     const firstName = String(form.get("first_name") ?? "").trim();
     const lastName = String(form.get("last_name") ?? "").trim();
     const phone = canCaptureIdentity ? String(form.get("phone") ?? "").trim() : "";
-    if (!firstName || !lastName) { setActionError("Enter the visitor's first and last name."); return; }
+    const email = canCaptureIdentity ? String(form.get("email") ?? "").trim() : "";
+    const ageRange = String(form.get("age_range") ?? "").trim();
+    const language = String(form.get("preferred_language") ?? "").trim();
+    if (!firstName) { setActionError("Enter the visitor's first name."); return; }
+    if (phone && !/^\+[1-9][0-9]{7,14}$/.test(phone)) {
+      setActionError("Enter the phone number in international E.164 format, for example +233241234567.");
+      return;
+    }
     const contactPayload = {
       branch_id: branchId,
       first_name: firstName,
-      last_name: lastName,
+      last_name: lastName || null,
       preferred_name: String(form.get("preferred_name") ?? "").trim() || null,
-      preferred_language: "en",
+      preferred_language: language || null,
+      age_range: ageRange || null,
       source_metadata: { device_type: "web" },
-      ...(phone ? { phone_display: phone } : {}),
+      ...(phone ? { phone_e164: phone, phone_display: phone } : {}),
+      ...(email ? { email_normalized: email.toLowerCase() } : {}),
     };
     const fingerprint = JSON.stringify(contactPayload);
     if (!contactRequestRef.current || contactRequestRef.current.fingerprint !== fingerprint) {
@@ -397,13 +423,18 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     finally { setSaving(false); }
   };
 
-  const completeTask = async (task: FollowUpTask) => {
-    if (!canUpdateTasks || !branchId || task.status === "completed" || task.status === "cancelled") return;
+  const updateTaskStatus = async (task: FollowUpTask, status: FollowUpTask["status"]) => {
+    if (!canUpdateTasks || !branchId || task.status === status || task.status === "completed" || task.status === "cancelled") return;
     setActionError("");
     try {
-      const result = await api.updateFollowUpTask(branchId, task.id, { status: "completed" });
+      const result = await api.updateFollowUpTask(branchId, task.id, { status });
       setTasks((current) => current.map((item) => item.id === task.id ? result.data : item));
-    } catch (error) { handleActionError(error); }
+    } catch (error) {
+      handleActionError(error);
+      if (error instanceof CmiApiError && (error.status === 409 || error.status === 0)) {
+        await refresh();
+      }
+    }
   };
   const signOut = async () => {
     setSigningOut(true);
