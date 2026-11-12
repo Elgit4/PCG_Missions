@@ -233,19 +233,27 @@ export class CmiApiClient {
   }
 
   private async sendWithBrowserFallback(url: string | URL, init: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let fetchError: unknown;
     try {
-      return await this.fetcher(url, init);
-    } catch (fetchError) {
-      try {
-        return await xhrRequest(url, init);
-      } catch (xhrError) {
-        throw new CmiApiError(
-          0,
-          "NETWORK_ERROR",
-          `Browser request failed. Fetch: ${requestErrorDetail(fetchError)}; XMLHttpRequest: ${requestErrorDetail(xhrError)}.`,
-          null,
-        );
-      }
+      return await this.fetcher(url, { ...init, signal: controller.signal });
+    } catch (error) {
+      fetchError = error;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    // Do not let a browser fetch hang the staff portal indefinitely.
+    try {
+      return await xhrRequest(url, init);
+    } catch (xhrError) {
+      throw new CmiApiError(
+        0,
+        "NETWORK_ERROR",
+        `Browser request failed or timed out. Fetch: ${requestErrorDetail(fetchError)}; XMLHttpRequest: ${requestErrorDetail(xhrError)}.`,
+        null,
+      );
     }
   }
 
