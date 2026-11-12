@@ -576,11 +576,11 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                   <div><span className={canManagePasswordResets ? "cmi-dot enabled" : "cmi-dot"} />Password-reset requests <strong>{canManagePasswordResets ? "Available" : "Not granted"}</strong></div>
                 </div>
                 <div className="cmi-module-boundary">
-                  <p className="cmi-eyebrow">NOT ENABLED IN THIS ADMIN RELEASE</p>
+                  <p className="cmi-eyebrow">RESTRICTED OR NOT YET ENABLED</p>
                   <div className="cmi-module-boundary-grid">
-                    <span><strong>Events & registration</strong><small>Draft backend only; no Admin module or public registration flow</small></span>
-                    <span><strong>Calendar</strong><small>Backend endpoints exist; no Admin screen</small></span>
-                    <span><strong>Announcements & content publishing</strong><small>Draft endpoints only; publishing and delivery are unavailable</small></span>
+                    <span><strong>Events & calendar drafts</strong><small>Private branch-scoped authoring is available to Admin/Pastor; registration, transport, attendance and check-in remain disabled</small></span>
+                    <span><strong>Announcements & visitor content</strong><small>Admin/Pastor can prepare private announcement, sermon and welcome-message drafts; publication and delivery remain disabled</small></span>
+                    
                     <span><strong>Prayer & pastoral care</strong><small>Restricted workflows are not exposed in this workspace</small></span>
                     <span><strong>Reports & exports</strong><small>Not implemented for production use</small></span>
                     <span><strong>SMS campaigns & automation</strong><small>Dispatch, consent and delivery tracking are not enabled</small></span>
