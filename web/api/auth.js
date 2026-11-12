@@ -65,7 +65,7 @@ export default async function handler(req, res) {
 
   const supabaseUrl = String(
     process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
-  ).replace(/\\/+$/, "");
+  ).replace(/\/+$/, "");
   const publishableKey = String(
     process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
       process.env.SUPABASE_PUBLISHABLE_KEY ||
@@ -87,7 +87,7 @@ export default async function handler(req, res) {
   const body = requestBody(req);
   let upstreamPath = "";
   let expectedMethod = "";
-  let requiresBearer = false;
+    !/^Bearer\s+[A-Za-z0-9._~+/-]+=*$/i.test(authorization.trim())
   let outgoingBody;
 
   if (grantType === "password" || grantType === "refresh_token") {
@@ -147,7 +147,7 @@ export default async function handler(req, res) {
     }
     expectedMethod = selected.method;
     upstreamPath = selected.path;
-    requiresBearer = selected.bearer;
+    !/^Bearer\s+[A-Za-z0-9._~+/-]+=*$/i.test(authorization.trim())
     if (
       (resource === "complete-password-change" || resource === "request-password-reset") &&
       !body
@@ -183,9 +183,9 @@ export default async function handler(req, res) {
   }
 
   const authorization = headerValue(req.headers.authorization);
-  if (requiresBearer && (
+    !/^Bearer\s+[A-Za-z0-9._~+/-]+=*$/i.test(authorization.trim())
     typeof authorization !== "string" ||
-    !/^Bearer\\s+[A-Za-z0-9._~+/-]+=*$/i.test(authorization.trim())
+    !/^Bearer\s+[A-Za-z0-9._~+/-]+=*$/i.test(authorization.trim())
   )) {
     return sendJson(res, 401, {
       error: { code: "AUTH_REQUIRED", message: "A valid sign-in session is required." },
@@ -202,7 +202,7 @@ export default async function handler(req, res) {
     apikey: publishableKey,
     Accept: "application/json",
   };
-  if (requiresBearer) headers.Authorization = authorization;
+    !/^Bearer\s+[A-Za-z0-9._~+/-]+=*$/i.test(authorization.trim())
   if (outgoingBody !== undefined) headers["Content-Type"] = "application/json";
 
   try {
