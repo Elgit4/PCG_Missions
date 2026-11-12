@@ -392,7 +392,7 @@ Deno.test("contact note create rejects empty, oversized and privileged fields", 
       },
       { body: "Follow up", visibility: "branch_scope" },
       { body: "Follow up", team_id: "10000000-0000-4000-8000-000000000016" },
-      { body: "Follow up", branch_id },
+      { body: "Follow up", branch_id: branchId },
     ]
   ) {
     const parsed = parseContactNoteCreate(input);
@@ -431,7 +431,7 @@ Deno.test("contact interaction create rejects unsupported, sensitive and malform
         interaction_type: "call",
         contact_id: "10000000-0000-4000-8000-000000000016",
       },
-      { interaction_type: "call", branch_id },
+      { interaction_type: "call", branch_id: branchId },
       { interaction_type: "call", occurred_at: "2026-11-12T18:30:00" },
       { interaction_type: "call", next_action_at: "yesterday" },
       { interaction_type: "call", outcome_code: "Contact was reached" },
