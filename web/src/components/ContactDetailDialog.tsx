@@ -185,7 +185,8 @@ export function ContactDetailDialog({
   const createInteraction = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canRecordInteraction || savingInteraction) return;
-    const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const rawNextAction = String(form.get("next_action_at") ?? "");
     const nextActionDate = rawNextAction ? new Date(rawNextAction) : null;
     if (nextActionDate && Number.isNaN(nextActionDate.getTime())) {
@@ -206,7 +207,7 @@ export function ContactDetailDialog({
       setInteractions((current) => [result.data, ...current]);
       setShowInteractionForm(false);
       setNotice("Interaction recorded.");
-      event.currentTarget.reset();
+      formElement.reset();
     } catch (error) {
       if (error instanceof CmiApiError && error.status === 401) onSessionExpired();
       setActionError(actionErrorMessage(error));
