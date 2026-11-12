@@ -174,7 +174,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       setResetReasons({});
     }
     if (canReadStaffDirectory) {
-      requests.push(api.listStaffDirectory(branchId, { limit: 100, offset: 0 })
+      requests.push(api.listStaffDirectory(branchId, { limit: 50, offset: 0 })
         .then((result) => { if (current) setStaffMembers(result.data); })
         .catch((error: unknown) => {
           if (!current) return;
@@ -201,7 +201,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0, search: query.trim() || undefined }) : Promise.resolve(null),
         canReadTasks ? api.listFollowUpTasks(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
         canManagePasswordResets ? api.listStaffPasswordResetRequests(branchId) : Promise.resolve(null),
-        canReadStaffDirectory ? api.listStaffDirectory(branchId, { limit: 100, offset: 0 }) : Promise.resolve(null),
+        canReadStaffDirectory ? api.listStaffDirectory(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
       ]);
       if (contactResult) {
         setContacts(contactResult.data);
@@ -233,7 +233,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       const result = await api.createStaffAccount(input);
       setActionNotice(`Staff account created. The temporary sign-in details were emailed to ${result.data.email}. The user must change the temporary password at first sign-in.`);
       setShowStaffForm(false);
-      const directory = await api.listStaffDirectory(branchId, { limit: 100, offset: 0 });
+      const directory = await api.listStaffDirectory(branchId, { limit: 50, offset: 0 });
       setStaffMembers(directory.data);
     } catch (error) { handleActionError(error); }
     finally { setSaving(false); }
