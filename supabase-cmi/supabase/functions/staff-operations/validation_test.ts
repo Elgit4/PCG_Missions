@@ -371,7 +371,6 @@ Deno.test("staff directory projection deduplicates roles and includes account st
   }
 });
 
-
 Deno.test("contact note create accepts and trims an ordinary note body", () => {
   const parsed = parseContactNoteCreate({
     body: "  Spoke after Sunday service.  ",
