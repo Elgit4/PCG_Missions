@@ -29,6 +29,51 @@ interface StorageLike {
   removeItem(key: string): void;
 }
 
+
+function xhrRequest(url: string, init: RequestInit): Promise<Response> {
+  return new Promise((resolve, reject) => {
+    if (typeof XMLHttpRequest === "undefined") {
+      reject(new TypeError("XMLHttpRequest is unavailable in this browser."));
+      return;
+    }
+    const request = new XMLHttpRequest();
+    request.open(init.method ?? "GET", url, true);
+    request.timeout = 15000;
+    new Headers(init.headers).forEach((value, key) => request.setRequestHeader(key, value));
+    request.onload = () => {
+      if (request.status === 0) {
+        reject(new TypeError("XMLHttpRequest completed without an HTTP response."));
+        return;
+      }
+      const responseHeaders = new Headers();
+      for (const line of request.getAllResponseHeaders().trim().split(/[\\r\\n]+/)) {
+        const separator = line.indexOf(":");
+        if (separator > 0) {
+          responseHeaders.append(line.slice(0, separator).trim(), line.slice(separator + 1).trim());
+        }
+      }
+      resolve(new Response(request.responseText, {
+        status: request.status,
+        statusText: request.statusText,
+        headers: responseHeaders,
+      }));
+    };
+    request.onerror = () => reject(new TypeError("XMLHttpRequest network error."));
+    request.ontimeout = () => reject(new TypeError("XMLHttpRequest timed out."));
+    request.onabort = () => reject(new TypeError("XMLHttpRequest was aborted."));
+    if (init.body === undefined || init.body === null) request.send();
+    else request.send(init.body as XMLHttpRequestBodyInit);
+  });
+}
+
+function errorDetail(error: unknown): string {
+  if (error instanceof Error) {
+    const message = error.message.replace(/[\\r\\n]+/g, " ").slice(0, 160);
+    return message ? `${error.name}: ${message}` : error.name;
+  }
+  return "Unknown network error";
+}
+
 export class AuthClientError extends Error {
   readonly status: number;
   readonly code: string;
@@ -264,28 +309,36 @@ export class PcgAuthClient {
         requestInit,
       );
     } catch (proxyError) {
-      if (this.isLocalDevelopment()) {
-        const errorName = proxyError instanceof Error ? proxyError.name : "NetworkError";
-        throw new AuthClientError(
-          0,
-          "AUTH_PROXY_UNREACHABLE",
-          `The browser could not send a POST request to the PCG sign-in proxy (${errorName}).`,
-        );
-      }
-      endpoint = "Supabase Auth directly";
+      // Some browser/network configurations reject fetch() even for same-origin
+      // POST requests. Probe the exact same proxy route with XMLHttpRequest before
+      // falling back to the cross-origin Supabase endpoint.
       try {
-        response = await this.fetcher(
-          `${this.baseUrl}/auth/v1/token?grant_type=password`,
+        response = await xhrRequest(
+          this.authEndpoint("grant_type=password", "/auth/v1/token?grant_type=password"),
           requestInit,
         );
-      } catch (directError) {
-        const proxyName = proxyError instanceof Error ? proxyError.name : "NetworkError";
-        const directName = directError instanceof Error ? directError.name : "NetworkError";
-        throw new AuthClientError(
-          0,
-          "AUTH_POST_UNREACHABLE",
-          `The browser could not send the sign-in POST to either endpoint. PCG proxy: ${proxyName}; Supabase: ${directName}.`,
-        );
+        endpoint = "PCG sign-in proxy via XMLHttpRequest";
+      } catch (xhrError) {
+        if (this.isLocalDevelopment()) {
+          throw new AuthClientError(
+            0,
+            "AUTH_PROXY_UNREACHABLE",
+            `Browser POST transports failed. Fetch: ${errorDetail(proxyError)}; XMLHttpRequest: ${errorDetail(xhrError)}.`,
+          );
+        }
+        endpoint = "Supabase Auth directly";
+        try {
+          response = await this.fetcher(
+            `${this.baseUrl}/auth/v1/token?grant_type=password`,
+            requestInit,
+          );
+        } catch (directError) {
+          throw new AuthClientError(
+            0,
+            "AUTH_POST_UNREACHABLE",
+            `Browser could not send the sign-in POST. PCG proxy fetch: ${errorDetail(proxyError)}; PCG proxy XHR: ${errorDetail(xhrError)}; Supabase fetch: ${errorDetail(directError)}.`,
+          );
+        }
       }
     }
 
