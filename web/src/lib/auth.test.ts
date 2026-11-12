@@ -47,6 +47,39 @@ describe("PcgAuthClient", () => {
     });
   });
 
+  it("tests the browser sign-in POST without using real credentials", async () => {
+    const storage = createMemoryStorage();
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      code: 400,
+      error_code: "invalid_credentials",
+      msg: "Invalid login credentials",
+    }), { status: 400 }));
+    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
+
+    await expect(client.testConnection()).resolves.toContain("Connection test passed");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/auth?grant_type=password");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body)).email).toBe("pcg-connection-check@invalid.example");
+    expect(storage.has("pcg-missions.auth.v1")).toBe(false);
+  });
+
+  it("falls back to the configured Supabase origin during the connection test", async () => {
+    const storage = createMemoryStorage();
+    const fetcher = vi.fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        code: 400,
+        error_code: "invalid_credentials",
+        msg: "Invalid login credentials",
+      }), { status: 400 }));
+    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
+
+    await expect(client.testConnection()).resolves.toContain("Supabase Auth directly");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[1]?.[0]).toBe("https://pcg-test.supabase.co/auth/v1/token?grant_type=password");
+  });
+
   it("refreshes an expired session and replaces its refresh token", async () => {
     const storage = createMemoryStorage();
     const fetcher = vi.fn()
