@@ -71,7 +71,7 @@ export interface ContactRecord {
   id: string;
   branch_id: string;
   first_name: string;
-  last_name?: string | null;
+  last_name: string | null;
   preferred_name?: string | null;
   phone_e164?: string | null;
   phone_display?: string | null;
@@ -89,7 +89,7 @@ export interface ContactCreateInput {
   branch_id: string;
   client_request_id: string;
   first_name: string;
-  last_name: string;
+  last_name?: string | null;
   preferred_name?: string | null;
   phone_e164?: string | null;
   phone_display?: string | null;
@@ -103,7 +103,7 @@ export interface ContactCreateInput {
 
 export interface ContactUpdateInput {
   first_name?: string;
-  last_name?: string;
+  last_name?: string | null;
   preferred_name?: string | null;
   age_range?: string | null;
   preferred_language?: string | null;
