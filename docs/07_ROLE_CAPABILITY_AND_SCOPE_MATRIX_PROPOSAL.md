@@ -100,7 +100,7 @@ Every capability must still be combined with scope predicates and field restrict
 
 ## 4. Proposed role-to-capability grant matrix
 
-Legend: **G** active grant in the current owner-directed source baseline; **S** active scoped grant; **P** active privileged grant; **C** reserved/conditional and not granted; **—** no grant. This table describes the actual current source grant set, not a promise that an unimplemented module is available.
+Legend: **G** ordinary active grant; **S** active assignment/team scoped grant; **P** active privileged/audited grant; **B (branch)** active branch-scoped private-draft grant to Admin/Pastor; **C** reserved/conditional and not granted; **—** no grant. The B grants do not authorize publication, public registration, transport, attendance or check-in.
 
 | Capability group | Admin / Pastor | Coordinator | Team leader | Field worker | Follow-up volunteer | Prayer intercessor |
 |---|---:|---:|---:|---:|---:|---:|
@@ -126,16 +126,19 @@ Legend: **G** active grant in the current owner-directed source baseline; **S** 
 | Care directory/groups | — | — | — | — | — | — |
 | Assigned care read/update | — (no care-worker role provisioned) | — | — | — | — | — |
 | Care privileged oversight read | P (reason-coded/audited) | — | — | — | — | — |
-| Events, registration, transport, check-in and closeout | — | — | — | — | — | — |
-| Calendar management | — | — | — | — | — | — |
-| Announcements/publication | — | — | — | — | — | — |
+| Private event draft read/manage only | B (branch) | — | — | — | — | — |
+| Public event registration, capacity, transport, attendance/check-in and closeout | — | — | — | — | — | — |
+| Branch calendar entries read/manage | B (branch) | — | — | — | — | — |
+| Private announcement drafts read/create | B (branch) | — | — | — | — | — |
+| Announcement publication and delivery | — | — | — | — | — | — |
+| Private sermon/welcome-message drafts | B (branch) | — | — | — | — | — |
+| Content publication, Daily Word and tract authoring | — | — | — | — | — | — |
 | Manual/bulk/automated SMS and provider configuration | — | — | — | — | — | — |
-| Public content authoring/publication | — | — | — | — | — | — |
 | Reports and exports | — | — | — | — | — | — |
 | Privileged audit log read | — | — | — | — | — | — |
 | Church-wide settings | — | — | — | — | — | — |
 
-* Admin/Pastor oversight is a separate explicit capability, not an unconditional bypass of assignment/privacy rules. The P notation here means the role may be granted that separate oversight capability subject to audit and approved policy.
+* Admin/Pastor pastoral oversight remains a separate explicit capability, not an unconditional bypass of assignment/privacy rules. B (branch) marks the seven additive draft-workspace capabilities granted on 12 November 2026; it never implies a publish, send, registration, attendance or pastoral-mutation capability.
 
 ### Role interpretation
 
