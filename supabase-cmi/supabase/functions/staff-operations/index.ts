@@ -322,8 +322,6 @@ async function visibleContactIds(
   return [...ids];
 }
 
-
-
 // Returns only active team memberships for this authenticated staff profile.
 async function activeContactTeamIds(
   service: ServiceClient,
@@ -1082,8 +1080,6 @@ Deno.serve(async (request: Request) => {
         id,
       );
     }
-
-
 
     if (
       (request.method === "GET" || request.method === "POST") &&
