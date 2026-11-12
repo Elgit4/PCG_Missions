@@ -4,7 +4,6 @@ import {
   createRequestDigest,
 } from "../_shared/idempotency.ts";
 import {
-  isUuid,
   canReadContactNote,
   deriveContactNotePlacement,
   isUuid,
@@ -342,7 +341,9 @@ async function activeContactTeamIds(
     .is("revoked_at", null)
     .eq("team.is_active", true);
   if (error) throw new Error("CONTACT_NOTE_TEAM_MEMBERSHIP_LOOKUP_FAILED");
-  return [...new Set((data ?? []).map((row: { team_id: string }) => row.team_id))];
+  return [
+    ...new Set((data ?? []).map((row: { team_id: string }) => row.team_id)),
+  ];
 }
 
 // Returns teams with a current assignment to the selected contact.
@@ -361,9 +362,11 @@ async function assignedContactTeamIds(
     .lte("starts_at", now)
     .or(`ends_at.is.null,ends_at.gt.${now}`);
   if (error) throw new Error("CONTACT_NOTE_ASSIGNMENT_LOOKUP_FAILED");
-  return [...new Set((data ?? []).flatMap((row: { team_id: string | null }) =>
-    row.team_id ? [row.team_id] : []
-  ))];
+  return [
+    ...new Set((data ?? []).flatMap((row: { team_id: string | null }) =>
+      row.team_id ? [row.team_id] : []
+    )),
+  ];
 }
 
 async function visibleFollowupTaskIds(
@@ -535,7 +538,8 @@ Deno.serve(async (request: Request) => {
     const contactRecordId = path[path.length - 2] ?? "";
     const isContactNotesCollection = path[path.length - 3] === "contacts" &&
       last === "notes" && isUuid(contactRecordId);
-    const isContactInteractionsCollection = path[path.length - 3] === "contacts" &&
+    const isContactInteractionsCollection =
+      path[path.length - 3] === "contacts" &&
       last === "interactions" && isUuid(contactRecordId);
 
     if (request.method === "GET" && isStaffDirectoryCollection) {
@@ -1093,7 +1097,13 @@ Deno.serve(async (request: Request) => {
         branchIds.length !== 1 ||
         !isUuid(branchId)
       ) {
-        return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
       }
 
       const contactScopes = await resolveScopes(
@@ -1138,37 +1148,53 @@ Deno.serve(async (request: Request) => {
           contactScopes.includes(scope)
         );
         if (effectiveNoteScopes.length === 0) {
-          return fail("FORBIDDEN", "Contact notes are not available to this account.", 403, origin, id);
+          return fail(
+            "FORBIDDEN",
+            "Contact notes are not available to this account.",
+            403,
+            origin,
+            id,
+          );
         }
-        const [actorTeamIds, contactTeamIds] = effectiveNoteScopes.includes("team")
-          ? await Promise.all([
-            activeContactTeamIds(auth.service, auth.profileId, branchId),
-            assignedContactTeamIds(auth.service, contactRecordId, branchId),
-          ])
-          : [[], []];
+        const [actorTeamIds, contactTeamIds] =
+          effectiveNoteScopes.includes("team")
+            ? await Promise.all([
+              activeContactTeamIds(auth.service, auth.profileId, branchId),
+              assignedContactTeamIds(auth.service, contactRecordId, branchId),
+            ])
+            : [[], []];
         const { data, error } = await auth.service
           .from("contact_note")
-          .select("id,body,visibility,team_id,author_user_id,created_at,updated_at")
+          .select(
+            "id,body,visibility,team_id,author_user_id,created_at,updated_at",
+          )
           .eq("contact_id", contactRecordId)
           .eq("branch_id", branchId)
           .order("created_at", { ascending: false })
           .limit(100);
         if (error) throw new Error("CONTACT_NOTE_LIST_FAILED");
         const visibleNotes = (data ?? [])
-          .filter((note) => canReadContactNote(
-            note as ContactNoteVisibilityRow,
-            auth.actorId,
-            effectiveNoteScopes,
-            actorTeamIds,
-            contactTeamIds,
-          ))
+          .filter((note) =>
+            canReadContactNote(
+              note as ContactNoteVisibilityRow,
+              auth.actorId,
+              effectiveNoteScopes,
+              actorTeamIds,
+              contactTeamIds,
+            )
+          )
           .map((note) => ({
             id: note.id,
             body: note.body,
             created_at: note.created_at,
             updated_at: note.updated_at,
           }));
-        return response({ data: visibleNotes, request_id: id }, 200, origin, id);
+        return response(
+          { data: visibleNotes, request_id: id },
+          200,
+          origin,
+          id,
+        );
       }
 
       if (isContactNotesCollection && request.method === "POST") {
@@ -1182,7 +1208,13 @@ Deno.serve(async (request: Request) => {
           contactScopes.includes(scope)
         );
         if (effectiveNoteScopes.length === 0) {
-          return fail("FORBIDDEN", "You cannot add a note to this contact.", 403, origin, id);
+          return fail(
+            "FORBIDDEN",
+            "You cannot add a note to this contact.",
+            403,
+            origin,
+            id,
+          );
         }
         let raw: unknown;
         try {
@@ -1204,19 +1236,26 @@ Deno.serve(async (request: Request) => {
         if (!parsed.ok) {
           return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
         }
-        const [actorTeamIds, contactTeamIds] = effectiveNoteScopes.includes("team")
-          ? await Promise.all([
-            activeContactTeamIds(auth.service, auth.profileId, branchId),
-            assignedContactTeamIds(auth.service, contactRecordId, branchId),
-          ])
-          : [[], []];
+        const [actorTeamIds, contactTeamIds] =
+          effectiveNoteScopes.includes("team")
+            ? await Promise.all([
+              activeContactTeamIds(auth.service, auth.profileId, branchId),
+              assignedContactTeamIds(auth.service, contactRecordId, branchId),
+            ])
+            : [[], []];
         const placement = deriveContactNotePlacement(
           effectiveNoteScopes,
           actorTeamIds,
           contactTeamIds,
         );
         if (!placement) {
-          return fail("FORBIDDEN", "A valid note visibility scope is not available for this contact.", 403, origin, id);
+          return fail(
+            "FORBIDDEN",
+            "A valid note visibility scope is not available for this contact.",
+            403,
+            origin,
+            id,
+          );
         }
         const { data, error } = await auth.service
           .from("contact_note")
