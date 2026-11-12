@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { DEMO_LOGIN_EMAIL, DEMO_LOGIN_PASSWORD } from "../lib/demo-preview";
 import {
   ArrowLeft,
   CalendarDays,
@@ -176,7 +177,7 @@ export function StaffLogin({
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="you@example.com"
                   required
-                  disabled={busy || !!configurationError}
+                  disabled={busy}
                 />
               </label>
             )}
@@ -193,7 +194,7 @@ export function StaffLogin({
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Enter your password"
                     required
-                    disabled={busy || !!configurationError}
+                    disabled={busy}
                   />
                   <button
                     type="button"
@@ -254,7 +255,7 @@ export function StaffLogin({
             <button
               type="submit"
               className="staff-login-submit"
-              disabled={busy || !!configurationError}
+              disabled={busy}
             >
               {busy
                 ? "Please wait…"
@@ -265,6 +266,24 @@ export function StaffLogin({
                 : "Save new password"}
             </button>
           </form>
+
+          {view === "sign-in" && (
+            <section className="staff-login-demo-card" aria-label="Demo login details">
+              <div className="staff-login-demo-heading">
+                <div><strong>Explore the demo workspace</strong><small>Fictional sample records · no real church data</small></div>
+                <span>DEMO</span>
+              </div>
+              <div className="staff-login-demo-credentials">
+                <div><small>EMAIL</small><code>{DEMO_LOGIN_EMAIL}</code></div>
+                <div><small>PASSWORD</small><code>{DEMO_LOGIN_PASSWORD}</code></div>
+              </div>
+              <button type="button" className="staff-login-demo-fill" disabled={busy} onClick={() => {
+                setEmail(DEMO_LOGIN_EMAIL);
+                setPassword(DEMO_LOGIN_PASSWORD);
+              }}>Fill demo credentials</button>
+              <p>Demo changes stay in memory for this session and disappear when you exit.</p>
+            </section>
+          )}
 
           <div className="staff-login-auth-bottom">
             {view === "sign-in" && (
