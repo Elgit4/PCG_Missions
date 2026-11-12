@@ -700,3 +700,76 @@ export function parseContactInteractionCreate(
   };
 }
 
+export type ContactNoteVisibility =
+  | "author_only"
+  | "assigned_scope"
+  | "team_scope"
+  | "branch_scope";
+
+export type ContactNotePlacement = {
+  visibility: ContactNoteVisibility;
+  team_id: string | null;
+};
+
+export interface ContactNoteVisibilityRow {
+  author_user_id: string;
+  visibility: ContactNoteVisibility;
+  team_id: string | null;
+}
+
+/**
+ * Returns a scope-derived placement for a new ordinary note.
+ * Team visibility requires the actor to be a current member of a team that
+ * also has an active assignment to the contact.
+ */
+export function deriveContactNotePlacement(
+  scopes: string[],
+  actorTeamIds: string[],
+  contactTeamIds: string[],
+): ContactNotePlacement | null {
+  if (scopes.includes("branch")) {
+    return { visibility: "branch_scope", team_id: null };
+  }
+  if (scopes.includes("team")) {
+    const contactTeams = new Set(contactTeamIds);
+    const sharedTeamId = actorTeamIds.find((teamId) => contactTeams.has(teamId));
+    if (sharedTeamId) {
+      return { visibility: "team_scope", team_id: sharedTeamId };
+    }
+  }
+  if (scopes.includes("assigned")) {
+    return { visibility: "assigned_scope", team_id: null };
+  }
+  if (scopes.includes("self")) {
+    return { visibility: "author_only", team_id: null };
+  }
+  return null;
+}
+
+/** Evaluates stored note visibility against current capability and team scope. */
+export function canReadContactNote(
+  note: ContactNoteVisibilityRow,
+  actorUserId: string,
+  scopes: string[],
+  actorTeamIds: string[],
+  contactTeamIds: string[],
+): boolean {
+  if (note.visibility === "author_only") {
+    return note.author_user_id === actorUserId;
+  }
+  if (note.visibility === "branch_scope") {
+    return scopes.includes("branch");
+  }
+  if (note.visibility === "assigned_scope") {
+    return scopes.includes("branch") || scopes.includes("assigned");
+  }
+  if (note.visibility === "team_scope") {
+    if (scopes.includes("branch")) return true;
+    if (!scopes.includes("team") || !note.team_id) return false;
+    const actorTeams = new Set(actorTeamIds);
+    const contactTeams = new Set(contactTeamIds);
+    return actorTeams.has(note.team_id) && contactTeams.has(note.team_id);
+  }
+  return false;
+}
+
