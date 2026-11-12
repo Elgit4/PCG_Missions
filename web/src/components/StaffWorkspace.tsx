@@ -580,7 +580,6 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                   <div className="cmi-module-boundary-grid">
                     <span><strong>Events & calendar drafts</strong><small>Private branch-scoped authoring is available to Admin/Pastor; registration, transport, attendance and check-in remain disabled</small></span>
                     <span><strong>Announcements & visitor content</strong><small>Admin/Pastor can prepare private announcement, sermon and welcome-message drafts; publication and delivery remain disabled</small></span>
-                    
                     <span><strong>Prayer & pastoral care</strong><small>Restricted workflows are not exposed in this workspace</small></span>
                     <span><strong>Reports & exports</strong><small>Not implemented for production use</small></span>
                     <span><strong>SMS campaigns & automation</strong><small>Dispatch, consent and delivery tracking are not enabled</small></span>
