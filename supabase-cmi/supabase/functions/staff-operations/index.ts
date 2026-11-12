@@ -512,7 +512,7 @@ Deno.serve(async (request: Request) => {
       let query = auth.service
         .from("staff_profile")
         .select(
-          "id,full_name,account_status,staff_role_assignment!inner(role:role!inner(code,name,is_active))",
+          "id,full_name,account_status,staff_role_assignment!staff_role_assignment_staff_profile_id_fkey!inner(role:role!inner(code,name,is_active))",
           { count: "exact" },
         )
         .in("account_status", ["active", "inactive"])
