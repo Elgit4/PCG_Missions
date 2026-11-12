@@ -241,6 +241,75 @@ export class PcgAuthClient {
     return { id: payload.id, email: payload.email ?? null };
   }
 
+  async testConnection(): Promise<string> {
+    const requestInit: RequestInit = {
+      method: "POST",
+      headers: {
+        apikey: this.publishableKey,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: "pcg-connection-check@invalid.example",
+        password: "not-a-real-password-for-connectivity-testing",
+      }),
+      cache: "no-store",
+    };
+
+    let response: Response;
+    let endpoint = "the PCG sign-in proxy";
+    try {
+      response = await this.fetcher(
+        this.authEndpoint("grant_type=password", "/auth/v1/token?grant_type=password"),
+        requestInit,
+      );
+    } catch (proxyError) {
+      if (this.isLocalDevelopment()) {
+        const errorName = proxyError instanceof Error ? proxyError.name : "NetworkError";
+        throw new AuthClientError(
+          0,
+          "AUTH_PROXY_UNREACHABLE",
+          `The browser could not send a POST request to the PCG sign-in proxy (${errorName}).`,
+        );
+      }
+      endpoint = "Supabase Auth directly";
+      try {
+        response = await this.fetcher(
+          `${this.baseUrl}/auth/v1/token?grant_type=password`,
+          requestInit,
+        );
+      } catch (directError) {
+        const proxyName = proxyError instanceof Error ? proxyError.name : "NetworkError";
+        const directName = directError instanceof Error ? directError.name : "NetworkError";
+        throw new AuthClientError(
+          0,
+          "AUTH_POST_UNREACHABLE",
+          `The browser could not send the sign-in POST to either endpoint. PCG proxy: ${proxyName}; Supabase: ${directName}.`,
+        );
+      }
+    }
+
+    const raw = await response.text().catch(() => "");
+    let payload: { error_code?: string; code?: string; error?: string; msg?: string } | null = null;
+    try {
+      payload = raw ? JSON.parse(raw) as typeof payload : null;
+    } catch {
+      payload = null;
+    }
+    const errorCode = payload?.error_code ?? payload?.code ?? payload?.error ?? "";
+    const message = payload?.msg ?? "";
+    if (
+      response.status === 400 &&
+      (errorCode === "invalid_credentials" || message.toLowerCase().includes("invalid login credentials"))
+    ) {
+      return `Connection test passed: your browser reached ${endpoint}, and Supabase Auth returned the expected response to a fake test account. This test did not sign you in.`;
+    }
+    if (response.status >= 500) {
+      return `Your browser reached ${endpoint}, but the authentication service returned HTTP ${response.status}.`;
+    }
+    return `Your browser reached ${endpoint} and received HTTP ${response.status}, but it was not the expected test response. Response code: ${String(errorCode || "not provided")}.`;
+  }
+
   async signIn(email: string, password: string): Promise<AuthSession> {
     const normalizedEmail = email.trim().toLowerCase();
     const payload = await this.requestAuth<AuthResponse>(
