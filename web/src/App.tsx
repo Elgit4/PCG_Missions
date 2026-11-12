@@ -50,6 +50,9 @@ export default function App() {
   const clearAuthentication = useCallback(async () => {
     try {
       await auth?.signOut();
+    } catch {
+      // Authentication state is cleared locally even if browser storage or
+      // the optional server-side global sign-out request is unavailable.
     } finally {
       setStaffSession(null);
       setView("sign-in");
