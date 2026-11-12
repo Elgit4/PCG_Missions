@@ -373,7 +373,9 @@ Deno.test("staff directory projection deduplicates roles and includes account st
 
 
 Deno.test("contact note create accepts and trims an ordinary note body", () => {
-  const parsed = parseContactNoteCreate({ body: "  Spoke after Sunday service.  " });
+  const parsed = parseContactNoteCreate({
+    body: "  Spoke after Sunday service.  ",
+  });
   if (!parsed.ok) throw new Error(parsed.error);
   if (parsed.value.body !== "Spoke after Sunday service.") {
     throw new Error("The note body was not normalized.");
@@ -381,16 +383,23 @@ Deno.test("contact note create accepts and trims an ordinary note body", () => {
 });
 
 Deno.test("contact note create rejects empty, oversized and privileged fields", () => {
-  for (const input of [
-    { body: "   " },
-    { body: "x".repeat(4001) },
-    { body: "Follow up", author_user_id: "10000000-0000-4000-8000-000000000015" },
-    { body: "Follow up", visibility: "branch_scope" },
-    { body: "Follow up", team_id: "10000000-0000-4000-8000-000000000016" },
-    { body: "Follow up", branch_id },
-  ]) {
+  for (
+    const input of [
+      { body: "   " },
+      { body: "x".repeat(4001) },
+      {
+        body: "Follow up",
+        author_user_id: "10000000-0000-4000-8000-000000000015",
+      },
+      { body: "Follow up", visibility: "branch_scope" },
+      { body: "Follow up", team_id: "10000000-0000-4000-8000-000000000016" },
+      { body: "Follow up", branch_id },
+    ]
+  ) {
     const parsed = parseContactNoteCreate(input);
-    if (parsed.ok) throw new Error("Invalid or caller-controlled note input was accepted.");
+    if (parsed.ok) {
+      throw new Error("Invalid or caller-controlled note input was accepted.");
+    }
   }
 });
 
@@ -412,22 +421,31 @@ Deno.test("contact interaction create accepts normalized fields and explicit tim
 });
 
 Deno.test("contact interaction create rejects unsupported, sensitive and malformed fields", () => {
-  for (const input of [
-    { interaction_type: "prayer" },
-    { interaction_type: "call", actor_user_id: "10000000-0000-4000-8000-000000000015" },
-    { interaction_type: "call", contact_id: "10000000-0000-4000-8000-000000000016" },
-    { interaction_type: "call", branch_id },
-    { interaction_type: "call", occurred_at: "2026-11-12T18:30:00" },
-    { interaction_type: "call", next_action_at: "yesterday" },
-    { interaction_type: "call", outcome_code: "Contact was reached" },
-    { interaction_type: "call", summary: "x".repeat(1001) },
-    { interaction_type: "call", visibility: "branch_scope" },
-  ]) {
+  for (
+    const input of [
+      { interaction_type: "prayer" },
+      {
+        interaction_type: "call",
+        actor_user_id: "10000000-0000-4000-8000-000000000015",
+      },
+      {
+        interaction_type: "call",
+        contact_id: "10000000-0000-4000-8000-000000000016",
+      },
+      { interaction_type: "call", branch_id },
+      { interaction_type: "call", occurred_at: "2026-11-12T18:30:00" },
+      { interaction_type: "call", next_action_at: "yesterday" },
+      { interaction_type: "call", outcome_code: "Contact was reached" },
+      { interaction_type: "call", summary: "x".repeat(1001) },
+      { interaction_type: "call", visibility: "branch_scope" },
+    ]
+  ) {
     const parsed = parseContactInteractionCreate(input);
-    if (parsed.ok) throw new Error("Unsupported or invalid interaction input was accepted.");
+    if (parsed.ok) {
+      throw new Error("Unsupported or invalid interaction input was accepted.");
+    }
   }
 });
-
 
 Deno.test("contact note visibility is derived from the strongest valid scope", () => {
   const branch = deriveContactNotePlacement(["assigned", "branch"], [], []);
@@ -442,12 +460,20 @@ Deno.test("contact note visibility is derived from the strongest valid scope", (
   if (team?.visibility !== "team_scope" || team.team_id !== "team-b") {
     throw new Error("A matching active team was not selected.");
   }
-  const assigned = deriveContactNotePlacement(["team", "assigned"], ["team-a"], ["team-b"]);
+  const assigned = deriveContactNotePlacement(
+    ["team", "assigned"],
+    ["team-a"],
+    ["team-b"],
+  );
   if (assigned?.visibility !== "assigned_scope") {
-    throw new Error("The assignment scope should be used when no team assignment overlaps.");
+    throw new Error(
+      "The assignment scope should be used when no team assignment overlaps.",
+    );
   }
   if (deriveContactNotePlacement(["team"], ["team-a"], ["team-b"]) !== null) {
-    throw new Error("A team note was allowed without a shared team assignment.");
+    throw new Error(
+      "A team note was allowed without a shared team assignment.",
+    );
   }
 });
 
@@ -458,24 +484,62 @@ Deno.test("contact note visibility is checked against current author, scope and 
     team_id: "team-a",
   };
   if (!canReadContactNote(note, "user-b", ["team"], ["team-a"], ["team-a"])) {
-    throw new Error("A current member of the assigned team should read its note.");
+    throw new Error(
+      "A current member of the assigned team should read its note.",
+    );
   }
   if (canReadContactNote(note, "user-b", ["team"], ["team-a"], ["team-b"])) {
-    throw new Error("A team note was exposed without a matching contact assignment.");
+    throw new Error(
+      "A team note was exposed without a matching contact assignment.",
+    );
   }
-  if (canReadContactNote(note, "user-b", ["assigned"], ["team-a"], ["team-a"])) {
+  if (
+    canReadContactNote(note, "user-b", ["assigned"], ["team-a"], ["team-a"])
+  ) {
     throw new Error("A team note was exposed to an assigned-only scope.");
   }
-  if (!canReadContactNote({ ...note, visibility: "branch_scope" }, "user-b", ["branch"], [], [])) {
+  if (
+    !canReadContactNote(
+      { ...note, visibility: "branch_scope" },
+      "user-b",
+      ["branch"],
+      [],
+      [],
+    )
+  ) {
     throw new Error("A branch-scoped reader should read branch notes.");
   }
-  if (canReadContactNote({ ...note, visibility: "branch_scope" }, "user-b", ["team"], ["team-a"], ["team-a"])) {
+  if (
+    canReadContactNote(
+      { ...note, visibility: "branch_scope" },
+      "user-b",
+      ["team"],
+      ["team-a"],
+      ["team-a"],
+    )
+  ) {
     throw new Error("Team scope must not read branch-only notes.");
   }
-  if (!canReadContactNote({ ...note, visibility: "author_only" }, "user-a", ["team"], [], [])) {
+  if (
+    !canReadContactNote(
+      { ...note, visibility: "author_only" },
+      "user-a",
+      ["team"],
+      [],
+      [],
+    )
+  ) {
     throw new Error("An author should read their author-only note.");
   }
-  if (canReadContactNote({ ...note, visibility: "author_only" }, "user-b", ["branch"], [], [])) {
+  if (
+    canReadContactNote(
+      { ...note, visibility: "author_only" },
+      "user-b",
+      ["branch"],
+      [],
+      [],
+    )
+  ) {
     throw new Error("Branch scope must not override author-only visibility.");
   }
 });
