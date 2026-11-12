@@ -113,6 +113,35 @@ export interface ContactUpdateInput {
   email_normalized?: string | null;
 }
 
+export interface ContactNote {
+  id: string;
+  body: string;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface ContactInteraction {
+  id: string;
+  interaction_type: "call" | "visit" | "message" | "meeting" | "other";
+  occurred_at: string;
+  outcome_code: string | null;
+  summary: string | null;
+  next_action_at: string | null;
+  created_at: string;
+}
+
+export interface ContactNoteCreateInput {
+  body: string;
+}
+
+export interface ContactInteractionCreateInput {
+  interaction_type: ContactInteraction["interaction_type"];
+  occurred_at?: string | null;
+  outcome_code?: string | null;
+  summary?: string | null;
+  next_action_at?: string | null;
+}
+
 export interface FollowUpTask {
   id: string;
   branch_id: string;
@@ -361,6 +390,39 @@ export class CmiApiClient {
     return this.request<ContactRecord>("staff-operations", `/contacts/${encodeURIComponent(contactId)}`, {
       method: "PATCH", query: { branch_id: branchId }, body: input,
     });
+  }
+
+  listContactNotes(branchId: string, contactId: string) {
+    return this.request<ContactNote[]>(
+      "staff-operations",
+      `/contacts/${encodeURIComponent(contactId)}/notes`,
+      { query: { branch_id: branchId } },
+    );
+  }
+  createContactNote(branchId: string, contactId: string, input: ContactNoteCreateInput) {
+    return this.request<ContactNote>(
+      "staff-operations",
+      `/contacts/${encodeURIComponent(contactId)}/notes`,
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+  listContactInteractions(branchId: string, contactId: string) {
+    return this.request<ContactInteraction[]>(
+      "staff-operations",
+      `/contacts/${encodeURIComponent(contactId)}/interactions`,
+      { query: { branch_id: branchId } },
+    );
+  }
+  createContactInteraction(
+    branchId: string,
+    contactId: string,
+    input: ContactInteractionCreateInput,
+  ) {
+    return this.request<ContactInteraction>(
+      "staff-operations",
+      `/contacts/${encodeURIComponent(contactId)}/interactions`,
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
   }
 
   listFollowUpTasks(branchId: string, options: { limit?: number; offset?: number; status?: FollowUpTask["status"] } = {}) {
