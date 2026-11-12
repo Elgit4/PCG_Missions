@@ -148,18 +148,27 @@ export class PcgAuthClient {
   }
 
   private async sendWithBrowserFallback(url: string, init: RequestInit): Promise<Response> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    let fetchError: unknown;
     try {
-      return await this.fetcher(url, init);
-    } catch (fetchError) {
-      try {
-        return await xhrRequest(url, init);
-      } catch (xhrError) {
-        throw new AuthClientError(
-          0,
-          "NETWORK_ERROR",
-          `Browser request failed. Fetch: ${errorDetail(fetchError)}; XMLHttpRequest: ${errorDetail(xhrError)}.`,
-        );
-      }
+      return await this.fetcher(url, { ...init, signal: controller.signal });
+    } catch (error) {
+      fetchError = error;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    // Some browsers/extensions leave fetch pending instead of rejecting it.
+    // Abort it after 10 seconds, then make one bounded XHR attempt.
+    try {
+      return await xhrRequest(url, init);
+    } catch (xhrError) {
+      throw new AuthClientError(
+        0,
+        "NETWORK_ERROR",
+        `Browser request failed or timed out. Fetch: ${errorDetail(fetchError)}; XMLHttpRequest: ${errorDetail(xhrError)}.`,
+      );
     }
   }
 
