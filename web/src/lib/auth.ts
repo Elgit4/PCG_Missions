@@ -41,22 +41,34 @@ function xhrRequest(url: string, init: RequestInit): Promise<Response> {
     request.timeout = 15000;
     new Headers(init.headers).forEach((value, key) => request.setRequestHeader(key, value));
     request.onload = () => {
-      if (request.status === 0) {
-        reject(new TypeError("XMLHttpRequest completed without an HTTP response."));
-        return;
-      }
-      const responseHeaders = new Headers();
-      for (const line of request.getAllResponseHeaders().trim().split(/[\\r\\n]+/)) {
-        const separator = line.indexOf(":");
-        if (separator > 0) {
-          responseHeaders.append(line.slice(0, separator).trim(), line.slice(separator + 1).trim());
+      try {
+        if (request.status === 0) {
+          reject(new TypeError("XMLHttpRequest completed without an HTTP response."));
+          return;
         }
+        const responseHeaders = new Headers();
+        // XHR exposes response headers separated by CRLF. Split on actual
+        // line breaks, not the literal characters "\\r" and "\\n".
+        for (const line of request.getAllResponseHeaders().split(/\r?\n/)) {
+          const separator = line.indexOf(":");
+          if (separator <= 0) continue;
+          const name = line.slice(0, separator).trim();
+          const value = line.slice(separator + 1).trim();
+          if (!name) continue;
+          try {
+            responseHeaders.append(name, value);
+          } catch {
+            // Ignore browser-restricted response headers; preserve status/body.
+          }
+        }
+        resolve(new Response(request.responseText, {
+          status: request.status,
+          statusText: request.statusText,
+          headers: responseHeaders,
+        }));
+      } catch (error) {
+        reject(error instanceof Error ? error : new TypeError("Unable to read the XHR response."));
       }
-      resolve(new Response(request.responseText, {
-        status: request.status,
-        statusText: request.statusText,
-        headers: responseHeaders,
-      }));
     };
     request.onerror = () => reject(new TypeError("XMLHttpRequest network error."));
     request.ontimeout = () => reject(new TypeError("XMLHttpRequest timed out."));
