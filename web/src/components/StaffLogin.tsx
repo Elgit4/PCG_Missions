@@ -101,7 +101,7 @@ export function StaffLogin({
   const description = view === "sign-in"
     ? "Sign in to continue to your ministry workspace."
     : view === "forgot-password"
-    ? "Send a secure reset request. Your church administrator will review it before a recovery link is sent."
+    ? "Submit your staff email. An authorised Admin/Pastor reviews the request before a temporary password is issued."
     : view === "recovery"
     ? "Your reset request has been approved. Choose a new password only you know."
     : "Your temporary setup password has served its purpose. Replace it with your private password to unlock the workspace.";
@@ -291,8 +291,8 @@ export function StaffLogin({
           </div>
 
           <div className="staff-login-support">
-            <span>Need help accessing the portal?</span>
-            <p>Contact an authorised church administrator. Password reset requests are reviewed and recorded before a recovery link is issued.</p>
+            <span>{view === "sign-in" ? "First administrator access?" : "Need help accessing the portal?"}</span>
+            <p>{view === "sign-in" ? "The first Admin/Pastor receives a one-time temporary password after secure setup. Regular staff access is issued by an authorised administrator." : "Password reset requests are reviewed and recorded by an authorised church administrator before a temporary password is issued."}</p>
           </div>
         </div>
 

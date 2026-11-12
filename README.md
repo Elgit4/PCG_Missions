@@ -8,15 +8,15 @@ CMI Follow-up supports church field capture, contacts, follow-up, prayer and car
 
 ## Current product baseline
 
-- **Staff access:** email and administrator-issued PIN.
+- **Staff access:** Supabase Auth email/password, short-lived temporary onboarding credentials and mandatory first-login password replacement.
 - **Roles:** Admin/Pastor, Coordinator, Team leader, Field worker, Follow-up volunteer and Prayer intercessor. Users may hold multiple roles, with effective permissions constrained by record, team, event and assignment scope.
 - **Experiences:** authenticated staff workspace plus separate public visitor site.
-- **Contacts:** online and limited queued offline field capture, duplicate merge, notes, history and follow-up assignment.
-- **Events:** event setup, public registration when enabled, optional transport reservations, check-in, event-specific assignments and closeout.
+- **Contacts:** online field capture, duplicate review/merge, notes, history and scoped follow-up assignment. Offline capture is disabled for the initial release.
+- **Events:** event draft authoring and schema foundations are present; public registration, transactional capacity, transport, check-in and closeout endpoints remain incomplete.
 - **Prayer and care:** restricted pastoral information and assigned intercessor access.
 - **Public content:** church profile, active events, welcome content, published sermons/daily words and digital tracts.
-- **Offline:** queued field captures, cached capture pickers and previously opened event check-in data only.
-- **Communications:** manual one-to-one SMS, permission-scoped bulk SMS and configurable automated SMS; WhatsApp automation is not included.
+- **Offline:** disabled for the initial production release until encrypted local storage, device binding, expiry and conflict-recovery tests pass.
+- **Communications:** Hubtel server-side adapter is present; live SMS dispatch, campaigns and automation remain disabled until consent, sender, provider, cost and authorization controls are complete.
 - **Out of scope:** multi-church network administration and the future/held capabilities listed in the master specification.
 
 ## Proposed database design (committed review artifacts)
@@ -26,6 +26,7 @@ The current database-design proposal is committed on `main`:
 - [Logical Data Model](docs/06_CMI_LOGICAL_DATA_MODEL_PROPOSAL.md)
 - [Editable Crow's Foot ERD](docs/database/CMI_Follow_Up_Logical_ERD_v0.1.drawio)
 - [Role/Capability Matrix](docs/07_ROLE_CAPABILITY_AND_SCOPE_MATRIX_PROPOSAL.md)
+- [Owner-Directed Safe-Default Decision Baseline](docs/31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md)
 - [Physical PostgreSQL Schema Proposal](docs/08_CMI_PHYSICAL_DATABASE_SCHEMA_PROPOSAL.md)
 - [Database Design Validation Report](docs/09_DATABASE_DESIGN_VALIDATION_REPORT.md)
 - [ERD-to-Physical Schema Traceability](docs/10_ERD_TO_PHYSICAL_SCHEMA_TRACEABILITY.md)
@@ -62,8 +63,8 @@ Do not apply the old ChurchConnect migrations to a live CMI project. Do not conn
 - Update the master specification and affected functional/security/data/architecture documents when requirements change.
 - Record stakeholder approvals before implementation where the documents identify an open decision.
 - Use synthetic data for development and testing.
-- Never commit passwords, service-role keys, provider secrets or private visitor/prayer data.
+- Never commit PINs, passwords, service-role keys, provider secrets or private visitor/prayer data.
 
 ## Backend implementation status
 
-The CMI backend is maintained in the dedicated `supabase-cmi/` workspace, separate from the historical top-level `supabase/` ChurchConnect tree. The integrated staff frontend source is present under `web/`; administrator bootstrap, staff account lifecycle and first-admin delivery-recovery source are maintained in feature branches and remain subject to review. The current authorization feature branch contains 13 permanent CMI migrations, validated by isolated local CI; they have not been applied to hosted production. The connected hosted Supabase project has 11 foundation tables, three recorded migrations and zero deployed CMI Edge Functions. The product owner confirmed Supabase email/password authentication on 10 November 2026; the earlier email + PIN proposal is superseded. PR #33 implements bounded and concurrency-serialized first-admin delivery recovery; its backend CI passed with 14 permanent migrations and 355 pgTAP assertions. It remains an unmerged draft. No production email provider, CMI Edge Functions or staff accounts have been provisioned. See the [backend implementation status](supabase-cmi/IMPLEMENTATION_STATUS.md), [production database audit](docs/PRODUCTION_DATABASE_AUDIT_2026-11-10.md), [client approval and handover pack](docs/29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md), [schema reconciliation crosswalk](docs/16_CMI_SCHEMA_RECONCILIATION_AND_DECISION_CROSSWALK.md) and [CMI workspace guide](supabase-cmi/README.md). Never run the legacy top-level `supabase/` migrations for CMI.
+The CMI backend is maintained in the dedicated `supabase-cmi/` workspace, separate from the historical top-level `supabase/` ChurchConnect tree. Production reconciliation on 11 November 2026: the connected Supabase project has 15 ordered migrations, 50 public tables with RLS enabled, 58 explicit role-capability grants and nine active Edge Functions. No Auth users, staff profiles, church records or branch records exist yet, so the first administrator is not provisioned and staff sign-in is not yet usable. The Vercel frontend is deployed at https://pcg-missions.vercel.app; the source changes are being consolidated into `main`. Staff authentication uses Supabase email/password with a one-time temporary password and mandatory first-login replacement. First-admin bootstrap uses transactional email only; SMS is not called and live SMS dispatch remains disabled. Offline mode, public registration, exports and incomplete event/report workflows also remain disabled. The pastoral audited-read path remains held pending independent security review before use with real pastoral records. See the [backend implementation status](supabase-cmi/IMPLEMENTATION_STATUS.md), [client approval and handover pack](docs/29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md), [safe-default decision baseline](docs/31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md) and [CMI workspace guide](supabase-cmi/README.md). Never run the legacy top-level `supabase/` migrations for CMI.

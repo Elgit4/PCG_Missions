@@ -18,9 +18,9 @@ Use this guide with the role and permissions assigned to your account. The speci
 
 The app supports the full follow-up workflow for a service, outreach, or event - from capture and assignment to care, prayer, and reports.
 
-Sign in with your registered email address and password. For initial access or an administrator-approved reset, use the temporary password sent to your verified email address, then set your own private password before using the workspace. Your access is limited to the pages and records permitted for your role.
+Sign in with your staff email and the temporary password sent to your verified email address. On first sign-in, create your own private permanent password. Your access is limited to the pages and records permitted for your assigned role and scope.
 
-If you use a shared device, sign out when finished. Never share your password or leave it saved on a shared device.
+If you use a shared device, sign out when finished. Do not share your PIN.
 
 **Open:** Sign in
 
@@ -122,7 +122,7 @@ Before sending, check the recipient number and message. Respect consent and comm
 
 Message statuses may include queued, submitted, delivered, failed or undeliverable. Submitted does not necessarily mean delivered. Report failed messages to an authorized administrator rather than repeatedly sending them.
 
-Never include prayer-request details, private pastoral notes, confidential care information, passwords in an SMS. WhatsApp links are user-initiated and are not automated WhatsApp messaging.
+Never include prayer-request details, private pastoral notes, confidential care information, PINs or passwords in an SMS. WhatsApp links are user-initiated and are not automated WhatsApp messaging.
 
 **Open:** Announcements . SMS / Communications
 
@@ -206,7 +206,7 @@ The optional seeker-facing AI tools, interactive gospel journey, anonymous Q&A, 
 
 Multi-church network administration is not enabled. The current service is configured for the church instance and branch.
 
-Offline mode is limited to queued field captures, cached capture pickers, and previously opened event check-in data. It is not a full offline copy of the application.
+Offline mode is disabled for the initial release. Do not store contact, attendance or pastoral information on a shared or personal device for later synchronization.
 
 ---
 
@@ -214,7 +214,7 @@ Offline mode is limited to queued field captures, cached capture pickers, and pr
 
 The app stores sensitive pastoral and contact information. Use the least access needed and follow church policy.
 
-Do not share your password or leave an admin session open on a shared device. Sign out when finished and use a device lock.
+Do not share a PIN or leave an admin session open on a shared device. Sign out when finished and use a device lock.
 
 Only collect information needed for ministry follow-up. Respect the person's consent and keep prayer requests private unless sharing was explicitly approved.
 
@@ -222,7 +222,7 @@ Use role- and event-scoped access rather than sending attendee lists or private 
 
 Use the application's consent prompts as configured by the church. Data-retention and data-subject request processes must follow the church's approved policy.
 
-For problems, record the page, approximate time, and action that failed, then contact the church's app administrator. Never send passwords, temporary credentials or private visitor data in a support request.
+For problems, record the page, approximate time, and action that failed, then contact the church's app administrator. Never send passwords, PINs, or private visitor data in a support request.
 
 ---
 

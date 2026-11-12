@@ -45,7 +45,7 @@ The ERD contains 53 named entity boxes across seven pages. The mapping below rec
 | EVENTS | events | `event` | Event lifecycle, publication and registration state. |
 | EVENT_REGISTRATIONS | event registrations | `event_registration` | Attendee snapshots and idempotent intake. |
 | TRANSPORT_RESERVATIONS | transport reservations | `transport_option`, `transport_reservation` | Normalizes event transport options and reservations. |
-| EVENT_ATTENDANCE | event attendance/check-in | `event_checkin` | Name snapshot supports walk-in/offline check-in. |
+| EVENT_ATTENDANCE | event attendance/check-in | `event_checkin` | Name snapshot supports staff-recorded walk-in check-in; offline check-in is disabled. |
 | EVENT_CLOSEOUTS | event closeouts | `event_closeout`, `event_closeout_event` | Current state separated from append-only history. |
 | CONTACT_COMMUNICATION_PREFERENCES | communication preferences | `communication_preference` | Consent/lawful-basis evidence and withdrawal. |
 | SMS_SUPPRESSIONS | SMS/channel suppressions | `communication_suppression` | Channel-aware and phone-level suppression. |
@@ -67,7 +67,7 @@ The ERD contains 53 named entity boxes across seven pages. The mapping below rec
 | MINISTRY_REPORTS | ministry reports | `ministry_report` | Daily, event and weekly report types. |
 | REPORT_REVIEW_EVENTS | report review events | `report_review_event` | Append-only review history. |
 | AUDIT_EVENTS | audit events | `audit_event` | Append-only security/privileged-action record. |
-| OFFLINE_SYNC_RECEIPTS | offline sync receipts | `offline_sync_receipt` | Idempotency receipt, not a full offline store. |
+| OFFLINE_SYNC_RECEIPTS | future offline sync receipts | deferred; no initial-release table | Reserved only if offline mode is re-enabled through change control. |
 
 ## 3. Physical support tables not represented as standalone ERD entities
 
@@ -86,7 +86,7 @@ The ERD contains 53 named entity boxes across seven pages. The mapping below rec
 4. **SMS recipient identity:** physical campaign recipients support contact or staff identity. Add a check matching recipient class and exactly one identity; confirm allowed recipient classes.
 5. **SMS campaign body:** logical model mentions `body_snapshot`; physical model prefers immutable `sms_template_version`. Confirm whether every campaign must use an approved template or campaign-specific body snapshots are allowed.
 6. **Transport detail:** pickup area and notes are represented in physical reservations. Confirm whether pickup area is free text or a controlled lookup.
-7. **Attendance identity:** confirm duplicate prevention when neither registration nor contact ID exists for a walk-in/offline attendee.
+7. **Attendance identity:** staff-recorded walk-ins require a name snapshot when no registration/contact ID exists; offline attendee capture is disabled.
 8. **Public registration snapshots:** approve exact attendee fields and retention before finalizing columns.
 9. **Field-level access:** approve R-05/R-11 field matrix before exposing contact-linked fields.
 10. **Branch consistency:** identify every parent/child pair requiring composite branch foreign keys in the final data dictionary.

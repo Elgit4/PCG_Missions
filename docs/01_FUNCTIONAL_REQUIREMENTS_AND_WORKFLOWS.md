@@ -5,7 +5,7 @@
 This document groups requirements by the work users perform. It defines expected behaviour, not implementation status.
 
 ## 1. Staff access and workspace
-- Staff sign in with their registered email and password through Supabase Auth. Initial access and administrator-approved recovery use generated, short-lived temporary passwords that must be replaced before workspace access.
+- Staff sign in using their registered email address and password through Supabase Auth. Initial onboarding/reset uses a random, short-lived temporary password; first login requires the staff member to set a private permanent password.
 - Staff see only modules, actions and records authorized for their effective roles and assignments.
 - A user may hold multiple roles; permissions combine without widening record scope beyond church, team, event or assignment boundaries.
 - Shared-device sign-out and password confidentiality are mandatory operating practices.
@@ -18,15 +18,15 @@ This document groups requirements by the work users perform. It defines expected
 - Detect possible duplicates and allow authorized merging from the record actions menu.
 - A merge must preserve the surviving contact's relevant history and record the merge action for audit/recovery.
 
-**Acceptance:** A permitted worker can capture a contact on a phone, save it online or queue it offline, find it later within scope, and review its history.
+**Acceptance for the initial release:** A permitted worker can capture a contact online, find it later within scope, and review its history. Offline queueing is disabled until the device-security gate passes.
 
 ## 3. Offline field capture
-Offline support is intentionally narrow:
+Offline capture is specified as a future capability but is **disabled for the initial production release** until encrypted local storage, device/session binding, expiry, sign-out recovery and conflict handling pass security tests. When enabled, scope is intentionally narrow:
 - queued field capture form;
 - cached capture pickers;
 - previously opened event check-in data.
 
-Queued captures sync when connection returns. Provide visible pending/syncing/synced/failed states. Use stable local identifiers and idempotent server writes to prevent duplicate contacts during retry. Do not promise offline access to the full application, general contact directory, prayer records, reports or public content. Conflict resolution and local retention/security require technical approval.
+When enabled, queued captures sync when connection returns. Provide visible pending/syncing/synced/failed states. Use stable local identifiers and idempotent server writes to prevent duplicate contacts during retry. Do not provide offline access to the full application, general contact directory, prayer/care records, reports or public content. Offline mode remains unavailable until the approved security gate passes.
 
 **Acceptance:** A queued record survives app restart and intermittent connectivity, syncs once when possible, and surfaces a recoverable error when it cannot sync.
 
@@ -82,20 +82,20 @@ Queued captures sync when connection returns. Provide visible pending/syncing/sy
 - Contact communication actions must respect the recipient's preferences and the sender's access scope.
 
 ### 9.1 Manual one-to-one SMS
-- Authorized staff can compose and send an individual SMS from a contact record or approved communication workspace.
+- Authorized staff may compose an individual SMS only after the provider, lawful basis/consent, opt-out, sender identity, role capability and cost controls are approved and enabled. The feature is disabled by default.
 - Show the destination number, message preview and any available segment/cost estimate before send.
 - Respect contact scope, consent, opt-out/suppression status and configured sending limits.
 - Record the sender, recipient reference, timestamp, message status and provider reference.
 
 ### 9.2 Bulk SMS campaigns
-- Authorized users can create a campaign and select recipients from permitted scopes, such as an event audience, team or eligible contact list.
+- Authorized users may create scoped campaign drafts after provider and policy setup. Dispatch remains disabled by default; creator and approver must be different active users.
 - Revalidate audience membership and consent at send time; exclude opted-out, invalid and suppressed numbers.
 - Show recipient count, message preview, segment estimate and provider cost estimate where available.
 - Require explicit final confirmation; record campaign creator, approver (if required), audience criteria, template/content version and send outcome.
 - Support queued, scheduled, sending, partially sent, completed, paused, cancelled and failed campaign states. Provide safe retry without duplicate delivery.
 
 ### 9.3 Automated SMS
-- Support configurable, explicitly enabled triggers such as event registration confirmation, event updates/reminders and scheduled follow-up reminders.
+- The automated trigger catalogue starts empty and all rules are disabled. A trigger may be enabled only after its recipient class, lawful purpose, template, timing, caps and idempotency are approved.
 - Every automation rule must declare its recipient class (visitor/contact/staff assignee), trigger source, eligibility conditions and timing. A follow-up reminder must identify whether it targets the assigned staff member or the contact; do not infer the recipient.
 - Each trigger has an approved template, enable/disable control, timing rule, recipient eligibility check and audit trail.
 - Do not enable triggers by default until the church approves the wording, timing, audience and provider configuration.
