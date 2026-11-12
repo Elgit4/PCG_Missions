@@ -17,6 +17,12 @@ function messageFor(error: unknown): string {
     if (error.status === 409) return "This operation conflicts with an existing request or a recent record change. Refresh the data before trying again.";
     if (error.status === 422) return "Some submitted fields need correction. Review the form and try again.";
     if (error.status === 429) return "Too many requests were made. Wait a moment before trying again.";
+    if (error.code === "STAFF_INVITATION_EMAIL_FAILED") {
+      return "The staff account was created, but its invitation email was not delivered. Do not create the account again. Check the Staff list, then have the person use Forgot password after the church email sender has been fixed.";
+    }
+    if (error.code === "AUTH_EMAIL_NOT_CONFIGURED") {
+      return "Staff account creation is blocked because the church email sender is not configured for invitations. No new staff account was created.";
+    }
     if (error.status === 503) return "This service is temporarily unavailable. Try again later.";
     if (error.status === 0) return error.message;
     return `${error.message}${error.requestId ? ` (Reference: ${error.requestId})` : ""}`;
@@ -252,7 +258,23 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       setShowStaffForm(false);
       const directory = await api.listStaffDirectory(branchId, { limit: 50, offset: 0 });
       setStaffMembers(directory.data);
-    } catch (error) { handleActionError(error); }
+    } catch (error) {
+      if (error instanceof CmiApiError && error.code === "STAFF_INVITATION_EMAIL_FAILED") {
+        setShowStaffForm(false);
+        setActionError("");
+        setActionNotice(
+          `The staff account for ${input.email} was created, but the invitation email was not delivered. Do not create it again. Fix the church email sender, then ask this staff member to use Forgot password so you can approve a temporary-password reset.`,
+        );
+        try {
+          const directory = await api.listStaffDirectory(branchId, { limit: 50, offset: 0 });
+          setStaffMembers(directory.data);
+        } catch (refreshError) {
+          setLoadError(messageFor(refreshError));
+        }
+      } else {
+        handleActionError(error);
+      }
+    }
     finally { setSaving(false); }
   };
 
@@ -526,11 +548,40 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                 {canReadContacts && <button type="button" onClick={() => setPage("Contacts")}><Users size={15} /> Open contacts</button>}
                 {canReadTasks && <button type="button" onClick={() => setPage("Follow-up")}><ClipboardList size={15} /> Review follow-up</button>}
               </div>
-              <div className="cmi-panel"><div className="cmi-panel-heading"><div><p className="cmi-eyebrow">ACCESS SUMMARY</p><h3>What you can work with</h3></div></div>
+              {canReadContacts && contacts.length === 0 && !loading && <section className="cmi-getting-started">
+                <div className="cmi-getting-started-copy">
+                  <p className="cmi-eyebrow">GETTING STARTED</p>
+                  <h3>Your branch is ready for its first contact.</h3>
+                  <p>There are currently no contact or follow-up records in this branch. Add a real contact to unlock the contact profile, notes, call and visit history, and linked follow-up tasks.</p>
+                  <button type="button" className="cmi-button cmi-button-primary" onClick={() => { setPage("Contacts"); setShowContactForm(true); }}>
+                    <Plus size={15} /> Add your first contact
+                  </button>
+                </div>
+                <ol className="cmi-getting-started-steps">
+                  <li><strong>Capture a contact</strong><span>Use the Contacts page to record a visitor or person needing follow-up.</span></li>
+                  <li><strong>Open the contact name</strong><span>View the profile, add ordinary notes, and record calls, visits or messages.</span></li>
+                  <li><strong>Create a follow-up task</strong><span>Link the task to that contact, set a priority and due date, then track its progress.</span></li>
+                </ol>
+              </section>}
+              <div className="cmi-panel"><div className="cmi-panel-heading"><div><p className="cmi-eyebrow">ACCESS SUMMARY</p><h3>What is actually available</h3><p>The Admin workspace only lists modules whose screens and permissions are currently enabled.</p></div></div>
                 <div className="cmi-permission-list">
-                  <div><span className={canReadContacts ? "cmi-dot enabled" : "cmi-dot"} />Contacts and visitor records <strong>{canReadContacts ? "Available" : "Not granted"}</strong></div>
+                  <div><span className="cmi-dot enabled" />Overview and branch workspace <strong>Available</strong></div>
+                  <div><span className={canReadContacts ? "cmi-dot enabled" : "cmi-dot"} />Contacts, notes and activity history <strong>{canReadContacts ? "Available in Contacts" : "Not granted"}</strong></div>
                   <div><span className={canReadTasks ? "cmi-dot enabled" : "cmi-dot"} />Follow-up tasks <strong>{canReadTasks ? "Available" : "Not granted"}</strong></div>
-                  <div><span className="cmi-dot" />Prayer narratives and reports <strong>Unavailable in this release</strong></div>
+                  <div><span className={canReadStaffDirectory ? "cmi-dot enabled" : "cmi-dot"} />Staff accounts <strong>{canReadStaffDirectory ? "Available" : "Not granted"}</strong></div>
+                  <div><span className={canManagePasswordResets ? "cmi-dot enabled" : "cmi-dot"} />Password-reset requests <strong>{canManagePasswordResets ? "Available" : "Not granted"}</strong></div>
+                </div>
+                <div className="cmi-module-boundary">
+                  <p className="cmi-eyebrow">NOT ENABLED IN THIS ADMIN RELEASE</p>
+                  <div className="cmi-module-boundary-grid">
+                    <span><strong>Events & registration</strong><small>Draft backend only; no Admin module or public registration flow</small></span>
+                    <span><strong>Calendar</strong><small>Backend endpoints exist; no Admin screen</small></span>
+                    <span><strong>Announcements & content publishing</strong><small>Draft endpoints only; publishing and delivery are unavailable</small></span>
+                    <span><strong>Prayer & pastoral care</strong><small>Restricted workflows are not exposed in this workspace</small></span>
+                    <span><strong>Reports & exports</strong><small>Not implemented for production use</small></span>
+                    <span><strong>SMS campaigns & automation</strong><small>Dispatch, consent and delivery tracking are not enabled</small></span>
+                    <span><strong>Offline capture and sync</strong><small>Disabled for this release</small></span>
+                  </div>
                 </div>
               </div>
             </>
@@ -587,8 +638,12 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             </form>}
             {canReadContacts && <>
               <div className="cmi-table-wrap"><table className="cmi-table"><caption className="cmi-sr-only">Contacts visible in the current branch and access scope</caption><thead><tr><th scope="col">CONTACT</th><th scope="col">STATUS</th><th scope="col">LANGUAGE</th><th scope="col">IDENTITY</th></tr></thead><tbody>
-                {visibleContacts.map((contact) => <tr key={contact.id}><td data-label="Contact"><button type="button" className="cmi-contact-open" onClick={() => setSelectedContact(contact)} aria-label={`Open contact record for ${displayName(contact)}`}>{displayName(contact)}</button><small>{contact.id}</small></td><td data-label="Status"><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td data-label="Language">{contact.preferred_language || "Not recorded"}</td><td data-label="Identity">{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
-              </tbody></table>{!visibleContacts.length && !loading && <p className="cmi-empty-row">No contacts are available for this search and access scope.</p>}</div>
+                {visibleContacts.map((contact) => <tr key={contact.id}><td data-label="Contact"><button type="button" className="cmi-contact-open" onClick={() => setSelectedContact(contact)} aria-label={`Open contact profile, notes and activity for ${displayName(contact)}`}><strong>{displayName(contact)}</strong><span>Open profile, notes & activity</span></button><small>{contact.id}</small></td><td data-label="Status"><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td data-label="Language">{contact.preferred_language || "Not recorded"}</td><td data-label="Identity">{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
+              </tbody></table>{!visibleContacts.length && !loading && <div className="cmi-contact-empty">
+                <strong>{query.trim() ? "No contacts match that search." : "No contacts have been added yet."}</strong>
+                <span>{query.trim() ? "Clear the search or try another first name." : "Add a contact to begin using profiles, notes, interaction history and follow-up tasks."}</span>
+                {canCreateContacts && !query.trim() && <button type="button" className="cmi-button cmi-button-primary" onClick={() => setShowContactForm(true)}><Plus size={14} />Add first contact</button>}
+              </div>}</div>
               {contactsHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreContacts()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more contacts"}</button></div>}
             </>}
           </div>}
@@ -596,6 +651,10 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           {page === "Follow-up" && canReadTasks && <div className="cmi-panel">
             <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h3>Follow-up tasks</h3><p>Filter tasks in your current branch and assignment scope. Counts reflect the loaded records.</p></div>
               {canSelfAssignTask && <button className="cmi-button cmi-button-primary" onClick={() => setShowTaskForm((value) => !value)} disabled={!canReadContacts || !contacts.length}><Plus size={16} />New task</button>}
+              {canCreateTasks && canSelfAssignTask && (!canReadContacts || !contacts.length) && <div className="cmi-task-prerequisite" role="note">
+                <span>Follow-up tasks must be attached to a visible contact before they can be created.</span>
+                {canCreateContacts && <button type="button" onClick={() => { setPage("Contacts"); setShowContactForm(true); }}>Add a contact first</button>}
+              </div>}
               {canCreateTasks && !canSelfAssignTask && <span className="cmi-scope-note">Task creation is granted, but a supported team assignment target is not available in this workspace.</span>}
             </div>
             {showTaskForm && canCreateTasks && <form className="cmi-form-grid" onSubmit={createTask}>
