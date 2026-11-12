@@ -147,7 +147,7 @@ export default async function handler(req, res) {
     }
     expectedMethod = selected.method;
     upstreamPath = selected.path;
-  let requiresBearer = false;
+    requiresBearer = selected.bearer;
     if (
       (resource === "complete-password-change" || resource === "request-password-reset") &&
       !body
