@@ -126,6 +126,71 @@ describe("CmiApiClient", () => {
     expect(result.data[0]?.interaction_type).toBe("visit");
   });
 
+  it("lists event drafts through the authenticated branch-scoped function", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: [], request_id: "event-list" }), { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.listEventDrafts("branch-a", { limit: 20, offset: 40 });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/event-operations/events");
+    expect(url.searchParams.get("branch_id")).toBe("branch-a");
+    expect(url.searchParams.get("limit")).toBe("20");
+    expect(url.searchParams.get("offset")).toBe("40");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
+  });
+
+  it("creates only a private event draft payload through the server function", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "event-1" }, request_id: "event-create" }), { status: 201 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    const input = {
+      branch_id: "branch-a",
+      title: "Sunday outreach",
+      description: null,
+      starts_at: "2026-11-15T08:00:00.000Z",
+      ends_at: "2026-11-15T10:00:00.000Z",
+      timezone: "Africa/Accra",
+      location: null,
+    };
+    await client.createEventDraft(input);
+    const [, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual(input);
+    expect(JSON.stringify(init.body)).not.toContain("visibility");
+  });
+
+  it("uses the calendar and announcement draft endpoints with branch scope", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: [], request_id: "draft-list" }), { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.listCalendarEntries("branch-a");
+    await client.listAnnouncementDrafts("branch-a");
+    const first = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    const second = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(first[0].pathname).toBe("/functions/v1/calendar-operations/entries");
+    expect(first[0].searchParams.get("branch_id")).toBe("branch-a");
+    expect(second[0].pathname).toBe("/functions/v1/announcement-operations/announcements");
+    expect(second[0].searchParams.get("branch_id")).toBe("branch-a");
+  });
+
+  it("routes sermon and welcome-message drafts through the authenticated content function", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: [], request_id: "content-list" }), { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.listSermonDrafts("branch-a");
+    await client.listWelcomeMessageDrafts("branch-a");
+    const sermon = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    const welcome = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(sermon[0].pathname).toBe("/functions/v1/content-operations/sermons");
+    expect(welcome[0].pathname).toBe("/functions/v1/content-operations/welcome-messages");
+    expect(sermon[0].searchParams.get("branch_id")).toBe("branch-a");
+    expect(welcome[0].searchParams.get("branch_id")).toBe("branch-a");
+  });
+
   it("records an allowlisted interaction payload", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: { id: "interaction-2", interaction_type: "call" }, request_id: "interaction-create" }),
