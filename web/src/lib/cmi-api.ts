@@ -95,7 +95,7 @@ export interface ContactCreateInput {
   phone_display?: string | null;
   email_normalized?: string | null;
   age_range?: string | null;
-  preferred_language?: string;
+  preferred_language?: string | null;
   service_area_id?: string | null;
   team_id?: string | null;
   source_metadata?: Record<string, unknown>;
