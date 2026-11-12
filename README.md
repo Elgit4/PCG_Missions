@@ -10,9 +10,9 @@ The CMI Follow-up v2.1 target scope covers church field capture, contacts, follo
 
 - **Staff access:** Supabase Auth email/password, short-lived temporary onboarding credentials and mandatory first-login password replacement.
 - **Roles:** Admin/Pastor, Coordinator, Team leader, Field worker, Follow-up volunteer and Prayer intercessor. Users may hold multiple roles, with effective permissions constrained by record, team, event and assignment scope.
-- **Experiences:** authenticated staff workspace plus separate public visitor site.
-- **Contacts:** online field capture, duplicate review/merge, notes, history and scoped follow-up assignment. Offline capture is disabled for the initial release.
-- **Events:** event draft authoring and schema foundations are present; public registration, transactional capacity, transport, check-in and closeout endpoints remain incomplete.
+- **Experiences:** authenticated staff workspace is deployed; a separate public visitor site remains to be completed.
+- **Contacts:** scoped listing, search, detail, ordinary notes and interaction history are deployed. Contact capture exists but currently fails closed until its server-side idempotency secret is configured; duplicate merge remains unimplemented. Offline capture is disabled.
+- **Events:** backend private-draft endpoints are deployed; new Admin/Pastor draft screens and grants are pending CI/review in the current feature branch. Public registration, transactional capacity, transport, check-in and closeout remain incomplete.
 - **Prayer and care:** restricted pastoral information and assigned intercessor access.
 - **Public content:** church profile, active events, welcome content, published sermons/daily words and digital tracts.
 - **Offline:** disabled for the initial production release until encrypted local storage, device binding, expiry and conflict-recovery tests pass.
@@ -21,11 +21,20 @@ The CMI Follow-up v2.1 target scope covers church field capture, contacts, follo
 
 ## Current implementation and deployment snapshot — 12 November 2026
 
-The deployed staff workspace is a foundation release, not the complete v2.1 product. The current interface provides Overview, scoped Contacts listing/search/capture, Follow-up task listing and updates, and staff-account/password-reset administration where granted. The contact-detail, notes and interaction-history workflow is being added on the isolated `feat/usable-staff-workspace` branch; its new Edge Function routes are not production-ready until backend CI, deployment and authenticated endpoint verification pass.
+Production is a usable staff-workspace foundation, not the complete CMI Follow-up v2.1 product. The deployed UI currently provides Overview, Contacts, Follow-up, Staff and Access requests. PR #40 added contact profiles, ordinary notes and call/visit/message interaction history; PR #41 improved first-contact guidance and staff-invitation failure handling. The PR #41 merge commit `4a43d87e70da876bc5caa912c7770c8069564768` is deployed to Vercel production and the production site returns HTTP 200.
 
-The hosted Supabase project currently records 15 ordered migrations, 50 RLS-enabled public tables, 58 explicit role-capability grants across six roles, and ten active Edge Functions. Those counts describe the technical foundation, not completion of every business module.
+The hosted Supabase project has **16 ordered migrations**, **50 RLS-enabled public tables**, **61 active capability catalogue entries**, **58 active role-capability grants** across six roles, and ten active Edge Function entries (including the retired bootstrap endpoint that returns HTTP 410). Existing event, calendar, announcement and content Edge Functions support private drafts only; their production Admin/Pastor grants and screens are not yet present.
 
-The following remain incomplete, disabled or approval/security-gated: full contact merge and history lifecycle; pastoral prayer/care operations; event public registration, capacity, transport, attendance/check-in and closeout; announcements/publication and full content publishing; reports/review/exports; live SMS, campaigns and automation; offline capture/sync. Do not load real congregant data or represent these features as available until the documented privacy, security, UAT and production release gates have been met.
+The feature branch `feat/admin-operational-modules-and-hardening` contains capability-gated Admin/Pastor draft screens for Events, Calendar, Announcements and visitor content, typed API clients, tested branch-time-zone conversion, a forward migration adding seven branch-scoped draft-only grants, and updated regression tests. The branch is pending CI/review. It is not live until merged, deployed and its migration applied.
+
+**Known production blockers:**
+- Contact capture returns HTTP 503 `IDEMPOTENCY_NOT_CONFIGURED` when `CMI_CONTACT_IDEMPOTENCY_HMAC_KEY` is missing/too short or its version setting is invalid. Follow-up task creation requires the separate `CMI_FOLLOWUP_IDEMPOTENCY_HMAC_KEY`. Both must be generated and configured as Supabase Edge Function secrets; never place them in frontend variables, GitHub source or chat. The connected tool session cannot write Supabase secrets.
+- Staff invitation/recovery email uses Resend's test sender domain `onboarding@resend.dev`. A domain controlled by the church/project owner must be verified and `CMI_AUTH_EMAIL_FROM` updated. One staff profile already exists after an invitation-email failure; do not recreate that account.
+- Two staff profiles are active; one has completed first-login password setup and one still requires it. There are currently no seeded contact or follow-up business records.
+
+Still incomplete or gated: separate public visitor site, full contact merge lifecycle, team administration, typed ministry reports/review/exports, public event registration and capacity reservation, transport, attendance/check-in and closeout, announcement/content publishing, pastoral mutations, SMS campaigns/dispatch/automation, offline capture/sync and retention automation. The pastoral-operations function remains undeployed pending independent security review. SMS remains disabled until the provider/sender and privacy/consent gates are approved.
+
+Do not load real congregant data until controller privacy obligations, privacy notice/lawful purpose, operational email delivery, staging/UAT, backup-restore rehearsal, monitoring and module-specific release gates are completed.
 
 ## Proposed database design (committed review artifacts)
 
@@ -57,13 +66,11 @@ These are review artifacts, not approved migrations or a production schema.
 | — | [Full documentation index](docs/README.md) | Reading order and legacy artifact register |
 | — | [Repository audit report](docs/REPOSITORY_AUDIT_REPORT.md) | Consistency findings, verification limits and remaining release gates |
 
-## Implementation status and critical warning
+## Safety and rollout boundaries
 
-The retained ChurchConnect ERDs and historical materials describe an earlier two-role database model. Any associated legacy migrations, RLS policies or tests are **legacy/provisional** and are not evidence that the current CMI requirements have been implemented. The target CMI data model, ERD, migrations and RLS test suite must be redesigned and reviewed before deployment.
+The historical top-level `supabase/` tree belongs to the earlier ChurchConnect product and must not be applied to CMI. Use only `supabase-cmi/` for CMI database work. The current CMI product is protected by server-authorized Edge Functions; browser code must not access protected business tables directly.
 
-The documents describe the intended product; they do not establish that every feature is already implemented in a running application. Verify code, hosted services and test results separately.
-
-Do not apply the old ChurchConnect migrations to a live CMI project. Do not connect this project to SkillSprint's Supabase instance. SMS remains unavailable until a provider, sender identity, consent/opt-out process and production configuration are validated. Do not represent WhatsApp automation, full offline operation, multi-church network or other future/held features as available.
+The product-owner default decisions are recorded in [document 31](docs/31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md). A capability shown in the database catalogue is not automatically granted. SMS dispatch, offline access, public registration, event capacity/transport/check-in, pastoral mutations and exports remain disabled until their dedicated controls, permissions, tests and release gates pass.
 
 ## Repository governance
 
@@ -75,4 +82,4 @@ Do not apply the old ChurchConnect migrations to a live CMI project. Do not conn
 
 ## Backend implementation status
 
-The CMI backend is maintained in the dedicated `supabase-cmi/` workspace, separate from the historical top-level `supabase/` ChurchConnect tree. Production reconciliation on 11 November 2026: the connected Supabase project has 15 ordered migrations, 50 public tables with RLS enabled, 58 explicit role-capability grants and nine active Edge Functions. No Auth users, staff profiles, church records or branch records exist yet, so the first administrator is not provisioned and staff sign-in is not yet usable. The Vercel frontend is deployed at https://pcg-missions.vercel.app; the source changes are being consolidated into `main`. Staff authentication uses Supabase email/password with a one-time temporary password and mandatory first-login replacement. First-admin bootstrap uses transactional email only; SMS is not called and live SMS dispatch remains disabled. Offline mode, public registration, exports and incomplete event/report workflows also remain disabled. The pastoral audited-read path remains held pending independent security review before use with real pastoral records. See the [backend implementation status](supabase-cmi/IMPLEMENTATION_STATUS.md), [client approval and handover pack](docs/29_CLIENT_STAKEHOLDER_APPROVAL_AND_HANDOVER_PACK.md), [safe-default decision baseline](docs/31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md) and [CMI workspace guide](supabase-cmi/README.md). Never run the legacy top-level `supabase/` migrations for CMI.
+The CMI backend is maintained in `supabase-cmi/`, separate from the legacy ChurchConnect tree. Production status, known 503 configuration failures, migration/grant counts and gated modules are maintained in [`supabase-cmi/IMPLEMENTATION_STATUS.md`](supabase-cmi/IMPLEMENTATION_STATUS.md). The first Admin/Pastor account has been provisioned and first-login setup is complete for one active profile; another active profile still requires password setup after an invitation delivery failure. SMS remains disabled pending provider approval. Never put secrets, passwords or private congregant data in source control or chat.
