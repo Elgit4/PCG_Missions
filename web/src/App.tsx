@@ -128,6 +128,23 @@ export default function App() {
     }
   };
 
+  const handleConnectionTest = async () => {
+    if (!auth) {
+      setError(configurationError || "The sign-in service is not configured.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      setNotice(await auth.testConnection());
+    } catch (cause) {
+      setError(messageFor(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleResetRequest = async (email: string) => {
     if (!auth) {
       setError(configurationError || "The sign-in service is not configured.");
@@ -206,6 +223,7 @@ export default function App() {
       onSignIn={handleSignIn}
       onRequestReset={handleResetRequest}
       onSetPassword={handleSetPassword}
+      onTestConnection={handleConnectionTest}
     />
   );
 }
