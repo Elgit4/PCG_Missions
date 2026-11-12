@@ -595,9 +595,18 @@ Deno.serve(async (request: Request) => {
     );
   }
 
-  const path = new URL(request.url).pathname.replace(/\/+$/, "").split("/")
-    .filter(Boolean);
-  const route = path.slice(3);
+  const pathnameParts = new URL(request.url).pathname.replace(/\/+$/, "")
+    .split("/").filter(Boolean);
+  // Supabase Edge Runtime versions expose either the complete function URL,
+  // the function-relative subpath, or the function slug plus subpath.
+  // Resolve all supported shapes so public recovery routes do not fall through
+  // to the authenticated staff-operation handler.
+  const functionSegmentIndex = pathnameParts.lastIndexOf("staff-auth");
+  const route = functionSegmentIndex >= 0
+    ? pathnameParts.slice(functionSegmentIndex + 1)
+    : pathnameParts[0] === "functions" && pathnameParts[1] === "v1"
+    ? pathnameParts.slice(3)
+    : pathnameParts;
   const action = route.join("/");
   try {
     if (request.method === "POST" && action === "bootstrap-admin") {
