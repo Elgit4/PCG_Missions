@@ -183,9 +183,10 @@ export default async function handler(req, res) {
   }
 
   const authorization = headerValue(req.headers.authorization);
-    !/^Bearer\s+[A-Za-z0-9._~+/-]+=*$/i.test(authorization.trim())
+  if (requiresBearer && (
     typeof authorization !== "string" ||
-    !/^Bearer\s+[A-Za-z0-9._~+/-]+=*$/i.test(authorization.trim())
+    !authorization.trim().toLowerCase().startsWith("bearer ") ||
+    authorization.trim().slice(7).length === 0
   )) {
     return sendJson(res, 401, {
       error: { code: "AUTH_REQUIRED", message: "A valid sign-in session is required." },
