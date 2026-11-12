@@ -41,11 +41,11 @@ The system uses the owner-directed least-privilege baseline and continues to fai
 | `follow_up_volunteer` | Follow-up Volunteer | Assigned follow-up work and minimum contact fields |
 | `prayer_intercessor` | Prayer Intercessor | Prayer requests actively assigned to that intercessor; no general contact directory |
 
-The database role catalogue constrains role codes to these six values. The owner-directed baseline in PR #38 seeds 58 explicit grants: 55 ordinary visitor/follow-up grants after removing lower-role phone/email identity access, plus one assigned prayer-read grant for Prayer Intercessor and two explicit audited pastoral oversight-read grants for Admin/Pastor. Admin/Pastor retains explicit branch-scoped identity capabilities; lower roles receive minimized projections. These are the limited visitor/follow-up permissions recorded in the current product-owner implementation baseline. Pastoral mutation, Coordinator prayer metadata, assigned-care access, SMS, exports and offline capabilities remain ungranted/disabled pending their implementation and compliance gates.
+The database role catalogue constrains role codes to these six values. The original owner-directed visitor/follow-up baseline seeded 58 explicit grants. On 12 November 2026, the product owner approved seven additional branch-scoped Admin/Pastor grants for private event, calendar, announcement, sermon and welcome-message drafts (65 total after migration). Admin/Pastor retains explicit branch-scoped identity capabilities and audited pastoral oversight-read; lower roles receive minimized projections. Publication, public registration, transport, attendance/check-in, pastoral mutation, team administration, reports/exports, SMS and offline remain ungranted or disabled pending their own implementation and release gates.
 
 ## 4. Implemented first-administrator baseline
 
-The bootstrap assigns the first administrator the existing `admin_pastor` role in the configured branch. The four capabilities below are the limited staff-control-plane permissions needed for account administration. They are not the administrator's complete capability list: the Admin/Pastor role also receives the 18 branch-scoped visitor/follow-up MVP capabilities seeded by the separate visitor authorization migration. Bootstrap does not create extra business grants or bypass the role catalogue.
+The bootstrap assigns the first administrator the existing `admin_pastor` role in the configured branch. The four capabilities below are the staff-control-plane permissions needed for account administration. The role's complete baseline also includes branch-scoped visitor/follow-up capabilities, contact identity and pastoral oversight-read, plus the seven separately migrated draft-workspace capabilities. Bootstrap does not create extra business grants or bypass the role catalogue.
 
 | Capability | Why it is needed |
 |---|---|
@@ -83,14 +83,14 @@ The following is the proposed operational baseline. Every entry is a recommendat
 | Prayer narrative read/update | No blanket access; separate audited oversight | Workflow metadata only by default | No | No | No | Assigned request only |
 | Prayer workflow coordination | Separate explicit capability | Metadata/assignment only | No | No | No | Assigned request only |
 | Care records | Separate audited oversight | No by default | Assigned care only if separately approved | No | No | No |
-| Events/registration/check-in | Branch-scoped | Branch-scoped | Assigned events/team | Assigned event tasks | Conditional assigned event tasks | None |
-| Calendar/announcements | Branch administration | Branch-scoped | Team/event-scoped | Read only if needed | Read only if needed | Read only if needed |
+| Private event/calendar/announcement/content drafts | Admin/Pastor only, branch-scoped | None | None | None | None | None |
+| Public registration, transport, attendance/check-in and publication | Disabled pending separate gates | Disabled | Disabled | Disabled | Disabled | Disabled |
 | Individual SMS | Disabled until approved | Disabled until approved | Disabled until approved | Disabled | Disabled | Disabled |
 | Bulk SMS | Create/approve/send only under dual-control policy | Draft/approve only as approved | Draft for own team/event only | None | None | None |
 | SMS automation/provider | Provider/global settings only after approval | No global control | None | None | None | None |
 | Reports | Branch review | Branch/team review | Own team review | Submit own | Submit own | None unless approved |
 | Audit logs | Privileged metadata only | None | None | None | None | None |
-| Public content | Publish authority after approval | Draft only unless approved | Draft only if delegated | None | None | None |
+| Public content publication | Disabled; private sermon/welcome drafts only | None | None | None | None | None |
 
 ### Exact interpretation rules
 

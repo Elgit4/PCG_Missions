@@ -81,6 +81,17 @@ These are not blockers to implementing the safe-default code, but they are block
 - Ghana Data Protection Act, 2012 (Act 843) — purpose limitation, data-subject awareness, retention limitation and security safeguards: https://ghalii.org/akn/gh/act/2012/843/eng@2012-05-18
 - OWASP Logging Cheat Sheet — audit security events while excluding/masking credentials and sensitive personal data: https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html
 
+## 7.1 Owner-directed amendment — private draft workspaces (12 November 2026)
+
+The product owner instructed engineering to implement the remaining safe operational draft screens while external SMS approval is pending. The following additive grants are approved for the existing Admin/Pastor role only and only at the active branch scope:
+
+- `event.read.scoped` and `event.manage.scoped`: list and maintain private event drafts.
+- `calendar.read.scoped` and `calendar.manage.scoped`: list and maintain branch calendar entries.
+- `announcement.read.scoped` and `announcement.create.scoped`: list and create/edit private announcement drafts (creator-only editing remains enforced by the Edge Function).
+- `content.manage.draft`: create and edit the caller's own private sermon and welcome-message drafts.
+
+This adds seven explicit grants (65 total across the six roles). The grants do not authorize announcement/content publication, public registration, capacity reservation, transport, attendance/check-in, event closeout, report/export, team administration, pastoral mutation, SMS or offline use. Each request remains authenticated and server-authorized against active branch assignment and the exact capability. Lower roles receive no additional grant. See migration `20261112193000_admin_pastor_branch_draft_module_grants.sql` and the matching pgTAP assertions.
+
 ## 7. Change control
 
 This is the product owner's current engineering baseline. Stakeholders may request amendments at any time. Each amendment must record the requested change, rationale, approver, date, impact on roles/data/security, migration plan, tests and rollback. A later stakeholder change does not retroactively make the present least-privilege baseline unsafe or invalid.

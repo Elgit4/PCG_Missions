@@ -2195,3 +2195,43 @@ button, input, select, textarea { font: inherit; }
   .cmi-getting-started{padding:17px}
 }
 
+
+
+/* Capability-gated event, calendar and visitor-draft workspaces */
+.cmi-operations-workspace{display:grid;gap:14px;min-width:0}
+.cmi-operations-heading{align-items:flex-start}
+.cmi-operations-heading>div:first-child{min-width:0;max-width:720px}
+.cmi-operations-heading h3{margin:0;color:var(--cmi-text);font-size:clamp(19px,2.2vw,23px);font-weight:750;letter-spacing:-.035em}
+.cmi-operations-heading p:not(.cmi-eyebrow){max-width:650px;margin:7px 0 0;color:var(--cmi-muted);font-size:11px;line-height:1.65}
+.cmi-operations-timezone{display:block;margin-top:8px;color:var(--cmi-subtle);font-size:9px}
+.cmi-operations-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:none}
+.cmi-operations-tabs{display:flex;align-items:center;gap:6px;margin:-3px 0 16px;padding-bottom:13px;border-bottom:1px solid var(--cmi-border-soft)}
+.cmi-operations-tabs button{min-height:34px;padding:0 12px;border:1px solid var(--cmi-border);border-radius:8px;background:var(--cmi-surface);color:var(--cmi-muted);font:650 10px "DM Sans Variable",sans-serif;cursor:pointer}
+.cmi-operations-tabs button.active{border-color:#9d3545;background:#351b27;color:#ffe8eb}
+.cmi-operations-form{margin:0 0 18px;border-color:var(--cmi-border);background:var(--cmi-bg-raised)}
+.cmi-operations-form label{color:var(--cmi-muted)}
+.cmi-operations-form input,.cmi-operations-form select,.cmi-operations-form textarea{min-height:39px;border-color:var(--cmi-border);border-radius:8px;background:var(--cmi-bg);color:var(--cmi-text);font:11px "DM Sans Variable",sans-serif;color-scheme:dark}
+.cmi-operations-form textarea{min-height:92px;resize:vertical;line-height:1.6}
+.cmi-operations-form input:focus-visible,.cmi-operations-form select:focus-visible,.cmi-operations-form textarea:focus-visible,.cmi-operations-tabs button:focus-visible{outline:2px solid var(--cmi-red);outline-offset:2px}
+.cmi-operations-form input::placeholder,.cmi-operations-form textarea::placeholder{color:var(--cmi-subtle)}
+.cmi-operations-list{margin-top:7px}
+.cmi-operations-list .cmi-task-row{min-width:0;gap:12px}
+.cmi-operations-list .cmi-task-copy p{white-space:normal;line-height:1.5}
+.cmi-operations-list .cmi-task-copy small{display:block;max-width:650px;line-height:1.5;overflow-wrap:anywhere}
+.cmi-operations-list .cmi-task-row>.cmi-button{flex:none;min-height:32px;padding:0 9px}
+.cmi-operations-prerequisite{display:flex;align-items:flex-start;gap:11px;margin:0 0 16px;padding:13px;border:1px solid var(--cmi-border);border-radius:10px;background:var(--cmi-surface);color:var(--cmi-muted)}
+.cmi-operations-prerequisite>svg{flex:none;color:var(--cmi-indigo-strong)}
+.cmi-operations-prerequisite strong{display:block;color:var(--cmi-text);font-size:11px}
+.cmi-operations-prerequisite p{margin:4px 0 0;font-size:10px;line-height:1.6}
+.cmi-success-note{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin:0 0 16px;padding:11px 13px;border:1px solid #285a49;border-radius:9px;background:#10271f;color:#b9eed6;font-size:10px;line-height:1.6}
+.cmi-success-note button{flex:none;border:0;background:transparent;color:inherit;font-size:17px;cursor:pointer}
+@media(max-width:760px){
+  .cmi-operations-heading{flex-direction:column}
+  .cmi-operations-actions{width:100%}
+  .cmi-operations-actions .cmi-button{flex:1}
+  .cmi-operations-list .cmi-task-row{align-items:flex-start;flex-wrap:wrap}
+  .cmi-operations-list .cmi-task-copy{flex-basis:calc(100% - 50px)}
+  .cmi-operations-list .cmi-task-status{margin-left:48px}
+  .cmi-operations-list .cmi-task-row>.cmi-button{margin-left:auto}
+}
+@media(prefers-reduced-motion:reduce){.cmi-operations-tabs button{transition:none}}

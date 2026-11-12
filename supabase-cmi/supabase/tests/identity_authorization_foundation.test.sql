@@ -25,7 +25,7 @@ select is(
 
 select is(
   (select count(*)::integer from public.role_capability),
-  58,
+  65,
   'the owner-directed visitor MVP role baseline is seeded'
 );
 
