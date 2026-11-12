@@ -5,13 +5,19 @@ import {
 } from "../_shared/idempotency.ts";
 import {
   isUuid,
+  canReadContactNote,
+  deriveContactNotePlacement,
+  isUuid,
   parseContactCreate,
+  parseContactInteractionCreate,
+  parseContactNoteCreate,
   parseContactPatch,
   parseFollowupTaskAssignment,
   parseFollowupTaskCreate,
   parseFollowupTaskPatch,
   parseStaffDirectoryQuery,
   projectStaffDirectoryRows,
+  type ContactNoteVisibilityRow,
 } from "./validation.ts";
 import { readJson } from "../_shared/request_body.ts";
 
@@ -317,6 +323,49 @@ async function visibleContactIds(
   return [...ids];
 }
 
+
+
+// Returns only active team memberships for this authenticated staff profile.
+async function activeContactTeamIds(
+  service: ServiceClient,
+  profileId: string,
+  branchId: string,
+): Promise<string[]> {
+  const now = new Date().toISOString();
+  const { data, error } = await service
+    .from("staff_team_membership")
+    .select("team_id,team:team!inner(is_active)")
+    .eq("staff_profile_id", profileId)
+    .eq("branch_id", branchId)
+    .lte("starts_at", now)
+    .or(`ends_at.is.null,ends_at.gt.${now}`)
+    .is("revoked_at", null)
+    .eq("team.is_active", true);
+  if (error) throw new Error("CONTACT_NOTE_TEAM_MEMBERSHIP_LOOKUP_FAILED");
+  return [...new Set((data ?? []).map((row: { team_id: string }) => row.team_id))];
+}
+
+// Returns teams with a current assignment to the selected contact.
+async function assignedContactTeamIds(
+  service: ServiceClient,
+  contactId: string,
+  branchId: string,
+): Promise<string[]> {
+  const now = new Date().toISOString();
+  const { data, error } = await service
+    .from("contact_assignment")
+    .select("team_id")
+    .eq("contact_id", contactId)
+    .eq("branch_id", branchId)
+    .not("team_id", "is", null)
+    .lte("starts_at", now)
+    .or(`ends_at.is.null,ends_at.gt.${now}`);
+  if (error) throw new Error("CONTACT_NOTE_ASSIGNMENT_LOOKUP_FAILED");
+  return [...new Set((data ?? []).flatMap((row: { team_id: string | null }) =>
+    row.team_id ? [row.team_id] : []
+  ))];
+}
+
 async function visibleFollowupTaskIds(
   service: ServiceClient,
   branchId: string,
@@ -483,6 +532,11 @@ Deno.serve(async (request: Request) => {
       isUuid(reassignmentTaskId);
     const isStaffDirectoryCollection = previous === "staff-operations" &&
       last === "staff";
+    const contactRecordId = path[path.length - 2] ?? "";
+    const isContactNotesCollection = path[path.length - 3] === "contacts" &&
+      last === "notes" && isUuid(contactRecordId);
+    const isContactInteractionsCollection = path[path.length - 3] === "contacts" &&
+      last === "interactions" && isUuid(contactRecordId);
 
     if (request.method === "GET" && isStaffDirectoryCollection) {
       const parsed = parseStaffDirectoryQuery(url);
@@ -1023,6 +1077,207 @@ Deno.serve(async (request: Request) => {
         origin,
         id,
       );
+    }
+
+
+
+    if (
+      (request.method === "GET" || request.method === "POST") &&
+      (isContactNotesCollection || isContactInteractionsCollection)
+    ) {
+      const queryKeys = [...url.searchParams.keys()];
+      const branchIds = url.searchParams.getAll("branch_id");
+      const branchId = branchIds[0] ?? "";
+      if (
+        queryKeys.some((key) => key !== "branch_id") ||
+        branchIds.length !== 1 ||
+        !isUuid(branchId)
+      ) {
+        return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
+      }
+
+      const contactScopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "contact.read.scoped",
+      );
+      if (contactScopes.length === 0) {
+        return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      }
+      const visibleIds = await visibleContactIds(
+        auth.service,
+        branchId,
+        auth.actorId,
+        auth.profileId,
+        contactScopes,
+      );
+      if (visibleIds !== null && !visibleIds.includes(contactRecordId)) {
+        return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      }
+      const { data: contact, error: contactError } = await auth.service
+        .from("contact")
+        .select("id")
+        .eq("id", contactRecordId)
+        .eq("branch_id", branchId)
+        .neq("contact_status", "merged")
+        .maybeSingle();
+      if (contactError) throw new Error("CONTACT_HISTORY_OWNER_LOOKUP_FAILED");
+      if (!contact) {
+        return fail("NOT_FOUND", "Contact not found.", 404, origin, id);
+      }
+
+      if (isContactNotesCollection && request.method === "GET") {
+        const noteScopes = await resolveScopes(
+          auth.service,
+          auth.profileId,
+          branchId,
+          "contact.note.read.scoped",
+        );
+        if (noteScopes.length === 0) {
+          return fail("FORBIDDEN", "Contact notes are not available to this account.", 403, origin, id);
+        }
+        const [actorTeamIds, contactTeamIds] = noteScopes.includes("team")
+          ? await Promise.all([
+            activeContactTeamIds(auth.service, auth.profileId, branchId),
+            assignedContactTeamIds(auth.service, contactRecordId, branchId),
+          ])
+          : [[], []];
+        const { data, error } = await auth.service
+          .from("contact_note")
+          .select("id,body,visibility,team_id,author_user_id,created_at,updated_at")
+          .eq("contact_id", contactRecordId)
+          .eq("branch_id", branchId)
+          .order("created_at", { ascending: false })
+          .limit(100);
+        if (error) throw new Error("CONTACT_NOTE_LIST_FAILED");
+        const visibleNotes = (data ?? [])
+          .filter((note) => canReadContactNote(
+            note as ContactNoteVisibilityRow,
+            auth.actorId,
+            noteScopes,
+            actorTeamIds,
+            contactTeamIds,
+          ))
+          .map((note) => ({
+            id: note.id,
+            body: note.body,
+            created_at: note.created_at,
+            updated_at: note.updated_at,
+          }));
+        return response({ data: visibleNotes, request_id: id }, 200, origin, id);
+      }
+
+      if (isContactNotesCollection && request.method === "POST") {
+        const noteScopes = await resolveScopes(
+          auth.service,
+          auth.profileId,
+          branchId,
+          "contact.note.create",
+        );
+        if (noteScopes.length === 0) {
+          return fail("FORBIDDEN", "You cannot add a note to this contact.", 403, origin, id);
+        }
+        let raw: unknown;
+        try {
+          raw = await readJson(request, 16 * 1024);
+        } catch (error) {
+          const tooLarge = error instanceof Error && error.message === "BODY_TOO_LARGE";
+          return fail(
+            tooLarge ? "BODY_TOO_LARGE" : "INVALID_JSON",
+            tooLarge ? "The request body exceeds the 16 KB limit." : "A valid JSON request body is required.",
+            tooLarge ? 413 : 400,
+            origin,
+            id,
+          );
+        }
+        const parsed = parseContactNoteCreate(raw);
+        if (!parsed.ok) {
+          return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+        }
+        const [actorTeamIds, contactTeamIds] = noteScopes.includes("team")
+          ? await Promise.all([
+            activeContactTeamIds(auth.service, auth.profileId, branchId),
+            assignedContactTeamIds(auth.service, contactRecordId, branchId),
+          ])
+          : [[], []];
+        const placement = deriveContactNotePlacement(noteScopes, actorTeamIds, contactTeamIds);
+        if (!placement) {
+          return fail("FORBIDDEN", "A valid note visibility scope is not available for this contact.", 403, origin, id);
+        }
+        const { data, error } = await auth.service
+          .from("contact_note")
+          .insert({
+            contact_id: contactRecordId,
+            branch_id: branchId,
+            author_user_id: auth.actorId,
+            body: parsed.value.body,
+            visibility: placement.visibility,
+            team_id: placement.team_id,
+          })
+          .select("id,body,created_at,updated_at")
+          .single();
+        if (error) throw new Error("CONTACT_NOTE_CREATE_FAILED");
+        return response({ data, request_id: id }, 201, origin, id);
+      }
+
+      if (isContactInteractionsCollection && request.method === "GET") {
+        const { data, error } = await auth.service
+          .from("contact_interaction")
+          .select("id,interaction_type,occurred_at,outcome_code,summary,next_action_at,created_at")
+          .eq("contact_id", contactRecordId)
+          .eq("branch_id", branchId)
+          .order("occurred_at", { ascending: false })
+          .limit(100);
+        if (error) throw new Error("CONTACT_INTERACTION_LIST_FAILED");
+        return response({ data: data ?? [], request_id: id }, 200, origin, id);
+      }
+
+      if (isContactInteractionsCollection && request.method === "POST") {
+        const scopes = await resolveScopes(
+          auth.service,
+          auth.profileId,
+          branchId,
+          "contact.interaction.record",
+        );
+        if (scopes.length === 0) {
+          return fail("FORBIDDEN", "You cannot record an interaction for this contact.", 403, origin, id);
+        }
+        let raw: unknown;
+        try {
+          raw = await readJson(request, 16 * 1024);
+        } catch (error) {
+          const tooLarge = error instanceof Error && error.message === "BODY_TOO_LARGE";
+          return fail(
+            tooLarge ? "BODY_TOO_LARGE" : "INVALID_JSON",
+            tooLarge ? "The request body exceeds the 16 KB limit." : "A valid JSON request body is required.",
+            tooLarge ? 413 : 400,
+            origin,
+            id,
+          );
+        }
+        const parsed = parseContactInteractionCreate(raw);
+        if (!parsed.ok) {
+          return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+        }
+        const input = parsed.value;
+        const { data, error } = await auth.service
+          .from("contact_interaction")
+          .insert({
+            contact_id: contactRecordId,
+            branch_id: branchId,
+            actor_user_id: auth.actorId,
+            interaction_type: input.interaction_type,
+            ...(input.occurred_at ? { occurred_at: input.occurred_at } : {}),
+            outcome_code: input.outcome_code,
+            summary: input.summary,
+            next_action_at: input.next_action_at,
+          })
+          .select("id,interaction_type,occurred_at,outcome_code,summary,next_action_at,created_at")
+          .single();
+        if (error) throw new Error("CONTACT_INTERACTION_CREATE_FAILED");
+        return response({ data, request_id: id }, 201, origin, id);
+      }
     }
 
     if (request.method === "GET" && last === "contacts") {
