@@ -268,20 +268,22 @@ export function StaffLogin({
           </form>
 
           {view === "sign-in" && (
-            <section className="staff-login-demo-card" aria-label="Demo login details">
+            <section className="staff-login-demo-card" aria-label="Administrator preview access">
               <div className="staff-login-demo-heading">
-                <div><strong>Explore the demo workspace</strong><small>Fictional sample records · no real church data</small></div>
-                <span>DEMO</span>
+                <div><strong>Administrator preview access</strong><small>Fictional sample records · no real church data</small></div>
+                <span>PREVIEW</span>
               </div>
               <div className="staff-login-demo-credentials">
                 <div><small>EMAIL</small><code>{DEMO_LOGIN_EMAIL}</code></div>
                 <div><small>PASSWORD</small><code>{DEMO_LOGIN_PASSWORD}</code></div>
               </div>
-              <button type="button" className="staff-login-demo-fill" disabled={busy} onClick={() => {
-                setEmail(DEMO_LOGIN_EMAIL);
-                setPassword(DEMO_LOGIN_PASSWORD);
-              }}>Fill demo credentials</button>
-              <p>Demo changes stay in memory for this session and disappear when you exit.</p>
+              <button
+                type="button"
+                className="staff-login-demo-fill"
+                disabled={busy}
+                onClick={() => void onSignIn(DEMO_LOGIN_EMAIL, DEMO_LOGIN_PASSWORD)}
+              >Open administrator preview</button>
+              <p>Opens the workspace immediately. All changes use fictional data kept only in this browser session.</p>
             </section>
           )}
 
@@ -311,7 +313,7 @@ export function StaffLogin({
 
           <div className="staff-login-support">
             <span>{view === "sign-in" ? "First administrator access?" : "Need help accessing the portal?"}</span>
-            <p>{view === "sign-in" ? "The first Admin/Pastor receives a one-time temporary password after secure setup. Regular staff access is issued by an authorised administrator." : "Password reset requests are reviewed and recorded by an authorised church administrator before a temporary password is issued."}</p>
+            <p>{view === "sign-in" ? "The live first-administrator account has not been provisioned in the connected database yet. Use Administrator Preview above to open the workspace with fictional records." : "Password reset requests are reviewed and recorded by an authorised church administrator before a temporary password is issued."}</p>
           </div>
         </div>
 
