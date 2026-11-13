@@ -11,6 +11,7 @@ class WorkerApiContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.source = WORKER_SOURCE.read_text(encoding="utf-8")
         cls.event_guard_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0020_event_assignment_privilege_guards.sql").read_text(encoding="utf-8")
+        cls.event_operations_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0018_event_operations_guards.sql").read_text(encoding="utf-8")
 
     def test_contact_team_scope_uses_profile_id_and_assigned_scope_uses_auth_user_id(self):
         match = re.search(
@@ -150,7 +151,7 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn('"event_checkin"', self.source)
         self.assertIn('"transport_reservation"', self.source)
         self.assertIn("TRANSPORT_CAPACITY_REACHED", self.source)
-        self.assertIn("transport_reservation_capacity_guard", self.source)
+        self.assertIn("transport_reservation_capacity_guard", self.event_operations_migration)
 
     def test_closeout_submission_review_and_resubmission_are_audited(self):
         for name in ("eventCloseoutCounts", "getEventCloseout", "submitEventCloseout", "resubmitEventCloseout", "reviewEventCloseout"):
