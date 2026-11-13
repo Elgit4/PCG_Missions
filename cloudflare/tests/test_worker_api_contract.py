@@ -272,6 +272,16 @@ if __name__ == "__main__":
         self.assertIn("calendarReadMatch", self.source)
 
 
+    def test_report_overview_compares_prior_period_with_same_privacy_threshold(self):
+        handler = re.search(r"async function getReportsOverview\\([\\s\\S]*?\\n\\}", self.source)
+        self.assertIsNotNone(handler)
+        code = handler.group(0)
+        self.assertIn("previousFrom", code)
+        self.assertIn("previousTo", code)
+        self.assertIn("previousSeries", code)
+        self.assertGreaterEqual(code.count("HAVING COUNT(DISTINCT author_profile_id)>=3"), 1)
+        self.assertIn("privacy_threshold_distinct_authors:3", code)
+
     def test_pastoral_care_routes_are_explicit_share_and_assignment_gated(self):
         for name in ("listCareRecords", "createCareRecord", "assignCareRecord",
                      "getCareRecord", "createCareInteraction", "updateCareRecord",
