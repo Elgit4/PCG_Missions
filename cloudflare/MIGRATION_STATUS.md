@@ -35,6 +35,7 @@
 | `0024_calendar_audit_cancellation_read_receipts.sql` | 2 new tables | Adds active/cancelled state, actor attribution, immutable calendar change audit and staff-scoped immutable read receipts; schema version 24 |
 | `0025_pastoral_care_explicit_share.sql` | 0 new tables | Restricts care metadata to Admin/Pastor branch scope; restricted reads, updates and interactions require explicit shares and active assignments; adds reasoned assignment revocation and immutable care audit; schema version 25 (source only; remote apply pending) |
 | `0026_calendar_recurring_series.sql` | 2 new tables | Adds branch-authorized recurring series, timezone-aware bounded daily/weekly/monthly occurrences, unique series occurrence keys, reasoned future cancellation and append-only series audit; schema version 26 (source only; remote apply pending) |
+| `0027_ministry_report_aggregate_exports.sql` | 1 new table | Adds Admin/Pastor-only `reports.export`, aggregate CSV export audit, append-only export history and a minimum-three-author privacy threshold; schema version 27 (source only; remote apply pending) |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
@@ -110,7 +111,7 @@ Latest previously verified CI run: [43504468309](https://github.com/Elgit4/PCG_M
 1. Add the repository secret `CLOUDFLARE_API_TOKEN` with scoped Workers Scripts edit permission, deploy the full Worker to non-production and set the persistent `BETTER_AUTH_SECRET` Worker secret.
 2. Add the real frontend origin to `BETTER_AUTH_TRUSTED_ORIGINS`, then exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
 3. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content, including cross-branch, wrong-team, wrong-assignment, duplicate-key and capacity-race cases.
-4. Apply and verify migrations 0025–0026 on the isolated EU D1 database after the migration test suite passes; rerun foreign-key and authorization checks.
-5. Complete privacy-controlled report exports and scheduled-announcement Worker runtime verification.
+4. Apply and verify migrations 0025–0027 on the isolated EU D1 database after the migration test suite passes; rerun foreign-key and authorization checks.
+5. Verify aggregate CSV export privacy, audit enforcement and scheduled-announcement publication in a deployed Worker.
 6. Validate Better Auth's generated schema against the pinned release and complete the controlled source-to-D1 export/import and row/count/hash reconciliation for the remaining live schema.
 7. Integrate the frontend with the non-production API and verify end-to-end user workflows. Configure a verified email provider for invitations/password resets. Production cutover remains a separate approval gate.
