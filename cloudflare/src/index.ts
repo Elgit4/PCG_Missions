@@ -317,6 +317,223 @@ async function revokeStaffRole(
   return json(200, { ok: true, revoked_assignment_id: existing.id }, requestId, origin);
 }
 
+
+async function listAdminElevationRequests(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.role.approve");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+
+  const rows = await env.DB.prepare(`
+    SELECT req.id, req.target_profile_id, target.full_name AS target_name,
+           req.requested_by, requester.full_name AS requester_name,
+           req.reason, req.requested_at
+    FROM staff_role_elevation_request req
+    JOIN staff_profile target ON target.id = req.target_profile_id
+    JOIN staff_profile requester ON requester.id = req.requested_by
+    WHERE req.branch_id = ? AND req.status = 'pending'
+    ORDER BY req.requested_at ASC
+    LIMIT 100
+  `).bind(access.activeBranch.branchId).all<{
+    id: string;
+    target_profile_id: string;
+    target_name: string;
+    requested_by: string;
+    requester_name: string;
+    reason: string;
+    requested_at: string;
+  }>();
+
+  return json(200, {
+    ok: true,
+    requests: rows.results ?? [],
+  }, requestId, origin);
+}
+
+async function createAdminElevationRequest(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.role.assign");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+
+  const body = await readJsonBody(request);
+  if (!body.ok) {
+    return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  }
+  const payload = body.value as { target_profile_id?: unknown; reason?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return json(400, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
+  }
+  if (Object.keys(payload).some((key) => key !== "target_profile_id" && key !== "reason")) {
+    return json(400, { ok: false, error: { code: "UNEXPECTED_FIELDS" } }, requestId, origin);
+  }
+
+  const targetProfileId = typeof payload.target_profile_id === "string" ? payload.target_profile_id.trim() : "";
+  const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+  if (!targetProfileId || targetProfileId.length > 128 ||
+      targetProfileId === access.staff.profileId ||
+      reason.length < 10 || reason.length > 500) {
+    return json(400, { ok: false, error: { code: "INVALID_ELEVATION_REQUEST" } }, requestId, origin);
+  }
+
+  const target = await env.DB.prepare(`
+    SELECT id FROM staff_profile
+    WHERE id = ? AND account_status = 'active'
+    LIMIT 1
+  `).bind(targetProfileId).first<{ id: string }>();
+  if (!target) {
+    return json(404, { ok: false, error: { code: "ACTIVE_STAFF_PROFILE_NOT_FOUND" } }, requestId, origin);
+  }
+
+  const adminRole = await env.DB.prepare(
+    "SELECT id FROM role WHERE code = 'admin_pastor' AND is_active = 1 LIMIT 1",
+  ).first<{ id: string }>();
+  if (!adminRole) {
+    return json(503, { ok: false, error: { code: "ADMIN_PASTOR_ROLE_UNAVAILABLE" } }, requestId, origin);
+  }
+
+  const elevationId = crypto.randomUUID();
+  const requestedAt = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(`
+      INSERT INTO staff_role_elevation_request
+        (id, branch_id, target_profile_id, role_id, requested_by, reason, requested_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      elevationId, access.activeBranch.branchId, target.id, adminRole.id,
+      access.staff.profileId, reason, requestedAt,
+    ).run();
+
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+      throw new Error("ELEVATION_REQUEST_NOT_CREATED");
+    }
+  } catch {
+    return json(409, {
+      ok: false,
+      error: { code: "ELEVATION_REQUEST_CONFLICT", message: "A request may already be open for this staff member in this branch." },
+    }, requestId, origin);
+  }
+
+  return json(201, {
+    ok: true,
+    elevation_request: {
+      id: elevationId,
+      target_profile_id: target.id,
+      branch_id: access.activeBranch.branchId,
+      status: "pending",
+      requested_at: requestedAt,
+    },
+  }, requestId, origin);
+}
+
+async function reviewAdminElevationRequest(
+  request: Request,
+  env: Env,
+  elevationId: string,
+  decision: "approve" | "reject",
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.role.approve");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+
+  const body = await readJsonBody(request);
+  if (!body.ok) {
+    return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  }
+  const payload = body.value as { review_reason?: unknown; ends_at?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return json(400, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
+  }
+  const allowedKeys = decision === "approve" ? new Set(["review_reason", "ends_at"]) : new Set(["review_reason"]);
+  if (Object.keys(payload).some((key) => !allowedKeys.has(key))) {
+    return json(400, { ok: false, error: { code: "UNEXPECTED_FIELDS" } }, requestId, origin);
+  }
+
+  const reviewReason = typeof payload.review_reason === "string" ? payload.review_reason.trim() : "";
+  const now = new Date().toISOString();
+  const endsAt = decision === "approve" && payload.ends_at !== undefined && payload.ends_at !== null && payload.ends_at !== ""
+    ? parseIsoTimestamp(payload.ends_at, "")
+    : null;
+  if (
+    !elevationId || elevationId.length > 128 ||
+    reviewReason.length < 10 || reviewReason.length > 500 ||
+    (decision === "approve" && payload.ends_at !== undefined && payload.ends_at !== null && payload.ends_at !== "" && !endsAt) ||
+    (endsAt !== null && endsAt <= now)
+  ) {
+    return json(400, { ok: false, error: { code: "INVALID_ELEVATION_REVIEW" } }, requestId, origin);
+  }
+
+  if (decision === "reject") {
+    try {
+      const result = await env.DB.prepare(`
+        UPDATE staff_role_elevation_request
+        SET status = 'rejected', reviewed_by = ?, reviewed_at = ?, review_reason = ?
+        WHERE id = ? AND branch_id = ? AND status = 'pending'
+      `).bind(
+        access.staff.profileId, now, reviewReason, elevationId, access.activeBranch.branchId,
+      ).run();
+      if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+        return json(409, { ok: false, error: { code: "ELEVATION_REQUEST_NOT_PENDING" } }, requestId, origin);
+      }
+    } catch {
+      return json(409, { ok: false, error: { code: "ELEVATION_REVIEW_NOT_AUTHORIZED" } }, requestId, origin);
+    }
+    return json(200, { ok: true, elevation_request_id: elevationId, status: "rejected" }, requestId, origin);
+  }
+
+  const assignmentId = crypto.randomUUID();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE staff_role_elevation_request
+        SET status = 'approved', reviewed_by = ?, reviewed_at = ?, review_reason = ?
+        WHERE id = ? AND branch_id = ? AND status = 'pending'
+      `).bind(
+        access.staff.profileId, now, reviewReason, elevationId, access.activeBranch.branchId,
+      ),
+      env.DB.prepare(`
+        INSERT INTO staff_role_assignment
+          (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, ends_at, reason, created_at)
+        SELECT ?, req.target_profile_id, req.role_id, req.branch_id, ?,
+               req.reviewed_at, ?, req.reason, ?
+        FROM staff_role_elevation_request req
+        WHERE req.id = ? AND req.branch_id = ?
+          AND req.status = 'approved' AND req.reviewed_by = ?
+          AND changes() = 1
+      `).bind(
+        assignmentId, access.staff.profileId, endsAt, now,
+        elevationId, access.activeBranch.branchId, access.staff.profileId,
+      ),
+    ]);
+    if (
+      results.some((result) => !result.success) ||
+      (results[0]?.meta?.changes ?? 0) !== 1 ||
+      (results[1]?.meta?.changes ?? 0) !== 1
+    ) {
+      return json(409, { ok: false, error: { code: "ELEVATION_REQUEST_NOT_PENDING" } }, requestId, origin);
+    }
+  } catch {
+    return json(409, {
+      ok: false,
+      error: { code: "ELEVATION_REVIEW_NOT_AUTHORIZED", message: "A distinct active Admin/Pastor reviewer is required." },
+    }, requestId, origin);
+  }
+
+  return json(200, {
+    ok: true,
+    elevation_request_id: elevationId,
+    assignment_id: assignmentId,
+    status: "applied",
+  }, requestId, origin);
+}
+
 function isAuthPath(pathname: string): boolean {
   return pathname === "/api/auth" || pathname.startsWith("/api/auth/");
 }
@@ -355,6 +572,26 @@ export default {
           error: { code: "AUTH_NOT_CONFIGURED", message: "Authentication is not configured for this environment." },
         }, requestId, origin);
       }
+    }
+
+    if (url.pathname === "/api/v1/staff/role-elevations" && request.method === "GET") {
+      return listAdminElevationRequests(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/staff/role-elevations" && request.method === "POST") {
+      return createAdminElevationRequest(request, env, requestId, origin);
+    }
+
+    const elevationReviewMatch = url.pathname.match(/^\/api\/v1\/staff\/role-elevations\/([^/]+)\/(approve|reject)$/);
+    if (elevationReviewMatch && request.method === "POST") {
+      let elevationId: string;
+      try {
+        elevationId = decodeURIComponent(elevationReviewMatch[1]);
+      } catch {
+        return json(400, { ok: false, error: { code: "INVALID_ELEVATION_REQUEST_ID" } }, requestId, origin);
+      }
+      return reviewAdminElevationRequest(
+        request, env, elevationId, elevationReviewMatch[2] as "approve" | "reject", requestId, origin,
+      );
     }
 
     if (url.pathname === "/api/v1/staff/roles" && request.method === "POST") {
