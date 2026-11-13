@@ -75,7 +75,7 @@ Last recorded CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actio
 - Worker-level integration tests for staff invitation, account lifecycle, staff governance and the existing contact/follow-up routes.
 - Pastoral-care narrative read/write routes remain disabled until explicit care-reader capability decisions are approved.
 - Event staff registration, capacity enforcement, replay-safe request-digest verification, transport reservations, check-in and closeout workflows.
-- Calendar and announcement management handlers, content editing/publication handlers, and public content read projections.
+- Public-content editing and church-profile management handlers; calendar and announcement CRUD/lifecycle plus the published-only public read projection are now in Worker source.
 - Reporting, analytics, export/import tooling and source-to-D1 reconciliation.
 - Cloudflare Pages preview binding and frontend API integration.
 - Email provider integration for invitations and password resets. SMS remains intentionally unconfigured.
@@ -96,8 +96,8 @@ Last recorded CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actio
 
 ## Required next steps
 
-1. Implement staff registration, capacity enforcement, replay-safe request-digest validation, transport reservations, check-in and closeout workflows.
-2. Implement calendar, announcement and public-content handlers with per-operation capability checks and D1 transactional invariants.
+1. Implement staff event registration, capacity enforcement, replay-safe request-digest validation, transport reservations, check-in and closeout workflows.
+2. Implement content editing and church-profile management, then add calendar/announcement Worker integration tests and delivery/read-receipt handling.
 3. Validate Better Auth's generated schema against the pinned release and exercise the complete auth/session lifecycle on the EU D1 binding.
-4. Add Worker-level integration tests for staff, contacts, follow-up and prayer routes; then implement migration export/import and reconciliation for the remaining live schema.
+4. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar and announcements; then implement migration export/import and reconciliation for the remaining live schema.
 5. Configure a non-production Workers Build/preview deployment and verify the deployed Worker against EU D1. Production cutover remains a separate approval gate.
