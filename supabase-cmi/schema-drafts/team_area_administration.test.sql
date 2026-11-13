@@ -16,21 +16,25 @@ select ok(
   'Service role cannot directly mutate the team administration audit ledger'
 );
 select ok(
-  (select prosecdef from pg_proc where oid='private.cmi_manage_team_operations(text,jsonb)'::regprocedure),
+  (select prosecdef from pg_proc where oid='private.cmi_manage_team_operations(uuid,text,jsonb)'::regprocedure),
   'Private team mutation function is SECURITY DEFINER'
 );
 select ok(
-  not (select prosecdef from pg_proc where oid='public.cmi_manage_team_operations(text,jsonb)'::regprocedure),
+  not (select prosecdef from pg_proc where oid='public.cmi_manage_team_operations(uuid,text,jsonb)'::regprocedure),
   'Public RPC wrapper remains SECURITY INVOKER'
 );
 select ok(
   (select coalesce(array_to_string(proconfig,','),'') like '%search_path=""%'
-   from pg_proc where oid='private.cmi_manage_team_operations(text,jsonb)'::regprocedure),
+   from pg_proc where oid='private.cmi_manage_team_operations(uuid,text,jsonb)'::regprocedure),
   'Private mutation function pins an empty search_path'
 );
 select ok(
-  has_schema_privilege('authenticated','public','USAGE'),
-  'Authenticated users receive namespace access for the guarded RPC without table grants'
+  not has_schema_privilege('anon','public','USAGE')
+  and not has_schema_privilege('authenticated','public','USAGE')
+  and has_schema_privilege('service_role','public','USAGE')
+  and has_schema_privilege('service_role','private','USAGE')
+  and not has_schema_privilege('authenticated','private','USAGE'),
+  'Only the trusted service role has namespace access needed for the private write RPC'
 );
 select ok(
   not has_table_privilege('authenticated','public.team','SELECT')
@@ -40,21 +44,22 @@ select ok(
   'Authenticated browser sessions retain no direct read access to team or service-area tables'
 );
 select ok(
-  has_function_privilege('authenticated','public.cmi_manage_team_operations(text,jsonb)','EXECUTE'),
-  'Authenticated sessions can invoke the guarded public RPC wrapper'
+  has_function_privilege('service_role','public.cmi_manage_team_operations(uuid,text,jsonb)','EXECUTE'),
+  'Only the trusted service role can invoke the public RPC wrapper'
 );
 select ok(
-  not has_function_privilege('anon','public.cmi_manage_team_operations(text,jsonb)','EXECUTE'),
-  'Anonymous sessions cannot invoke the guarded public RPC wrapper'
+  not has_function_privilege('anon','public.cmi_manage_team_operations(uuid,text,jsonb)','EXECUTE')
+  and not has_function_privilege('authenticated','public.cmi_manage_team_operations(uuid,text,jsonb)','EXECUTE'),
+  'Browser roles cannot invoke the public RPC wrapper'
 );
 select ok(
-  has_function_privilege('authenticated','private.cmi_manage_team_operations(text,jsonb)','EXECUTE'),
-  'Authenticated sessions can execute the private function only through a guarded invocation'
+  has_function_privilege('service_role','private.cmi_manage_team_operations(uuid,text,jsonb)','EXECUTE'),
+  'The trusted service role can execute the private mutation function'
 );
 select ok(
-  not has_function_privilege('anon','private.cmi_manage_team_operations(text,jsonb)','EXECUTE')
-  and not has_function_privilege('service_role','private.cmi_manage_team_operations(text,jsonb)','EXECUTE'),
-  'Anonymous and service roles cannot invoke the private mutation function'
+  not has_function_privilege('anon','private.cmi_manage_team_operations(uuid,text,jsonb)','EXECUTE')
+  and not has_function_privilege('authenticated','private.cmi_manage_team_operations(uuid,text,jsonb)','EXECUTE'),
+  'Browser roles cannot invoke the private mutation function'
 );
 select is(
   (select count(*)::integer from public.role_capability rc
@@ -85,7 +90,7 @@ select ok(
   'Team and service-area administration is not granted to lower roles'
 );
 select throws_ok(
-  $q$ select private.cmi_manage_team_operations('team.create','{}'::jsonb) $q$,
+  $q$ select private.cmi_manage_team_operations(null::uuid,'team.create','{}'::jsonb) $q$,
   '42501',
   null,
   'Private team mutation rejects missing authenticated identity'
@@ -117,7 +122,7 @@ from public.role r where r.code='team_leader';
 
 select set_config('request.jwt.claim.sub','72000000-0000-4000-8000-000000000010',true);
 
-select public.cmi_manage_team_operations(
+select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   'team.create',
   jsonb_build_object(
     'branch_id','71000000-0000-4000-8000-000000000010',
@@ -134,7 +139,7 @@ select is(
   'Authorized branch administrator can create a team'
 );
 
-select public.cmi_manage_team_operations(
+select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   'team.member.add',
   jsonb_build_object(
     'branch_id','71000000-0000-4000-8000-000000000010',
@@ -156,7 +161,7 @@ select is(
   'Only an active branch Team Leader can be assigned leader membership'
 );
 
-select public.cmi_manage_team_operations(
+select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   'team.member.update_role',
   jsonb_build_object(
     'branch_id','71000000-0000-4000-8000-000000000010',
@@ -174,7 +179,7 @@ select is(
   'Administrator can safely change an active membership role'
 );
 
-select public.cmi_manage_team_operations(
+select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   'team.member.revoke',
   jsonb_build_object(
     'branch_id','71000000-0000-4000-8000-000000000010',
@@ -190,7 +195,7 @@ select ok(
   'Removing a member revokes the membership without deleting its history'
 );
 
-select public.cmi_manage_team_operations(
+select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   'team.update',
   jsonb_build_object(
     'branch_id','71000000-0000-4000-8000-000000000010',
@@ -206,7 +211,7 @@ select ok(
   'Empty teams can be deactivated without deleting team history'
 );
 
-select public.cmi_manage_team_operations(
+select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   'area.create',
   jsonb_build_object(
     'branch_id','71000000-0000-4000-8000-000000000010',
@@ -223,7 +228,7 @@ select is(
   'Authorized branch administrator can create a service area'
 );
 
-select public.cmi_manage_team_operations(
+select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   'area.coverage.add',
   jsonb_build_object(
     'branch_id','71000000-0000-4000-8000-000000000010',
@@ -241,7 +246,7 @@ select ok(
   'Active branch staff can be assigned to an active service area'
 );
 
-select public.cmi_manage_team_operations(
+select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   'area.coverage.revoke',
   jsonb_build_object(
     'branch_id','71000000-0000-4000-8000-000000000010',
@@ -257,7 +262,7 @@ select ok(
   'Ending service-area coverage preserves its historical record'
 );
 
-select public.cmi_manage_team_operations(
+select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   'area.update',
   jsonb_build_object(
     'branch_id','71000000-0000-4000-8000-000000000010',
@@ -288,7 +293,7 @@ select throws_ok(
 
 
 
-select public.cmi_manage_team_operations(
+select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   'team.create',
   jsonb_build_object(
     'branch_id','71000000-0000-4000-8000-000000000010',
@@ -298,7 +303,7 @@ select public.cmi_manage_team_operations(
 );
 
 select throws_ok(
-  $q$ select public.cmi_manage_team_operations(
+  $q$ select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
     'team.member.add',
     jsonb_build_object(
       'branch_id','71000000-0000-4000-8000-000000000010',
@@ -311,7 +316,7 @@ select throws_ok(
   'TEAM_LEADER_ROLE_REQUIRED',
   'A Team Leader membership cannot be assigned from the Admin role alone'
 );
-select public.cmi_manage_team_operations(
+select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   'team.member.add',
   jsonb_build_object(
     'branch_id','71000000-0000-4000-8000-000000000010',
