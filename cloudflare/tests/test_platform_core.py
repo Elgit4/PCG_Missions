@@ -461,6 +461,10 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             self.db.execute("SELECT action FROM staff_account_audit ORDER BY created_at").fetchall(),
             [("account_deactivated",), ("account_reactivated",)],
         )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE staff_account_audit SET reason = 'tampered audit event' ")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM staff_account_audit")
 
     def test_account_deactivation_cannot_remove_last_admin_in_another_branch(self):
         self._lifecycle_fixture()
@@ -539,6 +543,10 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             self.db.execute("SELECT COUNT(*) FROM staff_role_revocation_audit WHERE request_id = ?", (request_id,)).fetchone()[0],
             3,
         )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE staff_role_revocation_audit SET reason = 'tampered audit event' ")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM staff_role_revocation_audit")
 
     def test_exactly_six_fixed_roles_are_seeded(self):
         self.assertEqual(
