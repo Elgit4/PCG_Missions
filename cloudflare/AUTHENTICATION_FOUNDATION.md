@@ -9,7 +9,7 @@
 - Better Auth is mounted only at `/api/auth/*`.
 - Email/password sign-in is enabled for provisioned accounts; public self-registration is disabled.
 - Sessions are stored in D1, last seven days, are not served from the optional cookie cache, and use HttpOnly cookies with Secure enabled for HTTPS deployments and SameSite=Lax.
-- Cloudflare's `cf-connecting-ip` header is the trusted IP source for Better Auth rate limiting.
+- Cloudflare's `cf-connecting-ip` header is the trusted IP source for Better Auth rate limiting. Rate-limit counters use the D1 `rateLimit` table rather than per-isolate memory, so throttling is shared across Worker isolates.
 - Origin allow-listing is exact-match only. Configure the canonical Worker origin in `BETTER_AUTH_URL` and any additional first-party origins in `BETTER_AUTH_TRUSTED_ORIGINS` as comma-separated origins. Do not include paths or wildcard hosts.
 - `GET /api/v1/me` resolves the Better Auth session, active staff profile, active branch assignments, role codes and capability scopes. An optional `X-Branch-Id` is accepted only if it matches an active, time-valid role assignment.
 
