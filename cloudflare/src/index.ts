@@ -3214,9 +3214,11 @@ async function createCalendarEntry(
   const timezone = payload.timezone === undefined ? "Africa/Accra" :
     typeof payload.timezone === "string" ? payload.timezone.trim() : "";
   const scopeType = typeof payload.scope_type === "string" ? payload.scope_type : "";
-  const teamId = typeof payload.team_id === "string" ? payload.team_id : null;
-  const eventId = typeof payload.event_id === "string" ? payload.event_id : null;
-  if (!["service", "event", "followup", "prayer_schedule", "other"].includes(entryType) ||
+  const teamId = typeof payload.team_id === "string" ? payload.team_id.trim() || null : null;
+  const eventId = typeof payload.event_id === "string" ? payload.event_id.trim() || null : null;
+  if ((payload.team_id !== undefined && payload.team_id !== null && typeof payload.team_id !== "string") ||
+      (payload.event_id !== undefined && payload.event_id !== null && typeof payload.event_id !== "string") ||
+      !["service", "event", "followup", "prayer_schedule", "other"].includes(entryType) ||
       title.length < 2 || title.length > 180 || !startsAt ||
       (payload.ends_at !== undefined && payload.ends_at !== null && payload.ends_at !== "" && !endsAt) ||
       (endsAt !== null && endsAt <= startsAt) ||
@@ -3434,15 +3436,16 @@ async function getAnnouncement(
     .filter((grant) => grant.code === "announcements.read")
     .map((grant) => grant.scopeMode));
   if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const canManage = context.activeBranch.capabilities.some((grant) => grant.code === "announcements.manage" && grant.scopeMode === "branch");
   const now = new Date().toISOString();
   const predicate = announcementScopePredicate(scope, "a", context.staff.profileId, context.staff.userId, now);
   const row = await env.DB.prepare(`
     SELECT a.id,a.branch_id,a.title,a.body,a.audience_type,a.is_public,a.status,
            a.publish_at,a.published_at,a.created_by,a.created_at,a.updated_at
     FROM announcement a
-    WHERE a.id=? AND a.branch_id=? AND a.status='published' AND (${predicate.sql})
+    WHERE a.id=? AND a.branch_id=? AND (?=1 OR a.status='published') AND (${predicate.sql})
     LIMIT 1
-  `).bind(announcementId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
+  `).bind(announcementId, context.activeBranch.branchId, canManage ? 1 : 0, ...predicate.values).first<Record<string, unknown>>();
   if (!row) return json(404, { ok: false, error: { code: "ANNOUNCEMENT_NOT_FOUND" } }, requestId, origin);
   return json(200, { ok: true, announcement: row }, requestId, origin);
 }
