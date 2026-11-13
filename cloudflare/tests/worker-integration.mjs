@@ -1,66 +1,49 @@
-import { spawn } from "node:child_process";
-import { setTimeout as delay } from "node:timers/promises";
+import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
+import { Miniflare } from "miniflare";
 
-const port = 8787;
-const baseUrl = `http://127.0.0.1:${port}`;
-const allowedOrigin = "https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev";
 const secret = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString("base64url");
-const env = {
-  ...process.env,
-  BETTER_AUTH_SECRET: secret,
-  APP_ENV: "non-production",
-  WRANGLER_SEND_METRICS: "false",
-  CI: "true",
-};
+const allowedOrigin = "https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev";
+const migrationDir = path.resolve("migrations");
+const scriptPath = path.resolve("build/index.js");
+const mf = new Miniflare({
+  modules: true,
+  scriptPath,
+  compatibilityDate: "2026-11-13",
+  compatibilityFlags: ["nodejs_compat"],
+  d1Databases: { DB: "pcg-missions-dev" },
+  bindings: {
+    APP_ENV: "non-production",
+    BETTER_AUTH_SECRET: secret,
+    BETTER_AUTH_URL: allowedOrigin,
+    BETTER_AUTH_TRUSTED_ORIGINS: allowedOrigin,
+  },
+});
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-async function waitForWorker(child) {
-  const deadline = Date.now() + 60000;
-  let lastError = "not started";
-  while (Date.now() < deadline) {
-    if (child.exitCode !== null) throw new Error(`wrangler dev exited early: ${child.exitCode}`);
-    try {
-      const response = await fetch(`${baseUrl}/health`);
-      const body = await response.json();
-      if (response.status === 200 && body.ok === true && body.environment === "non-production") return body;
-      lastError = `HTTP ${response.status}: ${JSON.stringify(body)}`;
-    } catch (error) {
-      lastError = String(error);
-    }
-    await delay(500);
-  }
-  throw new Error(`Worker did not become healthy: ${lastError}`);
-}
-
-const migrate = spawn("npx", ["wrangler", "d1", "migrations", "apply", "pcg-missions-dev", "--local"], {
-  cwd: process.cwd(),
-  env,
-  stdio: "inherit",
-});
-const migrateCode = await new Promise((resolve) => migrate.on("exit", resolve));
-assert(migrateCode === 0, "local D1 migrations did not apply");
-
-const worker = spawn("npx", ["wrangler", "dev", "--local", "--ip", "127.0.0.1", "--port", String(port), "--log-level", "error"], {
-  cwd: process.cwd(),
-  env,
-  stdio: ["ignore", "pipe", "pipe"],
-});
-let logs = "";
-worker.stdout.on("data", (chunk) => { logs += chunk.toString(); });
-worker.stderr.on("data", (chunk) => { logs += chunk.toString(); });
-
 try {
-  const health = await waitForWorker(worker);
-  assert(health.schema_version === 24, `expected D1 schema 24, got ${health.schema_version}`);
+  const db = await mf.getD1Database("DB");
+  const migrationFiles = (await readdir(migrationDir))
+    .filter((name) => /^\d+_.+\.sql$/.test(name))
+    .sort();
+  for (const file of migrationFiles) {
+    const sql = await readFile(path.join(migrationDir, file), "utf8");
+    await db.exec(sql);
+  }
 
-  const authSession = await fetch(`${baseUrl}/api/auth/get-session`);
+  const health = await mf.dispatchFetch("http://localhost/health");
+  const healthBody = await health.json();
+  assert(health.status === 200 && healthBody.ok === true, "Worker health endpoint failed");
+  assert(healthBody.schema_version === 24, `expected D1 schema 24, got ${healthBody.schema_version}`);
+
+  const authSession = await mf.dispatchFetch("http://localhost/api/auth/get-session");
   assert(authSession.status === 200, `Better Auth get-session failed: ${authSession.status}`);
   assert(authSession.headers.get("cache-control")?.includes("no-store"), "auth response must not be cacheable");
 
-  const badSignIn = await fetch(`${baseUrl}/api/auth/sign-in/email`, {
+  const badSignIn = await mf.dispatchFetch("http://localhost/api/auth/sign-in/email", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email: "missing-user@example.test", password: "not-a-real-password" }),
@@ -79,15 +62,15 @@ try {
     "/api/v1/announcements",
     "/api/v1/reports",
   ];
-  for (const path of protectedPaths) {
-    const response = await fetch(`${baseUrl}${path}`);
+  for (const route of protectedPaths) {
+    const response = await mf.dispatchFetch(`http://localhost${route}`);
     assert(response.status === 401,
-      `unauthenticated request to ${path} should be 401, got ${response.status}`);
+      `unauthenticated request to ${route} should be 401, got ${response.status}`);
     assert(response.headers.get("x-content-type-options") === "nosniff",
-      `security headers missing on ${path}`);
+      `security headers missing on ${route}`);
   }
 
-  const allowedPreflight = await fetch(`${baseUrl}/api/v1/me`, {
+  const allowedPreflight = await mf.dispatchFetch("http://localhost/api/v1/me", {
     method: "OPTIONS",
     headers: { Origin: allowedOrigin, "Access-Control-Request-Method": "GET" },
   });
@@ -95,16 +78,12 @@ try {
   assert(allowedPreflight.headers.get("access-control-allow-origin") === allowedOrigin,
     "allowed CORS preflight must echo the configured origin");
 
-  const deniedOrigin = await fetch(`${baseUrl}/api/v1/me`, {
+  const deniedOrigin = await mf.dispatchFetch("http://localhost/api/v1/me", {
     headers: { Origin: "https://attacker.example" },
   });
   assert(deniedOrigin.status === 403, "untrusted origin must be rejected");
 
-  console.log("Worker/D1 integration checks passed: schema health, Better Auth D1 session/sign-in, protected route gates, security headers and CORS.");
-} catch (error) {
-  console.error(error);
-  console.error(logs);
-  process.exitCode = 1;
+  console.log(`Worker/D1 integration checks passed: ${migrationFiles.length} migrations, Better Auth D1 session/sign-in, protected route gates, security headers and CORS.`);
 } finally {
-  worker.kill("SIGTERM");
+  await mf.dispose();
 }
