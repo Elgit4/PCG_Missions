@@ -3801,6 +3801,7 @@ async function createContent(
   const publicationDate = config.hasPublicationDate ? payload.publication_date : null;
   const displayOrder = config.hasDisplayOrder ? (payload.display_order === undefined ? 0 : payload.display_order) : null;
   if (title.length < 2 || title.length > 180 ||
+      (payload.body !== undefined && payload.body !== null && typeof payload.body !== "string") ||
       (!config.bodyNullable && (typeof body !== "string" || body.length < 1 || body.length > 30000)) ||
       (config.bodyNullable && body !== null && (typeof body !== "string" || body.length > 30000)) ||
       (config.hasSlug && !isValidPublicSlug(slug)) ||
@@ -4106,7 +4107,12 @@ async function listContentAudit(
     WHERE a.branch_id=? OR a.church_id=? OR
       (a.branch_id IS NULL AND a.church_id IS NULL AND EXISTS (
         SELECT 1 FROM staff_role_assignment ra
+        JOIN role r ON r.id=ra.role_id
+        JOIN role_capability rc ON rc.role_id=r.id
+        JOIN capability cap ON cap.id=rc.capability_id
         WHERE ra.staff_profile_id=a.actor_profile_id AND ra.branch_id=?
+          AND r.is_active=1 AND cap.code='content.manage' AND cap.is_active=1
+          AND rc.scope_mode='branch'
       ))
     ORDER BY a.created_at DESC,a.id DESC LIMIT 100
   `).bind(
