@@ -2396,3 +2396,15 @@ button, input, select, textarea { font: inherit; }
   .ministry-report-card { padding: 14px; }
   .ministry-report-metrics { gap: 8px; }
 }
+
+
+.ministry-report-detail-toggle{display:flex;justify-content:flex-start;margin-top:12px}
+.ministry-report-history{margin-top:12px;padding:16px 18px;border:1px solid var(--cmi-border,#e5e7eb);border-radius:12px;background:var(--cmi-surface-muted,#f8fafc)}
+.ministry-report-history h5{margin:0 0 10px;font-size:.92rem;font-weight:700}
+.ministry-report-history-entry{padding:11px 0;border-top:1px solid var(--cmi-border,#e5e7eb)}
+.ministry-report-history-entry:first-of-type{border-top:0}
+.ministry-report-history-entry>div{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ministry-report-history-entry strong{font-size:.88rem}
+.ministry-report-history-entry time{font-size:.78rem;color:var(--cmi-text-muted,#64748b)}
+.ministry-report-history-entry p,.ministry-report-history>p{margin:7px 0 0;color:var(--cmi-text-muted,#475569);font-size:.88rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.ministry-report-inline-error{margin:8px 0;color:#b42318;font-size:.86rem}
