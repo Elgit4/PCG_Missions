@@ -3713,11 +3713,12 @@ async function resubmitEventCloseout(
   if (summary!==null&&(typeof summary!=="string"||summary.length>5000)) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_NOTES"}},requestId,origin);
   const existing=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=? LIMIT 1")
     .bind(eventId,access.activeBranch.branchId).first<{id:string;status:string}>();
-  if (!existing||existing.status!=="returned") return json(409,{ok:false,error:{code:"CLOSEOUT_NOT_RESUBMITTABLE"}},requestId,origin);
+  if (!existing) return json(404,{ok:false,error:{code:"EVENT_CLOSEOUT_NOT_FOUND"}},requestId,origin);
   const counts=await eventCloseoutCounts(env,eventId,access.activeBranch.branchId);
   const digest=await eventRequestDigest({event_id:eventId,resubmission:true,summary_notes:summary,...counts});
   const replay=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
   if (replay) return replay;
+  if (existing.status!=="returned") return json(409,{ok:false,error:{code:"CLOSEOUT_NOT_RESUBMITTABLE"}},requestId,origin);
   const now=new Date().toISOString();
   const details=JSON.stringify({resubmitted:true,attendee_count:counts.attendeeCount,registration_count:counts.registrationCount,transport_seat_count:counts.transportSeatCount});
   try {
@@ -3773,10 +3774,11 @@ async function reviewEventCloseout(
   if (!decision||(notes!==null&&(typeof notes!=="string"||notes.length>2000))) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_REVIEW_DECISION"}},requestId,origin);
   const closeout=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=? LIMIT 1")
     .bind(eventId,access.activeBranch.branchId).first<{id:string;status:string}>();
-  if (!closeout||closeout.status!=="submitted") return json(409,{ok:false,error:{code:"CLOSEOUT_NOT_REVIEWABLE"}},requestId,origin);
+  if (!closeout) return json(404,{ok:false,error:{code:"EVENT_CLOSEOUT_NOT_FOUND"}},requestId,origin);
   const digest=await eventRequestDigest({closeout_id:closeout.id,decision,notes});
   const replay=await findEventReceipt(env,eventId,"closeout_review",key,access.staff.userId,digest.hex,requestId,origin);
   if (replay) return replay;
+  if (closeout.status!=="submitted") return json(409,{ok:false,error:{code:"CLOSEOUT_NOT_REVIEWABLE"}},requestId,origin);
   const now=new Date().toISOString();
   const details=JSON.stringify({notes});
   try {
