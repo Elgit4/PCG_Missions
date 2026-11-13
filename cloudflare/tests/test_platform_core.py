@@ -693,8 +693,8 @@ class AuthorizationQueryTests(unittest.TestCase):
             """INSERT INTO staff_role_elevation_request
                (id, branch_id, target_profile_id, role_id, requested_by, reason, requested_at)
                VALUES ('elevation-1', 'authz-branch', 'authz-staff-field', 'role-admin-pastor',
-                       'authz-staff-admin', 'Promote experienced branch field lead', ?, ?)""",
-            (self.NOW, self.NOW),
+                       'authz-staff-admin', 'Promote experienced branch field lead', ?)""",
+            (self.NOW,),
         )
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute(
