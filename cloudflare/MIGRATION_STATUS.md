@@ -71,6 +71,15 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 
 Latest verified CI run: [43514971428](https://github.com/Elgit4/PCG_Missions/actions/runs/43514971428) — 110 Python/SQLite tests passed; Worker/Better Auth TypeScript type-check, Wrangler dry-run bundle and local Worker/D1 + Better Auth integration tests passed, including the local scheduled-event trigger and unauthenticated gates for pastoral care, recurring calendar and report export. The push workflow's remote migration and deployment steps were skipped because `CLOUDFLARE_API_TOKEN` and `BETTER_AUTH_SECRET` are not configured. Remote EU D1 is now schema version 28 with all 28 migration records, 81 application tables and zero foreign-key violations. Migrations 0025–0028 were applied to the isolated `pcg-missions-dev` database and verified through the Cloudflare connection. Remote checks also confirm `reports.export` is granted only to `admin_pastor` at branch scope, the new calendar/report/reset audit triggers exist, and the new series/export/reset/care tables contain zero rows. The full API Worker remains undeployed because `CLOUDFLARE_API_TOKEN` and `BETTER_AUTH_SECRET` are not configured in GitHub. Migration 0028 has focused local SQLite validation and append-only/JSON-object checks.
 
+## Frontend integration progress
+
+- Replaced the browser Supabase Auth/token-storage client with Better Auth sign-in, get-session and sign-out using HttpOnly cookies.
+- Routed browser business API requests through the Cloudflare Worker same-origin API proxy; branch context is sent as `X-Branch-Id` and remains server-validated.
+- Added Vercel and Cloudflare Pages proxy handlers, a local Wrangler Vite proxy, a branch-scoped Vercel Preview `PCG_MISSIONS_API_ORIGIN` variable, and the exact Vercel branch alias to the Worker trusted-origin allow-list.
+- Updated frontend API adapters for staff context, contacts, follow-up, reports, events, calendar, announcements, content and pastoral endpoints. Team/service-area administration, administrator-approved password recovery and forced temporary-password replacement remain explicitly blocked rather than falling back to Supabase.
+- Frontend type-check, lint, unit tests and production build all pass in CI run [43516535210](https://github.com/Elgit4/PCG_Missions/actions/runs/43516535210); Worker integration CI also passes in run [43516535132](https://github.com/Elgit4/PCG_Missions/actions/runs/43516535132).
+- A real browser-to-Worker end-to-end acceptance run is still pending: the full Worker is not deployed because the deployment workflow's Cloudflare API token and Better Auth secret are not yet configured. Production Vercel and DNS remain unchanged.
+
 ## Authentication and authorization progress
 
 - Better Auth `1.7.22` is pinned; D1-backed auth is initialized per request and mounted under `/api/auth/*`.
