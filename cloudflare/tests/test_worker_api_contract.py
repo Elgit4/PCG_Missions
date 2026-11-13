@@ -206,5 +206,17 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("ANNOUNCEMENT_READ_RECEIPT_IMMUTABLE", self.announcement_receipt_migration)
 
 
+    def test_reports_overview_is_branch_capability_gated_and_aggregate_only(self):
+        handler = re.search(r"async function getReportsOverview\([\s\S]*?\n\}", self.source)
+        self.assertIsNotNone(handler)
+        self.assertIn('"reports.read"', handler.group(0))
+        self.assertIn("contact", handler.group(0))
+        self.assertIn("followup_task", handler.group(0))
+        self.assertIn("event_registration", handler.group(0))
+        self.assertIn("prayer_request", handler.group(0))
+        self.assertNotIn("request_text", handler.group(0))
+        self.assertIn("/api/v1/reports/overview", self.source)
+
+
 if __name__ == "__main__":
     unittest.main()
