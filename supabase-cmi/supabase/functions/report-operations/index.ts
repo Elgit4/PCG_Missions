@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import { readJson } from "../_shared/request_body.ts";
-import { isUuid, parseReportCreate, parseReportListQuery, parseReview } from "./validation.ts";
+import { isUuid, parseReportCorrection, parseReportCreate, parseReportListQuery, parseReview } from "./validation.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -132,6 +132,10 @@ Deno.serve(async (request: Request) => {
     const collection = previous === "report-operations" && last === "reports";
     const item = path[path.length - 3] === "report-operations" && previous === "reports" && isUuid(last);
     const review = path[path.length - 4] === "report-operations" && path[path.length - 3] === "reports" && isUuid(path[path.length - 2]) && last === "review";
+    const resubmit = path[path.length - 4] === "report-operations" &&
+      path[path.length - 3] === "reports" && isUuid(path[path.length - 2]) &&
+      last === "resubmit";
+
 
     const teamCollection = previous === "report-operations" && last === "teams";
     const eventCollection = previous === "report-operations" && last === "events";
@@ -277,6 +281,46 @@ Deno.serve(async (request: Request) => {
         throw new Error("REPORT_CREATE_FAILED");
       }
       return response({ data, request_id: requestId }, 201, origin, requestId);
+    }
+
+    if (request.method === "POST" && resubmit) {
+      if ([...url.searchParams.keys()].length) {
+        return fail("INVALID_QUERY", "Resubmission does not accept query parameters.", 400, origin, requestId);
+      }
+      let body: unknown;
+      try {
+        body = await readJson(request);
+      } catch (error) {
+        const parsed = readJsonError(error);
+        return fail(parsed.code, parsed.message, parsed.status, origin, requestId);
+      }
+      const parsed = parseReportCorrection(body);
+      if (!parsed.ok) return fail("INVALID_REPORT_CORRECTION", parsed.error, 400, origin, requestId);
+      const reportId = path[path.length - 2];
+      const { data: report, error } = await auth.service.from("ministry_report")
+        .select("id,branch_id,author_profile_id,status").eq("id", reportId).maybeSingle();
+      if (error) throw new Error("REPORT_RESUBMIT_LOOKUP_FAILED");
+      if (!report || report.author_profile_id !== auth.profileId) {
+        return fail("NOT_FOUND", "Report not found.", 404, origin, requestId);
+      }
+      if (!(await scopes(auth.service, auth.profileId, report.branch_id, "report.submit.own")).includes("self")) {
+        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+      }
+      if (report.status !== "returned") {
+        return fail("REPORT_NOT_RETURNED", "Only a returned report can be corrected and resubmitted.", 409, origin, requestId);
+      }
+      const { data, error: resubmitError } = await auth.service.rpc("cmi_resubmit_ministry_report", {
+        p_report_id: reportId,
+        p_author_profile_id: auth.profileId,
+        ...parsed.value,
+      });
+      if (resubmitError) {
+        const message = resubmitError.message ?? "";
+        if (message.includes("REPORT_NOT_RETURNED")) return fail("REPORT_NOT_RETURNED", "Only a returned report can be corrected and resubmitted.", 409, origin, requestId);
+        if (message.includes("REPORT_AUTHOR_MISMATCH")) return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+        throw new Error("REPORT_RESUBMIT_FAILED");
+      }
+      return response({ data, request_id: requestId }, 200, origin, requestId);
     }
 
     if (request.method === "POST" && review) {
