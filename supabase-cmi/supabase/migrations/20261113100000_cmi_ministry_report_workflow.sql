@@ -147,7 +147,7 @@ begin
   end if;
 
   insert into public.report_review_event(
-    report_id, reviewer_profile_id, decision, comment
+    report_id, actor_profile_id, decision, comment
   ) values (
     p_report_id, p_reviewer_profile_id, p_decision, nullif(btrim(p_comment), '')
   );
