@@ -113,7 +113,7 @@ Latest verified CI run: [43513507401](https://github.com/Elgit4/PCG_Missions/act
 1. Add the repository secret `CLOUDFLARE_API_TOKEN` with scoped Workers Scripts edit permission, deploy the full Worker to non-production and set the persistent `BETTER_AUTH_SECRET` Worker secret.
 2. Add the real frontend origin to `BETTER_AUTH_TRUSTED_ORIGINS`, then exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
 3. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content, including cross-branch, wrong-team, wrong-assignment, duplicate-key and capacity-race cases.
-4. Configure the scoped `CLOUDFLARE_API_TOKEN` repository secret and persistent `BETTER_AUTH_SECRET`; the push workflow then applies migrations 0025–0027 to `pcg-missions-dev` and deploys only the non-production API Worker.
+4. Configure the scoped `CLOUDFLARE_API_TOKEN` repository secret and persistent `BETTER_AUTH_SECRET`; the push workflow then applies migrations 0025–0028 to `pcg-missions-dev` and deploys only the non-production API Worker.
 5. Verify remote schema version 28, foreign-key integrity, authorization triggers, password-reset audit append-only behavior, aggregate CSV export privacy/audit and scheduled-announcement publication against EU D1.
 6. Validate Better Auth's generated schema against the pinned release and complete the controlled source-to-D1 export/import and row/count/hash reconciliation for the remaining live schema.
 7. Integrate the frontend with the non-production API and verify end-to-end user workflows. Configure a verified email provider for invitations/password resets. Production cutover remains a separate approval gate.
