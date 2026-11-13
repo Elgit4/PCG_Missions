@@ -515,6 +515,76 @@ class PlatformCoreMigrationTests(unittest.TestCase):
 
 
 
+    def test_calendar_and_announcement_creation_are_capability_scoped(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, _ = self.staff["field"]
+        self.db.execute(
+            """INSERT INTO calendar_entry
+               (id,branch_id,entry_type,title,starts_at,scope_type,created_by,created_at,updated_at)
+               VALUES ('calendar-1','authz-branch','service','Sunday Service',?,'branch',?,?,?)""",
+            (self.NOW,admin_user,self.NOW,self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO calendar_entry
+                   (id,branch_id,entry_type,title,starts_at,scope_type,created_by,created_at,updated_at)
+                   VALUES ('calendar-field','authz-branch','service','Private Event',?,'branch',?,?,?)""",
+                (self.NOW,field_user,self.NOW,self.NOW),
+            )
+        self.db.execute(
+            """INSERT INTO announcement
+               (id,branch_id,title,body,audience_type,created_by,created_at,updated_at)
+               VALUES ('announcement-1','authz-branch','Service Notice','Sunday service begins at 9','branch',?,?,?)""",
+            (admin_user,self.NOW,self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO announcement
+                   (id,branch_id,title,body,audience_type,created_by,created_at,updated_at)
+                   VALUES ('announcement-field','authz-branch','Unauthorized','No access','branch',?,?,?)""",
+                (field_user,self.NOW,self.NOW),
+            )
+
+    def test_public_content_requires_content_manage_and_published_projection_fields(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, _ = self.staff["field"]
+        self.db.execute(
+            """INSERT INTO welcome_message
+               (id,branch_id,title,body,status,published_at,created_by,created_at,updated_at)
+               VALUES ('welcome-1','authz-branch','Welcome','Welcome to church','published',?,?,?,?)""",
+            (self.NOW,admin_user,self.NOW,self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO welcome_message
+                   (id,branch_id,title,body,created_by,created_at,updated_at)
+                   VALUES ('welcome-field','authz-branch','Unauthorized','No access',?,?,?)""",
+                (field_user,self.NOW,self.NOW),
+            )
+        self.assertEqual(
+            self.db.execute("SELECT title FROM welcome_message WHERE status='published'").fetchone(),
+            ("Welcome",),
+        )
+
+    def test_calendar_typed_scope_and_external_link_target_are_unambiguous(self):
+        admin_user, _ = self.staff["admin"]
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO calendar_entry
+                   (id,branch_id,entry_type,title,starts_at,scope_type,team_id,created_by,created_at,updated_at)
+                   VALUES ('calendar-invalid','authz-branch','other','Bad scope',?,'branch','team-authz',?,?,?)""",
+                (self.NOW,admin_user,self.NOW,self.NOW),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO external_document_link
+                   (id,label,url,created_by,created_at)
+                   VALUES ('link-invalid','Invalid link','https://example.test/doc',?,?)""",
+                (admin_user,self.NOW),
+            )
+
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -524,7 +594,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
