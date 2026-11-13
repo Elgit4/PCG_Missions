@@ -2922,6 +2922,249 @@ const MINISTRY_REPORT_COLUMNS=`id,branch_id,report_type,period_start,period_end,
   contacts_captured,gospel_presentations,decisions_for_christ,followup_required,followup_completed,
   visits_completed,calls_completed,events_supported,attendance_count,status,submitted_at,created_at,updated_at`;
 
+async function reportQueryBranch(
+  request:Request,
+  context:AuthenticatedStaffContext,
+  requestId:string,
+  origin?:string,
+):Promise<{branchId:string}|Response> {
+  const url=new URL(request.url);
+  const values=url.searchParams.getAll("branch_id");
+  if (values.length!==1||[...url.searchParams.keys()].some((key)=>key!=="branch_id")||!isUuidValue(values[0])) {
+    return json(400,{ok:false,error:{code:"INVALID_QUERY",message:"A single valid branch_id is required."}},requestId,origin);
+  }
+  if (!context.activeBranch||values[0]!==context.activeBranch.branchId) {
+    return json(403,{ok:false,error:{code:"BRANCH_SCOPE_REQUIRED"}},requestId,origin);
+  }
+  return {branchId:values[0]};
+}
+
+async function listReportTeams(request:Request,env:Env,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const branch=await reportQueryBranch(request,context,requestId,origin);
+  if (branch instanceof Response) return branch;
+  if (!hasReportScope(context,"report.submit.own","self")
+      &&!hasReportScope(context,"report.review.team","team")
+      &&!hasReportScope(context,"report.review.branch","branch")) {
+    return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  }
+  const now=new Date().toISOString();
+  const teamIds=await activeReportTeamIds(env,context.staff.profileId,branch.branchId,now);
+  if (!teamIds.length) return json(200,{ok:true,data:[]},requestId,origin);
+  const slots=teamIds.map(()=>"?").join(",");
+  const rows=await env.DB.prepare(
+    "SELECT id,name FROM team WHERE branch_id=? AND is_active=1 AND id IN ("+slots+") ORDER BY name ASC",
+  ).bind(branch.branchId,...teamIds).all<{id:string;name:string}>();
+  return json(200,{ok:true,data:rows.results??[]},requestId,origin);
+}
+
+async function listReportEvents(request:Request,env:Env,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const branch=await reportQueryBranch(request,context,requestId,origin);
+  if (branch instanceof Response) return branch;
+  if (!hasReportScope(context,"report.submit.own","self")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const now=new Date().toISOString();
+  const teamIds=await activeReportTeamIds(env,context.staff.profileId,branch.branchId,now);
+  const teamSql=teamIds.length
+    ? "EXISTS (SELECT 1 FROM event_team_assignment eta JOIN staff_team_membership stm ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id WHERE eta.event_id=e.id AND eta.branch_id=e.branch_id AND eta.team_id IN ("+teamIds.map(()=>"?").join(",")+") AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?) AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?))"
+    : "0=1";
+  const values:unknown[]=[branch.branchId,context.staff.userId,now,now];
+  if (teamIds.length) values.push(...teamIds,now,now,now,now);
+  const rows=await env.DB.prepare(
+    "SELECT DISTINCT e.id,e.title,e.starts_at FROM event e WHERE e.branch_id=? AND ("+
+    "EXISTS (SELECT 1 FROM event_staff_assignment esa WHERE esa.event_id=e.id AND esa.branch_id=e.branch_id AND esa.staff_auth_user_id=? AND esa.revoked_at IS NULL AND esa.starts_at<=? AND (esa.ends_at IS NULL OR esa.ends_at>?)) OR "+teamSql+") ORDER BY e.starts_at DESC LIMIT 100",
+  ).bind(...values).all<{id:string;title:string;starts_at:string}>();
+  return json(200,{ok:true,data:rows.results??[]},requestId,origin);
+}
+
+async function listMinistryReports(request:Request,env:Env,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const parsed=parseMinistryReportList(new URL(request.url));
+  if (!parsed.ok) return json(400,{ok:false,error:{code:"INVALID_QUERY",message:parsed.error}},requestId,origin);
+  if (parsed.value.branch_id!==context.activeBranch.branchId) return json(403,{ok:false,error:{code:"BRANCH_SCOPE_REQUIRED"}},requestId,origin);
+  const canReadOwn=hasReportScope(context,"report.read.own","self");
+  const canReviewBranch=hasReportScope(context,"report.review.branch","branch");
+  const canReviewTeam=hasReportScope(context,"report.review.team","team");
+  if (!canReadOwn&&!canReviewBranch&&!canReviewTeam) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const now=new Date().toISOString();
+  const teamIds=canReviewTeam?await activeReportTeamIds(env,context.staff.profileId,parsed.value.branch_id,now):[];
+  const where=["branch_id=?"];const values:unknown[]=[parsed.value.branch_id];
+  if (parsed.value.report_type) {where.push("report_type=?");values.push(parsed.value.report_type);}
+  if (parsed.value.status) {where.push("status=?");values.push(parsed.value.status);}
+  if (!canReviewBranch) {
+    if (canReadOwn&&teamIds.length) {
+      where.push("(author_profile_id=? OR team_id IN ("+teamIds.map(()=>"?").join(",")+"))");
+      values.push(context.staff.profileId,...teamIds);
+    } else if (canReadOwn) {
+      where.push("author_profile_id=?");values.push(context.staff.profileId);
+    } else if (teamIds.length) {
+      where.push("team_id IN ("+teamIds.map(()=>"?").join(",")+")");values.push(...teamIds);
+    } else {
+      return json(200,{ok:true,data:[],total:0},requestId,origin);
+    }
+  }
+  const clause=where.join(" AND ");
+  const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM ministry_report WHERE "+clause)
+    .bind(...values).first<{total:number}>();
+  const rows=await env.DB.prepare(
+    "SELECT "+MINISTRY_REPORT_COLUMNS+" FROM ministry_report WHERE "+clause+
+    " ORDER BY period_start DESC,created_at DESC LIMIT ? OFFSET ?",
+  ).bind(...values,parsed.value.limit,parsed.value.offset).all<Record<string,unknown>>();
+  return json(200,{ok:true,data:rows.results??[],total:count?.total??0},requestId,origin);
+}
+
+async function getMinistryReport(request:Request,env:Env,reportId:string,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const branch=await reportQueryBranch(request,context,requestId,origin);
+  if (branch instanceof Response) return branch;
+  if (!isUuidValue(reportId)) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  const report=await env.DB.prepare(
+    "SELECT "+MINISTRY_REPORT_COLUMNS+" FROM ministry_report WHERE id=? AND branch_id=? LIMIT 1",
+  ).bind(reportId,branch.branchId).first<Record<string,unknown>&{author_profile_id:string;team_id:string|null}>();
+  if (!report) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  const now=new Date().toISOString();
+  const teamIds=hasReportScope(context,"report.review.team","team")
+    ?await activeReportTeamIds(env,context.staff.profileId,branch.branchId,now):[];
+  if (!canReadMinistryReport(context,report,teamIds)) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  const history=await env.DB.prepare(
+    "SELECT id,actor_profile_id,decision,comment,created_at FROM report_review_event WHERE report_id=? ORDER BY created_at ASC,id ASC",
+  ).bind(reportId).all<Record<string,unknown>>();
+  return json(200,{ok:true,data:{...report,review_history:history.results??[]}},requestId,origin);
+}
+
+async function createMinistryReport(request:Request,env:Env,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const parsed=parseMinistryReportCreate(body.value);
+  if (!parsed.ok) return json(400,{ok:false,error:{code:"INVALID_REPORT",message:parsed.error}},requestId,origin);
+  const value=parsed.value;
+  if (value.branch_id!==context.activeBranch.branchId) return json(403,{ok:false,error:{code:"BRANCH_SCOPE_REQUIRED"}},requestId,origin);
+  if (!hasReportScope(context,"report.submit.own","self")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const now=new Date().toISOString();
+  const teamIds=value.team_id?await activeReportTeamIds(env,context.staff.profileId,value.branch_id,now):[];
+  if (value.team_id&&!teamIds.includes(value.team_id)) return json(403,{ok:false,error:{code:"TEAM_SCOPE_REQUIRED"}},requestId,origin);
+  if (value.event_id) {
+    const direct=await env.DB.prepare(
+      "SELECT id FROM event_staff_assignment WHERE branch_id=? AND event_id=? AND staff_auth_user_id=? AND revoked_at IS NULL AND starts_at<=? AND (ends_at IS NULL OR ends_at>?) LIMIT 1",
+    ).bind(value.branch_id,value.event_id,context.staff.userId,now,now).first<{id:string}>();
+    let teamAssigned=false;
+    if (!direct&&teamIds.length) {
+      const teamAssignment=await env.DB.prepare(
+        "SELECT eta.id FROM event_team_assignment eta JOIN staff_team_membership stm ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id WHERE eta.branch_id=? AND eta.event_id=? AND eta.team_id IN ("+teamIds.map(()=>"?").join(",")+") AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?) AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?) LIMIT 1",
+      ).bind(value.branch_id,value.event_id,...teamIds,now,now,now,now).first<{id:string}>();
+      teamAssigned=!!teamAssignment;
+    }
+    if (!direct&&!teamAssigned) return json(403,{ok:false,error:{code:"EVENT_SCOPE_REQUIRED"}},requestId,origin);
+  }
+  const id=crypto.randomUUID();
+  const columns=["id","branch_id","report_type","period_start","period_end","author_profile_id","team_id","event_id",
+    ...REPORT_COUNT_FIELDS,"status","submitted_at","created_at","updated_at","created_by","updated_by"];
+  const values:unknown[]=[id,value.branch_id,value.report_type,value.period_start,value.period_end,
+    context.staff.profileId,value.team_id,value.event_id,...REPORT_COUNT_FIELDS.map((field)=>value[field]),
+    "submitted",now,now,now,context.staff.userId,context.staff.userId];
+  try {
+    const result=await env.DB.prepare(
+      "INSERT INTO ministry_report ("+columns.join(",")+") VALUES ("+columns.map(()=>"?").join(",")+")",
+    ).bind(...values).run();
+    if (!result.success||(result.meta?.changes??0)!==1) throw new Error("REPORT_CREATE_FAILED");
+  } catch (error) {
+    const message=String(error);
+    if (message.includes("UNIQUE constraint failed")) return json(409,{ok:false,error:{code:"REPORT_ALREADY_EXISTS"}},requestId,origin);
+    if (message.includes("REPORT_TEAM_SCOPE_REQUIRED")) return json(403,{ok:false,error:{code:"TEAM_SCOPE_REQUIRED"}},requestId,origin);
+    if (message.includes("REPORT_EVENT_SCOPE_REQUIRED")) return json(403,{ok:false,error:{code:"EVENT_SCOPE_REQUIRED"}},requestId,origin);
+    if (message.includes("REPORT_SUBMIT_SCOPE_REQUIRED")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    if (message.includes("REPORT_TEAM_BRANCH_MISMATCH")||message.includes("REPORT_EVENT_BRANCH_MISMATCH")) return json(400,{ok:false,error:{code:"INVALID_REPORT_SCOPE"}},requestId,origin);
+    return json(409,{ok:false,error:{code:"REPORT_CREATE_CONFLICT"}},requestId,origin);
+  }
+  const report=await env.DB.prepare("SELECT "+MINISTRY_REPORT_COLUMNS+" FROM ministry_report WHERE id=?").bind(id).first<Record<string,unknown>>();
+  return json(201,{ok:true,data:report},requestId,origin);
+}
+
+async function reviewMinistryReport(request:Request,env:Env,reportId:string,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if ([...new URL(request.url).searchParams.keys()].length) return json(400,{ok:false,error:{code:"INVALID_QUERY"}},requestId,origin);
+  if (!isUuidValue(reportId)) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const parsed=parseMinistryReportReview(body.value);
+  if (!parsed.ok) return json(400,{ok:false,error:{code:"INVALID_REVIEW",message:parsed.error}},requestId,origin);
+  const report=await env.DB.prepare(
+    "SELECT id,branch_id,author_profile_id,team_id,status FROM ministry_report WHERE id=? AND branch_id=? LIMIT 1",
+  ).bind(reportId,context.activeBranch.branchId).first<{id:string;branch_id:string;author_profile_id:string;team_id:string|null;status:string}>();
+  if (!report) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  if (report.author_profile_id===context.staff.profileId) return json(403,{ok:false,error:{code:"SELF_REVIEW_FORBIDDEN"}},requestId,origin);
+  const now=new Date().toISOString();
+  const teamIds=hasReportScope(context,"report.review.team","team")
+    ?await activeReportTeamIds(env,context.staff.profileId,report.branch_id,now):[];
+  if (!canReviewMinistryReport(context,report,teamIds)) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  if (report.status!=="submitted") return json(409,{ok:false,error:{code:"REPORT_NOT_SUBMITTED"}},requestId,origin);
+  const decision=parsed.value.decision;
+  const status=decision==="comment"?"submitted":decision;
+  try {
+    const result=await env.DB.prepare(
+      "UPDATE ministry_report SET status=?,updated_at=?,updated_by=?,last_action_id=?,last_action_by=?,last_action_decision=?,last_action_comment=?,last_action_at=? WHERE id=? AND branch_id=? AND status='submitted'",
+    ).bind(status,now,context.staff.userId,crypto.randomUUID(),context.staff.userId,decision,parsed.value.comment,now,reportId,report.branch_id).run();
+    if (!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"REPORT_NOT_SUBMITTED"}},requestId,origin);
+  } catch (error) {
+    const message=String(error);
+    if (message.includes("REPORT_SELF_REVIEW_FORBIDDEN")) return json(403,{ok:false,error:{code:"SELF_REVIEW_FORBIDDEN"}},requestId,origin);
+    if (message.includes("REPORT_REVIEW_SCOPE_REQUIRED")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    return json(409,{ok:false,error:{code:"REPORT_REVIEW_CONFLICT"}},requestId,origin);
+  }
+  const updated=await env.DB.prepare("SELECT "+MINISTRY_REPORT_COLUMNS+" FROM ministry_report WHERE id=?").bind(reportId).first<Record<string,unknown>>();
+  const history=await env.DB.prepare("SELECT id,actor_profile_id,decision,comment,created_at FROM report_review_event WHERE report_id=? ORDER BY created_at ASC,id ASC")
+    .bind(reportId).all<Record<string,unknown>>();
+  return json(200,{ok:true,data:{report:updated,review_history:history.results??[]}},requestId,origin);
+}
+
+async function resubmitMinistryReport(request:Request,env:Env,reportId:string,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if ([...new URL(request.url).searchParams.keys()].length) return json(400,{ok:false,error:{code:"INVALID_QUERY"}},requestId,origin);
+  if (!isUuidValue(reportId)) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const parsed=parseMinistryReportCorrection(body.value);
+  if (!parsed.ok) return json(400,{ok:false,error:{code:"INVALID_REPORT_CORRECTION",message:parsed.error}},requestId,origin);
+  const report=await env.DB.prepare(
+    "SELECT id,branch_id,author_profile_id,status FROM ministry_report WHERE id=? AND branch_id=? LIMIT 1",
+  ).bind(reportId,context.activeBranch.branchId).first<{id:string;branch_id:string;author_profile_id:string;status:string}>();
+  if (!report||report.author_profile_id!==context.staff.profileId) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  if (!hasReportScope(context,"report.submit.own","self")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  if (report.status!=="returned") return json(409,{ok:false,error:{code:"REPORT_NOT_RETURNED"}},requestId,origin);
+  const now=new Date().toISOString();
+  const setCounts=REPORT_COUNT_FIELDS.map((field)=>field+"=?").join(",");
+  const values:unknown[]=[...REPORT_COUNT_FIELDS.map((field)=>parsed.counts[field]),"submitted",now,now,context.staff.userId,
+    crypto.randomUUID(),context.staff.userId,"resubmitted",null,now,reportId,report.branch_id,context.staff.profileId];
+  try {
+    const result=await env.DB.prepare(
+      "UPDATE ministry_report SET "+setCounts+",status=?,submitted_at=?,updated_at=?,updated_by=?,last_action_id=?,last_action_by=?,last_action_decision=?,last_action_comment=?,last_action_at=? WHERE id=? AND branch_id=? AND status='returned' AND author_profile_id=?",
+    ).bind(...values).run();
+    if (!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"REPORT_NOT_RETURNED"}},requestId,origin);
+  } catch (error) {
+    if (String(error).includes("REPORT_SUBMIT_SCOPE_REQUIRED")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    return json(409,{ok:false,error:{code:"REPORT_RESUBMIT_CONFLICT"}},requestId,origin);
+  }
+  const updated=await env.DB.prepare("SELECT "+MINISTRY_REPORT_COLUMNS+" FROM ministry_report WHERE id=?").bind(reportId).first<Record<string,unknown>>();
+  const history=await env.DB.prepare("SELECT id,actor_profile_id,decision,comment,created_at FROM report_review_event WHERE report_id=? ORDER BY created_at ASC,id ASC")
+    .bind(reportId).all<Record<string,unknown>>();
+  return json(200,{ok:true,data:{report:updated,review_history:history.results??[]}},requestId,origin);
+}
+
 async function getReportsOverview(
   request: Request,
   env: Env,
