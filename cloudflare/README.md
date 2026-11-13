@@ -7,12 +7,12 @@ This is an isolated Cloudflare Workers + D1 implementation track. It is not conn
 - D1 database: `pcg-missions-dev`
 - Database ID: `376a6782-d059-41f9-9e09-f93718fef2bb`
 - Jurisdiction: EU (`eu`), primary region `EEUR`
-- Remote EU D1 schema version: 24
-- Remote migration ledger: 24 applied migrations
-- Remote application tables: 77 (excluding Wrangler's migration ledger)
-- EU non-production D1 has migrations 0025–0028 applied (schema version 28, 28 ledger entries, 81 application tables, zero foreign-key violations)
-- Full API Worker: not deployed; deployment is waiting for the scoped GitHub secrets `CLOUDFLARE_API_TOKEN` and `BETTER_AUTH_SECRET`
-- Diagnostic Worker: `pcg-missions-d1-smoke`, read-only `GET /health` with the EU D1 binding; public HTTP response still needs independent verification
+- Remote EU D1 schema version: 28
+- Remote migration ledger: 28 applied migrations
+- Remote application tables: 81 (excluding Wrangler's migration ledger)
+- EU non-production D1 verification: schema 28, 28 ledger entries, 81 application tables, zero foreign-key violations; primary query region `EEUR`
+- Full API Worker: `pcg-missions-api-nonprod` deployed on 2026-11-13 from the migration branch; deployment workflow confirmed health response and unauthenticated API gate
+- Diagnostic Worker: `pcg-missions-d1-smoke`, retained as a separate read-only diagnostic service
 - Diagnostic URL: https://pcg-missions-d1-smoke.pcg-missions-nonprod.workers.dev/health
 - Production Supabase, Vercel, DNS and live data: unchanged
 
@@ -29,7 +29,7 @@ The database was created with an EU jurisdiction. This setting is fixed at creat
 - Explicit-share prayer workflows: metadata-only Admin/Pastor queue, assigned intercessor narrative reads, reasoned share revocation and transactionally paired audit records.
 - Append-only access, role, account, contact-assignment and follow-up event ledgers.
 
-The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in the migration track. Worker source includes explicit-share pastoral-care case metadata, assignment, restricted interactions, status updates and reasoned revocation; event lifecycle and operations; calendar; announcements and recipient inbox; public content; and typed ministry reports. Migration 0025 adds stricter pastoral-care share and assignment guards but is pending application to remote EU D1. The full API Worker is not deployed or runtime-tested. Scheduled announcement publication is implemented as a five-minute Worker cron; due announcements publish only while the scheduling staff member retains active branch-level announcement authority.
+The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in the migration track. Worker source includes explicit-share pastoral-care case metadata, assignment, restricted interactions, status updates and reasoned revocation; event lifecycle and operations; calendar; announcements and recipient inbox; public content; and typed ministry reports. Migration 0025 adds stricter pastoral-care share and assignment guards and is applied to remote EU D1. The full API Worker is deployed to the isolated non-production environment. The deployment pipeline verified `/health` against schema 28 and confirmed the unauthenticated staff-context endpoint returns HTTP 401; authenticated business-domain acceptance remains in progress. Scheduled announcement publication is implemented as a five-minute Worker cron; due announcements publish only while the scheduling staff member retains active branch-level announcement authority.
 
 ## Worker endpoints implemented in source
 
@@ -61,12 +61,12 @@ The prayer/care, events/attendance/transport and calendar/announcement/content s
 - `GET/PATCH /api/v1/content/profile`, `POST /api/v1/content/links`, `GET /api/v1/content/audit` — church profile management, immutable HTTPS document links and scoped content audit.
 - `GET /api/public/content?branch_id={id}` — anonymous published-only public projection for church profile, welcome messages, sermons, daily words, tracts, public announcements, public events and approved HTTPS links.
 
-These are source-code routes, not a live service yet: the Cloudflare Worker has not been deployed or runtime-tested.
+These routes are deployed on the non-production Worker. Initial remote smoke verification covers Worker health, the EU D1 schema marker and the unauthenticated staff-context gate; it does not yet constitute full authenticated acceptance of every business route.
 
 ## Not enabled yet
 
-- Pastoral-care handlers are implemented in source under migration 0025's explicit-share model; real Worker/D1 integration tests and remote migration application remain outstanding.
-- Public event registration remains disabled. Staff registration, capacity enforcement, transport reservations, check-in and closeout handlers are implemented in source but not deployed or runtime-tested; event visibility remains staff-only by default.
+- Pastoral-care handlers are deployed under migration 0025's explicit-share model; authenticated cross-branch, assignment-expiry and audit-failure acceptance tests remain outstanding.
+- Public event registration remains disabled. Staff registration, capacity enforcement, transport reservations, check-in and closeout handlers are deployed but still require authenticated remote acceptance; event visibility remains staff-only by default.
 - Secure Supabase export/import reconciliation and Worker runtime verification of the aggregate CSV export.
 - Public registration, public prayer intake, offline access, SMS and email notifications.
 - Invitation email delivery and invitation acceptance UI. Password-reset email delivery is implemented through the Resend adapter but requires `RESEND_API_KEY` and a verified `EMAIL_FROM` sender.
@@ -97,11 +97,11 @@ Use a generated secret and never commit `.dev.vars`. For a Cloudflare preview, s
 
 ## Verification
 
-The last recorded GitHub Actions run, [43469371911](https://github.com/Elgit4/PCG_Missions/actions/runs/43469371911), passed 56 Python/SQLite migration and authorization tests and the Worker/Better Auth TypeScript type-check for the earlier schema slice. PR #61 adds API contract and event-audit regression tests; a passing run for those new tests has not yet been observed.
+Current-head Cloudflare validation run [43526171588](https://github.com/Elgit4/PCG_Missions/actions/runs/43526171588) passed: SQLite/security tests, Worker and Better Auth type-check, Wrangler dry-run build, local Worker/D1 integration, required deployment-secret checks, remote D1 migration reconciliation, Worker deployment and post-deploy health/API-gate verification. The PR validation run is [43526176723](https://github.com/Elgit4/PCG_Missions/actions/runs/43526176723).
 
-The remote EU D1 database last verified at schema version 24, 24 migration records and 77 application tables (excluding the Wrangler migration ledger), with no foreign-key violations. Migration 0025 is present in the source branch but remains unapplied remotely. This is not a substitute for deployed Worker request tests or Better Auth runtime compatibility testing.
+The remote EU D1 database is verified at schema version 28, 28 migration records and 81 application tables (excluding the Wrangler migration ledger), with no foreign-key violations. Migrations 0025–0028 are applied. The deployed Worker returned the expected non-production health payload and HTTP 401 for an unauthenticated staff-context request. This is not a substitute for authenticated acceptance across every domain or independent Better Auth account lifecycle tests.
 
-The Worker passes TypeScript checking and `wrangler deploy --dry-run` bundling. GitHub Actions is configured to deploy only `pcg-missions-api-nonprod` from `migration/cloudflare-nonprod-completion`; the deploy step currently skips because the repository secret `CLOUDFLARE_API_TOKEN` is not configured. Add it under **Settings → Secrets and variables → Actions** with scoped Workers Scripts edit permission. Do not paste the token into source control or chat. After deployment, set the persistent `BETTER_AUTH_SECRET` Worker secret and add the actual frontend origin to `BETTER_AUTH_TRUSTED_ORIGINS` before browser sign-in testing.
+The Worker passes TypeScript checking, Wrangler dry-run bundling and local D1 integration. GitHub Actions deployed `pcg-missions-api-nonprod` from `migration/cloudflare-nonprod-completion`; both `CLOUDFLARE_API_TOKEN` and `BETTER_AUTH_SECRET` passed the workflow's presence/length gate and the Better Auth secret was provisioned as a Worker secret. The workflow now fails closed if either required secret is absent, applies pending migrations, deploys only the non-production Worker and verifies D1 schema 28 plus the unauthenticated API gate. Never paste secrets into source control or chat. The stable Vercel preview origin is already in the Worker allow-list; any additional preview origin must be added as an exact origin before browser sign-in testing.
 
 ## Safety boundary
 
