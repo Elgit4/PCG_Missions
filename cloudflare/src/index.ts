@@ -2605,6 +2605,23 @@ async function listPrayerQueue(
       now, context.staff.profileId, now, now, limit,
     ),
     env.DB.prepare(`
+      INSERT INTO sensitive_record_access_audit
+        (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, share_reference, created_at)
+      SELECT 'prayer-queue-meta-' || lower(hex(randomblob(16))),
+             prayer_request.branch_id, ?, 'prayer_request', prayer_request.id,
+             'read', 'Admin/Pastor accessed prayer queue metadata for assignment', NULL, ?
+      FROM prayer_request
+      WHERE prayer_request.branch_id = ?
+        AND prayer_request.status IN ('open','assigned','in_progress')
+        AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
+        AND ${actorAuthorized}
+      ORDER BY prayer_request.created_at ASC, prayer_request.id ASC
+      LIMIT ?
+    `).bind(
+      context.staff.profileId, now, context.activeBranch.branchId, now,
+      context.staff.profileId, now, now, limit,
+    ),
+    env.DB.prepare(`
       SELECT id, status, sensitivity, expires_at, created_at, updated_at
       FROM prayer_request
       WHERE branch_id = ?
@@ -2618,8 +2635,10 @@ async function listPrayerQueue(
       context.staff.profileId, now, now, limit,
     ),
   ]);
-  const rows = batch[1]?.results ?? [];
-  if (!batch[0]?.success || (batch[0]?.meta?.changes ?? 0) !== rows.length) {
+  const rows = batch[2]?.results ?? [];
+  if (!batch[0]?.success || !batch[1]?.success ||
+      (batch[0]?.meta?.changes ?? 0) !== rows.length ||
+      (batch[1]?.meta?.changes ?? 0) !== rows.length) {
     return json(503, { ok: false, error: { code: "PRAYER_QUEUE_AUDIT_FAILED" } }, requestId, origin);
   }
   return json(200, { ok: true, requests: rows }, requestId, origin);
@@ -2696,6 +2715,27 @@ async function listAssignedPrayerRequests(
       context.staff.profileId, now, now, limit,
     ),
     env.DB.prepare(`
+      INSERT INTO sensitive_record_access_audit
+        (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, share_reference, created_at)
+      SELECT 'prayer-read-meta-' || lower(hex(randomblob(16))),
+             prayer_request.branch_id, ?, 'prayer_request', prayer_request.id,
+             'read', 'Assigned intercessor accessed narrative through explicit share',
+             staff_record_share.id, ?
+      FROM prayer_request
+      JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
+      JOIN staff_record_share ON staff_record_share.record_id = prayer_request.id
+      WHERE prayer_request.branch_id = ?
+        AND prayer_request.status IN ('assigned','in_progress','answered')
+        AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
+        AND ${activeShareAndAssignment}
+      ORDER BY prayer_request.created_at DESC, prayer_request.id DESC
+      LIMIT ?
+    `).bind(
+      context.staff.profileId, now, context.activeBranch.branchId, now,
+      context.staff.userId, now, now, context.staff.profileId, now, now,
+      context.staff.profileId, now, now, limit,
+    ),
+    env.DB.prepare(`
       SELECT prayer_request.id, prayer_request.request_text, prayer_request.status,
              prayer_request.sensitivity, prayer_request.expires_at,
              prayer_request.answered_at, prayer_request.created_at, prayer_request.updated_at
@@ -2714,8 +2754,10 @@ async function listAssignedPrayerRequests(
       context.staff.profileId, now, now, limit,
     ),
   ]);
-  const rows = batch[1]?.results ?? [];
-  if (!batch[0]?.success || (batch[0]?.meta?.changes ?? 0) !== rows.length) {
+  const rows = batch[2]?.results ?? [];
+  if (!batch[0]?.success || !batch[1]?.success ||
+      (batch[0]?.meta?.changes ?? 0) !== rows.length ||
+      (batch[1]?.meta?.changes ?? 0) !== rows.length) {
     return json(503, { ok: false, error: { code: "PRAYER_READ_AUDIT_FAILED" } }, requestId, origin);
   }
   return json(200, { ok: true, requests: rows }, requestId, origin);
