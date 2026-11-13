@@ -83,6 +83,12 @@ begin
   where id = p_report_id
   returning * into v_report;
 
+  insert into public.report_review_event(
+    report_id, actor_profile_id, decision, comment
+  ) values (
+    p_report_id, p_author_profile_id, 'resubmitted', null
+  );
+
   return v_report;
 end;
 $$;
