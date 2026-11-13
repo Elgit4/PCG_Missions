@@ -12,6 +12,7 @@
 | `0001_platform_core.sql` | 17 | Better Auth core identity table shape, church/branch tenancy, roles/capabilities, staff profiles and scoped assignments, append-only access audit, teams and service areas |
 | `0002_contacts_followup.sql` | 9 | Contacts, capture provenance/idempotency, assignment history, visibility-scoped notes, interactions, merge history, follow-up lists/tasks and append-only task events |
 | `0003_staff_authorization_policy.sql` | 5 security tables | Seeds six fixed roles and scoped grants; adds explicit shares, sensitive-access audit, two-person Admin/Pastor elevation requests, elevation audit and two-slot owner bootstrap state |
+| `0004_staff_session_revocation.sql` | 0 new tables | Revokes all Better Auth sessions immediately when a staff account is deactivated or suspended; schema version 4 |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
@@ -44,7 +45,7 @@ A successful CI result proves the SQL is accepted by the CI runner's SQLite engi
 ## Not implemented yet
 
 - Staff invitation/create-account workflow and real email delivery for invitation/password reset.
-- Session revocation wired to deactivation and complete account reactivation workflow.
+- Session revocation is now enforced by a D1 trigger on deactivation/suspension; administrative deactivation/reactivation endpoints and their audit-backed workflow remain to be implemented.
 - Better Auth schema compatibility validation against the exact pinned package in local D1 and Worker runtime.
 - Capability/record authorization integration into domain handlers; verified session resolution is now available, but protected business routes remain disabled.
 - Ministry-sensitive prayer/care domain tables and runtime access-audit enforcement (the immutable audit ledger is now defined).
