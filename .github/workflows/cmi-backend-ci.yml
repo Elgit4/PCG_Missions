@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - feat/team-area-administration
+      - feat/team-area-administration-mainline
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
