@@ -75,5 +75,25 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertNotIn("await request.text()", reader.group(0))
 
 
+    def test_event_draft_and_read_routes_are_present_and_scoped(self):
+        for name in ("eventScopePredicate", "listEvents", "getEvent", "createEvent", "updateEvent", "publishEvent", "cancelEvent"):
+            self.assertIn(f"function {name}(", self.source)
+        self.assertIn('url.pathname === "/api/v1/events"', self.source)
+        self.assertIn("event_staff_assignment", self.source)
+        self.assertIn("event_team_assignment", self.source)
+
+    def test_event_creation_is_server_defaulted_to_private_draft_with_registration_closed(self):
+        handler = re.search(r"async function createEvent\\([\\s\\S]*?\\n\\}", self.source)
+        self.assertIsNotNone(handler)
+        code = handler.group(0)
+        self.assertIn("'draft'", code)
+        self.assertIn("'private'", code)
+        self.assertIn("'closed'", code)
+        self.assertIn("access.staff.userId", code)
+        self.assertNotIn("payload.status", code)
+        self.assertNotIn("payload.visibility", code)
+        self.assertNotIn("payload.registration_state", code)
+
+
 if __name__ == "__main__":
     unittest.main()
