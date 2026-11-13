@@ -454,17 +454,14 @@ async function bootstrapAdmin(
     if (passwordError) {
       throw new Error("BOOTSTRAP_TEMPORARY_PASSWORD_REISSUE_FAILED");
     }
-    const { error: expiryError } = await service
-      .from("staff_profile")
-      .update({
-        password_setup_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000)
-          .toISOString(),
-      })
-      .eq("id", existingProfile!.id)
-      .eq("account_status", "active")
-      .eq("must_change_password", true)
-      .is("password_changed_at", null);
-    if (expiryError) {
+    const { data: expiryRefreshed, error: expiryError } = await service.rpc(
+      "cmi_refresh_staff_password_setup_expiry",
+      {
+        p_staff_profile_id: existingProfile!.id,
+        p_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      },
+    );
+    if (expiryError || expiryRefreshed !== true) {
       throw new Error("BOOTSTRAP_PASSWORD_EXPIRY_REFRESH_FAILED");
     }
   } else {
