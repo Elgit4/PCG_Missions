@@ -2662,6 +2662,12 @@ export default {
       }
     }
 
+    if (url.pathname === "/api/v1/calendar" && request.method === "GET") return listCalendarEntries(request, env, requestId, origin);
+    if (url.pathname === "/api/v1/calendar" && request.method === "POST") return createCalendarEntry(request, env, requestId, origin);
+    if (url.pathname === "/api/v1/announcements" && request.method === "GET") return listAnnouncements(request, env, requestId, origin);
+    if (url.pathname === "/api/v1/announcements" && request.method === "POST") return createAnnouncement(request, env, requestId, origin);
+    if (url.pathname.startsWith("/api/v1/public/content/") && request.method === "GET") return listPublicContent(request, env, requestId, origin);
+
     if (url.pathname === "/api/v1/followup/tasks" && request.method === "GET") {
       return listFollowupTasks(request, env, requestId, origin);
     }
