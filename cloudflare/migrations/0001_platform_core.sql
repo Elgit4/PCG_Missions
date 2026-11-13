@@ -93,7 +93,11 @@ CREATE TABLE branch (
 
 CREATE TABLE capability (
   id TEXT PRIMARY KEY,
-  code TEXT NOT NULL UNIQUE CHECK (code GLOB '[a-z]*' AND length(code) BETWEEN 3 AND 120),
+  code TEXT NOT NULL UNIQUE CHECK (
+    length(code) BETWEEN 3 AND 120
+    AND substr(code, 1, 1) GLOB '[a-z]'
+    AND code NOT GLOB '*[^a-z0-9_.-]*'
+  ),
   description TEXT NOT NULL,
   sensitivity TEXT NOT NULL DEFAULT 'ordinary'
     CHECK (sensitivity IN ('ordinary', 'restricted', 'highly_restricted')),
@@ -242,6 +246,22 @@ CREATE TABLE service_area (
   UNIQUE (id, branch_id)
 );
 
+CREATE TRIGGER staff_team_membership_no_overlap_update
+BEFORE UPDATE OF staff_profile_id, team_id, starts_at, ends_at, revoked_at
+ON staff_team_membership
+WHEN NEW.revoked_at IS NULL
+BEGIN
+  SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM staff_team_membership existing
+    WHERE existing.id <> NEW.id
+      AND existing.staff_profile_id = NEW.staff_profile_id
+      AND existing.team_id = NEW.team_id
+      AND existing.revoked_at IS NULL
+      AND COALESCE(existing.ends_at, '9999-12-31T23:59:59.999Z') > NEW.starts_at
+      AND COALESCE(NEW.ends_at, '9999-12-31T23:59:59.999Z') > existing.starts_at
+  ) THEN RAISE(ABORT, 'STAFF_TEAM_MEMBERSHIP_OVERLAP') END;
+END;
+
 CREATE TABLE staff_team_membership (
   id TEXT PRIMARY KEY,
   staff_profile_id TEXT NOT NULL REFERENCES staff_profile(id) ON DELETE RESTRICT,
@@ -291,6 +311,20 @@ BEGIN
   SELECT CASE WHEN EXISTS (
     SELECT 1 FROM staff_area_coverage existing
     WHERE existing.staff_profile_id = NEW.staff_profile_id
+      AND existing.service_area_id = NEW.service_area_id
+      AND COALESCE(existing.ends_at, '9999-12-31T23:59:59.999Z') > NEW.starts_at
+      AND COALESCE(NEW.ends_at, '9999-12-31T23:59:59.999Z') > existing.starts_at
+  ) THEN RAISE(ABORT, 'STAFF_AREA_COVERAGE_OVERLAP') END;
+END;
+
+CREATE TRIGGER staff_area_coverage_no_overlap_update
+BEFORE UPDATE OF staff_profile_id, service_area_id, starts_at, ends_at
+ON staff_area_coverage
+BEGIN
+  SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM staff_area_coverage existing
+    WHERE existing.id <> NEW.id
+      AND existing.staff_profile_id = NEW.staff_profile_id
       AND existing.service_area_id = NEW.service_area_id
       AND COALESCE(existing.ends_at, '9999-12-31T23:59:59.999Z') > NEW.starts_at
       AND COALESCE(NEW.ends_at, '9999-12-31T23:59:59.999Z') > existing.starts_at
