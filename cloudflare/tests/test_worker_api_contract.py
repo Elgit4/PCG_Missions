@@ -99,8 +99,8 @@ class WorkerApiContractTests(unittest.TestCase):
         for name in ("calendarScopePredicate", "listCalendarEntries", "createCalendarEntry", "updateCalendarEntry"):
             self.assertIn(f"function {name}(", self.source)
         self.assertIn('url.pathname === "/api/v1/calendar"', self.source)
-        self.assertIn("calendar_entry_authorize_insert", self.source)
-        self.assertIn("calendar_entry_authorize_update", self.source)
+        self.assertIn('"calendar.manage"', self.source)
+        self.assertIn('"calendar.read"', self.source)
 
     def test_announcement_routes_are_capability_gated_and_audience_scoped(self):
         for name in ("announcementScopePredicate", "listAnnouncements", "createAnnouncement", "updateAnnouncement", "publishAnnouncement", "archiveAnnouncement"):
@@ -113,8 +113,8 @@ class WorkerApiContractTests(unittest.TestCase):
         handler = re.search(r"async function getPublicContent\\([\\s\\S]*?\\n\\}", self.source)
         self.assertIsNotNone(handler)
         code = handler.group(0)
-        self.assertIn("status = 'published'", code)
-        self.assertIn("is_public = 1", code)
+        self.assertRegex(code, r"status\s*=\s*'published'")
+        self.assertRegex(code, r"is_public\s*=\s*1")
         self.assertIn("branch_id", code)
 
 
