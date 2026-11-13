@@ -282,6 +282,64 @@ describe("CmiApiClient", () => {
   });
 
 
+  it("routes all private event, calendar, announcement and content draft CRUD operations", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "draft-1" }, request_id: "draft-operation" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+
+    await client.listEventDrafts("branch-a");
+    await client.createEventDraft({
+      branch_id: "branch-a", title: "Outreach", description: null,
+      starts_at: "2026-11-14T08:00:00.000Z", ends_at: "2026-11-14T10:00:00.000Z",
+      timezone: "Africa/Accra", location: null,
+    });
+    await client.updateEventDraft("branch-a", "event-1", { title: "Updated outreach" });
+
+    await client.listCalendarEntries("branch-a");
+    await client.createCalendarEntry({
+      branch_id: "branch-a", entry_type: "service", title: "Sunday service",
+      starts_at: "2026-11-15T09:00:00.000Z", ends_at: null,
+    });
+    await client.updateCalendarEntry("branch-a", "calendar-1", { title: "Updated service" });
+
+    await client.listAnnouncementDrafts("branch-a");
+    await client.createAnnouncementDraft({ branch_id: "branch-a", title: "Notice", body: "Service begins at 9." });
+    await client.updateAnnouncementDraft("branch-a", "announcement-1", { body: "Updated notice" });
+
+    await client.listSermonDrafts("branch-a");
+    await client.createSermonDraft({ branch_id: "branch-a", title: "Faith", body: "Sermon notes", public_slug: "faith" });
+    await client.updateSermonDraft("branch-a", "sermon-1", { title: "Faith renewed" });
+
+    await client.listWelcomeMessageDrafts("branch-a");
+    await client.createWelcomeMessageDraft({ branch_id: "branch-a", title: "Welcome", body: "Welcome to church", display_order: 1 });
+    await client.updateWelcomeMessageDraft("branch-a", "welcome-1", { display_order: 2 });
+
+    const calls = fetcher.mock.calls as unknown as Array<[URL, RequestInit]>;
+    expect(calls.map(([url, init]) => [url.pathname, init.method ?? "GET"])).toEqual([
+      ["/functions/v1/event-operations/events", "GET"],
+      ["/functions/v1/event-operations/events", "POST"],
+      ["/functions/v1/event-operations/events/event-1", "PATCH"],
+      ["/functions/v1/calendar-operations/entries", "GET"],
+      ["/functions/v1/calendar-operations/entries", "POST"],
+      ["/functions/v1/calendar-operations/entries/calendar-1", "PATCH"],
+      ["/functions/v1/announcement-operations/announcements", "GET"],
+      ["/functions/v1/announcement-operations/announcements", "POST"],
+      ["/functions/v1/announcement-operations/announcements/announcement-1", "PATCH"],
+      ["/functions/v1/content-operations/sermons", "GET"],
+      ["/functions/v1/content-operations/sermons", "POST"],
+      ["/functions/v1/content-operations/sermons/sermon-1", "PATCH"],
+      ["/functions/v1/content-operations/welcome-messages", "GET"],
+      ["/functions/v1/content-operations/welcome-messages", "POST"],
+      ["/functions/v1/content-operations/welcome-messages/welcome-1", "PATCH"],
+    ]);
+    for (const [url, init] of calls) {
+      expect(url.searchParams.get("branch_id") ?? JSON.parse(String(init.body ?? "{}")).branch_id).toBe("branch-a");
+      expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
+    }
+  });
+
   it("lists ministry reports through the scoped report operations function", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: [], total: 0, request_id: "reports-list" }), { status: 200 },
