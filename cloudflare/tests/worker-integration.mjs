@@ -137,7 +137,10 @@ try {
   const health = await fetch(baseUrl + "/health");
   const healthBody = await health.json();
   assert(health.status === 200 && healthBody.ok === true, "Worker health endpoint failed");
-  assert(healthBody.schema_version === 27, "expected D1 schema 26, got " + healthBody.schema_version);
+  assert(healthBody.schema_version === 28, "expected D1 schema 28, got " + healthBody.schema_version);
+
+  const scheduledTick = await fetch(baseUrl + "/cdn-cgi/local/scheduled");
+  assert(scheduledTick.status === 200, "local scheduled announcement tick failed: " + scheduledTick.status);
 
   const authSession = await fetch(baseUrl + "/api/auth/get-session");
   const authSessionBody = await authSession.text();
@@ -211,12 +214,19 @@ try {
   assert(scheduledAnnouncement.headers.get("x-content-type-options") === "nosniff",
     "security headers missing on announcement schedule");
 
-  const protectedSchedule = await fetch(baseUrl + "/api/v1/announcements/test-announcement/schedule", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ publish_at: "2026-11-14T10:00:00.000Z" }),
-  });
-  assert(protectedSchedule.status === 401, "unauthenticated schedule request should be 401, got " + protectedSchedule.status);
+  const protectedPosts = [
+    ["/api/v1/calendar/series", { title:"Weekly service", entry_type:"service", starts_at:"2026-11-16T10:00:00.000Z", timezone:"Africa/Accra", scope_type:"branch", recurrence:{frequency:"weekly",interval:1,count:4} }],
+    ["/api/v1/calendar/series/test-series/cancel", { reason:"Cancelled for integration test" }],
+    ["/api/v1/pastoral/care", { contact_id:"test-contact" }],
+    ["/api/v1/pastoral/care/test-case/assignments", { assignee_profile_id:"test-profile", purpose:"Authorized case assignment test" }],
+    ["/api/v1/pastoral/care/test-case/interactions", { interaction_type:"call", restricted_note:"test" }],
+  ];
+  for (const [route, body] of protectedPosts) {
+    const response = await fetch(baseUrl + route, {
+      method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),
+    });
+    assert(response.status===401,"unauthenticated POST to "+route+" should be 401, got "+response.status);
+  }
 
   const allowedPreflight = await fetch(baseUrl + "/api/v1/me", {
     method: "OPTIONS",
