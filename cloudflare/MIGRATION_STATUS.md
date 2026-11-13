@@ -33,6 +33,7 @@
 | `0022_typed_ministry_reports.sql` | 2 new tables | Adds typed daily/event/weekly ministry reports, D-12 report capabilities, branch/team reviewer scopes, self-review protection and atomic append-only review/resubmission history; schema version 22 |
 | `0023_prayer_request_idempotency.sql` | 1 new table | Adds branch-scoped actor-bound idempotency receipts for authenticated prayer intake; schema version 23 |
 | `0024_calendar_audit_cancellation_read_receipts.sql` | 2 new tables | Adds active/cancelled state, actor attribution, immutable calendar change audit and staff-scoped immutable read receipts; schema version 24 |
+| `0025_pastoral_care_explicit_share.sql` | 0 new tables | Restricts care metadata to Admin/Pastor branch scope; restricted reads, updates and interactions require explicit shares and active assignments; adds reasoned assignment revocation and immutable care audit; schema version 25 (source only; remote apply pending) |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
@@ -64,7 +65,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability;
 - typed calendar scope integrity, branch-scoped announcement management, content-manager checks on public content creation and update, church-scoped public-profile authorization, external-link immutability and append-only public-content change audit.
 
-Latest full CI run before Worker integration harness: [43504468309](https://github.com/Elgit4/PCG_Missions/actions/runs/43504468309) — 89 Python/SQLite tests passed; Worker/Better Auth TypeScript type-check and Wrangler dry-run bundle passed. The new local Worker/D1 integration suite is running in the current workflow and must pass before this branch is considered fully validated. Non-production deploy is skipped because `CLOUDFLARE_API_TOKEN` is not configured. The remote migration 0016 was separately syntax-checked in SQLite and applied/verified on EU D1. This does not replace real Worker request testing or Better Auth schema compatibility validation.
+Latest previously verified CI run: [43504468309](https://github.com/Elgit4/PCG_Missions/actions/runs/43504468309) — 89 Python/SQLite tests passed; Worker/Better Auth TypeScript type-check and Wrangler dry-run bundle passed for an earlier head. The latest branch adds the Worker integration harness and pastoral-care handlers; a green CI result for the current head has not yet been observed. Non-production deployment is skipped because `CLOUDFLARE_API_TOKEN` is not configured. Remote EU D1 is still schema version 24; migration 0025 is source-only and must be applied after migration validation.
 
 ## Authentication and authorization progress
 
@@ -81,9 +82,9 @@ Latest full CI run before Worker integration harness: [43504468309](https://gith
 
 - Better Auth schema compatibility validation against the exact pinned package in a real local D1/Worker runtime.
 - Worker-level integration tests for staff invitation, account lifecycle, staff governance and the existing contact/follow-up routes.
-- Pastoral-care narrative read/write routes remain disabled until explicit care-reader capability decisions are approved.
+- Pastoral-care metadata and explicit-share narrative handlers are now implemented in Worker source. The model grants branch metadata to Admin/Pastor only; narrative read/update/interact require an active explicit share and care assignment. Runtime integration tests and remote migration 0025 application remain outstanding.
 - Worker-level integration tests for the new event registration, capacity, cancellation replay, transport, check-in and closeout endpoints; the handlers and D1 guards are implemented but not runtime-tested.
-- Calendar and announcement CRUD/lifecycle, in-app delivery fan-out, recipient-scoped announcement inbox/read receipts, public content CRUD/publishing, church profile management, HTTPS external links and the published-only public read projection are now in Worker source. The current head passes CI but still requires deployed Worker integration testing.
+- Calendar and announcement CRUD/lifecycle, in-app delivery fan-out, recipient-scoped announcement inbox/read receipts, public content CRUD/publishing, church profile management, HTTPS external links and the published-only public read projection are in Worker source. They still require current-head CI and deployed Worker integration testing.
 - Ministry report submission, branch/team review, correction/resubmission, aggregate overview and append-only history are implemented in Worker source and D1. Remaining reporting work is ministry-specific time-series comparisons and privacy-controlled exports; migration export/import and source-to-D1 reconciliation also remain.
 - Cloudflare Pages preview binding and frontend API integration.
 - Email provider integration for invitations and password resets. SMS remains intentionally unconfigured.
@@ -108,6 +109,7 @@ Latest full CI run before Worker integration harness: [43504468309](https://gith
 1. Add the repository secret `CLOUDFLARE_API_TOKEN` with scoped Workers Scripts edit permission, deploy the full Worker to non-production and set the persistent `BETTER_AUTH_SECRET` Worker secret.
 2. Add the real frontend origin to `BETTER_AUTH_TRUSTED_ORIGINS`, then exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
 3. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content, including cross-branch, wrong-team, wrong-assignment, duplicate-key and capacity-race cases.
-4. Extend the reports overview with ministry-specific time series and comparison periods; implement privacy-controlled exports and scheduled announcement publishing.
-5. Validate Better Auth's generated schema against the pinned release and complete source-to-D1 migration export/import and row/count/hash reconciliation for the remaining live schema.
-6. Integrate the frontend with the non-production API and verify end-to-end user workflows. Production cutover remains a separate approval gate.
+4. Apply and verify migration 0025 on the isolated EU D1 database after the migration test suite passes; rerun foreign-key and authorization checks.
+5. Complete ministry-specific report comparisons, privacy-controlled exports and scheduled announcement publishing.
+6. Validate Better Auth's generated schema against the pinned release and complete the controlled source-to-D1 export/import and row/count/hash reconciliation for the remaining live schema.
+7. Integrate the frontend with the non-production API and verify end-to-end user workflows. Configure a verified email provider for invitations/password resets. Production cutover remains a separate approval gate.
