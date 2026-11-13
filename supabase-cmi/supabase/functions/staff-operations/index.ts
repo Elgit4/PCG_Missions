@@ -19,6 +19,10 @@ import {
   projectStaffDirectoryRows,
 } from "./validation.ts";
 import { readJson } from "../_shared/request_body.ts";
+import {
+  createAllowedOrigins,
+  isAllowedOrigin,
+} from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
@@ -35,11 +39,8 @@ const FOLLOWUP_IDEMPOTENCY_HMAC_KEY =
 const FOLLOWUP_IDEMPOTENCY_KEY_VERSION = Number(
   Deno.env.get("CMI_FOLLOWUP_IDEMPOTENCY_KEY_VERSION") ?? "1",
 );
-const allowedOrigins = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+const allowedOrigins = createAllowedOrigins(
+  Deno.env.get("CMI_ALLOWED_ORIGINS"),
 );
 
 function createServiceClient() {
@@ -475,7 +476,7 @@ Deno.serve(async (request: Request) => {
   const id = newRequestId();
   const origin = request.headers.get("Origin");
 
-  if (origin && !allowedOrigins.has(origin)) {
+  if (!isAllowedOrigin(origin, allowedOrigins)) {
     return fail("ORIGIN_NOT_ALLOWED", "Origin not allowed.", 403, null, id);
   }
   if (request.method === "OPTIONS") {
