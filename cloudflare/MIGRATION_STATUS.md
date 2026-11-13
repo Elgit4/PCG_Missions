@@ -1,8 +1,8 @@
 # Cloudflare migration status
 
 **Track:** non-production only  
-**Database jurisdiction:** EU (`eu`) selected; no remote D1 resource created from this session  
-**Worker:** read-only readiness endpoint only  
+**Database jurisdiction:** EU (`eu`) — remote non-production database `pcg-missions-dev` created on 2026-11-13 (primary region `EEUR`, replication disabled)  
+**Worker:** not deployed; D1 schema applied directly to the isolated non-production database  
 **Production:** unchanged
 
 ## Implemented D1 schema slices
@@ -23,7 +23,7 @@
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
-## Current test coverage
+## Remote non-production D1 verification\n\n- Database UUID: `376a6782-d059-41f9-9e09-f93718fef2bb`.\n- Migrations `0001` through `0011` applied successfully; schema version reports `11` and environment marker is `non-production`.\n- Database contains 39 application tables and all six expected role records.\n- `PRAGMA foreign_key_check` returned no violations.\n- Wrangler migration ledger `d1_migrations` was initialized with the 11 applied migration filenames after applying the SQL through the Cloudflare D1 API.\n- This is a direct remote D1 schema test; Better Auth login, Worker request lifecycle and domain endpoints have not yet been exercised against a deployed Worker.\n\n## Current test coverage
 
 The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations against an in-memory SQLite database and checks:
 - migration application and non-production marker;
