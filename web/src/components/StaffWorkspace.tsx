@@ -587,32 +587,17 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         <header className="cmi-topbar">
           <div className="cmi-topbar-heading">
             <div className="cmi-mobile-brand"><img src="/logo.svg" alt="" /><span><strong>PCG Missions</strong><small>STAFF WORKSPACE</small></span></div>
-            <span className="cmi-breadcrumb">PCG MISSIONS / {(activeBranch?.name ?? "NO ACTIVE BRANCH").toUpperCase()}</span>
+            <span className="cmi-breadcrumb">PCG MISSIONS / STAFF WORKSPACE</span>
             <h1>{page === "Follow-up" ? "Follow-up tasks" : page}</h1>
           </div>
           <div className="cmi-topbar-actions">
             <ThemeToggle />
-            <label className="cmi-branch-picker"><span>BRANCH</span><select aria-label="Active branch" value={branchId} onChange={(event) => {
-                setContacts([]);
-                setSelectedContact(null);
-                setTasks([]);
-                setResetRequests([]);
-                setStaffMembers([]);
-                setShowStaffForm(false);
-                setStaffStatusEdit(null);
-                setStaffStatusReason("");
-                setResetReasons({});
-                setContactsHasMore(false);
-                setTasksHasMore(false);
-                setQuery("");
-                setShowContactForm(false);
-                setShowTaskForm(false);
-                setBranchId(event.target.value);
-                setPage("Overview");
-              }}>
-              {session.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select></label>
-            <button className="cmi-button cmi-button-secondary" onClick={() => void refresh()} disabled={refreshing || loading}>{refreshing ? "Refreshing…" : "Refresh"}</button>
+            <button type="button" className="cmi-icon-action" onClick={() => void refresh()}
+              disabled={refreshing || loading}
+              aria-label={refreshing ? "Refreshing workspace" : "Refresh workspace"}
+              title={refreshing ? "Refreshing…" : "Refresh"}>
+              <RefreshCw size={18} strokeWidth={2} className={refreshing ? "is-spinning" : undefined} />
+            </button>
           </div>
         </header>
         <section className="cmi-content" id="cmi-content" tabIndex={-1} aria-busy={loading}>
