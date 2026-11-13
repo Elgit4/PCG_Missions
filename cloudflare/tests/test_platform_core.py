@@ -1686,7 +1686,7 @@ class AuthorizationQueryTests(unittest.TestCase):
             """INSERT INTO staff_team_membership
                (id,staff_profile_id,team_id,branch_id,membership_role,starts_at,created_by,created_at)
                VALUES ('report-field-team','authz-staff-field','authz-team','authz-branch','member',?,?,?)""",
-            (self.NOW,"authz-user-admin",self.NOW),
+            (self.NOW,"authz-staff-admin",self.NOW),
         )
         report_sql = """INSERT INTO ministry_report
             (id,branch_id,report_type,period_start,period_end,author_profile_id,team_id,
