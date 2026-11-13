@@ -3718,11 +3718,15 @@ function isValidPublicSlug(value: unknown): value is string {
     /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 }
 
-function hasContentRead(context: StaffContext): boolean {
+type ContentCapabilityContext = {
+  activeBranch: { capabilities: Array<{ code: string; scopeMode: string }> } | null;
+};
+
+function hasContentRead(context: ContentCapabilityContext): boolean {
   return !!context.activeBranch?.capabilities.some((grant) => grant.code === "content.read");
 }
 
-function hasContentManage(context: StaffContext): boolean {
+function hasContentManage(context: ContentCapabilityContext): boolean {
   return !!context.activeBranch?.capabilities.some((grant) => grant.code === "content.manage" && grant.scopeMode === "branch");
 }
 
