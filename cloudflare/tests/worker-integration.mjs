@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from "node:child_process";
-import { readdir } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -31,12 +31,13 @@ function startWorker() {
   child.stdout.on("data", (chunk) => { logs += chunk.toString(); });
   child.stderr.on("data", (chunk) => { logs += chunk.toString(); });
   child.testLogs = () => logs;
+  child.detached = true;
   return child;
 }
 
 async function stopWorker(child) {
+  try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
   if (child.exitCode !== null || child.signalCode !== null) return;
-  child.kill("SIGTERM");
   await Promise.race([
     new Promise((resolve) => child.once("exit", resolve)),
     delay(10000),
@@ -94,6 +95,7 @@ db.close()
 print("Seeded local D1 schema version 24")
 `;
 
+await rm(stateDir, { recursive: true, force: true });
 let worker = startWorker();
 try {
   await waitForListener(worker);
