@@ -3221,20 +3221,24 @@ async function cancelEventRegistration(
   if (replay) return replay;
   const now=new Date().toISOString();
   try {
-    const result=await env.DB.prepare(`
-      UPDATE event_registration SET status='cancelled',cancelled_by=?,cancelled_at=?
-      WHERE id=? AND event_id=? AND branch_id=? AND status='registered'
-    `).bind(context.staff.userId,now,registrationId,eventId,context.activeBranch.branchId).run();
-    if (!result.success || (result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"REGISTRATION_NOT_CANCELLABLE"}},requestId,origin);
-    await env.DB.prepare(`
-      INSERT INTO event_idempotency_receipt
-        (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
-         digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
-      VALUES (?,?,?,'registration_cancel','staff',?,?,1,?,'event_registration',?,200,?)
-    `).bind(
-      crypto.randomUUID(),eventId,context.activeBranch.branchId,context.staff.userId,
-      idempotencyKey,digest.bytes,registrationId,now,
-    ).run();
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE event_registration SET status='cancelled',cancelled_by=?,cancelled_at=?
+        WHERE id=? AND event_id=? AND branch_id=? AND status='registered'
+      `).bind(context.staff.userId,now,registrationId,eventId,context.activeBranch.branchId),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES (?,?,?,'registration_cancel','staff',?,?,1,?,'event_registration',?,200,?)
+      `).bind(
+        crypto.randomUUID(),eventId,context.activeBranch.branchId,context.staff.userId,
+        idempotencyKey,digest.bytes,registrationId,now,
+      ),
+    ]);
+    if (results.some((result)=>!result.success || (result.meta?.changes??0)!==1)) {
+      return json(409,{ok:false,error:{code:"REGISTRATION_NOT_CANCELLABLE"}},requestId,origin);
+    }
   } catch {
     const raced=await findEventReceipt(env,eventId,"registration_cancel",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
     if (raced) return raced;
