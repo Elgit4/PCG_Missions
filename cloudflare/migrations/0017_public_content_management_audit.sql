@@ -88,25 +88,16 @@ BEGIN
   ) THEN RAISE(ABORT,'EXTERNAL_DOCUMENT_LINK_CREATE_NOT_AUTHORIZED') END;
 END;
 
-CREATE TRIGGER external_document_link_authorize_update
+CREATE TRIGGER external_document_link_no_update
 BEFORE UPDATE ON external_document_link
 BEGIN
-  SELECT CASE WHEN NEW.created_by<>OLD.created_by OR NEW.digital_tract_id IS NOT OLD.digital_tract_id
-      OR NEW.sermon_id IS NOT OLD.sermon_id
-    THEN RAISE(ABORT,'EXTERNAL_DOCUMENT_LINK_TARGET_IMMUTABLE') END;
-  SELECT CASE WHEN NEW.updated_by IS NULL OR NOT EXISTS (
-    SELECT 1
-    FROM staff_profile actor
-    JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id
-    JOIN role r ON r.id=ra.role_id AND r.is_active=1
-    JOIN role_capability rc ON rc.role_id=r.id
-    JOIN capability c ON c.id=rc.capability_id AND c.code='content.manage' AND c.is_active=1
-    JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
-    WHERE actor.auth_user_id=NEW.updated_by AND actor.account_status='active'
-      AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.created_at
-      AND (ra.ends_at IS NULL OR ra.ends_at>NEW.created_at)
-      AND rc.scope_mode='branch'
-  ) THEN RAISE(ABORT,'EXTERNAL_DOCUMENT_LINK_UPDATE_NOT_AUTHORIZED') END;
+  SELECT RAISE(ABORT,'EXTERNAL_DOCUMENT_LINK_IMMUTABLE');
+END;
+
+CREATE TRIGGER external_document_link_no_delete
+BEFORE DELETE ON external_document_link
+BEGIN
+  SELECT RAISE(ABORT,'EXTERNAL_DOCUMENT_LINK_IMMUTABLE');
 END;
 
 CREATE TRIGGER public_content_audit_profile_insert
@@ -247,18 +238,6 @@ BEGIN
          actor.id,NEW.created_by,'created','{}',
          json_object('label',NEW.label,'url',NEW.url,'digital_tract_id',NEW.digital_tract_id,'sermon_id',NEW.sermon_id),
          NEW.created_at FROM staff_profile actor WHERE actor.auth_user_id=NEW.created_by;
-END;
-
-CREATE TRIGGER public_content_audit_link_update
-AFTER UPDATE ON external_document_link
-BEGIN
-  INSERT INTO public_content_change_audit
-    (id,entity_type,entity_id,actor_profile_id,actor_user_id,action,before_state,after_state,created_at)
-  SELECT 'public-content-'||lower(hex(randomblob(16))),'external_document_link',NEW.id,
-         actor.id,NEW.updated_by,'updated',
-         json_object('label',OLD.label,'url',OLD.url,'digital_tract_id',OLD.digital_tract_id,'sermon_id',OLD.sermon_id),
-         json_object('label',NEW.label,'url',NEW.url,'digital_tract_id',NEW.digital_tract_id,'sermon_id',NEW.sermon_id),
-         NEW.created_at FROM staff_profile actor WHERE actor.auth_user_id=NEW.updated_by;
 END;
 
 CREATE TRIGGER public_content_audit_no_update
