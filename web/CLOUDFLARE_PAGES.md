@@ -24,7 +24,7 @@ For the Cloudflare Worker, configure:
 - `BETTER_AUTH_TRUSTED_ORIGINS`: comma-separated exact origins for the Worker and the deployed frontend preview origin(s).
 - `RESEND_API_KEY` and `EMAIL_FROM`: only after the sending domain has been verified and the provider credentials have been securely configured.
 
-The current Worker configuration includes its own workers.dev origin. Add the actual Vercel/Pages preview origin before testing browser sign-in. Do not guess or use wildcard origins. Never commit secrets or put them in `VITE_` variables.
+The current Worker configuration includes its own workers.dev origin and the stable Vercel branch alias `https://pcg-missions-git-migration-cloudflare-nonprod-completion-eltech.vercel.app`. The Vercel project has a branch-scoped Preview variable `PCG_MISSIONS_API_ORIGIN` pointing at the non-production Worker. Do not guess or use wildcard origins. Never commit secrets or put them in `VITE_` variables.
 
 ## Local development
 
