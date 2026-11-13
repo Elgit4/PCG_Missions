@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import {
   type CanonicalJson,
   createRequestDigest,
+  deriveIdempotencySecret,
 } from "../_shared/idempotency.ts";
 import {
   canReadContactNote,
@@ -915,8 +916,10 @@ Deno.serve(async (request: Request) => {
           id,
         );
       }
+      const followupIdempotencyKey = FOLLOWUP_IDEMPOTENCY_HMAC_KEY ||
+        await deriveIdempotencySecret(SUPABASE_SERVICE_ROLE_KEY, "followup");
       if (
-        FOLLOWUP_IDEMPOTENCY_HMAC_KEY.length < 32 ||
+        followupIdempotencyKey.length < 32 ||
         !Number.isSafeInteger(FOLLOWUP_IDEMPOTENCY_KEY_VERSION) ||
         FOLLOWUP_IDEMPOTENCY_KEY_VERSION < 1
       ) {
@@ -942,7 +945,7 @@ Deno.serve(async (request: Request) => {
           due_at: input.due_at,
           task_note: input.task_note,
         } as CanonicalJson,
-        FOLLOWUP_IDEMPOTENCY_HMAC_KEY,
+        followupIdempotencyKey,
         FOLLOWUP_IDEMPOTENCY_KEY_VERSION,
       );
 
@@ -1612,8 +1615,10 @@ Deno.serve(async (request: Request) => {
         }
       }
 
+      const contactIdempotencyKey = CONTACT_IDEMPOTENCY_HMAC_KEY ||
+        await deriveIdempotencySecret(SUPABASE_SERVICE_ROLE_KEY, "contact");
       if (
-        CONTACT_IDEMPOTENCY_HMAC_KEY.length < 32 ||
+        contactIdempotencyKey.length < 32 ||
         !Number.isSafeInteger(CONTACT_IDEMPOTENCY_KEY_VERSION) ||
         CONTACT_IDEMPOTENCY_KEY_VERSION < 1
       ) {
@@ -1644,7 +1649,7 @@ Deno.serve(async (request: Request) => {
           team_id: input.team_id,
           source_metadata: input.source_metadata,
         } as CanonicalJson,
-        CONTACT_IDEMPOTENCY_HMAC_KEY,
+        contactIdempotencyKey,
         CONTACT_IDEMPOTENCY_KEY_VERSION,
       );
 
