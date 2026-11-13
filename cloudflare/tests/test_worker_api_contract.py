@@ -273,7 +273,7 @@ if __name__ == "__main__":
 
 
     def test_report_overview_compares_prior_period_with_same_privacy_threshold(self):
-        handler = re.search(r"async function getReportsOverview\\([\\s\\S]*?\\n\\}", self.source)
+        handler = re.search(r"async function getReportsOverview\([\s\S]*?\n\}", self.source)
         self.assertIsNotNone(handler)
         code = handler.group(0)
         self.assertIn("previousFrom", code)
