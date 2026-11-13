@@ -42,6 +42,11 @@ The prayer/care, events/attendance/transport and calendar/announcement/content s
 - `GET/POST /api/v1/contacts`, `GET/PATCH /api/v1/contacts/{id}`, `GET/POST /api/v1/contacts/{id}/notes`, `GET/POST /api/v1/contacts/{id}/interactions` and `POST /api/v1/contacts/{id}/assign`.
 - `GET/POST /api/v1/followup/tasks`, `PATCH /api/v1/followup/tasks/{id}` and task assignment routes.
 - `GET/POST /api/v1/events`, `GET/PATCH /api/v1/events/{id}`, `GET /api/v1/events/{id}/audit`, `POST /api/v1/events/{id}/publish` and `/cancel` — scoped event listing, draft creation/editing, branch-manager audit and staff-only lifecycle.
+- `POST /api/v1/events/{id}/registration/open|close` — branch-manager control of registration state.
+- `GET/POST /api/v1/events/{id}/registrations` and `POST /api/v1/events/{id}/registrations/{registrationId}/cancel` — staff registration, capacity checks and replay-safe cancellation.
+- `GET/POST /api/v1/events/{id}/checkins` — scoped attendance recording and history.
+- `GET/POST /api/v1/events/{id}/transport-options`, `PATCH /api/v1/events/{id}/transport-options/{optionId}`, `GET/POST /api/v1/events/{id}/transport-reservations` and `POST /api/v1/events/{id}/transport-reservations/{reservationId}/cancel` — transport capacity and reservation lifecycle.
+- `GET/POST /api/v1/events/{id}/closeout`, `POST /api/v1/events/{id}/closeout/resubmit` and `/review` — closeout submission, resubmission and separate review capability.
 - `GET/POST /api/v1/calendar`, `GET/PATCH /api/v1/calendar/{id}` — branch/team/own/event-scoped calendar entries.
 - `GET/POST /api/v1/announcements`, `GET/PATCH /api/v1/announcements/{id}`, `POST /api/v1/announcements/{id}/publish` and `/archive` — audience-scoped announcement lifecycle.
 - `GET /api/v1/content`, `POST /api/v1/content/{kind}`, `PATCH /api/v1/content/{kind}/{id}`, `POST /api/v1/content/{kind}/{id}/publish|archive` — draft and publication lifecycle for welcome messages, sermons, daily words and digital tracts.
@@ -53,7 +58,7 @@ These are source-code routes, not a live service yet: the Cloudflare Worker has 
 ## Not enabled yet
 
 - Pastoral-care narrative read/write endpoints; the care domain remains restricted pending explicit care-reader capability approval.
-- Event registrations, capacity enforcement, transport reservations, check-in and closeout; event publishing is staff-only and registration remains closed.
+- Public event registration remains disabled. Staff registration, capacity enforcement, transport reservations, check-in and closeout handlers are implemented in source but not deployed or runtime-tested; event visibility remains staff-only by default.
 - Reporting, analytics and full Supabase export/import reconciliation.
 - Public registration, public prayer intake, offline access, SMS and email notifications.
 - Invitation/password-reset email delivery. Invitation tokens are currently returned once for authorized manual delivery; password reset fails closed until a provider is configured.
