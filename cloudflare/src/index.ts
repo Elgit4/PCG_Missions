@@ -5307,6 +5307,14 @@ async function listCareRecords(request: Request, env: Env, requestId: string, or
     WHERE cr.branch_id=? AND (? IS NULL OR cr.status=?)
     ORDER BY cr.updated_at DESC LIMIT 100
   `).bind(access.activeBranch.branchId,status,status).all<Record<string,unknown>>();
+  const now=new Date().toISOString();
+  try {
+    const audit=(rows.results??[]).map(row=>env.DB.prepare(`
+      INSERT INTO care_access_audit(id,care_record_id,branch_id,actor_user_id,action,reason,request_id,safe_metadata,accessed_at)
+      VALUES(?,?,?,?,'read','Authorized branch-scoped care metadata listing',?,'{}',?)
+    `).bind(crypto.randomUUID(),String(row.id),access.activeBranch.branchId,access.staff.userId,requestId,now));
+    if(audit.length) await env.DB.batch(audit);
+  } catch { return json(503,{ok:false,error:{code:"CARE_METADATA_AUDIT_FAILED"}},requestId,origin); }
   return json(200,{ok:true,care_records:rows.results??[]},requestId,origin);
 }
 
@@ -5402,16 +5410,16 @@ async function getCareRecord(request: Request, env: Env, careId: string, request
     ) LIMIT 1
   `).bind(careId,access.activeBranch.branchId,access.staff.userId,now,now).first<Record<string,unknown>>();
   if(!record) return json(404,{ok:false,error:{code:"CARE_RECORD_NOT_FOUND"}},requestId,origin);
-  const interactions=await env.DB.prepare(`
-    SELECT id,interaction_type,outcome_code,restricted_note,occurred_at,created_at
-    FROM care_interaction WHERE care_record_id=? ORDER BY occurred_at DESC LIMIT 100
-  `).bind(careId).all<Record<string,unknown>>();
   try {
     await env.DB.prepare(`INSERT INTO care_access_audit
       (id,care_record_id,branch_id,actor_user_id,action,reason,request_id,safe_metadata,accessed_at)
       VALUES(?,?,?,?,'read','Authorized explicit-share pastoral case read',?,'{}',?)`)
       .bind(crypto.randomUUID(),careId,access.activeBranch.branchId,access.staff.userId,requestId,now).run();
   } catch { return json(503,{ok:false,error:{code:"CARE_ACCESS_AUDIT_FAILED"}},requestId,origin); }
+  const interactions=await env.DB.prepare(`
+    SELECT id,interaction_type,outcome_code,restricted_note,occurred_at,created_at
+    FROM care_interaction WHERE care_record_id=? ORDER BY occurred_at DESC LIMIT 100
+  `).bind(careId).all<Record<string,unknown>>();
   return json(200,{ok:true,care_record:record,interactions:interactions.results??[]},requestId,origin);
 }
 
