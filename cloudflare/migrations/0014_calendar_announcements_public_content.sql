@@ -267,4 +267,144 @@ BEGIN
  ) THEN RAISE(ABORT,'DIGITAL_TRACT_CREATE_NOT_AUTHORIZED') END;
 END;
 
+
+-- Attribute update operations and enforce the actor at the database boundary.
+ALTER TABLE calendar_entry ADD COLUMN updated_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
+ALTER TABLE announcement ADD COLUMN updated_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
+ALTER TABLE welcome_message ADD COLUMN updated_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
+ALTER TABLE sermon ADD COLUMN updated_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
+ALTER TABLE daily_word ADD COLUMN updated_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
+ALTER TABLE digital_tract ADD COLUMN updated_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
+ALTER TABLE announcement_team_audience ADD COLUMN created_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
+ALTER TABLE announcement_event_audience ADD COLUMN created_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
+ALTER TABLE external_document_link ADD COLUMN updated_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
+
+CREATE TRIGGER calendar_entry_authorize_update
+BEFORE UPDATE ON calendar_entry
+BEGIN
+ SELECT CASE WHEN NEW.branch_id<>OLD.branch_id OR NEW.created_by<>OLD.created_by
+  THEN RAISE(ABORT,'CALENDAR_ENTRY_IMMUTABLE_OWNER') END;
+ SELECT CASE WHEN NEW.updated_by IS NULL OR NOT EXISTS (
+  SELECT 1 FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='calendar.manage' AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.updated_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.updated_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.updated_at)
+   AND (rc.scope_mode='branch' OR (rc.scope_mode='team' AND NEW.scope_type='team'
+      AND EXISTS (SELECT 1 FROM staff_team_membership stm WHERE stm.staff_profile_id=actor.id
+       AND stm.team_id=NEW.team_id AND stm.branch_id=NEW.branch_id AND stm.revoked_at IS NULL
+       AND stm.starts_at<=NEW.updated_at AND (stm.ends_at IS NULL OR stm.ends_at>NEW.updated_at))))
+ ) THEN RAISE(ABORT,'CALENDAR_ENTRY_UPDATE_NOT_AUTHORIZED') END;
+END;
+
+CREATE TRIGGER announcement_authorize_update
+BEFORE UPDATE ON announcement
+BEGIN
+ SELECT CASE WHEN NEW.branch_id<>OLD.branch_id OR NEW.created_by<>OLD.created_by
+  THEN RAISE(ABORT,'ANNOUNCEMENT_IMMUTABLE_OWNER') END;
+ SELECT CASE WHEN NEW.updated_by IS NULL OR NOT EXISTS (
+  SELECT 1 FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='announcements.manage' AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.updated_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.updated_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.updated_at) AND rc.scope_mode='branch'
+ ) THEN RAISE(ABORT,'ANNOUNCEMENT_UPDATE_NOT_AUTHORIZED') END;
+END;
+
+CREATE TRIGGER announcement_team_audience_authorize_insert
+BEFORE INSERT ON announcement_team_audience
+BEGIN
+ SELECT CASE WHEN NEW.created_by IS NULL OR NOT EXISTS (
+  SELECT 1 FROM announcement a
+  JOIN staff_profile actor ON actor.auth_user_id=NEW.created_by AND actor.account_status='active'
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='announcements.manage' AND c.is_active=1
+  WHERE a.id=NEW.announcement_id AND a.branch_id=NEW.branch_id
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.created_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.created_at) AND rc.scope_mode='branch'
+ ) THEN RAISE(ABORT,'ANNOUNCEMENT_AUDIENCE_NOT_AUTHORIZED') END;
+END;
+CREATE TRIGGER announcement_event_audience_authorize_insert
+BEFORE INSERT ON announcement_event_audience
+BEGIN
+ SELECT CASE WHEN NEW.created_by IS NULL OR NOT EXISTS (
+  SELECT 1 FROM announcement a
+  JOIN staff_profile actor ON actor.auth_user_id=NEW.created_by AND actor.account_status='active'
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='announcements.manage' AND c.is_active=1
+  WHERE a.id=NEW.announcement_id AND a.branch_id=NEW.branch_id
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.created_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.created_at) AND rc.scope_mode='branch'
+ ) THEN RAISE(ABORT,'ANNOUNCEMENT_AUDIENCE_NOT_AUTHORIZED') END;
+END;
+
+CREATE TRIGGER welcome_message_authorize_update
+BEFORE UPDATE ON welcome_message
+BEGIN
+ SELECT CASE WHEN NEW.created_by<>OLD.created_by OR NEW.branch_id IS NOT OLD.branch_id
+  THEN RAISE(ABORT,'WELCOME_MESSAGE_IMMUTABLE_OWNER') END;
+ SELECT CASE WHEN NEW.updated_by IS NULL OR NOT EXISTS (
+  SELECT 1 FROM staff_profile actor JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1 JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='content.manage' AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.updated_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.updated_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.updated_at)
+   AND (NEW.branch_id IS NULL OR ra.branch_id=NEW.branch_id) AND rc.scope_mode='branch'
+ ) THEN RAISE(ABORT,'WELCOME_MESSAGE_UPDATE_NOT_AUTHORIZED') END;
+END;
+CREATE TRIGGER sermon_authorize_update
+BEFORE UPDATE ON sermon
+BEGIN
+ SELECT CASE WHEN NEW.created_by<>OLD.created_by OR NEW.branch_id IS NOT OLD.branch_id
+  THEN RAISE(ABORT,'SERMON_IMMUTABLE_OWNER') END;
+ SELECT CASE WHEN NEW.updated_by IS NULL OR NOT EXISTS (
+  SELECT 1 FROM staff_profile actor JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1 JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='content.manage' AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.updated_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.updated_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.updated_at)
+   AND (NEW.branch_id IS NULL OR ra.branch_id=NEW.branch_id) AND rc.scope_mode='branch'
+ ) THEN RAISE(ABORT,'SERMON_UPDATE_NOT_AUTHORIZED') END;
+END;
+CREATE TRIGGER daily_word_authorize_update
+BEFORE UPDATE ON daily_word
+BEGIN
+ SELECT CASE WHEN NEW.created_by<>OLD.created_by
+  THEN RAISE(ABORT,'DAILY_WORD_IMMUTABLE_OWNER') END;
+ SELECT CASE WHEN NEW.updated_by IS NULL OR NOT EXISTS (
+  SELECT 1 FROM staff_profile actor JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1 JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='content.manage' AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.updated_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.updated_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.updated_at) AND rc.scope_mode='branch'
+ ) THEN RAISE(ABORT,'DAILY_WORD_UPDATE_NOT_AUTHORIZED') END;
+END;
+CREATE TRIGGER digital_tract_authorize_update
+BEFORE UPDATE ON digital_tract
+BEGIN
+ SELECT CASE WHEN NEW.created_by<>OLD.created_by
+  THEN RAISE(ABORT,'DIGITAL_TRACT_IMMUTABLE_OWNER') END;
+ SELECT CASE WHEN NEW.updated_by IS NULL OR NOT EXISTS (
+  SELECT 1 FROM staff_profile actor JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1 JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='content.manage' AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.updated_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.updated_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.updated_at) AND rc.scope_mode='branch'
+ ) THEN RAISE(ABORT,'DIGITAL_TRACT_UPDATE_NOT_AUTHORIZED') END;
+END;
+
 UPDATE app_meta SET schema_version=14 WHERE id=1 AND environment='non-production';
