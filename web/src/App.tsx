@@ -6,27 +6,15 @@ import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
 import { ThemeToggle } from "./lib/theme";
 
 export default function App() {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
-  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "";
-  const configurationError = !supabaseUrl || !publishableKey
-    ? "This portal is not connected to its secure sign-in service. Contact a church administrator."
-    : "";
+  const apiUrl = import.meta.env.VITE_CMI_API_URL ?? "";
+  const configurationError = "";
 
-  const auth = useMemo(() => {
-    if (!supabaseUrl || !publishableKey) return null;
-    try {
-      return new PcgAuthClient(supabaseUrl, publishableKey);
-    } catch {
-      return null;
-    }
-  }, [supabaseUrl, publishableKey]);
+  const auth = useMemo(() => new PcgAuthClient(), []);
 
-  const api = useMemo(() => auth
-    ? new CmiApiClient(
-      { supabaseUrl, publishableKey },
-      () => auth.getAccessToken(),
-    )
-    : null, [auth, supabaseUrl, publishableKey]);
+  const api = useMemo(() => new CmiApiClient(
+    { apiUrl },
+    () => auth.getAccessToken(),
+  ), [auth, apiUrl]);
 
   const [view, setView] = useState<StaffAuthView>("sign-in");
   const [staffSession, setStaffSession] = useState<StaffSession | null>(null);
