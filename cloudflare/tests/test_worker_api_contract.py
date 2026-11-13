@@ -146,7 +146,7 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("registration_state='open'", self.event_operations_migration)
 
     def test_event_checkin_and_transport_routes_are_idempotent_and_scoped(self):
-        for name in ("getScopedEventForStaff", "createEventCheckin", "listEventCheckins", "listTransportOptions", "createTransportOption", "updateTransportOption", "listTransportReservations", "createTransportReservation", "cancelTransportReservation"):
+        for name in ("hasEventAssignmentRole", "hasEventCheckinAccess", "createEventCheckin", "listEventCheckins", "listTransportOptions", "createTransportOption", "updateTransportOption", "listTransportReservations", "createTransportReservation", "cancelTransportReservation"):
             self.assertIn(f"function {name}(", self.source)
         self.assertIn('"event_checkin"', self.source)
         self.assertIn('"transport_reservation"', self.source)
