@@ -3268,22 +3268,6 @@ async function cancelEventRegistration(
   return json(200,{ok:true,registration_id:registrationId,status:"cancelled"},requestId,origin);
 }
 
-async function getScopedEventForStaff(
-  context: AuthenticatedStaffContext,
-  env: Env,
-  eventId: string,
-): Promise<Record<string,unknown> | null> {
-  if (!context.activeBranch) return null;
-  const scope=bestEventScope(context.activeBranch.capabilities.filter((grant)=>grant.code==="events.read").map((grant)=>grant.scopeMode));
-  if (!scope) return null;
-  const now=new Date().toISOString();
-  const predicate=eventScopePredicate(scope,"e",context.staff.profileId,context.staff.userId,now);
-  return env.DB.prepare(`
-    SELECT e.id,e.branch_id,e.status,e.registration_state,e.capacity,e.transport_enabled
-    FROM event e WHERE e.id=? AND e.branch_id=? AND (${predicate.sql}) LIMIT 1
-  `).bind(eventId,context.activeBranch.branchId,...predicate.values).first<Record<string,unknown>>();
-}
-
 async function hasEventAssignmentRole(
   context: AuthenticatedStaffContext,
   env: Env,
