@@ -316,6 +316,21 @@ describe("CmiApiClient", () => {
     expect(JSON.stringify(init.body)).not.toContain("status");
   });
 
+  it("preserves the exact total count from paginated report lists", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: [], total: 73, request_id: "report-page" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.listMinistryReports("branch-a", { limit: 50, offset: 50 });
+    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/report-operations/reports");
+    expect(url.searchParams.get("limit")).toBe("50");
+    expect(url.searchParams.get("offset")).toBe("50");
+    expect(result.data).toEqual([]);
+    expect(result.total).toBe(73);
+  });
+
   it("submits report reviews through the atomic review endpoint", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: { report: { id: "report-1" }, review_history: [] }, request_id: "report-review" }),
