@@ -67,7 +67,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability;
 - typed calendar scope integrity, branch-scoped announcement management, content-manager checks on public content creation and update, church-scoped public-profile authorization, external-link immutability and append-only public-content change audit.
 
-Latest previously verified CI run: [43504468309](https://github.com/Elgit4/PCG_Missions/actions/runs/43504468309) — 89 Python/SQLite tests passed; Worker/Better Auth TypeScript type-check and Wrangler dry-run bundle passed for an earlier head. The latest branch adds the Worker integration harness and pastoral-care handlers; a green CI result for the current head has not yet been observed. Non-production deployment is skipped because `CLOUDFLARE_API_TOKEN` is not configured. Remote EU D1 is still schema version 24; migration 0025 is source-only and must be applied after migration validation.
+Latest verified CI run: [43513507401](https://github.com/Elgit4/PCG_Missions/actions/runs/43513507401) — 104 Python/SQLite tests passed; Worker/Better Auth TypeScript type-check, Wrangler dry-run bundle and local Worker/D1 + Better Auth integration tests passed. The push workflow's remote migration and deployment steps were skipped because `CLOUDFLARE_API_TOKEN` and `BETTER_AUTH_SECRET` are not configured. Remote EU D1 remains schema version 24 with 24 migration records and 77 application tables; migrations 0025–0027 are source-only until the scoped secrets are configured.
 
 ## Authentication and authorization progress
 
@@ -111,7 +111,7 @@ Latest previously verified CI run: [43504468309](https://github.com/Elgit4/PCG_M
 1. Add the repository secret `CLOUDFLARE_API_TOKEN` with scoped Workers Scripts edit permission, deploy the full Worker to non-production and set the persistent `BETTER_AUTH_SECRET` Worker secret.
 2. Add the real frontend origin to `BETTER_AUTH_TRUSTED_ORIGINS`, then exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
 3. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content, including cross-branch, wrong-team, wrong-assignment, duplicate-key and capacity-race cases.
-4. Apply and verify migrations 0025–0027 on the isolated EU D1 database after the migration test suite passes; rerun foreign-key and authorization checks.
-5. Verify aggregate CSV export privacy, audit enforcement and scheduled-announcement publication in a deployed Worker.
+4. Configure the scoped `CLOUDFLARE_API_TOKEN` repository secret and persistent `BETTER_AUTH_SECRET`; the push workflow then applies migrations 0025–0027 to `pcg-missions-dev` and deploys only the non-production API Worker.
+5. Verify remote schema version 27, foreign-key integrity, authorization triggers, aggregate CSV export privacy/audit and scheduled-announcement publication against EU D1.
 6. Validate Better Auth's generated schema against the pinned release and complete the controlled source-to-D1 export/import and row/count/hash reconciliation for the remaining live schema.
 7. Integrate the frontend with the non-production API and verify end-to-end user workflows. Configure a verified email provider for invitations/password resets. Production cutover remains a separate approval gate.
