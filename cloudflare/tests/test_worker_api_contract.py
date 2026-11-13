@@ -237,3 +237,16 @@ class WorkerApiContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_prayer_intake_requires_branch_capability_and_idempotency(self):
+        handler = re.search(r"async function createPrayerRequest\\([\\s\\S]*?\\n\\}", self.source)
+        self.assertIsNotNone(handler)
+        code = handler.group(0)
+        self.assertIn('"prayer.request.create"', code)
+        self.assertIn('"branch"', code)
+        self.assertIn('request.headers.get("Idempotency-Key")', code)
+        self.assertIn("prayer_request_idempotency", code)
+        self.assertIn("prayer_access_audit", code)
+        self.assertIn("request_text.length > 10000", code)
+        self.assertIn('url.pathname === "/api/v1/pastoral/prayer/requests"', self.source)
+
