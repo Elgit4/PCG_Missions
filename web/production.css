@@ -2408,3 +2408,7 @@ button, input, select, textarea { font: inherit; }
 .ministry-report-history-entry time{font-size:.78rem;color:var(--cmi-text-muted,#64748b)}
 .ministry-report-history-entry p,.ministry-report-history>p{margin:7px 0 0;color:var(--cmi-text-muted,#475569);font-size:.88rem;white-space:pre-wrap;overflow-wrap:anywhere}
 .ministry-report-inline-error{margin:8px 0;color:#b42318;font-size:.86rem}
+
+
+.ministry-report-pagination{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:8px 0 4px;color:var(--cmi-text-muted,#64748b);font-size:.88rem}
+.ministry-report-pagination button{min-width:160px;justify-content:center}
