@@ -424,6 +424,9 @@ export default {
         if (context.state === "branch_not_authorized") {
           return json(403, { ok: false, error: { code: "BRANCH_NOT_AUTHORIZED" } }, requestId, origin);
         }
+        if (context.staff.branches.length === 0) {
+          return json(403, { ok: false, error: { code: "NO_ACTIVE_BRANCH_ASSIGNMENT" } }, requestId, origin);
+        }
         return json(200, {
           ok: true,
           staff: context.staff,
