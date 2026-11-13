@@ -92,7 +92,9 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
         offset: reports.length,
       });
       setReports((current) => {
-        const byId = new Map(current.map((report) => [report.id, report]));
+        const byId = new Map<string, MinistryReportRecord>(
+          current.map((report) => [report.id, report] as const),
+        );
         for (const report of result.data) byId.set(report.id, report);
         return [...byId.values()];
       });
