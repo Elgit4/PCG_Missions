@@ -168,7 +168,8 @@ try {
 
   const signOut = await fetch(baseUrl + "/api/auth/sign-out", {
     method: "POST",
-    headers: { Cookie: cookie, Origin: baseUrl },
+    headers: { Cookie: cookie, Origin: baseUrl, "Content-Type": "application/json" },
+    body: JSON.stringify({}),
   });
   assert(signOut.status === 200, "Better Auth sign-out failed: " + signOut.status);
   const signedOutSession = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: cookie } });
