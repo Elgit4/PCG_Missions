@@ -3493,12 +3493,13 @@ async function createTransportReservation(
   const registrationId=typeof payload?.registration_id==="string"?payload.registration_id:"";
   const optionId=typeof payload?.transport_option_id==="string"?payload.transport_option_id:"";
   const seatCount=payload?.seat_count===undefined?1:payload.seat_count;
-  const pickupArea=payload?.pickup_area===undefined||payload.pickup_area===null?null:typeof payload.pickup_area==="string"?payload.pickup_area.trim():"";
+  const pickupArea=payload?.pickup_area===undefined||payload.pickup_area===null||payload.pickup_area===""?null:typeof payload.pickup_area==="string"?payload.pickup_area.trim():"";
   const notes=payload?.notes===undefined||payload.notes===null?null:typeof payload.notes==="string"?payload.notes.trim():"";
   if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some((key)=>!allowed.has(key))||
       !registrationId||!optionId||typeof seatCount!=="number"||!Number.isInteger(seatCount)||seatCount<1||seatCount>20||
-      (pickupArea!==null&&(typeof pickupArea!=="string"||pickupArea.length>180))||
-      (notes!==null&&(typeof notes!=="string"||notes.length>1000))) {
+      (payload.pickup_area!==undefined&&payload.pickup_area!==null&&payload.pickup_area!==""&&typeof payload.pickup_area!=="string")||
+      (payload.notes!==undefined&&payload.notes!==null&&typeof payload.notes!=="string")||
+      (pickupArea!==null&&pickupArea.length>180)||(notes!==null&&notes.length>1000)) {
     return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_RESERVATION"}},requestId,origin);
   }
   const event=await getScopedEventForStaff(context,env,eventId);
@@ -4293,6 +4294,11 @@ function isValidDateOnly(value: unknown): value is string {
   const date = new Date(value + "T00:00:00.000Z");
   return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
+
+type AuthenticatedStaffContext = {
+  staff: { profileId: string; userId: string };
+  activeBranch: { branchId: string; capabilities: Array<{ code: string; scopeMode: string }> } | null;
+};
 
 type ContentCapabilityContext = {
   activeBranch: { capabilities: Array<{ code: string; scopeMode: string }> } | null;
