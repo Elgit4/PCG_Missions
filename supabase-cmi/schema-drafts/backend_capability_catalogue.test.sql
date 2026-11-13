@@ -423,7 +423,7 @@ select ok(
         or c.code like 'sms.%'
       )
   ),
-  'Draft workspace grants do not enable publication, registration, attendance, exports, team management, pastoral mutation or SMS'
+  'Private-draft and team-management grants do not enable publication, registration, attendance, exports, pastoral mutation or SMS'
 );
 
 select is(
