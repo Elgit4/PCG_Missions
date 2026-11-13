@@ -270,6 +270,18 @@ Deno.serve(async (request: Request) => {
         const memberships = await activeTeamIds(auth.service, auth.profileId, value.branch_id);
         if (!memberships.includes(value.team_id)) return fail("TEAM_SCOPE_REQUIRED", "Select a team you actively belong to.", 403, origin, requestId);
       }
+      if (value.event_id) {
+        const now = new Date().toISOString();
+        const { data: assignments, error: assignmentError } = await auth.service
+          .from("event_staff_assignment").select("id")
+          .eq("branch_id", value.branch_id).eq("event_id", value.event_id)
+          .eq("staff_auth_user_id", auth.actorId).lte("starts_at", now)
+          .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null).limit(1);
+        if (assignmentError) throw new Error("REPORT_EVENT_ASSIGNMENT_LOOKUP_FAILED");
+        if (!assignments?.length) {
+          return fail("EVENT_SCOPE_REQUIRED", "You must be actively assigned to the selected event.", 403, origin, requestId);
+        }
+      }
       const now = new Date().toISOString();
       const { data, error } = await auth.service.from("ministry_report").insert({
         ...value, author_profile_id: auth.profileId, status: "submitted", submitted_at: now,
@@ -277,7 +289,7 @@ Deno.serve(async (request: Request) => {
       if (error) {
         const message = error.message ?? "";
         if (message.includes("REPORT_TEAM_BRANCH_MISMATCH")) return fail("INVALID_TEAM_SCOPE", "The selected team does not belong to this branch.", 400, origin, requestId);
-        if (message.includes("REPORT_EVENT_BRANCH_MISMATCH")) return fail("INVALID_EVENT_SCOPE", "The selected event does not belong to this branch.", 400, origin, requestId);
+        if (message.includes("REPORT_EVENT_BRANCH_MISMATCH") || error.code === "23503") return fail("INVALID_EVENT_SCOPE", "The selected event does not belong to an available branch event.", 400, origin, requestId);
         throw new Error("REPORT_CREATE_FAILED");
       }
       return response({ data, request_id: requestId }, 201, origin, requestId);
