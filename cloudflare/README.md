@@ -7,8 +7,8 @@ This is an isolated Cloudflare Workers + D1 implementation track. It is not conn
 - D1 database: `pcg-missions-dev`
 - Database ID: `376a6782-d059-41f9-9e09-f93718fef2bb`
 - Jurisdiction: EU (`eu`), primary region `EEUR`
-- Schema version: 16
-- Migration ledger: 16 applied migrations
+- Schema version: 17
+- Migration ledger: 17 applied migrations
 - Application tables: 69
 - Worker: not deployed yet
 - Production Supabase, Vercel, DNS and live data: unchanged
@@ -52,7 +52,7 @@ These are source-code routes, not a live service yet: the Cloudflare Worker has 
 
 - Pastoral-care narrative read/write endpoints; the care domain remains restricted pending explicit care-reader capability approval.
 - Event registrations, capacity enforcement, transport reservations, check-in and closeout; event publishing is staff-only and registration remains closed.
-- Public-content editing and church-profile management.
+- Event registrations, capacity enforcement, transport reservations, check-in and closeout.
 - Reporting, analytics and full Supabase export/import reconciliation.
 - Public registration, public prayer intake, offline access, SMS and email notifications.
 - Invitation/password-reset email delivery. Invitation tokens are currently returned once for authorized manual delivery; password reset fails closed until a provider is configured.
