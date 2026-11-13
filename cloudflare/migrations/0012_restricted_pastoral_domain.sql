@@ -338,6 +338,23 @@ CREATE TABLE care_interaction (
 CREATE INDEX care_interaction_record_time_idx ON care_interaction(care_record_id, occurred_at DESC);
 CREATE INDEX care_interaction_actor_time_idx ON care_interaction(actor_user_id, occurred_at DESC);
 
+
+CREATE TRIGGER prayer_assignment_no_delete BEFORE DELETE ON prayer_assignment
+BEGIN SELECT RAISE(ABORT, 'PRAYER_ASSIGNMENT_HISTORY_PRESERVED'); END;
+CREATE TRIGGER prayer_assignment_end_requires_revocation
+BEFORE UPDATE OF ends_at ON prayer_assignment
+WHEN OLD.ends_at IS NULL AND NEW.ends_at IS NOT NULL AND NEW.revoked_at IS NULL
+BEGIN SELECT RAISE(ABORT, 'PRAYER_ASSIGNMENT_END_REQUIRES_REVOKE'); END;
+
+CREATE TRIGGER care_group_membership_no_delete BEFORE DELETE ON care_group_membership
+BEGIN SELECT RAISE(ABORT, 'CARE_GROUP_MEMBERSHIP_HISTORY_PRESERVED'); END;
+CREATE TRIGGER care_assignment_no_delete BEFORE DELETE ON care_assignment
+BEGIN SELECT RAISE(ABORT, 'CARE_ASSIGNMENT_HISTORY_PRESERVED'); END;
+CREATE TRIGGER care_interaction_no_update BEFORE UPDATE ON care_interaction
+BEGIN SELECT RAISE(ABORT, 'CARE_INTERACTION_APPEND_ONLY'); END;
+CREATE TRIGGER care_interaction_no_delete BEFORE DELETE ON care_interaction
+BEGIN SELECT RAISE(ABORT, 'CARE_INTERACTION_APPEND_ONLY'); END;
+
 CREATE TABLE care_access_audit (
   id TEXT PRIMARY KEY,
   care_record_id TEXT NOT NULL,
