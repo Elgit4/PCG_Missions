@@ -81,7 +81,7 @@ Last recorded CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actio
 - Pastoral-care narrative read/write routes remain disabled until explicit care-reader capability decisions are approved.
 - Worker-level integration tests for the new event registration, capacity, cancellation replay, transport, check-in and closeout endpoints; the handlers and D1 guards are implemented but not runtime-tested.
 - Calendar and announcement CRUD/lifecycle, in-app delivery fan-out, recipient-scoped announcement inbox/read receipts, public content CRUD/publishing, church profile management, HTTPS external links and the published-only public read projection are now in Worker source. The current head passes CI but still requires deployed Worker integration testing.
-- Reporting, analytics, export/import tooling and source-to-D1 reconciliation.
+- Advanced ministry reporting, time-series comparisons, privacy-controlled exports, migration export/import tooling and source-to-D1 reconciliation. The first aggregate-only branch reports overview is now in Worker source.
 - Cloudflare Pages preview binding and frontend API integration.
 - Email provider integration for invitations and password resets. SMS remains intentionally unconfigured.
 
@@ -104,6 +104,6 @@ Last recorded CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actio
 
 1. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content, including cross-branch, wrong-team, wrong-assignment, duplicate-key and capacity-race cases.
 2. Deploy the full Worker to a non-production Workers preview and exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
-3. Add ministry reporting, privacy-controlled exports and scheduled announcement publishing/delivery.
+3. Extend the aggregate reports overview with ministry-specific time series and comparison periods; implement privacy-controlled exports and scheduled announcement publishing.
 4. Validate Better Auth's generated schema against the pinned release and complete source-to-D1 migration export/import and row/count/hash reconciliation for the remaining live schema.
 5. Integrate the frontend with the non-production API and verify end-to-end user workflows. Production cutover remains a separate approval gate.
