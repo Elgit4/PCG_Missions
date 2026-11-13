@@ -195,8 +195,7 @@ export async function writeSensitiveAccessAudit(
     !input.branchId ||
     !input.actorProfileId ||
     !input.recordId ||
-    input.purpose.trim().length < 10 ||
-    input.purpose.trim().length > 300
+    !/^[a-z][a-z0-9_.-]{9,299}$/.test(input.purpose.trim())
   ) {
     throw new Error("SENSITIVE_AUDIT_INPUT_INVALID");
   }
@@ -237,6 +236,10 @@ export async function writeStaffAccessAudit(
   input: StaffAccessAuditInput,
 ): Promise<void> {
   const safeMetadata = input.metadata ?? {};
+  const allowedMetadataKeys = new Set([
+    "role_code", "assignment_id", "elevation_request_id", "bootstrap",
+    "account_status", "session_revoked", "invitation_id", "request_id",
+  ]);
   if (
     !input.id ||
     !input.branchId ||
@@ -244,7 +247,10 @@ export async function writeStaffAccessAudit(
     !input.targetProfileId ||
     input.reason.trim().length < 10 ||
     input.reason.trim().length > 500 ||
-    Object.keys(safeMetadata).length > 20
+    Object.keys(safeMetadata).length > 20 ||
+    Object.entries(safeMetadata).some(([key, value]) =>
+      !allowedMetadataKeys.has(key) || (typeof value === "string" && value.length > 100)
+    )
   ) {
     throw new Error("STAFF_ACCESS_AUDIT_INPUT_INVALID");
   }
