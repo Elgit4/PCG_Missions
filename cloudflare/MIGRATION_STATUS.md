@@ -54,7 +54,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability;
 - typed calendar scope integrity, branch-scoped announcement management, content-manager checks on public content creation and update, and typed external document links.
 
-Latest CI run: [43464212595](https://github.com/Elgit4/PCG_Missions/actions/runs/43464212595) — Worker/Better Auth TypeScript type-check **passed**; SQLite migration/security suite is **queued** after the first run exposed misplaced test fixtures. Do not treat the SQLite suite as passed until this run completes. Even a passing CI run does not replace a real D1 Worker runtime test or Better Auth schema compatibility validation.
+Latest verified CI run: [43464674852](https://github.com/Elgit4/PCG_Missions/actions/runs/43464674852) — **55 Python/SQLite tests passed** and Worker/Better Auth TypeScript type-check passed. This verifies migration replay and tested invariants in CI's SQLite runtime; it does not replace real D1 Worker request testing or Better Auth schema compatibility validation.
 
 ## Authentication and authorization progress
 
