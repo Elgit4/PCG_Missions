@@ -2688,7 +2688,8 @@ async function listAssignedPrayerRequests(
       LIMIT ?
     `).bind(
       context.staff.userId, requestId, now, context.activeBranch.branchId, now,
-      context.staff.userId, now, now, context.staff.profileId, now, now, limit,
+      context.staff.userId, now, now, context.staff.profileId, now, now,
+      context.staff.profileId, now, now, limit,
     ),
     env.DB.prepare(`
       SELECT prayer_request.id, prayer_request.request_text, prayer_request.status,
@@ -2704,7 +2705,8 @@ async function listAssignedPrayerRequests(
       LIMIT ?
     `).bind(
       context.activeBranch.branchId, now,
-      context.staff.userId, now, now, context.staff.profileId, now, now, limit,
+      context.staff.userId, now, now, context.staff.profileId, now, now,
+      context.staff.profileId, now, now, limit,
     ),
   ]);
   return json(200, { ok: true, requests: batch[1]?.results ?? [] }, requestId, origin);
