@@ -108,6 +108,8 @@ begin
     select exists (
       select 1
       from public.staff_role_assignment sra
+      join public.staff_profile sp on sp.id = sra.staff_profile_id
+        and sp.account_status = 'active' and not sp.must_change_password
       join public.role r on r.id = sra.role_id and r.is_active
       join public.role_capability rc on rc.role_id = r.id and rc.scope_mode = 'team'
       join public.capability c on c.id = rc.capability_id
