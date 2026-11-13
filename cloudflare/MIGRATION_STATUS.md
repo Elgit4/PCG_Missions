@@ -40,7 +40,7 @@ These migrations are a first porting slice from the live schema. They are not a 
 
 - Database UUID: `376a6782-d059-41f9-9e09-f93718fef2bb`.
 - Migrations `0001` through `0024` applied successfully to the EU non-production D1 database; schema version is `24` and environment marker is `non-production`.
-- Database contains 76 application tables and all six expected role records.
+- Database contains 77 application tables and all six expected role records.
 - `PRAGMA foreign_key_check` returned no violations.
 - Wrangler migration ledger `d1_migrations` contains 24 applied migration filenames. Migrations `0018`–`0024` were applied to the EU non-production database and verified through the Cloudflare D1 API; expected event actor-authorization triggers, cancellation-key indexes, announcement delivery/read-receipt triggers, typed report tables, D-12 role grants, prayer idempotency ledger, calendar cancellation state, append-only calendar audit and immutable calendar read receipts are present.
 - This is a direct remote D1 schema test. The new local Worker/D1 integration suite is now part of CI and exercises Better Auth, protected route gates, security headers and CORS against the built Worker; non-production remote Worker deployment remains blocked by the missing GitHub Actions token.
