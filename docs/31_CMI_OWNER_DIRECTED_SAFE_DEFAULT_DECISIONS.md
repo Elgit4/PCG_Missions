@@ -92,6 +92,17 @@ The product owner instructed engineering to implement the remaining safe operati
 
 This adds seven explicit grants (65 total across the six roles). The grants do not authorize announcement/content publication, public registration, capacity reservation, transport, attendance/check-in, event closeout, report/export, team administration, pastoral mutation, SMS or offline use. Each request remains authenticated and server-authorized against active branch assignment and the exact capability. Lower roles receive no additional grant. See migration `20261112193000_admin_pastor_branch_draft_module_grants.sql` and the matching pgTAP assertions.
 
+## 7.2 Owner-directed continuation — team and service-area administration (13 November 2026)
+
+Following the 12 November private-draft workspace implementation, the product owner instructed engineering to proceed with the next Admin operational module. The following two branch-scoped capabilities are added to the existing Admin/Pastor role only:
+
+- `team.manage`: create/update/deactivate branch teams, add active staff already assigned to that branch, designate a team leader only when that staff account independently holds the active `team_leader` role in the same branch, change member/leader status, and revoke membership without deleting its history.
+- `area.manage`: create/update/deactivate branch service areas and add/end staff coverage for active staff already assigned to the branch.
+
+Every mutation is checked against the authenticated staff profile, selected active branch and exact branch-scoped capability inside the database function, then written to an append-only team-management audit ledger. Team leaders do not receive branch-wide team or membership administration from this change. Lower roles receive no new management grants. Deactivation is blocked while active team members or service-area coverage remain. No new contact, prayer/care, reports, exports, SMS, publishing or offline access is granted.
+
+This adds two explicit grants (67 total after migration). See `20261113010000_team_area_administration.sql` and `team_area_administration.test.sql`.
+
 ## 7. Change control
 
 This is the product owner's current engineering baseline. Stakeholders may request amendments at any time. Each amendment must record the requested change, rationale, approver, date, impact on roles/data/security, migration plan, tests and rollback. A later stakeholder change does not retroactively make the present least-privilege baseline unsafe or invalid.
