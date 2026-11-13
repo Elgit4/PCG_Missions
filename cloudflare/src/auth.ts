@@ -13,6 +13,7 @@ export interface AuthEnvironment {
   BETTER_AUTH_SECRET?: string;
   BETTER_AUTH_URL?: string;
   BETTER_AUTH_TRUSTED_ORIGINS?: string;
+  AUTH_DB_DEBUG?: string;
 }
 
 function trustedOrigins(env: AuthEnvironment, baseUrl: URL): string[] {
