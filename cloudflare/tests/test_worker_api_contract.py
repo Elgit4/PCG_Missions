@@ -30,16 +30,16 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("values: [staffUserId, now, now]", assigned_branch)
 
     def test_contact_scope_callers_pass_both_server_derived_staff_identifiers(self):
-        self.assertNotRegex(
-            self.source,
-            r"contactScopePredicate\([^;]*?context\.staff\.userId,\s*context\.activeBranch\.branchId",
-        )
-        self.assertNotRegex(
-            self.source,
-            r"contactScopePredicate\([^;]*?access\.staff\.userId,\s*access\.activeBranch\.branchId",
-        )
-        self.assertIn("context.staff.profileId, context.staff.userId", self.source)
-        self.assertIn("access.staff.profileId, access.staff.userId", self.source)
+        calls = re.findall(r"contactScopePredicate\(([\s\S]*?)\)", self.source)
+        self.assertGreaterEqual(len(calls), 10)
+        call_sites = [call for call in calls if not re.search(r"\bmode\s*:", call)]
+        self.assertGreaterEqual(len(call_sites), 10)
+        for call in call_sites:
+            self.assertRegex(
+                call,
+                r"(?:context|access)\.staff\.profileId[\s\S]*?(?:context|access)\.staff\.userId[\s\S]*?(?:context|access)\.activeBranch\.branchId",
+                msg=f"Contact scope call must pass profile ID and auth user ID separately: {call}",
+            )
 
 
 if __name__ == "__main__":
