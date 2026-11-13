@@ -5,12 +5,14 @@ on:
     branches:
       - main
       - feat/team-area-administration-mainline
+      - "feat/cmi-*"
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
   pull_request:
     branches:
       - main
+      - "feat/team-area-administration-mainline"
       - "feat/cmi-*"
       - "design/cmi-*"
       - "backend/cmi-*"
