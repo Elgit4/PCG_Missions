@@ -26,7 +26,7 @@ The database was created with an EU jurisdiction. This setting is fixed at creat
 - Explicit-share prayer workflows: metadata-only Admin/Pastor queue, assigned intercessor narrative reads, reasoned share revocation and transactionally paired audit records.
 - Append-only access, role, account, contact-assignment and follow-up event ledgers.
 
-The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in D1. Event draft and staff-only lifecycle handlers are now in source; the other domain workflows remain incomplete.
+The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in D1. Event lifecycle, calendar management, announcement management and a published-only public content read projection now have Worker handlers in source; registrations, transport, check-in, closeout, content editing and reports remain incomplete.
 
 ## Worker endpoints implemented in source
 
@@ -42,9 +42,9 @@ The prayer/care, events/attendance/transport and calendar/announcement/content s
 - `GET/POST /api/v1/contacts`, `GET/PATCH /api/v1/contacts/{id}`, `GET/POST /api/v1/contacts/{id}/notes`, `GET/POST /api/v1/contacts/{id}/interactions` and `POST /api/v1/contacts/{id}/assign`.
 - `GET/POST /api/v1/followup/tasks`, `PATCH /api/v1/followup/tasks/{id}` and task assignment routes.
 - `GET/POST /api/v1/events`, `GET/PATCH /api/v1/events/{id}`, `POST /api/v1/events/{id}/publish` and `/cancel` — scoped event listing, draft creation/editing and audited staff-only lifecycle.
-- `GET /api/v1/pastoral/prayer/assigned` — narrative reads only for an actively assigned intercessor with a matching explicit share.
-- `POST /api/v1/pastoral/prayer/requests/{id}/shares` and `POST /api/v1/pastoral/prayer/requests/{id}/shares/{shareId}/revoke` — explicit share grant/revocation.
-- `GET /api/v1/pastoral/prayer/queue` — metadata-only assignment queue.
+- `GET/POST /api/v1/calendar`, `GET/PATCH /api/v1/calendar/{id}` — branch/team/own/event-scoped calendar entries.
+- `GET/POST /api/v1/announcements`, `GET/PATCH /api/v1/announcements/{id}`, `POST /api/v1/announcements/{id}/publish` and `/archive` — audience-scoped announcement lifecycle.
+- `GET/POST /api/v1/events`, `GET/PATCH /api/v1/events/{id}`, `POST /api/v1/events/{id}/publish` and `/cancel` — scoped event listing, private draft creation/editing and staff-only lifecycle.
 
 These are source-code routes, not a live service yet: the Cloudflare Worker has not been deployed or runtime-tested.
 
@@ -52,8 +52,7 @@ These are source-code routes, not a live service yet: the Cloudflare Worker has 
 
 - Pastoral-care narrative read/write endpoints; the care domain remains restricted pending explicit care-reader capability approval.
 - Event registrations, capacity enforcement, transport reservations, check-in and closeout; event publishing is staff-only and registration remains closed.
-- Calendar and announcement management APIs.
-- Public-content editing and read projections.
+- Public-content editing and church-profile management.
 - Reporting, analytics and full Supabase export/import reconciliation.
 - Public registration, public prayer intake, offline access, SMS and email notifications.
 - Invitation/password-reset email delivery. Invitation tokens are currently returned once for authorized manual delivery; password reset fails closed until a provider is configured.
