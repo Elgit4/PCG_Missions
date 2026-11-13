@@ -23,10 +23,9 @@ on conflict do nothing;
 
 -- Team Leader: own reports plus active own-team review.
 insert into public.role_capability(role_id, capability_id, scope_mode)
-select r.id, c.id, scope.scope_mode
+select r.id, c.id, 'self'
 from public.role r
 cross join public.capability c
-cross join (values ('self'::text), ('team'::text)) as scope(scope_mode)
 where r.code = 'team_leader'
   and c.code in ('report.read.own', 'report.submit.own')
 on conflict do nothing;
