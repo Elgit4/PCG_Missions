@@ -187,6 +187,7 @@ try {
     "/api/v1/events",
     "/api/v1/calendar",
     "/api/v1/announcements",
+    "/api/v1/announcements/test-announcement/schedule",
     "/api/v1/reports",
   ];
   for (const route of protectedPaths) {
