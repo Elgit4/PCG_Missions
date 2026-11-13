@@ -66,5 +66,14 @@ class WorkerApiContractTests(unittest.TestCase):
         )
 
 
+    def test_json_body_reader_rejects_oversized_streams_before_full_buffering(self):
+        reader = re.search(r"async function readJsonBody\\([\\s\\S]*?\\n\\}", self.source)
+        self.assertIsNotNone(reader)
+        self.assertIn("Content-Length", reader.group(0))
+        self.assertIn("getReader()", reader.group(0))
+        self.assertIn("reader.cancel()", reader.group(0))
+        self.assertNotIn("await request.text()", reader.group(0))
+
+
 if __name__ == "__main__":
     unittest.main()
