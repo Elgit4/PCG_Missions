@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   ArrowLeft,
   CalendarDays,
@@ -15,7 +15,7 @@ export type StaffAuthView = "sign-in" | "forgot-password" | "recovery" | "change
 
 interface StaffLoginProps {
   view: StaffAuthView;
-  themeToggle?: React.ReactNode;
+  themeToggle?: ReactNode;
   configurationError?: string;
   error?: string;
   notice?: string;
