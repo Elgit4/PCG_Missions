@@ -10,7 +10,7 @@ interface D1PreparedStatement {
 
 interface D1Database {
   prepare(query: string): D1PreparedStatement;
-  batch(statements: D1PreparedStatement[]): Promise<Array<{ success: boolean; meta?: { changes?: number } }>>;
+  batch(statements: D1PreparedStatement[]): Promise<Array<{ success: boolean; meta?: { changes?: number }; results?: Array<Record<string, unknown>> }>>;
 }
 
 interface Env extends Omit<StaffEnvironment, "DB"> {
