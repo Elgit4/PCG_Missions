@@ -6369,15 +6369,15 @@ async function updatePrayerRequestStatus(
       catch { return json(400,{ok:false,error:{code:"INVALID_REPORT_ID"}},requestId,origin); }
       return resubmitMinistryReport(request,env,reportId,requestId,origin);
     }
+    if (url.pathname === "/api/v1/reports/overview" && request.method === "GET") {
+      return getReportsOverview(request,env,requestId,origin);
+    }
     const reportMatch=url.pathname.match(/^\/api\/v1\/reports\/([^/]+)$/);
     if (reportMatch && request.method==="GET") {
       let reportId:string;
       try { reportId=decodeURIComponent(reportMatch[1]); }
       catch { return json(400,{ok:false,error:{code:"INVALID_REPORT_ID"}},requestId,origin); }
       return getMinistryReport(request,env,reportId,requestId,origin);
-    }
-    if (url.pathname === "/api/v1/reports/overview" && request.method === "GET") {
-      return getReportsOverview(request,env,requestId,origin);
     }
     if (url.pathname === "/api/v1/events" && request.method === "GET") {
       return listEvents(request, env, requestId, origin);
