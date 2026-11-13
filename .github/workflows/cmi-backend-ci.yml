@@ -153,6 +153,12 @@ jobs:
 
       - name: Test report operations request validation
         run: deno test supabase-cmi/supabase/functions/report-operations/validation_test.ts
+ 
+      - name: Test report operations role and team access rules
+        run: deno test supabase-cmi/supabase/functions/report-operations/access_test.ts
+
+      - name: Test report operations CORS preflight policy
+        run: deno test supabase-cmi/supabase/functions/report-operations/cors_test.ts
 
       - name: Type-check pastoral operations Edge Function
         run: deno check supabase-cmi/supabase/functions/pastoral-operations/index.ts
