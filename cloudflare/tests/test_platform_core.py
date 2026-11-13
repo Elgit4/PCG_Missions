@@ -14,7 +14,8 @@ class PlatformCoreMigrationTests(unittest.TestCase):
         self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
         self.db.executescript((MIGRATION.parent / "0002_contacts_followup.sql").read_text(encoding="utf-8"))
         self.db.executescript((MIGRATION.parent / "0004_staff_session_revocation.sql").read_text(encoding="utf-8"))
-        self.db.executescript((MIGRATION.parent / "0005_better_auth_rate_limit.sql").read_text(encoding="utf-8"))
+        self.db.executescript((MIGRATION.parent / "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql").read_text(encoding="utf-8"))
+        self.db.executescript((MIGRATION.parent / "0006_last_role_session_revocation.sql").read_text(encoding="utf-8"))
         self.db.execute(
             'INSERT INTO "user" (id, name, email, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
             ("user-1", "Admin Pastor", "admin@example.test", 1, 1),
@@ -90,11 +91,28 @@ class PlatformCoreMigrationTests(unittest.TestCase):
                    VALUES ('rl-2', '203.0.113.8|/sign-in/email', 1, 1767225600000)"""
             )
 
+
+    def test_revoking_last_active_role_assignment_revokes_sessions(self):
+        self.assignment("last-role-assignment", "2026-01-01T00:00:00.000Z")
+        self.db.execute(
+            """INSERT INTO session
+               (id, expiresAt, token, createdAt, updatedAt, userId)
+               VALUES ('last-role-session', 9999999999, 'last-role-token', 1, 1, 'user-1')"""
+        )
+        self.db.execute(
+            "UPDATE staff_role_assignment SET revoked_at = ? WHERE id = 'last-role-assignment'",
+            ("2026-01-02T00:00:00.000Z",),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM session WHERE userId = 'user-1'").fetchone()[0],
+            0,
+        )
+
     def test_schema_is_non_production_and_expected_tables_exist(self):
         meta = self.db.execute(
             "SELECT schema_version, environment FROM app_meta WHERE id = 1"
         ).fetchone()
-        self.assertEqual(meta, (5, "non-production"))
+        self.assertEqual(meta, (6, "non-production"))
         names = {
             row[0] for row in self.db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'"
@@ -350,7 +368,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
@@ -561,7 +579,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
