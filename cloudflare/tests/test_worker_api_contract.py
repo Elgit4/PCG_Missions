@@ -18,6 +18,7 @@ class WorkerApiContractTests(unittest.TestCase):
         cls.calendar_audit_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0024_calendar_audit_cancellation_read_receipts.sql").read_text(encoding="utf-8")
         cls.calendar_series_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0026_calendar_recurring_series.sql").read_text(encoding="utf-8")
         cls.report_export_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0027_ministry_report_aggregate_exports.sql").read_text(encoding="utf-8")
+        cls.password_reset_audit_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0028_staff_password_reset_audit.sql").read_text(encoding="utf-8")
 
     def test_contact_team_scope_uses_profile_id_and_assigned_scope_uses_auth_user_id(self):
         match = re.search(
@@ -270,6 +271,11 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("calendarCancelMatch", self.source)
         self.assertIn("calendarReadMatch", self.source)
 
+
+    def test_password_reset_audit_migration_is_append_only(self):
+        self.assertIn("staff_password_reset_audit",self.password_reset_audit_migration)
+        self.assertIn("STAFF_PASSWORD_RESET_AUDIT_APPEND_ONLY",self.password_reset_audit_migration)
+        self.assertIn("schema_version = 28",self.password_reset_audit_migration)
 
     def test_report_export_is_aggregate_only_and_admin_pastor_gated(self):
         self.assertIn("async function exportReportsCsv(", self.source)
