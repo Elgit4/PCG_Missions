@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Activity, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { Activity, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { OperationsWorkspace } from "./OperationsWorkspace";
 import { TeamAdministrationWorkspace } from "./TeamAdministrationWorkspace";
 import { MinistryReportsWorkspace } from "./MinistryReportsWorkspace";
@@ -75,7 +75,7 @@ function isOverdue(task: FollowUpTask): boolean {
 }
 
 export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps) {
-  const [branchId, setBranchId] = useState(session.branches[0]?.id ?? "");
+  const branchId = session.branches[0]?.id ?? "";
   const [page, setPage] = useState<Page>(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "access-requests") return "Access requests";
     return "Overview";
