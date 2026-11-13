@@ -2457,6 +2457,30 @@ async function reassignFollowupTask(
     access.decision.scopeMode as FollowupScopeMode, "ft",
     access.staff.profileId, access.staff.userId, now,
   );
+  const targetPredicate = nextAssignee !== null
+    ? `EXISTS (
+        SELECT 1 FROM staff_profile target
+        JOIN staff_role_assignment ra ON ra.staff_profile_id = target.id
+        JOIN role r ON r.id = ra.role_id AND r.is_active = 1
+        WHERE target.auth_user_id = ? AND target.account_status = 'active'
+          AND ra.branch_id = ft.branch_id AND ra.revoked_at IS NULL
+          AND ra.starts_at <= ? AND (ra.ends_at IS NULL OR ra.ends_at > ?)
+          ${access.decision.scopeMode === "team" ? `AND EXISTS (
+            SELECT 1 FROM staff_team_membership tm
+            WHERE tm.staff_profile_id = target.id AND tm.team_id = ?
+              AND tm.branch_id = ft.branch_id AND tm.revoked_at IS NULL
+              AND tm.starts_at <= ? AND (tm.ends_at IS NULL OR tm.ends_at > ?)
+          )` : ""}
+      )`
+    : `EXISTS (
+        SELECT 1 FROM team target_team
+        WHERE target_team.id = ? AND target_team.branch_id = ft.branch_id
+          AND target_team.is_active = 1
+          ${access.decision.scopeMode === "team" ? "AND target_team.id = ?" : ""}
+      )`;
+  const targetValues = nextAssignee !== null
+    ? access.decision.scopeMode === "team" ? [nextAssignee, now, now, teamId, now, now] : [nextAssignee, now, now]
+    : access.decision.scopeMode === "team" ? [nextTeam, teamId] : [nextTeam];
   const eventId = crypto.randomUUID();
   const details = JSON.stringify({
     previous_assignee_user_id: task.assignee_user_id,
@@ -2471,8 +2495,27 @@ async function reassignFollowupTask(
         UPDATE followup_task ft
         SET assignee_user_id = ?, team_id = ?, updated_at = ?
         WHERE ft.id = ? AND ft.branch_id = ? AND (${predicate.sql})
+          AND (${targetPredicate})
+          AND EXISTS (
+            SELECT 1
+            FROM staff_profile actor
+            JOIN staff_role_assignment actor_assignment ON actor_assignment.staff_profile_id = actor.id
+            JOIN role actor_role ON actor_role.id = actor_assignment.role_id AND actor_role.is_active = 1
+            JOIN role_capability actor_grant ON actor_grant.role_id = actor_role.id
+            JOIN capability actor_capability ON actor_capability.id = actor_grant.capability_id
+              AND actor_capability.code = 'followup.assign' AND actor_capability.is_active = 1
+            WHERE actor.auth_user_id = ?
+              AND actor.account_status = 'active'
+              AND actor_assignment.branch_id = ft.branch_id
+              AND actor_assignment.revoked_at IS NULL
+              AND actor_assignment.starts_at <= ?
+              AND (actor_assignment.ends_at IS NULL OR actor_assignment.ends_at > ?)
+              AND actor_grant.scope_mode = '${access.decision.scopeMode}'
+          )
       `).bind(
-        nextAssignee, nextTeam, now, taskId, context.activeBranch.branchId, ...predicate.values,
+        nextAssignee, nextTeam, now, taskId, context.activeBranch.branchId,
+        ...predicate.values, ...targetValues,
+        access.staff.userId, now, now,
       ),
       env.DB.prepare(`
         INSERT INTO followup_task_event
