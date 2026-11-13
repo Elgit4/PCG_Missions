@@ -44,6 +44,8 @@ drop trigger if exists team_management_audit_no_update_delete
 create trigger team_management_audit_no_update_delete
 before update or delete on public.team_management_audit
 for each row execute function private.reject_team_management_audit_mutation();
+revoke all on function private.reject_team_management_audit_mutation()
+  from public, anon, authenticated, service_role;
 
 drop trigger if exists team_management_audit_no_truncate
   on public.team_management_audit;
