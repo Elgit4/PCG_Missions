@@ -460,12 +460,25 @@ export class CmiApiClient {
     if (service === "content-operations") {
       route = route.replace(/^\/(sermons|welcome-messages|daily-words|digital-tracts)(?=\/|$)/, "/content/$1");
     }
-    if (service === "team-operations") route = route.replace(/^\/(teams|areas)(?=\/|$)/, "/$1");
-    if (service === "pastoral-operations") route = route.replace(/^\//, "/pastoral/");
+    if (service === "team-operations") {
+      throw new CmiApiError(501, "TEAM_ADMINISTRATION_NOT_MIGRATED", "Team and service-area administration is not yet available on the Cloudflare Worker.");
+    }
+    if (service === "staff-access-operations") {
+      route = route.replace(/^\/staff\/([^/]+)\/accounts\/(reactivate|deactivate|suspend)$/, "/staff/$1/$2");
+    }
+    if (service === "pastoral-operations") {
+      route = route.replace(/^\/care\/records(?=\/|$)/, "/care");
+      route = route.replace(/^\//, "/pastoral/");
+      if (/^\/pastoral\/care\/[^/]+\/read$/.test(route)) {
+        throw new CmiApiError(501, "CARE_NARRATIVE_READ_DISABLED", "Pastoral-care narrative reads remain disabled until the explicit-share audit flow is accepted.");
+      }
+    }
     if (service === "public-content") return "/api/public/content";
     if (service === "staff-auth") {
       route = route.replace(/^\/admin\/staff(?=\/|$)/, "/staff/invitations");
-      route = route.replace(/^\/admin\/password-reset-requests/, "/staff/password-reset-requests");
+      if (route.startsWith("/admin/password-reset-requests")) {
+        throw new CmiApiError(501, "ADMIN_APPROVED_RECOVERY_NOT_MIGRATED", "Administrator-approved password recovery is not yet available on the Cloudflare Worker.");
+      }
     }
     return `/api/v1${route.startsWith("/") ? route : `/${route}`}`;
   }
