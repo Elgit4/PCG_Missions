@@ -303,6 +303,7 @@ async function listTeams(
     .from("staff_team_membership")
     .select("id,team_id,staff_profile_id,membership_role,starts_at,ends_at,created_at")
     .eq("branch_id", branchId)
+    .lte("starts_at", now)
     .is("revoked_at", null)
     .or("ends_at.is.null,ends_at.gt." + now)
     .order("created_at", { ascending: true });
@@ -350,6 +351,7 @@ async function listAreas(
     .from("staff_area_coverage")
     .select("id,service_area_id,staff_profile_id,starts_at,ends_at,created_at")
     .eq("branch_id", branchId)
+    .lte("starts_at", now)
     .or("ends_at.is.null,ends_at.gt." + now)
     .order("starts_at", { ascending: false });
   if (coverageError) throw new Error("AREA_COVERAGE_LIST_FAILED");
