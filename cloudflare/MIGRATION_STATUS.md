@@ -105,15 +105,14 @@ Latest verified CI run: [43514971428](https://github.com/Elgit4/PCG_Missions/act
 - Prayer Intercessor remains isolated from the visitor CRM; only the `prayer.request.read` and `prayer.request.respond` capabilities are baseline grants, both with explicit-share scope.
 - Prayer requests can be created by Admin/Pastor and Coordinator, but narrative reads are not granted by those roles. Assignment requires an active Admin/Pastor share capability and an active Prayer Intercessor role in the same branch.
 - Pastoral-care record creation and sharing are Admin/Pastor-controlled. Care assignment is branch-bound; actual narrative reads must still be authorized through the separate care access ledger.
-- Prayer and care read ledgers are append-only. Prayer narrative reads now write both prayer-specific and sensitive-record access audit rows in the same D1 batch before returning narrative fields. Care narrative reads remain disabled.
-- No public prayer intake, public care intake, SMS, export, generic search, report or offline access is enabled.
+- Prayer and care read ledgers are append-only. Prayer narrative reads write prayer-specific and sensitive-record access audit rows before returning narrative fields. Care narrative reads, updates and interactions require an active explicit share and assignment, and are audited before returning restricted content.
+- Public prayer/care intake, public reports, SMS, generic search and offline access remain disabled. The only export implemented in source is an Admin/Pastor-only aggregate CSV with a three-author threshold and immutable audit; it is not yet deployed.
 
 ## Required next steps
 
-1. Add the repository secret `CLOUDFLARE_API_TOKEN` with scoped Workers Scripts edit permission, deploy the full Worker to non-production and set the persistent `BETTER_AUTH_SECRET` Worker secret.
+1. Configure the scoped GitHub secret `CLOUDFLARE_API_TOKEN` and persistent `BETTER_AUTH_SECRET`; the push workflow then applies migrations 0025–0028 to `pcg-missions-dev` and deploys only the non-production API Worker.
 2. Add the real frontend origin to `BETTER_AUTH_TRUSTED_ORIGINS`, then exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
-3. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content, including cross-branch, wrong-team, wrong-assignment, duplicate-key and capacity-race cases.
-4. Configure the scoped `CLOUDFLARE_API_TOKEN` repository secret and persistent `BETTER_AUTH_SECRET`; the push workflow then applies migrations 0025–0028 to `pcg-missions-dev` and deploys only the non-production API Worker.
-5. Verify remote schema version 28, foreign-key integrity, authorization triggers, password-reset audit append-only behavior, aggregate CSV export privacy/audit and scheduled-announcement publication against EU D1.
-6. Validate Better Auth's generated schema against the pinned release and complete the controlled source-to-D1 export/import and row/count/hash reconciliation for the remaining live schema.
-7. Integrate the frontend with the non-production API and verify end-to-end user workflows. Configure Resend credentials and a verified sender for password-reset emails; invitation tokens remain manual until the invitation acceptance UI is integrated. Production cutover remains a separate approval gate.
+3. Add authenticated remote Worker/D1 tests for cross-branch, wrong-team, wrong-assignment, expired/revoked share, duplicate-key, capacity-race, scheduled publication and audit-failure cases.
+4. Verify remote schema version 28, foreign-key integrity, authorization triggers, password-reset audit append-only behavior, aggregate CSV export privacy/audit and scheduled-announcement publication against EU D1.
+5. Validate Better Auth's generated schema against the pinned release and complete the controlled source-to-D1 export/import and row/count/hash reconciliation for the remaining live schema. No production snapshot should be exported without a separate data-migration approval.
+6. Integrate the frontend with the non-production API and verify end-to-end user workflows. Configure `RESEND_API_KEY` and a verified `EMAIL_FROM` sender for password-reset emails; invitation tokens remain manual until the invitation acceptance UI is integrated. Production cutover remains a separate approval gate.
