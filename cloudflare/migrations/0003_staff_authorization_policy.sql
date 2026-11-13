@@ -13,6 +13,7 @@ ON CONFLICT(code) DO UPDATE SET name=excluded.name, description=excluded.descrip
 
 INSERT INTO capability (id,code,description,sensitivity,created_at) VALUES
 ('contacts.read','contacts.read','Read contact records within granted scope.','restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+('contacts.contact_details.read','contacts.contact_details.read','Read phone and email contact details within the same record scope.','restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('contacts.create','contacts.create','Create a contact in the active branch.','restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('contacts.update','contacts.update','Update permitted contact fields within granted scope.','restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('contacts.assign','contacts.assign','Assign or reassign contacts within the active branch.','restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -57,19 +58,19 @@ DELETE FROM role_capability WHERE role_id IN (
 
 INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
 SELECT 'role-admin-pastor',id,'branch',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM capability
-WHERE code IN ('contacts.read','contacts.create','contacts.update','contacts.assign','contacts.private_fields.read','contacts.interaction.create','contacts.note.create','followup.read','followup.create','followup.update','followup.assign','team.read','team.manage','area.read','area.manage','staff.directory.read','staff.account.manage','staff.role.assign','staff.role.approve','staff.audit.read','events.read','events.manage','events.checkin','calendar.read','calendar.manage','announcements.read','announcements.manage','content.read','content.manage','reports.read','prayer.request.share');
+WHERE code IN ('contacts.read','contacts.contact_details.read','contacts.create','contacts.update','contacts.assign','contacts.private_fields.read','contacts.interaction.create','contacts.note.create','followup.read','followup.create','followup.update','followup.assign','team.read','team.manage','area.read','area.manage','staff.directory.read','staff.account.manage','staff.role.assign','staff.role.approve','staff.audit.read','events.read','events.manage','events.checkin','calendar.read','calendar.manage','announcements.read','announcements.manage','content.read','content.manage','reports.read','prayer.request.share');
 
 INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
 SELECT 'role-coordinator',id,'branch',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM capability
-WHERE code IN ('contacts.read','contacts.create','contacts.update','contacts.assign','contacts.private_fields.read','contacts.interaction.create','contacts.note.create','followup.read','followup.create','followup.update','followup.assign','team.read','area.read','staff.directory.read','events.read','events.manage','events.checkin','calendar.read','calendar.manage','announcements.read','announcements.manage','content.read','content.manage','reports.read');
+WHERE code IN ('contacts.read','contacts.contact_details.read','contacts.create','contacts.update','contacts.assign','contacts.interaction.create','contacts.note.create','followup.read','followup.create','followup.update','followup.assign','team.read','area.read','staff.directory.read','events.read','events.manage','events.checkin','calendar.read','calendar.manage','announcements.read','announcements.manage','content.read','content.manage','reports.read');
 
 INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
 SELECT 'role-team-leader',id,'team',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM capability
-WHERE code IN ('contacts.read','contacts.update','contacts.interaction.create','contacts.note.create','followup.read','followup.create','followup.update','followup.assign','team.read','area.read','events.read','events.checkin','calendar.read','announcements.read','content.read');
+WHERE code IN ('contacts.read','contacts.contact_details.read','contacts.update','contacts.interaction.create','contacts.note.create','followup.read','followup.create','followup.update','followup.assign','team.read','area.read','events.read','events.checkin','calendar.read','announcements.read','content.read');
 
 INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
 SELECT 'role-field-worker',id,'assigned',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM capability
-WHERE code IN ('contacts.read','contacts.update','contacts.interaction.create','contacts.note.create','followup.read','followup.update','events.read','events.checkin','calendar.read','announcements.read','content.read');
+WHERE code IN ('contacts.read','contacts.contact_details.read','contacts.update','contacts.interaction.create','contacts.note.create','followup.read','followup.update','events.read','events.checkin','calendar.read','announcements.read','content.read');
 
 -- A worker may create a new branch contact, but may only read/update existing
 -- contacts after the assignment predicate is satisfied.
@@ -78,7 +79,7 @@ VALUES ('role-field-worker','contacts.create','branch',strftime('%Y-%m-%dT%H:%M:
 
 INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
 SELECT 'role-follow-up-volunteer',id,'assigned',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM capability
-WHERE code IN ('followup.read','followup.update','contacts.interaction.create','events.read','calendar.read','announcements.read');
+WHERE code IN ('followup.read','followup.update','contacts.contact_details.read','contacts.interaction.create','events.read','calendar.read','announcements.read');
 
 INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
 SELECT 'role-prayer-intercessor',id,'explicit_share',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM capability
