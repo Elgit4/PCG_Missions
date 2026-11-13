@@ -411,7 +411,16 @@ Deno.serve(async (request: Request) => {
         }
         throw new Error("REPORT_RESUBMIT_FAILED");
       }
-      return response({ data, request_id: requestId }, 200, origin, requestId);
+      const { data: history, error: historyError } = await auth.service
+        .from("report_review_event")
+        .select("id,actor_profile_id,decision,comment,created_at")
+        .eq("report_id", reportId)
+        .order("created_at", { ascending: true });
+      if (historyError) throw new Error("REPORT_REVIEW_HISTORY_FAILED");
+      return response({
+        data: { report: data, review_history: history ?? [] },
+        request_id: requestId,
+      }, 200, origin, requestId);
     }
 
     if (request.method === "POST" && review) {
