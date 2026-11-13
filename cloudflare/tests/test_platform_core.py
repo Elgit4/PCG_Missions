@@ -1451,8 +1451,9 @@ class AuthorizationQueryTests(unittest.TestCase):
         field_user, _ = self.staff["field"]
         self.db.execute(
             """INSERT INTO event
-               (id,branch_id,title,starts_at,ends_at,created_by,last_modified_by,created_at,updated_at)
-               VALUES ('event-registration','authz-branch','Registration Event',?,?,?,?,?,?)""",
+               (id,branch_id,title,starts_at,ends_at,registration_state,visibility,status,
+                created_by,last_modified_by,created_at,updated_at)
+               VALUES ('event-registration','authz-branch','Registration Event',?,?,'open','staff','published',?,?,?,?)""",
             ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,admin_user,self.NOW,self.NOW),
         )
         self.db.execute(
