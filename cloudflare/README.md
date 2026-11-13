@@ -10,7 +10,7 @@ This is an isolated Cloudflare Workers + D1 implementation track. It is not conn
 - Remote EU D1 schema version: 24
 - Remote migration ledger: 24 applied migrations
 - Remote application tables: 77 (excluding Wrangler's migration ledger)
-- Source branch includes migrations 0025–0027 (schema version 27); they are not yet applied remotely
+- Source branch includes migrations 0025–0028 (schema version 28); they are not yet applied remotely
 - Full API Worker: not deployed
 - Diagnostic Worker: `pcg-missions-d1-smoke`, read-only `GET /health` with the EU D1 binding; public HTTP response still needs independent verification
 - Diagnostic URL: https://pcg-missions-d1-smoke.pcg-missions-nonprod.workers.dev/health
