@@ -36,6 +36,7 @@
 | `0025_pastoral_care_explicit_share.sql` | 0 new tables | Restricts care metadata to Admin/Pastor branch scope; restricted reads, updates and interactions require explicit shares and active assignments; adds reasoned assignment revocation and immutable care audit; schema version 25 (source only; remote apply pending) |
 | `0026_calendar_recurring_series.sql` | 2 new tables | Adds branch-authorized recurring series, timezone-aware bounded daily/weekly/monthly occurrences, unique series occurrence keys, reasoned future cancellation and append-only series audit; schema version 26 (source only; remote apply pending) |
 | `0027_ministry_report_aggregate_exports.sql` | 1 new table | Adds Admin/Pastor-only `reports.export`, aggregate CSV export audit, append-only export history and a minimum-three-author privacy threshold; schema version 27 (source only; remote apply pending) |
+| `0028_staff_password_reset_audit.sql` | 1 new table | Preserves approved private password-reset audit history as append-only records; `request_id` remains an opaque reference because live reset requests/tokens are excluded; schema version 28 (source only; remote apply pending) |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
@@ -47,6 +48,7 @@ These migrations are a first porting slice from the live schema. They are not a 
 - `PRAGMA foreign_key_check` returned no violations.
 - Wrangler migration ledger `d1_migrations` contains 24 applied migration filenames. Migrations `0018`–`0024` were applied to the EU non-production database and verified through the Cloudflare D1 API; expected event actor-authorization triggers, cancellation-key indexes, announcement delivery/read-receipt triggers, typed report tables, D-12 role grants, prayer idempotency ledger, calendar cancellation state, append-only calendar audit and immutable calendar read receipts are present.
 - This is a direct remote D1 schema test. The new local Worker/D1 integration suite is now part of CI and exercises Better Auth, protected route gates, security headers and CORS against the built Worker; non-production remote Worker deployment remains blocked by the missing GitHub Actions token.
+- A source/target audit gap was corrected in migration 0028: the source password-reset audit is no longer mapped to a nonexistent target. Its historical rows can be reconciled without copying ephemeral reset-request state or weakening append-only behavior.
 
 ## Current test coverage
 
@@ -67,7 +69,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability;
 - typed calendar scope integrity, branch-scoped announcement management, content-manager checks on public content creation and update, church-scoped public-profile authorization, external-link immutability and append-only public-content change audit.
 
-Latest verified CI run: [43513507401](https://github.com/Elgit4/PCG_Missions/actions/runs/43513507401) — 104 Python/SQLite tests passed; Worker/Better Auth TypeScript type-check, Wrangler dry-run bundle and local Worker/D1 + Better Auth integration tests passed. The push workflow's remote migration and deployment steps were skipped because `CLOUDFLARE_API_TOKEN` and `BETTER_AUTH_SECRET` are not configured. Remote EU D1 remains schema version 24 with 24 migration records and 77 application tables; migrations 0025–0027 are source-only until the scoped secrets are configured.
+Latest verified CI run: [43513507401](https://github.com/Elgit4/PCG_Missions/actions/runs/43513507401) — 104 Python/SQLite tests passed; Worker/Better Auth TypeScript type-check, Wrangler dry-run bundle and local Worker/D1 + Better Auth integration tests passed. The push workflow's remote migration and deployment steps were skipped because `CLOUDFLARE_API_TOKEN` and `BETTER_AUTH_SECRET` are not configured. Remote EU D1 remains schema version 24 with 24 migration records and 77 application tables; migrations 0025–0028 are source-only until the scoped secrets are configured. Migration 0028 has a focused local SQLite validation and append-only/JSON-object checks.
 
 ## Authentication and authorization progress
 
@@ -112,6 +114,6 @@ Latest verified CI run: [43513507401](https://github.com/Elgit4/PCG_Missions/act
 2. Add the real frontend origin to `BETTER_AUTH_TRUSTED_ORIGINS`, then exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
 3. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content, including cross-branch, wrong-team, wrong-assignment, duplicate-key and capacity-race cases.
 4. Configure the scoped `CLOUDFLARE_API_TOKEN` repository secret and persistent `BETTER_AUTH_SECRET`; the push workflow then applies migrations 0025–0027 to `pcg-missions-dev` and deploys only the non-production API Worker.
-5. Verify remote schema version 27, foreign-key integrity, authorization triggers, aggregate CSV export privacy/audit and scheduled-announcement publication against EU D1.
+5. Verify remote schema version 28, foreign-key integrity, authorization triggers, password-reset audit append-only behavior, aggregate CSV export privacy/audit and scheduled-announcement publication against EU D1.
 6. Validate Better Auth's generated schema against the pinned release and complete the controlled source-to-D1 export/import and row/count/hash reconciliation for the remaining live schema.
 7. Integrate the frontend with the non-production API and verify end-to-end user workflows. Configure a verified email provider for invitations/password resets. Production cutover remains a separate approval gate.
