@@ -1614,6 +1614,114 @@ async function createContactInteraction(
   return json(201, { ok: true, interaction_id: interactionId }, requestId, origin);
 }
 
+
+async function listContactNotes(
+  request: Request,
+  env: Env,
+  contactId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const resource = await contactResourceContext(request, env, contactId);
+  if (!resource.ok) return resource.response;
+  const access = await authorizeRequestCapability(request, env, "contacts.read", {
+    type: "contact", recordId: contactId, teamId: resource.teamId,
+  });
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const now = new Date().toISOString();
+  const scope = access.decision.scopeMode;
+  const rows = await env.DB.prepare(`
+    SELECT n.id, n.author_user_id, author.full_name AS author_name,
+           n.body, n.visibility, n.team_id, n.created_at, n.updated_at
+    FROM contact_note n
+    JOIN staff_profile author ON author.auth_user_id = n.author_user_id
+    WHERE n.contact_id = ? AND n.branch_id = ?
+      AND (
+        (n.visibility = 'author_only' AND n.author_user_id = ?)
+        OR (n.visibility = 'branch_scope' AND ? = 'branch')
+        OR (n.visibility = 'assigned_scope' AND EXISTS (
+          SELECT 1 FROM contact_assignment ca
+          WHERE ca.contact_id = n.contact_id AND ca.branch_id = n.branch_id
+            AND ca.assignee_user_id = ? AND ca.starts_at <= ?
+            AND (ca.ends_at IS NULL OR ca.ends_at > ?)
+        ))
+        OR (n.visibility = 'team_scope' AND EXISTS (
+          SELECT 1 FROM staff_team_membership tm
+          WHERE tm.team_id = n.team_id AND tm.branch_id = n.branch_id
+            AND tm.staff_profile_id = ? AND tm.revoked_at IS NULL
+            AND tm.starts_at <= ? AND (tm.ends_at IS NULL OR tm.ends_at > ?)
+        ))
+      )
+    ORDER BY n.created_at DESC, n.id DESC
+    LIMIT 100
+  `).bind(
+    contactId, access.activeBranch.branchId, access.staff.userId, scope,
+    access.staff.userId, now, now,
+    access.staff.profileId, now, now,
+  ).all<{
+    id: string; author_user_id: string; author_name: string; body: string;
+    visibility: string; team_id: string | null; created_at: string; updated_at: string;
+  }>();
+  return json(200, { ok: true, notes: rows.results ?? [] }, requestId, origin);
+}
+
+async function createContactNote(
+  request: Request,
+  env: Env,
+  contactId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const resource = await contactResourceContext(request, env, contactId);
+  if (!resource.ok) return resource.response;
+  const access = await authorizeRequestCapability(request, env, "contacts.note.create", {
+    type: "contact", recordId: contactId, teamId: resource.teamId,
+  });
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { body?: unknown; visibility?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => key !== "body" && key !== "visibility")) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTACT_NOTE_BODY" } }, requestId, origin);
+  }
+  const noteBody = typeof payload.body === "string" ? payload.body.trim() : "";
+  const visibility = payload.visibility === undefined
+    ? access.decision.scopeMode === "branch" ? "branch_scope"
+      : access.decision.scopeMode === "team" ? "team_scope" : "assigned_scope"
+    : payload.visibility;
+  if (!noteBody || noteBody.length > 4000 ||
+      !["author_only","assigned_scope","team_scope","branch_scope"].includes(String(visibility))) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTACT_NOTE_DETAILS" } }, requestId, origin);
+  }
+  const scope = access.decision.scopeMode;
+  if (
+    (visibility === "branch_scope" && scope !== "branch") ||
+    (visibility === "team_scope" && (scope !== "team" || !resource.teamId)) ||
+    (visibility === "assigned_scope" && scope !== "assigned") ||
+    (visibility === "author_only" && !["branch","team","assigned"].includes(scope))
+  ) {
+    return json(403, { ok: false, error: { code: "NOTE_VISIBILITY_EXCEEDS_ACCESS_SCOPE" } }, requestId, origin);
+  }
+  const noteId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare(`
+    INSERT INTO contact_note
+      (id, contact_id, branch_id, author_user_id, body, visibility, team_id, created_at, updated_at)
+    SELECT ?, c.id, c.branch_id, ?, ?, ?, ?, ?, ?
+    FROM contact c
+    WHERE c.id = ? AND c.branch_id = ? AND c.contact_status <> 'merged'
+  `).bind(
+    noteId, access.staff.userId, noteBody, visibility,
+    visibility === "team_scope" ? resource.teamId : null,
+    now, now, contactId, access.activeBranch.branchId,
+  ).run();
+  if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+    return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND" } }, requestId, origin);
+  }
+  return json(201, { ok: true, note_id: noteId, visibility }, requestId, origin);
+}
+
 async function listStaffAudit(
   request: Request,
   env: Env,
@@ -1743,6 +1851,15 @@ export default {
     if (url.pathname === "/api/v1/contacts" && request.method === "POST") {
       return createContact(request, env, requestId, origin);
     }
+    const contactNotesMatch = url.pathname.match(/^\/api\/v1\/contacts\/([^/]+)\/notes$/);
+    if (contactNotesMatch) {
+      let contactId: string;
+      try { contactId = decodeURIComponent(contactNotesMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CONTACT_ID" } }, requestId, origin); }
+      if (request.method === "GET") return listContactNotes(request, env, contactId, requestId, origin);
+      if (request.method === "POST") return createContactNote(request, env, contactId, requestId, origin);
+    }
+
     const contactMatch = url.pathname.match(/^\/api\/v1\/contacts\/([^/]+)$/);
     if (contactMatch) {
       let contactId: string;
