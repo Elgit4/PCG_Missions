@@ -9,7 +9,7 @@ This is an isolated Cloudflare Workers + D1 implementation track. It is not conn
 - Jurisdiction: EU (`eu`), primary region `EEUR`
 - Schema version: 17
 - Migration ledger: 17 applied migrations
-- Application tables: 69
+- Application tables: 70
 - Worker: not deployed yet
 - Production Supabase, Vercel, DNS and live data: unchanged
 
@@ -26,7 +26,7 @@ The database was created with an EU jurisdiction. This setting is fixed at creat
 - Explicit-share prayer workflows: metadata-only Admin/Pastor queue, assigned intercessor narrative reads, reasoned share revocation and transactionally paired audit records.
 - Append-only access, role, account, contact-assignment and follow-up event ledgers.
 
-The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in D1. Event lifecycle, calendar management, announcement management and a published-only public content read projection now have Worker handlers in source; registrations, transport, check-in, closeout, content editing and reports remain incomplete.
+The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in D1. Event lifecycle, calendar management, announcement management and a published-only public content read projection now have Worker handlers in source; registrations, transport, check-in, closeout, announcement delivery/read receipts and reports remain incomplete.
 
 ## Worker endpoints implemented in source
 
@@ -44,7 +44,8 @@ The prayer/care, events/attendance/transport and calendar/announcement/content s
 - `GET/POST /api/v1/events`, `GET/PATCH /api/v1/events/{id}`, `POST /api/v1/events/{id}/publish` and `/cancel` — scoped event listing, draft creation/editing and audited staff-only lifecycle.
 - `GET/POST /api/v1/calendar`, `GET/PATCH /api/v1/calendar/{id}` — branch/team/own/event-scoped calendar entries.
 - `GET/POST /api/v1/announcements`, `GET/PATCH /api/v1/announcements/{id}`, `POST /api/v1/announcements/{id}/publish` and `/archive` — audience-scoped announcement lifecycle.
-- `GET/POST /api/v1/events`, `GET/PATCH /api/v1/events/{id}`, `POST /api/v1/events/{id}/publish` and `/cancel` — scoped event listing, private draft creation/editing and staff-only lifecycle.
+- `GET /api/v1/content`, `POST /api/v1/content/{kind}`, `PATCH /api/v1/content/{kind}/{id}`, `POST /api/v1/content/{kind}/{id}/publish|archive` — draft and publication lifecycle for welcome messages, sermons, daily words and digital tracts.
+- `GET/PATCH /api/v1/content/profile`, `POST /api/v1/content/links`, `GET /api/v1/content/audit` — church profile management, immutable HTTPS document links and scoped content audit.
 
 These are source-code routes, not a live service yet: the Cloudflare Worker has not been deployed or runtime-tested.
 
@@ -52,7 +53,6 @@ These are source-code routes, not a live service yet: the Cloudflare Worker has 
 
 - Pastoral-care narrative read/write endpoints; the care domain remains restricted pending explicit care-reader capability approval.
 - Event registrations, capacity enforcement, transport reservations, check-in and closeout; event publishing is staff-only and registration remains closed.
-- Event registrations, capacity enforcement, transport reservations, check-in and closeout.
 - Reporting, analytics and full Supabase export/import reconciliation.
 - Public registration, public prayer intake, offline access, SMS and email notifications.
 - Invitation/password-reset email delivery. Invitation tokens are currently returned once for authorized manual delivery; password reset fails closed until a provider is configured.
@@ -85,7 +85,7 @@ Use a generated secret and never commit `.dev.vars`. For a Cloudflare preview, s
 
 The last recorded GitHub Actions run, [43469371911](https://github.com/Elgit4/PCG_Missions/actions/runs/43469371911), passed 56 Python/SQLite migration and authorization tests and the Worker/Better Auth TypeScript type-check for the earlier schema slice. PR #61 adds API contract and event-audit regression tests; a passing run for those new tests has not yet been observed.
 
-The remote EU D1 database now reports schema version 16, all 16 migration records, 69 application tables (excluding the Wrangler migration ledger) and no foreign-key violations. This is not a substitute for deployed Worker request tests or Better Auth runtime compatibility testing.
+The remote EU D1 database now reports schema version 17, all 17 migration records, 70 application tables (excluding the Wrangler migration ledger) and no foreign-key violations. This is not a substitute for deployed Worker request tests or Better Auth runtime compatibility testing.
 
 ## Safety boundary
 
