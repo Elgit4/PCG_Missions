@@ -370,7 +370,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
@@ -1025,7 +1025,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
@@ -1589,3 +1589,55 @@ class AuthorizationQueryTests(unittest.TestCase):
             )
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute("DELETE FROM event_change_audit WHERE event_id='event-audit-1'")
+
+
+    def test_public_profile_and_external_links_are_authorized_and_audited(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, _ = self.staff["field"]
+        self.db.execute(
+            """INSERT INTO church_public_profile
+               (id,church_id,public_name,social_links,updated_by,created_at,updated_at)
+               VALUES ('public-profile-1','authz-church','Authorization Church','{}',?,?,?)""",
+            (admin_user,self.NOW,self.NOW),
+        )
+        profile_audit = self.db.execute(
+            "SELECT actor_profile_id,action FROM public_content_change_audit WHERE entity_type='church_public_profile'"
+        ).fetchone()
+        self.assertEqual(profile_audit, ("authz-staff-admin","created"))
+
+        self.db.execute(
+            """INSERT INTO digital_tract
+               (id,title,body,public_slug,status,created_by,created_at,updated_at,updated_by)
+               VALUES ('tract-audit-1','Welcome','Welcome message','welcome-tract','draft',?,?,?,?)""",
+            (admin_user,self.NOW,self.NOW,admin_user),
+        )
+        self.db.execute(
+            """INSERT INTO external_document_link
+               (id,digital_tract_id,label,url,created_by,created_at)
+               VALUES ('link-audit-1','tract-audit-1','Read more','https://example.test/tract',?,?)""",
+            (admin_user,self.NOW),
+        )
+        link_audit = self.db.execute(
+            "SELECT actor_profile_id,action FROM public_content_change_audit WHERE entity_type='external_document_link'"
+        ).fetchone()
+        self.assertEqual(link_audit, ("authz-staff-admin","created"))
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO external_document_link
+                   (id,digital_tract_id,label,url,created_by,created_at)
+                   VALUES ('link-field','tract-audit-1','Unauthorized','https://example.test/no',?,?)""",
+                (field_user,self.NOW),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE external_document_link SET label='Changed' WHERE id='link-audit-1'"
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "DELETE FROM external_document_link WHERE id='link-audit-1'"
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE public_content_change_audit SET action='updated' WHERE entity_type='church_public_profile'"
+            )
