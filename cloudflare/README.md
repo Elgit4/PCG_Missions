@@ -27,10 +27,11 @@ npx wrangler@latest dev --local
 Local D1 persistence is isolated from remote databases. Do not add `--remote` during this foundation phase.
 
 The Worker exposes:
-- `GET /health`
-- `GET /api/v1/health`
+- `GET /health` and `GET /api/v1/health` for non-production D1 readiness.
+- Better Auth endpoints under `/api/auth/*` for provisioned-account sign-in and session management.
+- `GET /api/v1/me` for verified staff context and active branch/capability metadata.
 
-The readiness endpoint returns success only when the non-production D1 migration has been applied. All other routes return 404 intentionally; business routes must not be exposed until authentication and authorization are implemented and tested.
+Public self-registration remains disabled. Business routes remain unavailable until handler-level authorization and same-query record scoping are implemented. See AUTHENTICATION_FOUNDATION.md for configuration and limitations.
 
 ## Current schema scope
 
@@ -43,9 +44,9 @@ Migration `0001_platform_core.sql` ports the first reviewed slice:
 
 It is not yet the complete 50-table ministry schema. Contacts, follow-up, prayer/care, events, calendar, announcements, content and reports will be migrated as separately reviewed domain slices.
 
-## Staff roles and authorization\n\nMigration 0003 seeds exactly six fixed roles and operation-specific capabilities with least-privilege scopes. It also enforces two owner-controlled initial Admin/Pastor bootstrap slots, independent second-admin approval for later elevations, and protection against removing the last active Admin/Pastor in a branch. Review STAFF_AUTHORIZATION_POLICY.md for the complete matrix and exclusions. Prayer access is explicit-share only; no baseline role receives pastoral-case access, export, or SMS-dispatch capability. Time-bounded record shares are immutable except for revocation and automatically write grant/revoke audit events. A separate append-only sensitive-record access ledger records purpose without storing narratives. The authorization helper in src/authorization.ts checks active staff, role, branch and supported record scopes; the current Worker still exposes no protected routes until a verified session resolver and handler-level SQL predicates are connected.\n\n## Authentication gate
+## Staff roles and authorization\n\nMigration 0003 seeds exactly six fixed roles and operation-specific capabilities with least-privilege scopes. It also enforces two owner-controlled initial Admin/Pastor bootstrap slots, independent second-admin approval for later elevations, and protection against removing the last active Admin/Pastor in a branch. Review STAFF_AUTHORIZATION_POLICY.md for the complete matrix and exclusions. Prayer access is explicit-share only; no baseline role receives pastoral-case access, export, or SMS-dispatch capability. Time-bounded record shares are immutable except for revocation and automatically write grant/revoke audit events. A separate append-only sensitive-record access ledger records purpose without storing narratives. The authorization helper in src/authorization.ts checks active staff, role, branch and supported record scopes; the current Worker still exposes no protected routes until a verified session resolver and handler-level SQL predicates are connected.\n\n## Authentication implementation
 
-Better Auth is the selected candidate because current documentation supports a D1 database binding directly. Before enabling it, pin the package version and verify its generated schema against migration 0001. Validate email/password, secure sessions, reset and invitation delivery, account deactivation, session revocation, first-admin bootstrap, rate limiting and CSRF/origin protections. Do not migrate Supabase password hashes or sessions.
+Better Auth `1.7.22` is pinned and mounted inside the Worker request lifecycle using the current D1 binding. Email/password sign-in for pre-provisioned accounts is enabled; public registration is disabled. Secure cookie/session defaults, exact origin allow-listing and rate limits are configured. The verified-session resolver maps an authenticated identity to an active staff profile and active branch role assignments. Password-reset delivery and staff invitation/account lifecycle endpoints remain disabled until an email provider and audited administrative workflows are implemented. See AUTHENTICATION_FOUNDATION.md.
 
 The application must not expose a generic SQL API. D1 is accessed only by trusted Worker code. Every domain operation must resolve the actor from the verified session and check capability, branch and record scope before reading or mutating protected data.
 
