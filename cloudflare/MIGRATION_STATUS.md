@@ -42,7 +42,8 @@ Latest verified CI run: [43454374409](https://github.com/Elgit4/PCG_Missions/act
 - Email/password sign-in for provisioned identities is enabled; public self-registration is disabled.
 - Exact-origin checks, secure HttpOnly session cookies, no cookie cache, seven-day server-side sessions, Cloudflare client-IP detection and D1-persistent rate-limit counters are configured.
 - `GET /api/v1/me` resolves the session to an active staff profile and branch-valid roles/capability metadata; caller-supplied branch IDs are validated against active assignments.
-- The endpoint is context discovery, not a substitute for server-side authorization. No ministry business route is enabled yet.
+- The endpoint is context discovery, not a substitute for server-side authorization.
+- Admin/Pastor-only standard-role assignment and revocation routes are implemented with branch checks, validation, D1-batched audit writes and dual-control exclusions for Admin/Pastor changes. No ministry contact/follow-up business routes are enabled yet.
 
 ## Not implemented yet
 
