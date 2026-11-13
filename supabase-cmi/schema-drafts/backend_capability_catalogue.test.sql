@@ -1,5 +1,5 @@
 begin;
-select plan(28);
+select plan(29);
 
 select has_table('public', 'capability', 'Capability catalogue exists');
 select ok(
@@ -12,8 +12,8 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  65,
-  'the owner-directed visitor MVP baseline contains 65 least-privilege grants'
+  76,
+  'the owner-directed visitor MVP baseline contains 76 least-privilege grants'
 );
 select ok(
   not exists (
@@ -417,14 +417,25 @@ select ok(
           'event.closeout.review',
           'report.export.scoped',
           'contact.export.scoped',
-          'team.manage',
           'prayer.oversight.manage',
           'care.oversight.manage'
         )
         or c.code like 'sms.%'
       )
   ),
-  'Draft workspace grants do not enable publication, registration, attendance, exports, team management, pastoral mutation or SMS'
+  'Private-draft and team-management grants do not enable publication, registration, attendance, exports, pastoral mutation or SMS'
+);
+
+select is(
+  (select count(*)::integer
+   from public.role_capability rc
+   join public.role r on r.id = rc.role_id
+   join public.capability c on c.id = rc.capability_id
+   where r.code = 'admin_pastor'
+     and c.code in ('team.manage','area.manage')
+     and c.is_active and rc.scope_mode = 'branch'),
+  2,
+  'Admin/Pastor receives exactly two additional branch-scoped team and service-area grants'
 );
 
 select * from finish();

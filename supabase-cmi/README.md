@@ -194,3 +194,12 @@ See [document 26](../docs/26_CMI_FRONTEND_INTEGRATION_HANDOFF.md) before impleme
 A provider-specific, server-only Hubtel Business SMS adapter is available at `supabase/functions/_shared/sms/hubtel.ts`. It uses the documented business POST API and status lookup, requires an explicit live-enable flag, and refuses automatic retry after an ambiguous send outcome to avoid duplicate messages. Unit tests mock the network. It is not an Edge Function endpoint and is not connected to an outbox/dispatcher yet.
 
 Read the [Hubtel SMS setup runbook](supabase/functions/_shared/sms/README.md). Do not configure live secrets, enable live dispatch, deploy or send messages until the D-09/D-10/D-11 and R-06–R-09 approvals, consent/suppression, campaign controls, budget controls and deployment authorization are complete.
+
+
+## D-12 typed ministry reports — draft implementation
+
+PR #45 (`feat/cmi-typed-ministry-reports`) adds the typed report schema, role capability grants, the authenticated `report-operations` Edge Function and the responsive staff reports workspace. Supported report types are daily evangelism, event evangelism and weekly ministry. Report data is limited to typed non-negative counts; pastoral narratives and exports are not supported.
+
+The API enforces author-only reads/submissions, active own-team review for Team Leaders, branch-wide review for Admin/Pastor and Coordinators, and no report access for Prayer Intercessors. Event reports require the author or one of the author's active teams to be assigned to the referenced event. Review decisions are append-only and committed atomically with status transitions. Authors may correct and resubmit reports returned by a reviewer.
+
+**Release state:** draft only. This branch has not been merged; the migration and Edge Function have not been applied/deployed to the hosted project. Report exports remain disabled. Authenticated role/branch/team acceptance tests and final CI are release gates.

@@ -59,6 +59,56 @@ describe("capability-driven staff navigation", () => {
     expect(canOpenStaffPage(session, "Reports", "branch-a")).toBe(false);
   });
 
+  it("opens ministry reports only with the explicit D-12 own or review grants", () => {
+    const ownReportAccess = {
+      ...baseSession,
+      capabilities: [
+        { code: "report.read.own", scope_mode: "self", branch_id: "branch-a" },
+      ],
+    };
+    const teamReportAccess = {
+      ...baseSession,
+      capabilities: [
+        { code: "report.review.team", scope_mode: "team", branch_id: "branch-a" },
+      ],
+    };
+    const branchReportAccess = {
+      ...baseSession,
+      capabilities: [
+        { code: "report.review.branch", scope_mode: "branch", branch_id: "branch-a" },
+      ],
+    };
+    const submitOnly = {
+      ...baseSession,
+      capabilities: [
+        { code: "report.submit.own", scope_mode: "self", branch_id: "branch-a" },
+      ],
+    };
+    const prayerIntercessor = {
+      ...baseSession,
+      roles: [{ code: "prayer_intercessor", name: "Prayer Intercessor", branch_id: "branch-a" }],
+      capabilities: [],
+    };
+
+    expect(canOpenStaffPage(ownReportAccess, "Reports", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(teamReportAccess, "Reports", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(branchReportAccess, "Reports", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(ownReportAccess, "Reports", "branch-b")).toBe(false);
+    expect(canOpenStaffPage(submitOnly, "Reports", "branch-a")).toBe(false);
+    expect(canOpenStaffPage(prayerIntercessor, "Reports", "branch-a")).toBe(false);
+    expect(getAvailableStaffPages(ownReportAccess, "branch-a")).toContain("Reports");
+  });
+
+  it("shows Teams & Areas only with an explicit branch management grant", () => {
+    const noGrant = { ...baseSession, capabilities: [] };
+    const teamGrant = { ...baseSession, capabilities: [{ code: "team.manage", scope_mode: "branch", branch_id: "branch-a" }] };
+    const areaGrant = { ...baseSession, capabilities: [{ code: "area.manage", scope_mode: "branch", branch_id: "branch-a" }] };
+    expect(canOpenStaffPage(noGrant, "Teams & Areas", "branch-a")).toBe(false);
+    expect(canOpenStaffPage(teamGrant, "Teams & Areas", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(areaGrant, "Teams & Areas", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(teamGrant, "Teams & Areas", "branch-b")).toBe(false);
+  });
+
   it("shows event drafts only with event read or management grants", () => {
     const noGrant = { ...baseSession, capabilities: [] };
     const readGrant = { ...baseSession, capabilities: [{ code: "event.read.scoped", scope_mode: "branch", branch_id: "branch-a" }] };

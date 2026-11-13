@@ -7,7 +7,7 @@ on:
       - "web/**"
       - ".github/workflows/cmi-frontend-ci.yml"
   push:
-    branches: [main]
+    branches: [main, feat/team-area-administration-mainline]
     paths:
       - "web/**"
       - ".github/workflows/cmi-frontend-ci.yml"

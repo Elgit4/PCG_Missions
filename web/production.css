@@ -2235,3 +2235,182 @@ button, input, select, textarea { font: inherit; }
   .cmi-operations-list .cmi-task-row>.cmi-button{margin-left:auto}
 }
 @media(prefers-reduced-motion:reduce){.cmi-operations-tabs button{transition:none}}
+
+
+/* Team and service-area administration */
+.cmi-structure-workspace{display:grid;gap:14px;min-width:0}
+.cmi-structure-heading{align-items:flex-start}
+.cmi-structure-heading h3{margin:0;color:#102b42;font-size:clamp(19px,2.2vw,23px);font-weight:750;letter-spacing:-.035em}
+.cmi-structure-heading p:not(.cmi-eyebrow){max-width:680px;margin:7px 0 0;color:#72818c;font-size:11px;line-height:1.65}
+.cmi-structure-heading strong{color:#3e5363}
+.cmi-structure-tabs{display:flex;align-items:center;gap:7px;padding:0 0 15px;border-bottom:1px solid #e8edf0}
+.cmi-structure-tabs button{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 13px;border:1px solid #dfe7ec;border-radius:8px;background:#fff;color:#596b78;font:650 10px "DM Sans",sans-serif;cursor:pointer}
+.cmi-structure-tabs button.active{border-color:#b9cbd9;background:#edf4f9;color:#183c59}
+.cmi-structure-tabs button span{display:grid;place-items:center;min-width:19px;height:19px;padding:0 5px;border-radius:12px;background:#e5edf3;color:#36556c;font-size:9px}
+.cmi-structure-grid{display:grid;grid-template-columns:minmax(230px,.36fr) minmax(0,1fr);gap:17px;align-items:start;min-width:0}
+.cmi-structure-index{min-width:0;display:grid;gap:7px}
+.cmi-structure-index-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:4px 1px 7px}
+.cmi-structure-index-heading>div{display:grid;gap:3px}
+.cmi-structure-index-heading strong{color:#334a5d;font-size:11px}
+.cmi-structure-index-heading small{color:#8a99a3;font-size:9px}
+.cmi-button-compact{min-height:31px!important;padding:0 9px!important;font-size:10px!important}
+.cmi-structure-index-card{width:100%;display:grid;grid-template-columns:34px minmax(0,1fr) 8px 15px;align-items:center;gap:10px;min-height:63px;padding:9px 11px;border:1px solid #e4eaee;border-radius:9px;background:#fff;color:#30495c;text-align:left;cursor:pointer;transition:background .15s,border-color .15s}
+.cmi-structure-index-card:hover{border-color:#c4d3dd;background:#f9fbfc}
+.cmi-structure-index-card.active{border-color:#a8c0d1;background:#f0f6fa;box-shadow:inset 3px 0 #244b6a}
+.cmi-structure-index-icon{width:32px;height:32px;display:grid;place-items:center;border-radius:8px;background:#edf3f7;color:#3d617c}
+.cmi-structure-index-copy{min-width:0;display:grid;gap:4px}
+.cmi-structure-index-copy strong{overflow:hidden;color:#283f52;font-size:10px;font-weight:750;text-overflow:ellipsis;white-space:nowrap}
+.cmi-structure-index-copy small{overflow:hidden;color:#84939c;font-size:9px;text-overflow:ellipsis;white-space:nowrap}
+.cmi-structure-dot{width:7px;height:7px;border-radius:50%;background:#bac5cc}
+.cmi-structure-dot.active{background:#27825f}
+.cmi-structure-index-card>svg:last-child{color:#9aa7af}
+.cmi-structure-detail{min-width:0;min-height:270px;padding:19px;border:1px solid #e5ebef;border-radius:11px;background:#fff}
+.cmi-structure-detail-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+.cmi-structure-detail-heading h4{margin:0;color:#1c3549;font-size:18px;font-weight:750;letter-spacing:-.03em}
+.cmi-structure-detail-heading p:not(.cmi-eyebrow){max-width:630px;margin:6px 0 0;color:#7c8b95;font-size:10px;line-height:1.55}
+.cmi-structure-status{flex:none;padding:5px 9px;border:1px solid #e1e7eb;border-radius:30px;background:#f5f7f8;color:#77858e;font-size:9px;font-weight:700}
+.cmi-structure-status.active{border-color:#d1e7dc;background:#f1f8f4;color:#287450}
+.cmi-structure-metrics{display:flex;gap:9px;margin:17px 0}
+.cmi-structure-metrics>div{min-width:112px;display:grid;gap:4px;padding:10px 12px;border:1px solid #e8edf0;border-radius:8px;background:#fafcfd}
+.cmi-structure-metrics strong{color:#24445e;font-size:18px;font-weight:800;line-height:1}
+.cmi-structure-metrics span{color:#83919b;font-size:9px}
+.cmi-structure-action-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:0 0 16px;border-bottom:1px solid #edf0f2}
+.cmi-structure-action-row .cmi-button{min-height:34px;font-size:10px}
+.cmi-structure-members{display:grid;gap:0;margin-top:16px}
+.cmi-structure-section-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding-bottom:10px}
+.cmi-structure-section-heading>div{display:grid;gap:4px}
+.cmi-structure-section-heading strong{color:#2f475a;font-size:11px}
+.cmi-structure-section-heading small{color:#8a98a2;font-size:9px}
+.cmi-structure-person{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;padding:10px 0;border-top:1px solid #edf0f2}
+.cmi-structure-avatar{width:32px;height:32px;display:grid;place-items:center;border-radius:50%;background:#eaf1f5;color:#335873;font-size:10px;font-weight:800}
+.cmi-structure-person-copy{min-width:0;display:grid;gap:4px}
+.cmi-structure-person-copy strong{overflow:hidden;color:#31495b;font-size:10px;text-overflow:ellipsis;white-space:nowrap}
+.cmi-structure-person-copy small{color:#8a98a2;font-size:9px}
+.cmi-structure-role{padding:4px 7px;border-radius:20px;background:#edf4f8;color:#355a73;font-size:9px;font-weight:700}
+.cmi-structure-person-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+.cmi-text-action{border:0;background:transparent;color:#315d7b;font:700 9px "DM Sans",sans-serif;cursor:pointer}
+.cmi-text-action:hover{text-decoration:underline}
+.cmi-text-action:disabled{opacity:.5;cursor:not-allowed}
+.cmi-text-action.danger{color:#a0444a}
+.cmi-inline-confirm{grid-column:1/-1;display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;padding:10px 12px;border:1px solid #f0d9d8;border-radius:8px;background:#fff8f7}
+.cmi-inline-confirm span{flex:1 1 220px;color:#795454;font-size:9px;line-height:1.5}
+.cmi-inline-confirm .cmi-button{min-height:29px;padding:0 9px;font-size:9px}
+.cmi-button-danger{border:1px solid #ecd0d0!important;background:#fff7f6!important;color:#a03c43!important}
+.cmi-structure-form{display:grid;gap:12px;max-width:650px;margin:0 auto}
+.cmi-structure-form label,.cmi-structure-assignment-form label{display:grid;gap:6px;color:#596f7e;font-size:10px;font-weight:700}
+.cmi-structure-form label span{display:inline;color:#9aa5ac;font-size:9px;font-weight:500}
+.cmi-structure-form input,.cmi-structure-form textarea,.cmi-structure-assignment-form select{width:100%;min-height:38px;padding:9px 10px;border:1px solid #dfe7ec;border-radius:7px;background:#fff;color:#2f4557;font:11px "DM Sans",sans-serif}
+.cmi-structure-form textarea{min-height:82px;resize:vertical;line-height:1.55}
+.cmi-structure-form input:focus-visible,.cmi-structure-form textarea:focus-visible,.cmi-structure-assignment-form select:focus-visible{outline:2px solid #547b98;outline-offset:1px}
+.cmi-structure-assignment-form{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:15px 0;padding:14px;border:1px solid #e2eaf0;border-radius:9px;background:#f8fbfd}
+.cmi-structure-assignment-form>div:first-child{grid-column:1/-1;display:grid;gap:4px}
+.cmi-structure-assignment-form>div:first-child strong{color:#334c5f;font-size:10px}
+.cmi-structure-assignment-form>div:first-child small{color:#83929c;font-size:9px}
+.cmi-structure-assignment-form .cmi-form-actions{grid-column:1/-1}
+.cmi-structure-index-empty,.cmi-structure-detail-empty,.cmi-structure-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:28px 15px;border:1px dashed #dbe4e9;border-radius:9px;background:#fbfcfd;color:#80909a;text-align:center}
+.cmi-structure-index-empty strong,.cmi-structure-detail-empty strong{color:#425b6e;font-size:11px}
+.cmi-structure-index-empty span,.cmi-structure-detail-empty span,.cmi-structure-empty span{max-width:290px;color:#8997a0;font-size:9px;line-height:1.55}
+.cmi-structure-detail-empty{min-height:270px;border:0;background:transparent}
+.cmi-structure-empty{padding:18px;border:0;background:transparent}
+.cmi-icon-button{width:30px;height:30px;display:grid;place-items:center;flex:none;border:1px solid #e3e9ed;border-radius:7px;background:#fff;color:#74838d;cursor:pointer}
+.cmi-icon-button:hover{background:#f5f8fa;color:#324e64}
+@media(max-width:940px){
+  .cmi-structure-grid{grid-template-columns:minmax(0,1fr)}
+  .cmi-structure-index{grid-template-columns:repeat(auto-fit,minmax(205px,1fr))}
+  .cmi-structure-index-heading{grid-column:1/-1}
+}
+@media(max-width:640px){
+  .cmi-structure-detail{padding:14px}
+  .cmi-structure-detail-heading{flex-direction:column}
+  .cmi-structure-metrics>div{flex:1;min-width:0}
+  .cmi-structure-assignment-form{grid-template-columns:minmax(0,1fr)}
+  .cmi-structure-assignment-form>div:first-child,.cmi-structure-assignment-form .cmi-form-actions{grid-column:1}
+  .cmi-structure-person{grid-template-columns:32px minmax(0,1fr)}
+  .cmi-structure-person-actions,.cmi-structure-role{grid-column:2;justify-content:flex-start}
+  .cmi-inline-confirm{grid-column:1/-1;justify-content:flex-start}
+}
+
+.cmi-structure-leader-note{grid-column:1/-1;margin:0;padding:9px 11px;border:1px solid #e8e1d3;border-radius:7px;background:#fbf8f1;color:#796b52;font-size:9px;line-height:1.55}
+
+/* Typed ministry reports workspace */
+.ministry-reports { display: grid; gap: 22px; }
+.ministry-reports-header, .ministry-report-list-heading, .ministry-report-card-top, .ministry-report-form-heading, .ministry-report-form-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+}
+.ministry-reports-header h2 { margin: 5px 0 6px; font-size: clamp(1.5rem, 2.4vw, 2rem); letter-spacing: -.035em; }
+.ministry-reports-header p:not(.ministry-reports-eyebrow) { margin: 0; color: var(--muted, #68717f); }
+.ministry-reports-eyebrow, .ministry-report-step { margin: 0; color: var(--muted, #68717f); font-size: .68rem; font-weight: 800; letter-spacing: .12em; }
+.ministry-reports-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.ministry-report-form { display: grid; gap: 20px; padding: 22px; }
+.ministry-report-form-heading { align-items: flex-start; }
+.ministry-report-form-heading h3, .ministry-report-list-heading h3 { margin: 5px 0 0; font-size: 1.12rem; }
+.ministry-report-form-heading p, .ministry-report-form-footer > span { max-width: 440px; margin: 0; color: var(--muted, #68717f); font-size: .82rem; line-height: 1.5; }
+.ministry-report-form-grid, .ministry-report-count-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.ministry-report-form-grid label, .ministry-report-count-grid label, .ministry-report-review label { display: grid; gap: 7px; min-width: 0; }
+.ministry-report-form-grid label > span, .ministry-report-count-grid label > span, .ministry-report-review label > span { color: var(--text, #242b35); font-size: .8rem; font-weight: 700; }
+.ministry-report-form-grid small { color: var(--muted, #68717f); font-weight: 500; }
+.ministry-report-form-grid input, .ministry-report-form-grid select, .ministry-report-count-grid input, .ministry-report-review textarea {
+  width: 100%; min-height: 42px; border: 1px solid var(--border, #dfe3e8); border-radius: 9px; padding: 9px 11px; background: var(--surface, #fff); color: inherit; font: inherit; font-size: .88rem;
+}
+.ministry-report-count-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); padding-top: 16px; border-top: 1px solid var(--border, #e6e9ed); }
+.ministry-report-wide { grid-column: span 2; }
+.ministry-report-form-footer { padding-top: 14px; border-top: 1px solid var(--border, #e6e9ed); }
+.ministry-report-list-heading { margin-top: 4px; }
+.ministry-report-list-heading > div { display: flex; align-items: baseline; gap: 10px; }
+.ministry-report-list-heading > div span, .ministry-report-scope { color: var(--muted, #68717f); font-size: .78rem; }
+.ministry-report-scope { display: inline-flex; align-items: center; gap: 6px; }
+.ministry-report-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ministry-report-card { min-width: 0; padding: 18px; border: 1px solid var(--border, #e4e7eb); border-radius: 14px; background: var(--surface, #fff); box-shadow: 0 5px 18px rgb(18 32 54 / 4%); }
+.ministry-report-type { color: var(--muted, #68717f); font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.ministry-report-card h4 { margin: 5px 0 0; font-size: 1rem; }
+.ministry-report-status { padding: 5px 9px; border-radius: 999px; background: #eef2f5; color: #536170; font-size: .7rem; font-weight: 800; text-transform: capitalize; }
+.ministry-report-status.is-approved { background: #e6f5ec; color: #167342; }
+.ministry-report-status.is-returned { background: #fff1df; color: #9a5a12; }
+.ministry-report-status.is-submitted { background: #eaf0ff; color: #3458a8; }
+.ministry-report-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.ministry-report-metrics > div { display: grid; gap: 3px; padding: 10px; border-radius: 9px; background: var(--surface-muted, #f6f7f9); }
+.ministry-report-metrics strong { font-size: 1.15rem; letter-spacing: -.03em; }
+.ministry-report-metrics span { color: var(--muted, #68717f); font-size: .72rem; }
+.ministry-report-review { display: grid; gap: 10px; margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--border, #e6e9ed); }
+.ministry-report-review > div { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.ministry-report-review textarea { resize: vertical; }
+.ministry-report-alert, .ministry-report-notice { display: flex; align-items: center; gap: 9px; padding: 12px 14px; border-radius: 10px; font-size: .86rem; }
+.ministry-report-alert { background: #fff0ef; color: #a72f2a; }
+.ministry-report-notice { background: #eaf7ef; color: #17683c; }
+.ministry-report-empty, .ministry-report-loading { display: grid; justify-items: center; gap: 8px; padding: 40px 20px; text-align: center; color: var(--muted, #68717f); }
+.ministry-report-empty h3 { margin: 3px 0 0; color: var(--text, #242b35); }
+.ministry-report-empty p { margin: 0; }
+.ministry-spin { animation: ministry-report-spin 1s linear infinite; }
+@keyframes ministry-report-spin { to { transform: rotate(360deg); } }
+@media (max-width: 760px) {
+  .ministry-reports-header, .ministry-report-form-heading, .ministry-report-form-footer { align-items: stretch; flex-direction: column; }
+  .ministry-reports-actions { width: 100%; }
+  .ministry-reports-actions button { flex: 1; justify-content: center; }
+  .ministry-report-form-grid, .ministry-report-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ministry-report-cards { grid-template-columns: 1fr; }
+  .ministry-report-list-heading { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 440px) {
+  .ministry-report-form-grid, .ministry-report-count-grid { grid-template-columns: 1fr; }
+  .ministry-report-wide { grid-column: auto; }
+  .ministry-report-card { padding: 14px; }
+  .ministry-report-metrics { gap: 8px; }
+}
+
+
+.ministry-report-detail-toggle{display:flex;justify-content:flex-start;margin-top:12px}
+.ministry-report-history{margin-top:12px;padding:16px 18px;border:1px solid var(--cmi-border,#e5e7eb);border-radius:12px;background:var(--cmi-surface-muted,#f8fafc)}
+.ministry-report-history h5{margin:0 0 10px;font-size:.92rem;font-weight:700}
+.ministry-report-history-entry{padding:11px 0;border-top:1px solid var(--cmi-border,#e5e7eb)}
+.ministry-report-history-entry:first-of-type{border-top:0}
+.ministry-report-history-entry>div{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ministry-report-history-entry strong{font-size:.88rem}
+.ministry-report-history-entry time{font-size:.78rem;color:var(--cmi-text-muted,#64748b)}
+.ministry-report-history-entry p,.ministry-report-history>p{margin:7px 0 0;color:var(--cmi-text-muted,#475569);font-size:.88rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.ministry-report-inline-error{margin:8px 0;color:#b42318;font-size:.86rem}
+
+
+.ministry-report-pagination{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:8px 0 4px;color:var(--cmi-text-muted,#64748b);font-size:.88rem}
+.ministry-report-pagination button{min-width:160px;justify-content:center}
+
+.ministry-report-review label small{display:block;margin:4px 0 7px;color:var(--muted,#68717f);font-size:.76rem;line-height:1.4}

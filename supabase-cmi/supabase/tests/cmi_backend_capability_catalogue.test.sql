@@ -12,8 +12,8 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  65,
-  'the owner-directed visitor MVP baseline contains 65 least-privilege grants'
+  76,
+  'the owner-directed visitor MVP baseline contains 76 least-privilege grants'
 );
 select ok(
   not exists (

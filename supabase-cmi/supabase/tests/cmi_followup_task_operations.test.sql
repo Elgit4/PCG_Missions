@@ -81,7 +81,7 @@ select ok(
   'task transactions use caller privileges and do not elevate to the migration owner'
 );
 select ok(
-  (select count(*) = 65 from public.role_capability),
+  (select count(*) = 76 from public.role_capability),
   'the owner-directed visitor MVP role baseline remains unchanged by the task transaction migration'
 );
 
