@@ -193,6 +193,7 @@ try {
     "/api/v1/calendar",
     "/api/v1/announcements",
     "/api/v1/reports",
+    "/api/v1/reports/export",
   ];
   for (const route of protectedPaths) {
     const response = await fetch(baseUrl + route);
