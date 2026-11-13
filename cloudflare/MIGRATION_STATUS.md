@@ -24,8 +24,10 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - adjacent assignment periods;
 - append-only staff-access and follow-up-task event records;
 - exact six-role privilege matrix, field-level contact detail separation and prohibited capability grants;
-- time-bounded explicit-share grant/revoke authorization and automatic audit attribution;\n- dual-control Admin/Pastor elevation, two bootstrap slots, request/review/application audit and last-admin protection;
+- time-bounded explicit-share grant/revoke authorization and automatic audit attribution;
+- dual-control Admin/Pastor elevation, two bootstrap slots, request/review/application audit and last-admin protection;
 - explicit-share overlap, expiry/revocation history and automatic share grant/revoke audit events;
+- two-slot owner bootstrap, independent Admin/Pastor elevation approval, applied-request audit and last-active-admin protection;
 - contact normalization, capture idempotency and metadata allowlists;
 - follow-up task completion and target invariants.
 
