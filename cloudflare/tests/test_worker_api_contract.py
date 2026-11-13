@@ -10,6 +10,7 @@ class WorkerApiContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.source = WORKER_SOURCE.read_text(encoding="utf-8")
+        cls.event_guard_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0020_event_assignment_privilege_guards.sql").read_text(encoding="utf-8")
 
     def test_contact_team_scope_uses_profile_id_and_assigned_scope_uses_auth_user_id(self):
         match = re.search(
@@ -162,7 +163,7 @@ class WorkerApiContractTests(unittest.TestCase):
 
     def test_event_cancellation_persists_the_idempotency_key_and_replays_races(self):
         for name in ("cancelEventRegistration", "cancelTransportReservation"):
-            handler = re.search(rf"async function {name}\\([\\s\\S]*?\\n\\}}", self.source)
+            handler = re.search(rf"async function {name}\([\s\S]*?\n\}}", self.source)
             self.assertIsNotNone(handler)
             self.assertIn("cancellation_request_key=?", handler.group(0))
             self.assertIn("findEventReceipt", handler.group(0))
@@ -170,10 +171,10 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("EVENT_CANCELLATION_IDEMPOTENCY_CONFLICT", self.source)
 
     def test_event_assignment_roles_are_restricted_for_registration_and_checkin(self):
-        self.assertIn("'owner','organizer'", self.source)
-        self.assertIn("'checkin'", self.source)
-        self.assertIn("'ushering'", self.source)
-        self.assertIn("event_registration_authorize_insert", self.source)
+        self.assertIn("'owner','organizer'", self.event_guard_migration)
+        self.assertIn("'checkin'", self.event_guard_migration)
+        self.assertIn("'ushering'", self.event_guard_migration)
+        self.assertIn("event_registration_authorize_insert", self.event_guard_migration)
 
 
 if __name__ == "__main__":
