@@ -27,7 +27,7 @@ The database was created with an EU jurisdiction. This setting is fixed at creat
 - Explicit-share prayer workflows: metadata-only Admin/Pastor queue, assigned intercessor narrative reads, reasoned share revocation and transactionally paired audit records.
 - Append-only access, role, account, contact-assignment and follow-up event ledgers.
 
-The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in the migration track. Worker source includes explicit-share pastoral-care case metadata, assignment, restricted interactions, status updates and reasoned revocation; event lifecycle and operations; calendar; announcements and recipient inbox; public content; and typed ministry reports. Migration 0025 adds stricter pastoral-care share and assignment guards but is pending application to remote EU D1. The full API Worker is not deployed or runtime-tested.
+The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in the migration track. Worker source includes explicit-share pastoral-care case metadata, assignment, restricted interactions, status updates and reasoned revocation; event lifecycle and operations; calendar; announcements and recipient inbox; public content; and typed ministry reports. Migration 0025 adds stricter pastoral-care share and assignment guards but is pending application to remote EU D1. The full API Worker is not deployed or runtime-tested. Scheduled announcement publication is implemented as a five-minute Worker cron; due announcements publish only while the scheduling staff member retains active branch-level announcement authority.
 
 ## Worker endpoints implemented in source
 
