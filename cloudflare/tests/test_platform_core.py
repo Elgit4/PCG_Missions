@@ -766,10 +766,16 @@ class AuthorizationQueryTests(unittest.TestCase):
         )
         self.db.execute(
             """INSERT INTO staff_role_assignment
-               (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
-               VALUES ('authz-role-field-promoted', 'authz-staff-field', 'role-admin-pastor',
-                       'authz-branch', ?, ?, ?)""",
-            (second_profile, self.NOW, self.NOW),
+               (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, reason, created_at)
+               SELECT 'authz-role-field-promoted', req.target_profile_id, req.role_id,
+                      req.branch_id, ?, req.reviewed_at, req.reason, ?
+               FROM staff_role_elevation_request req
+               WHERE req.id = 'elevation-1'
+                 AND req.branch_id = 'authz-branch'
+                 AND req.status = 'approved'
+                 AND req.reviewed_by = ?
+                 AND changes() = 1""",
+            (second_profile, self.NOW, second_profile),
         )
         self.assertEqual(
             self.db.execute("SELECT status FROM staff_role_elevation_request WHERE id = 'elevation-1'").fetchone()[0],
