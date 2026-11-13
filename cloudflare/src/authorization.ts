@@ -92,7 +92,6 @@ WHERE sp.id = ?
         WHERE ft.id = ?
           AND ft.branch_id = b.id
           AND ft.assignee_user_id = sp.auth_user_id
-          AND ft.status NOT IN ('completed', 'cancelled')
       )
     )
     OR (
