@@ -32,9 +32,8 @@ export type StaffContextResult =
   | { state: "unauthenticated" }
   | { state: "staff_inactive" }
   | { state: "staff_not_provisioned" }
+  | { state: "branch_not_authorized" }
   | { state: "authenticated"; staff: AuthenticatedStaff; activeBranch: ActiveBranchContext | null };
-
-const NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
 
 export async function resolveStaffContext(
   request: Request,
@@ -87,11 +86,7 @@ export async function resolveStaffContext(
   }
 
   const branch = staff.branches.find((item) => item.id === requestedBranchId);
-  if (!branch) {
-    // A caller-selected branch is accepted only after it is matched against
-    // an active, time-valid role assignment resolved above.
-    return { state: "authenticated", staff, activeBranch: null };
-  }
+  if (!branch) return { state: "branch_not_authorized" };
 
   const grants = await env.DB.prepare(`
     SELECT DISTINCT r.code AS role_code, c.code AS capability_code,
