@@ -67,6 +67,7 @@ All protected business routes require a verified session and an authorized activ
 12. **Typed ministry reports:** migration 0022 adds typed daily/event/weekly submissions, D-12 scopes, self-review protection and append-only review/resubmission history.
 13. **Prayer intake:** added authenticated `POST /api/v1/pastoral/prayer/requests`. It requires `prayer.request.create` at branch scope, validates bounded narrative/contact/expiry inputs, requires an `Idempotency-Key`, stores a request digest and appends a creation audit. Migration 0023 adds the branch-scoped idempotency ledger; public intake remains disabled.
 14. **Calendar lifecycle:** added cancellation with mandatory reason, immutable change history, recipient-scoped immutable read receipts and active-only list/detail reads. Migration 0024 adds cancellation attribution, actor attribution for edits, audit and receipt tables. Recurrence generation remains outstanding.
+15. **Ministry report analytics:** the aggregate overview now includes typed daily/event/weekly report time-series cohorts. Cohorts require at least three distinct authors and return aggregate metrics only; report exports remain disabled.
 
 ## API security review checklist
 
@@ -93,7 +94,7 @@ All protected business routes require a verified session and an authorized activ
 | P1 | Calendar | Cancellation, immutable change audit and scoped read receipts are now in source and schema; recurring-series generation and real Worker/D1 integration tests remain |
 | P1 | Announcements | Add deployed Worker integration tests for audience fan-out, inbox isolation and immutable read receipts; publishing and recipient-scoped inbox are in source |
 | P1 | Public content | Add deeper publishing/audience integration tests and public frontend wiring; CRUD, church profile management and published-only projection are in source |
-| P2 | Ministry reports | Typed report submissions, review/resubmit, ministry time-series comparisons and privacy-controlled exports; aggregate-only overview is in source |
+| P2 | Ministry reports | Typed report submissions, review/resubmit and aggregate time-series comparisons (minimum three distinct authors per cohort) are in source; privacy-controlled exports remain disabled pending approval |
 | P2 | Data reconciliation | Supabase export, transformation, D1 import and source-to-target row/count/hash reconciliation; no production data copied yet |
 | P2 | Communications | Verified email provider for invitations/password resets; Hubtel remains disabled until consent, sender and cost controls are approved |
 | P2 | Frontend | Cloudflare Pages preview binding and API client migration, keeping the production Supabase client intact until cutover approval |
