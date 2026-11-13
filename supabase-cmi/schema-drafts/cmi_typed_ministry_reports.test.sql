@@ -1,5 +1,5 @@
 begin;
-select plan(28);
+select plan(29);
 
 select has_table('public','ministry_report','Typed ministry report table exists');
 select has_table('public','report_review_event','Append-only report review history exists');
@@ -209,11 +209,12 @@ select is(
   3,
   'Resubmission appends to immutable report history');
 select is(
-  (select decision from public.report_review_event where report_id in
-    (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020')
+  (select actor_profile_id::text || ':' || decision
+   from public.report_review_event
+   where report_id in (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020')
    order by created_at desc limit 1),
-  'resubmitted',
-  'History identifies the author resubmission event');
+  '73000000-0000-4000-8000-000000000020:resubmitted',
+  'History records the original author as the resubmission actor');
 
 select * from finish();
 rollback;
