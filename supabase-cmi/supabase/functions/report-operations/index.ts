@@ -283,7 +283,7 @@ Deno.serve(async (request: Request) => {
         return fail("NOT_FOUND", "Report not found.", 404, origin, requestId);
       }
       const { data: history, error: historyError } = await auth.service.from("report_review_event")
-        .select("id,reviewer_profile_id,decision,comment,created_at").eq("report_id", last)
+        .select("id,actor_profile_id,decision,comment,created_at").eq("report_id", last)
         .order("created_at", { ascending: true });
       if (historyError) throw new Error("REPORT_REVIEW_HISTORY_FAILED");
       return response({ data: { ...report, review_history: history ?? [] }, request_id: requestId }, 200, origin, requestId);
@@ -462,7 +462,7 @@ Deno.serve(async (request: Request) => {
         throw new Error("REPORT_REVIEW_FAILED");
       }
       const { data: history, error: historyError } = await auth.service.from("report_review_event")
-        .select("id,reviewer_profile_id,decision,comment,created_at").eq("report_id", reportId)
+        .select("id,actor_profile_id,decision,comment,created_at").eq("report_id", reportId)
         .order("created_at", { ascending: true });
       if (historyError) throw new Error("REPORT_REVIEW_HISTORY_FAILED");
       return response({ data: { report: reviewed, review_history: history ?? [] }, request_id: requestId }, 200, origin, requestId);
