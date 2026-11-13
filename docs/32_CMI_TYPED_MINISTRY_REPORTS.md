@@ -44,6 +44,10 @@ List limits are 1–50 and offset is 0–5000, using database-side exact counts 
 
 The API enforces these permissions on every request. UI navigation is only a convenience and is not an authorization boundary.
 
+## Staff workspace
+
+The Reports page appears only when the active branch has an own-report read, team-review or branch-review grant. A submit-only grant does not expose the page, and Prayer Intercessors remain excluded. The workspace initially requests 50 records, displays the exact matching total and loads subsequent pages on demand. Opening a report shows its append-only review history; after a review or author resubmission, the open detail view receives the refreshed report and history response. Review-note guidance tells staff not to enter personal details or pastoral narratives.
+
 ## Review integrity
 
 Review decisions and author resubmissions are appended to `report_review_event` with an `actor_profile_id` and a typed decision (`approved`, `returned`, `comment` or `resubmitted`). Updates, deletes and truncation are rejected. The service-role-only `cmi_review_ministry_report` database transaction locks the report, revalidates the reviewer's active staff profile, role assignment, capability grant and (for Team Leaders) current team membership, rejects self-review and non-submitted reports, changes status when approving/returning, and inserts the review event in the same transaction. This closes the time-of-check/time-of-use gap between the Edge Function's scope lookup and the write. The service-role-only `cmi_resubmit_ministry_report` transaction similarly revalidates the author's active profile and `report.submit.own` grant before allowing correction of a returned report. A failed review or resubmission cannot partially change the report or history. The workspace exposes the append-only review history, including author resubmissions, to users who can read the report.
