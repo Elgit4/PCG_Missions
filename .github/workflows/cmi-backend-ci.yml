@@ -11,6 +11,7 @@ on:
   pull_request:
     branches:
       - main
+      - "feat/team-area-administration-mainline"
       - "feat/cmi-*"
       - "design/cmi-*"
       - "backend/cmi-*"
@@ -187,6 +188,7 @@ jobs:
           cp supabase-cmi/schema-drafts/pastoral_read_operations.test.sql supabase-cmi/supabase/tests/cmi_pastoral_read_operations.test.sql
           cp supabase-cmi/schema-drafts/first_admin_bootstrap_lease.test.sql supabase-cmi/supabase/tests/cmi_first_admin_bootstrap_lease.test.sql
           cp supabase-cmi/schema-drafts/team_area_administration.test.sql supabase-cmi/supabase/tests/cmi_team_area_administration.test.sql
+          cp supabase-cmi/schema-drafts/cmi_typed_ministry_reports.test.sql supabase-cmi/supabase/tests/cmi_typed_ministry_reports.test.sql
 
       - name: Start isolated local CMI stack and apply CMI migrations
         run: supabase --workdir supabase-cmi start
@@ -212,3 +214,4 @@ jobs:
           rm -f supabase-cmi/supabase/tests/cmi_pastoral_read_operations.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_first_admin_bootstrap_lease.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_team_area_administration.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_typed_ministry_reports.test.sql
