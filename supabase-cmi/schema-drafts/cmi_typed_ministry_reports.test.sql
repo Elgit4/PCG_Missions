@@ -1,5 +1,5 @@
 begin;
-select plan(21);
+select plan(25);
 
 select has_table('public','ministry_report','Typed ministry report table exists');
 select has_table('public','report_review_event','Append-only report review history exists');
@@ -72,6 +72,11 @@ select is((select count(*)::integer from public.ministry_report where branch_id=
 insert into public.report_review_event(report_id,reviewer_profile_id,decision,comment)
 select id,'73000000-0000-4000-8000-000000000020','comment','Test review'
 from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020';
+select throws_ok(
+  $q$ update public.report_review_event set decision='approved'
+      where report_id in (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020') $q$,
+  '42501','REPORT_REVIEW_HISTORY_IMMUTABLE',
+  'Review history cannot be rewritten');
 select has_function('public', 'cmi_review_ministry_report', array['uuid','uuid','text','text'],
   'Atomic report review transaction exists');
 select has_function('public', 'cmi_resubmit_ministry_report', array['uuid','uuid','integer','integer','integer','integer','integer','integer','integer','integer','integer'],
@@ -106,25 +111,42 @@ select throws_ok(
   '42501','REPORT_SELF_REVIEW_FORBIDDEN',
   'Authors cannot review their own reports');
 
-select ok(
-  (select (public.cmi_review_ministry_report(
+select lives_ok(
+  $q$ select public.cmi_review_ministry_report(
     (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
     '73000000-0000-4000-8000-000000000021','returned','Please correct the figures.'
-   )).status) = 'returned'
-  and (select count(*) from public.report_review_event where report_id in
-    (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020')) = 2,
-  'Review status and append-only history commit atomically');
+  ) $q$,
+  'Review transaction commits status and history together');
+select is(
+  (select status from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
+  'returned',
+  'Reviewer return changes report status');
+select is(
+  (select count(*)::integer from public.report_review_event where report_id in
+    (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020')),
+  2,
+  'Review event is appended to existing review history');
 
-select ok(
-  (select (public.cmi_resubmit_ministry_report(
+select lives_ok(
+  $q$ select public.cmi_resubmit_ministry_report(
     (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
     '73000000-0000-4000-8000-000000000020',
     4,3,1,2,1,1,0,0,0
-  )).status) = 'submitted'
-  and (select contacts_captured from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020') = 4
-  and (select count(*) from public.report_review_event where report_id in
-    (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020')) = 2,
-  'Author correction resubmits the report without rewriting review history');
+  ) $q$,
+  'Author can atomically correct and resubmit a returned report');
+select is(
+  (select status from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
+  'submitted',
+  'Corrected report returns to submitted state');
+select is(
+  (select contacts_captured from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
+  4,
+  'Corrected count values are stored');
+select is(
+  (select count(*)::integer from public.report_review_event where report_id in
+    (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020')),
+  2,
+  'Resubmission preserves append-only review history');
 
 select * from finish();
 rollback;
