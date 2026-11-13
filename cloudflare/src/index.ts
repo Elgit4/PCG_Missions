@@ -3654,7 +3654,7 @@ async function submitEventCloseout(
     .bind(eventId,access.activeBranch.branchId).first<{id:string}>();
   if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_CLOSEOUT_READY"}},requestId,origin);
   const counts=await eventCloseoutCounts(env,eventId,access.activeBranch.branchId);
-  const digest=await eventRequestDigest({event_id:eventId,summary_notes:summary,...counts});
+  const digest=await eventRequestDigest({event_id:eventId,summary_notes:summary});
   const replay=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
   if (replay) return replay;
   const existing=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=? LIMIT 1")
@@ -3715,7 +3715,7 @@ async function resubmitEventCloseout(
     .bind(eventId,access.activeBranch.branchId).first<{id:string;status:string}>();
   if (!existing) return json(404,{ok:false,error:{code:"EVENT_CLOSEOUT_NOT_FOUND"}},requestId,origin);
   const counts=await eventCloseoutCounts(env,eventId,access.activeBranch.branchId);
-  const digest=await eventRequestDigest({event_id:eventId,resubmission:true,summary_notes:summary,...counts});
+  const digest=await eventRequestDigest({event_id:eventId,resubmission:true,summary_notes:summary});
   const replay=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
   if (replay) return replay;
   if (existing.status!=="returned") return json(409,{ok:false,error:{code:"CLOSEOUT_NOT_RESUBMITTABLE"}},requestId,origin);
