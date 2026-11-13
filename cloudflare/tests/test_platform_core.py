@@ -440,6 +440,8 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
     def test_admin_role_elevation_is_not_part_of_ordinary_assignment_grant(self):
         grants = self.grants("admin_pastor")
         self.assertIn("staff.role.approve", grants)
+        self.assertIn("prayer.request.share", grants)
+        self.assertNotIn("prayer.request.read", grants)
         self.assertNotIn("staff.role.assign_admin_pastor", grants)
 
 
