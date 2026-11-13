@@ -1111,6 +1111,7 @@ function bestScope(scopes: string[]): ContactScopeMode | null {
 function contactScopePredicate(
   mode: ContactScopeMode | null,
   alias: string,
+  staffProfileId: string,
   staffUserId: string,
   branchId: string,
   now: string,
@@ -1132,7 +1133,7 @@ function contactScopePredicate(
         AND ca.starts_at <= ?
         AND (ca.ends_at IS NULL OR ca.ends_at > ?)
     )`,
-    values: [staffUserId, now, now, now, now],
+    values: [staffProfileId, now, now, now, now],
   };
   if (mode === "assigned") return {
     sql: `EXISTS (
@@ -1207,9 +1208,9 @@ async function listContacts(
   const detailScope = bestScope(grants.filter((g) => g.code === "contacts.contact_details.read").map((g) => g.scopeMode));
   const privateScope = bestScope(grants.filter((g) => g.code === "contacts.private_fields.read").map((g) => g.scopeMode));
   const now = new Date().toISOString();
-  const readPredicate = contactScopePredicate(readScope, "c", context.staff.userId, context.activeBranch.branchId, now);
-  const detailPredicate = contactScopePredicate(detailScope, "c", context.staff.userId, context.activeBranch.branchId, now);
-  const privatePredicate = contactScopePredicate(privateScope, "c", context.staff.userId, context.activeBranch.branchId, now);
+  const readPredicate = contactScopePredicate(readScope, "c", context.staff.profileId, context.staff.userId, context.activeBranch.branchId, now);
+  const detailPredicate = contactScopePredicate(detailScope, "c", context.staff.profileId, context.staff.userId, context.activeBranch.branchId, now);
+  const privatePredicate = contactScopePredicate(privateScope, "c", context.staff.profileId, context.staff.userId, context.activeBranch.branchId, now);
   const url = new URL(request.url);
   const search = (url.searchParams.get("search") ?? "").trim().slice(0, 100);
   const status = url.searchParams.get("status") ?? "active";
@@ -1404,7 +1405,7 @@ async function getContact(
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
   const scope = access.decision.scopeMode as ContactScopeMode;
   const now = new Date().toISOString();
-  const predicate = contactScopePredicate(scope, "c", access.staff.userId, access.activeBranch.branchId, now);
+  const predicate = contactScopePredicate(scope, "c", access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now);
   const details = await authorizeRequestCapability(request, env, "contacts.contact_details.read", {
     type: "contact", recordId: contactId, teamId: resource.teamId,
   });
@@ -1415,11 +1416,11 @@ async function getContact(
   const includePrivate = privateFields.state === "authorized";
   const privatePredicate = contactScopePredicate(
     includePrivate ? privateFields.decision.scopeMode as ContactScopeMode : null,
-    "c", access.staff.userId, access.activeBranch.branchId, now,
+    "c", access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now,
   );
   const detailPredicate = contactScopePredicate(
     includeDetails ? details.decision.scopeMode as ContactScopeMode : null,
-    "c", access.staff.userId, access.activeBranch.branchId, now,
+    "c", access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now,
   );
   const row = await env.DB.prepare(`
     SELECT c.id, c.first_name, c.last_name, c.preferred_name,
@@ -1519,13 +1520,13 @@ async function updateContact(
   const assignments = Object.keys(values).map((key) => `${key} = ?`);
   const now = new Date().toISOString();
   assignments.push("updated_at = ?");
-  const predicate = contactScopePredicate(access.decision.scopeMode as ContactScopeMode, "contact", access.staff.userId, access.activeBranch.branchId, now);
+  const predicate = contactScopePredicate(access.decision.scopeMode as ContactScopeMode, "contact", access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now);
   const additionalPredicates: string[] = [];
   const additionalValues: unknown[] = [];
   if (privateFieldAccess?.state === "authorized") {
     const privatePredicate = contactScopePredicate(
       privateFieldAccess.decision.scopeMode as ContactScopeMode, "contact",
-      access.staff.userId, access.activeBranch.branchId, now,
+      access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now,
     );
     additionalPredicates.push(privatePredicate.sql);
     additionalValues.push(...privatePredicate.values);
@@ -1533,7 +1534,7 @@ async function updateContact(
   if (detailFieldAccess?.state === "authorized") {
     const detailPredicate = contactScopePredicate(
       detailFieldAccess.decision.scopeMode as ContactScopeMode, "contact",
-      access.staff.userId, access.activeBranch.branchId, now,
+      access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now,
     );
     additionalPredicates.push(detailPredicate.sql);
     additionalValues.push(...detailPredicate.values);
@@ -1704,7 +1705,7 @@ async function createContactInteraction(
   }
   const interactionId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const predicate = contactScopePredicate(access.decision.scopeMode as ContactScopeMode, "c", access.staff.userId, access.activeBranch.branchId, now);
+  const predicate = contactScopePredicate(access.decision.scopeMode as ContactScopeMode, "c", access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now);
   const result = await env.DB.prepare(`
     INSERT INTO contact_interaction
       (id, contact_id, branch_id, actor_user_id, interaction_type, occurred_at,
@@ -1746,7 +1747,7 @@ async function listContactNotes(
     JOIN contact c ON c.id = n.contact_id AND c.branch_id = n.branch_id
     JOIN staff_profile author ON author.auth_user_id = n.author_user_id
     WHERE n.contact_id = ? AND n.branch_id = ? AND (${contactScopePredicate(
-      access.decision.scopeMode as ContactScopeMode, "c", access.staff.userId,
+      access.decision.scopeMode as ContactScopeMode, "c", access.staff.profileId, access.staff.userId,
       access.activeBranch.branchId, now,
     ).sql})
       AND (
@@ -1770,7 +1771,7 @@ async function listContactNotes(
   `).bind(
     contactId, access.activeBranch.branchId,
     ...contactScopePredicate(
-      access.decision.scopeMode as ContactScopeMode, "c", access.staff.userId,
+      access.decision.scopeMode as ContactScopeMode, "c", access.staff.profileId, access.staff.userId,
       access.activeBranch.branchId, now,
     ).values,
     access.staff.userId, scope,
@@ -1823,7 +1824,7 @@ async function createContactNote(
   }
   const noteId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const predicate = contactScopePredicate(scope as ContactScopeMode, "c", access.staff.userId, access.activeBranch.branchId, now);
+  const predicate = contactScopePredicate(scope as ContactScopeMode, "c", access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now);
   const result = await env.DB.prepare(`
     INSERT INTO contact_note
       (id, contact_id, branch_id, author_user_id, body, visibility, team_id, created_at, updated_at)
@@ -2103,7 +2104,7 @@ async function createFollowupTask(
   const eventId = crypto.randomUUID();
   const digestBytes = new Uint8Array(digestHex.match(/.{2}/g)!.map((pair) => parseInt(pair, 16)));
   const contactPredicate = contactScopePredicate(
-    createScope, "c", context.staff.userId, context.activeBranch.branchId, now,
+    createScope, "c", context.staff.profileId, context.staff.userId, context.activeBranch.branchId, now,
   );
   const targetPredicate = assigneeUserId !== null
     ? `EXISTS (
