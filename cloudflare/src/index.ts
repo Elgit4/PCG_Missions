@@ -3005,10 +3005,27 @@ async function updatePrayerRequestStatus(
       JSON.stringify({ status: nextStatus }),
       prayerRequestId, context.activeBranch.branchId,
     ),
+    env.DB.prepare(`
+      INSERT INTO sensitive_record_access_audit
+        (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, share_reference, created_at)
+      SELECT 'prayer-status-' || lower(hex(randomblob(16))), p.branch_id, ?,
+             'prayer_request', p.id, 'updated',
+             'Assigned intercessor updated prayer request status', s.id, ?
+      FROM prayer_request p
+      JOIN staff_record_share s
+        ON s.record_type = 'prayer_request' AND s.record_id = p.id
+       AND s.branch_id = p.branch_id AND s.staff_profile_id = ?
+      WHERE p.id = ? AND p.branch_id = ? AND p.status = ?
+        AND changes() = 1
+    `).bind(
+      context.staff.profileId, now, context.staff.profileId,
+      prayerRequestId, context.activeBranch.branchId, nextStatus,
+    ),
   ]);
   if (results.some((result) => !result.success) ||
       (results[0]?.meta?.changes ?? 0) !== 1 ||
-      (results[1]?.meta?.changes ?? 0) !== 1) {
+      (results[1]?.meta?.changes ?? 0) !== 1 ||
+      (results[2]?.meta?.changes ?? 0) !== 1) {
     return json(404, { ok: false, error: { code: "ASSIGNED_PRAYER_REQUEST_NOT_FOUND" } }, requestId, origin);
   }
   return json(200, { ok: true, prayer_request_id: prayerRequestId, status: nextStatus }, requestId, origin);
