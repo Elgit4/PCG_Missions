@@ -307,3 +307,93 @@ class PlatformCoreMigrationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StaffAuthorizationPolicyTests(unittest.TestCase):
+    def setUp(self):
+        self.db = sqlite3.connect(":memory:")
+        self.db.execute("PRAGMA foreign_keys = ON")
+        migrations = Path(__file__).resolve().parents[1] / "migrations"
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql"):
+            self.db.executescript((migrations / name).read_text(encoding="utf-8"))
+
+    def tearDown(self):
+        self.db.close()
+
+    def grants(self, role_code):
+        return {row[0] for row in self.db.execute(
+            """SELECT c.code FROM role_capability rc
+               JOIN role r ON r.id = rc.role_id
+               JOIN capability c ON c.id = rc.capability_id WHERE r.code = ?""",
+            (role_code,),
+        )}
+
+    def test_exactly_six_fixed_roles_are_seeded(self):
+        self.assertEqual(
+            {row[0] for row in self.db.execute("SELECT code FROM role WHERE is_active = 1")},
+            {"admin_pastor", "coordinator", "team_leader", "field_worker", "follow_up_volunteer", "prayer_intercessor"},
+        )
+
+    def test_admin_gets_staff_governance_but_not_sensitive_case_access(self):
+        grants = self.grants("admin_pastor")
+        self.assertIn("staff.account.manage", grants)
+        self.assertIn("staff.role.assign", grants)
+        self.assertIn("contacts.private_fields.read", grants)
+        self.assertNotIn("prayer.request.read", grants)
+        self.assertNotIn("pastoral.case.read", grants)
+        self.assertNotIn("contacts.export", grants)
+        self.assertNotIn("sms.dispatch", grants)
+
+    def test_coordinator_cannot_administer_staff_accounts_or_roles(self):
+        grants = self.grants("coordinator")
+        self.assertIn("contacts.assign", grants)
+        self.assertIn("events.manage", grants)
+        self.assertNotIn("staff.account.manage", grants)
+        self.assertNotIn("staff.role.assign", grants)
+        self.assertNotIn("staff.audit.read", grants)
+
+    def test_team_leader_is_team_scoped_and_not_branch_admin(self):
+        grants = self.grants("team_leader")
+        self.assertIn("contacts.read", grants)
+        self.assertIn("followup.update", grants)
+        self.assertNotIn("contacts.private_fields.read", grants)
+        self.assertNotIn("team.manage", grants)
+        self.assertNotIn("staff.directory.read", grants)
+
+    def test_field_worker_has_no_reassignment_or_private_field_grant(self):
+        grants = self.grants("field_worker")
+        self.assertIn("contacts.create", grants)
+        self.assertIn("contacts.interaction.create", grants)
+        self.assertNotIn("contacts.assign", grants)
+        self.assertNotIn("contacts.private_fields.read", grants)
+        self.assertNotIn("followup.assign", grants)
+
+    def test_followup_volunteer_has_task_only_access(self):
+        grants = self.grants("follow_up_volunteer")
+        self.assertIn("followup.read", grants)
+        self.assertIn("followup.update", grants)
+        self.assertIn("contacts.interaction.create", grants)
+        self.assertNotIn("contacts.read", grants)
+        self.assertNotIn("contacts.private_fields.read", grants)
+        self.assertNotIn("contacts.note.create", grants)
+
+    def test_prayer_intercessor_has_only_explicit_share_prayer_capabilities(self):
+        self.assertEqual(self.grants("prayer_intercessor"), {"prayer.request.read", "prayer.request.respond"})
+        scopes = {row[0] for row in self.db.execute(
+            """SELECT DISTINCT rc.scope_mode FROM role_capability rc
+               JOIN role r ON r.id = rc.role_id WHERE r.code = 'prayer_intercessor'"""
+        )}
+        self.assertEqual(scopes, {"explicit_share"})
+
+    def test_no_baseline_role_gets_pastoral_case_export_or_sms_capability(self):
+        count = self.db.execute(
+            """SELECT COUNT(*) FROM role_capability rc JOIN capability c ON c.id = rc.capability_id
+               WHERE c.code IN ('pastoral.case.read','pastoral.case.update','contacts.export','sms.dispatch')"""
+        ).fetchone()[0]
+        self.assertEqual(count, 0)
+
+    def test_policy_seed_is_idempotent(self):
+        sql = (Path(__file__).resolve().parents[1] / "migrations" / "0003_staff_authorization_policy.sql").read_text(encoding="utf-8")
+        self.db.executescript(sql)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM role WHERE is_active = 1").fetchone()[0], 6)
+        self.assertGreater(self.db.execute("SELECT COUNT(*) FROM role_capability").fetchone()[0], 0)
