@@ -160,5 +160,21 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn('"closeout_review"', self.source)
 
 
+    def test_event_cancellation_persists_the_idempotency_key_and_replays_races(self):
+        for name in ("cancelEventRegistration", "cancelTransportReservation"):
+            handler = re.search(rf"async function {name}\\([\\s\\S]*?\\n\\}}", self.source)
+            self.assertIsNotNone(handler)
+            self.assertIn("cancellation_request_key=?", handler.group(0))
+            self.assertIn("findEventReceipt", handler.group(0))
+        self.assertIn("cancellation_request_key", self.source)
+        self.assertIn("EVENT_CANCELLATION_IDEMPOTENCY_CONFLICT", self.source)
+
+    def test_event_assignment_roles_are_restricted_for_registration_and_checkin(self):
+        self.assertIn("'owner','organizer'", self.source)
+        self.assertIn("'checkin'", self.source)
+        self.assertIn("'ushering'", self.source)
+        self.assertIn("event_registration_authorize_insert", self.source)
+
+
 if __name__ == "__main__":
     unittest.main()
