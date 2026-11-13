@@ -1,0 +1,17 @@
+name = "pcg-missions-api-nonprod"
+main = "src/index.ts"
+compatibility_date = "2026-11-13"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+[vars]
+APP_ENV = "non-production"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "pcg-missions-dev"
+# Replace only after creating the NON-PRODUCTION database with:
+# npx wrangler d1 create pcg-missions-dev --jurisdiction=eu
+# Never paste a production database ID into this file.
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"

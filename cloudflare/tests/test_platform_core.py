@@ -1,0 +1,811 @@
+from pathlib import Path
+import sqlite3
+import unittest
+import re
+
+
+MIGRATION = Path(__file__).resolve().parents[1] / "migrations" / "0001_platform_core.sql"
+
+
+class PlatformCoreMigrationTests(unittest.TestCase):
+    def setUp(self):
+        self.db = sqlite3.connect(":memory:")
+        self.db.execute("PRAGMA foreign_keys = ON")
+        self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
+        self.db.executescript((MIGRATION.parent / "0002_contacts_followup.sql").read_text(encoding="utf-8"))
+        self.db.executescript((MIGRATION.parent / "0004_staff_session_revocation.sql").read_text(encoding="utf-8"))
+        self.db.executescript((MIGRATION.parent / "0005_better_auth_rate_limit.sql").read_text(encoding="utf-8"))
+        self.db.executescript((MIGRATION.parent / "0006_last_role_session_revocation.sql").read_text(encoding="utf-8"))
+        self.db.execute(
+            'INSERT INTO "user" (id, name, email, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
+            ("user-1", "Admin Pastor", "admin@example.test", 1, 1),
+        )
+        self.db.execute(
+            "INSERT INTO church (id, name, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            ("church-1", "Test Church", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z"),
+        )
+        self.db.execute(
+            "INSERT INTO branch (id, church_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            ("branch-1", "church-1", "Main Branch", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z"),
+        )
+        self.db.execute(
+            "INSERT INTO role (id, code, name, created_at) VALUES (?, ?, ?, ?)",
+            ("role-1", "admin_pastor", "Administrator", "2026-01-01T00:00:00.000Z"),
+        )
+        self.db.execute(
+            """INSERT INTO staff_profile
+               (id, auth_user_id, full_name, account_status, created_at, updated_at)
+               VALUES (?, ?, ?, 'active', ?, ?)""",
+            ("staff-1", "user-1", "Admin Pastor", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z"),
+        )
+        self.db.execute(
+            "INSERT INTO team (id, branch_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            ("team-1", "branch-1", "Follow Up", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z"),
+        )
+        self.db.execute(
+            "INSERT INTO service_area (id, branch_id, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            ("area-1", "branch-1", "Tema", "2026-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z"),
+        )
+
+    def tearDown(self):
+        self.db.close()
+
+    def assignment(self, assignment_id, start, end=None):
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, ends_at, created_at)
+               VALUES (?, 'staff-1', 'role-1', 'branch-1', 'staff-1', ?, ?, ?)""",
+            (assignment_id, start, end, start),
+        )
+
+
+    def test_staff_deactivation_revokes_all_existing_auth_sessions(self):
+        self.db.execute(
+            """INSERT INTO session
+               (id, expiresAt, token, createdAt, updatedAt, userId)
+               VALUES ('session-1', 9999999999, 'opaque-session-token', 1, 1, 'user-1')"""
+        )
+        self.db.execute(
+            """INSERT INTO session
+               (id, expiresAt, token, createdAt, updatedAt, userId)
+               VALUES ('session-2', 9999999999, 'another-opaque-session-token', 1, 1, 'user-1')"""
+        )
+        self.db.execute(
+            "UPDATE staff_profile SET account_status = 'inactive', deactivated_at = ? WHERE id = 'staff-1'",
+            ("2026-01-02T00:00:00.000Z",),
+        )
+        remaining = self.db.execute(
+            "SELECT COUNT(*) FROM session WHERE userId = 'user-1'"
+        ).fetchone()[0]
+        self.assertEqual(remaining, 0)
+
+
+    def test_better_auth_rate_limit_storage_has_unique_persistent_keys(self):
+        self.db.execute(
+            """INSERT INTO rateLimit (id, key, count, lastRequest)
+               VALUES ('rl-1', '203.0.113.8|/sign-in/email', 1, 1767225600000)"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO rateLimit (id, key, count, lastRequest)
+                   VALUES ('rl-2', '203.0.113.8|/sign-in/email', 1, 1767225600000)"""
+            )
+
+
+    def test_revoking_last_active_role_assignment_revokes_sessions(self):
+        self.assignment("last-role-assignment", "2026-01-01T00:00:00.000Z")
+        self.db.execute(
+            """INSERT INTO session
+               (id, expiresAt, token, createdAt, updatedAt, userId)
+               VALUES ('last-role-session', 9999999999, 'last-role-token', 1, 1, 'user-1')"""
+        )
+        self.db.execute(
+            "UPDATE staff_role_assignment SET revoked_at = ? WHERE id = 'last-role-assignment'",
+            ("2026-01-02T00:00:00.000Z",),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM session WHERE userId = 'user-1'").fetchone()[0],
+            0,
+        )
+
+    def test_schema_is_non_production_and_expected_tables_exist(self):
+        meta = self.db.execute(
+            "SELECT schema_version, environment FROM app_meta WHERE id = 1"
+        ).fetchone()
+        self.assertEqual(meta, (6, "non-production"))
+        names = {
+            row[0] for row in self.db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )
+        }
+        self.assertTrue({
+            "user", "session", "account", "verification", "church", "branch",
+            "role", "capability", "role_capability", "staff_profile",
+            "staff_role_assignment", "staff_access_audit", "team",
+            "service_area", "staff_team_membership", "staff_area_coverage",
+        }.issubset(names))
+
+    def test_role_assignment_overlap_is_rejected_but_adjacent_period_is_allowed(self):
+        self.assignment("assignment-1", "2026-01-01T00:00:00.000Z", "2026-02-01T00:00:00.000Z")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.assignment("assignment-overlap", "2026-01-15T00:00:00.000Z", "2026-03-01T00:00:00.000Z")
+        self.assignment("assignment-adjacent", "2026-02-01T00:00:00.000Z", "2026-03-01T00:00:00.000Z")
+
+    def test_role_assignment_update_overlap_is_rejected(self):
+        self.assignment("assignment-1", "2026-01-01T00:00:00.000Z", "2026-02-01T00:00:00.000Z")
+        self.assignment("assignment-2", "2026-02-01T00:00:00.000Z", "2026-03-01T00:00:00.000Z")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE staff_role_assignment SET starts_at = ? WHERE id = ?",
+                ("2026-01-15T00:00:00.000Z", "assignment-2"),
+            )
+
+    def test_team_membership_overlap_is_rejected(self):
+        self.db.execute(
+            """INSERT INTO staff_team_membership
+               (id, staff_profile_id, team_id, branch_id, starts_at, created_by, created_at)
+               VALUES ('member-1', 'staff-1', 'team-1', 'branch-1',
+                       '2026-01-01T00:00:00.000Z', 'staff-1', '2026-01-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO staff_team_membership
+                   (id, staff_profile_id, team_id, branch_id, starts_at, created_by, created_at)
+                   VALUES ('member-2', 'staff-1', 'team-1', 'branch-1',
+                           '2026-01-02T00:00:00.000Z', 'staff-1', '2026-01-02T00:00:00.000Z')"""
+            )
+
+    def test_area_coverage_overlap_is_rejected(self):
+        self.db.execute(
+            """INSERT INTO staff_area_coverage
+               (id, staff_profile_id, service_area_id, branch_id, starts_at, created_by, created_at)
+               VALUES ('coverage-1', 'staff-1', 'area-1', 'branch-1',
+                       '2026-01-01T00:00:00.000Z', 'staff-1', '2026-01-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO staff_area_coverage
+                   (id, staff_profile_id, service_area_id, branch_id, starts_at, created_by, created_at)
+                   VALUES ('coverage-2', 'staff-1', 'area-1', 'branch-1',
+                           '2026-01-02T00:00:00.000Z', 'staff-1', '2026-01-02T00:00:00.000Z')"""
+            )
+
+    def test_access_audit_is_append_only(self):
+        self.db.execute(
+            """INSERT INTO staff_access_audit
+               (id, branch_id, actor_profile_id, target_profile_id, action, reason, created_at)
+               VALUES ('audit-1', 'branch-1', 'staff-1', 'staff-1',
+                       'account_created', 'Initial test account setup', '2026-01-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE staff_access_audit SET reason = 'tampered audit reason' WHERE id = 'audit-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM staff_access_audit WHERE id = 'audit-1'")
+
+    def test_staff_profile_cannot_reference_missing_identity(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO staff_profile
+                   (id, auth_user_id, full_name, account_status, created_at, updated_at)
+                   VALUES ('staff-2', 'missing-user', 'Another Person', 'invited',
+                           '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+            )
+
+
+    def test_team_membership_update_overlap_is_rejected(self):
+        self.db.execute(
+            """INSERT INTO staff_team_membership
+               (id, staff_profile_id, team_id, branch_id, starts_at, ends_at, created_by, created_at)
+               VALUES ('member-1', 'staff-1', 'team-1', 'branch-1',
+                       '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z',
+                       'staff-1', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO staff_team_membership
+               (id, staff_profile_id, team_id, branch_id, starts_at, ends_at, created_by, created_at)
+               VALUES ('member-2', 'staff-1', 'team-1', 'branch-1',
+                       '2026-02-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z',
+                       'staff-1', '2026-02-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE staff_team_membership SET starts_at = ? WHERE id = ?",
+                ("2026-01-15T00:00:00.000Z", "member-2"),
+            )
+
+    def test_area_coverage_update_overlap_is_rejected(self):
+        self.db.execute(
+            """INSERT INTO staff_area_coverage
+               (id, staff_profile_id, service_area_id, branch_id, starts_at, ends_at, created_by, created_at)
+               VALUES ('coverage-1', 'staff-1', 'area-1', 'branch-1',
+                       '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z',
+                       'staff-1', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO staff_area_coverage
+               (id, staff_profile_id, service_area_id, branch_id, starts_at, ends_at, created_by, created_at)
+               VALUES ('coverage-2', 'staff-1', 'area-1', 'branch-1',
+                       '2026-02-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z',
+                       'staff-1', '2026-02-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE staff_area_coverage SET starts_at = ? WHERE id = ?",
+                ("2026-01-15T00:00:00.000Z", "coverage-2"),
+            )
+
+    def test_capability_code_format_is_constrained(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO capability (id, code, description, created_at)
+                   VALUES ('cap-bad', 'Invalid Code!', 'invalid', '2026-01-01T00:00:00.000Z')"""
+            )
+        self.db.execute(
+            """INSERT INTO capability (id, code, description, created_at)
+               VALUES ('cap-good', 'contacts.read', 'Read contacts', '2026-01-01T00:00:00.000Z')"""
+        )
+
+
+    def add_contact(self, contact_id="contact-1", email=None):
+        self.db.execute(
+            """INSERT INTO contact
+               (id, branch_id, first_name, email_normalized, created_by, created_at, updated_at)
+               VALUES (?, 'branch-1', 'Ama', ?, 'user-1',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')""",
+            (contact_id, email),
+        )
+
+    def test_contact_email_must_be_normalized(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.add_contact(email="Ama@Example.com")
+        self.add_contact(email="ama@example.com")
+
+    def test_contact_capture_idempotency_and_metadata_allowlist(self):
+        self.add_contact()
+        values = (
+            "capture-1", "contact-1", "branch-1", "staff_manual", "request-1",
+            bytes(range(32)), "2026-01-01T00:00:00.000Z", '{"app_version":"1.0"}',
+            "2026-01-01T00:00:00.000Z",
+        )
+        self.db.execute(
+            """INSERT INTO contact_capture
+               (id, contact_id, branch_id, capture_source, client_request_id,
+                request_digest, captured_at, source_metadata, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            values,
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO contact_capture
+                   (id, contact_id, branch_id, capture_source, client_request_id,
+                    request_digest, captured_at, source_metadata, created_at)
+                   VALUES ('capture-2', 'contact-1', 'branch-1', 'staff_manual', 'request-1',
+                           ?, '2026-01-01T00:00:00.000Z', '{}', '2026-01-01T00:00:00.000Z')""",
+                (bytes(range(32)),),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO contact_capture
+                   (id, contact_id, branch_id, capture_source, client_request_id,
+                    request_digest, captured_at, source_metadata, created_at)
+                   VALUES ('capture-3', 'contact-1', 'branch-1', 'staff_manual', 'request-3',
+                           ?, '2026-01-01T00:00:00.000Z', '{"unexpected":"secret"}',
+                           '2026-01-01T00:00:00.000Z')""",
+                (bytes(range(32)),),
+            )
+
+    def test_contact_assignment_rejects_overlapping_staff_periods(self):
+        self.add_contact()
+        self.db.execute(
+            """INSERT INTO contact_assignment
+               (id, contact_id, branch_id, assignee_user_id, assigned_by, starts_at, ends_at, created_at)
+               VALUES ('assign-1', 'contact-1', 'branch-1', 'user-1', 'user-1',
+                       '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z',
+                       '2026-01-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO contact_assignment
+                   (id, contact_id, branch_id, assignee_user_id, assigned_by, starts_at, created_at)
+                   VALUES ('assign-2', 'contact-1', 'branch-1', 'user-1', 'user-1',
+                           '2026-01-15T00:00:00.000Z', '2026-01-15T00:00:00.000Z')"""
+            )
+
+    def test_contact_assignment_requires_exactly_one_target(self):
+        self.add_contact()
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO contact_assignment
+                   (id, contact_id, branch_id, assigned_by, starts_at, created_at)
+                   VALUES ('assign-invalid', 'contact-1', 'branch-1', 'user-1',
+                           '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+            )
+
+    def test_followup_task_completion_requires_timestamp_and_one_target(self):
+        self.add_contact()
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO followup_task
+                   (id, contact_id, branch_id, assignee_user_id, created_by,
+                    status, created_at, updated_at)
+                   VALUES ('task-invalid', 'contact-1', 'branch-1', 'user-1', 'user-1',
+                           'completed', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO followup_task
+                   (id, contact_id, branch_id, created_by, created_at, updated_at)
+                   VALUES ('task-no-target', 'contact-1', 'branch-1', 'user-1',
+                           '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+            )
+
+    def test_followup_task_event_is_append_only(self):
+        self.add_contact()
+        self.db.execute(
+            """INSERT INTO followup_task
+               (id, contact_id, branch_id, assignee_user_id, created_by, created_at, updated_at)
+               VALUES ('task-1', 'contact-1', 'branch-1', 'user-1', 'user-1',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO followup_task_event
+               (id, task_id, actor_user_id, event_type, details, created_at)
+               VALUES ('task-event-1', 'task-1', 'user-1', 'created', '{}',
+                       '2026-01-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE followup_task_event SET event_type = 'cancelled' WHERE id = 'task-event-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM followup_task_event WHERE id = 'task-event-1'")
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class StaffAuthorizationPolicyTests(unittest.TestCase):
+    def setUp(self):
+        self.db = sqlite3.connect(":memory:")
+        self.db.execute("PRAGMA foreign_keys = ON")
+        migrations = Path(__file__).resolve().parents[1] / "migrations"
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql"):
+            self.db.executescript((migrations / name).read_text(encoding="utf-8"))
+
+    def tearDown(self):
+        self.db.close()
+
+    def grants(self, role_code):
+        return {row[0] for row in self.db.execute(
+            """SELECT c.code FROM role_capability rc
+               JOIN role r ON r.id = rc.role_id
+               JOIN capability c ON c.id = rc.capability_id WHERE r.code = ?""",
+            (role_code,),
+        )}
+
+    def test_exactly_six_fixed_roles_are_seeded(self):
+        self.assertEqual(
+            {row[0] for row in self.db.execute("SELECT code FROM role WHERE is_active = 1")},
+            {"admin_pastor", "coordinator", "team_leader", "field_worker", "follow_up_volunteer", "prayer_intercessor"},
+        )
+
+    def test_admin_gets_staff_governance_but_not_sensitive_case_access(self):
+        grants = self.grants("admin_pastor")
+        self.assertIn("staff.account.manage", grants)
+        self.assertIn("staff.role.assign", grants)
+        self.assertIn("contacts.private_fields.read", grants)
+        self.assertNotIn("prayer.request.read", grants)
+        self.assertNotIn("pastoral.case.read", grants)
+        self.assertNotIn("contacts.export", grants)
+        self.assertNotIn("sms.dispatch", grants)
+
+    def test_coordinator_cannot_administer_staff_accounts_or_roles(self):
+        grants = self.grants("coordinator")
+        self.assertIn("contacts.assign", grants)
+        self.assertIn("events.manage", grants)
+        self.assertNotIn("staff.account.manage", grants)
+        self.assertNotIn("staff.role.assign", grants)
+        self.assertNotIn("staff.audit.read", grants)
+        self.assertNotIn("contacts.private_fields.read", grants)
+
+    def test_team_leader_is_team_scoped_and_not_branch_admin(self):
+        grants = self.grants("team_leader")
+        self.assertIn("contacts.read", grants)
+        self.assertIn("followup.update", grants)
+        self.assertNotIn("contacts.private_fields.read", grants)
+        self.assertNotIn("team.manage", grants)
+        self.assertNotIn("staff.directory.read", grants)
+
+    def test_field_worker_has_no_reassignment_or_private_field_grant(self):
+        grants = self.grants("field_worker")
+        self.assertIn("contacts.create", grants)
+        self.assertEqual(self.db.execute("SELECT scope_mode FROM role_capability WHERE role_id = 'role-field-worker' AND capability_id = 'contacts.create'").fetchone()[0], 'branch')
+        self.assertEqual(self.db.execute("SELECT scope_mode FROM role_capability WHERE role_id = 'role-field-worker' AND capability_id = 'contacts.read'").fetchone()[0], 'assigned')
+        self.assertIn("contacts.interaction.create", grants)
+        self.assertNotIn("contacts.assign", grants)
+        self.assertNotIn("contacts.private_fields.read", grants)
+        self.assertNotIn("followup.assign", grants)
+
+    def test_followup_volunteer_has_task_only_access(self):
+        grants = self.grants("follow_up_volunteer")
+        self.assertIn("followup.read", grants)
+        self.assertIn("followup.update", grants)
+        self.assertIn("contacts.contact_details.read", grants)
+        self.assertIn("contacts.interaction.create", grants)
+        self.assertNotIn("contacts.read", grants)
+        self.assertNotIn("contacts.private_fields.read", grants)
+        self.assertNotIn("contacts.note.create", grants)
+
+    def test_prayer_intercessor_has_only_explicit_share_prayer_capabilities(self):
+        self.assertEqual(self.grants("prayer_intercessor"), {"prayer.request.read", "prayer.request.respond"})
+        scopes = {row[0] for row in self.db.execute(
+            """SELECT DISTINCT rc.scope_mode FROM role_capability rc
+               JOIN role r ON r.id = rc.role_id WHERE r.code = 'prayer_intercessor'"""
+        )}
+        self.assertEqual(scopes, {"explicit_share"})
+
+    def test_no_baseline_role_gets_pastoral_case_export_or_sms_capability(self):
+        count = self.db.execute(
+            """SELECT COUNT(*) FROM role_capability rc JOIN capability c ON c.id = rc.capability_id
+               WHERE c.code IN ('pastoral.case.read','pastoral.case.update','contacts.export','sms.dispatch')"""
+        ).fetchone()[0]
+        self.assertEqual(count, 0)
+
+    def test_policy_seed_is_idempotent(self):
+        sql = (Path(__file__).resolve().parents[1] / "migrations" / "0003_staff_authorization_policy.sql").read_text(encoding="utf-8")
+        self.db.executescript(sql)
+        self.assertEqual(self.db.execute("SELECT COUNT(*) FROM role WHERE is_active = 1").fetchone()[0], 6)
+        self.assertGreater(self.db.execute("SELECT COUNT(*) FROM role_capability").fetchone()[0], 0)
+
+
+    def test_sensitive_access_audit_is_append_only_and_excludes_narrative_column(self):
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(sensitive_record_access_audit)")}
+        self.assertNotIn("narrative", columns)
+        self.assertNotIn("body", columns)
+        self.assertIn("purpose", columns)
+        self.db.execute(
+            """INSERT INTO church (id, name, created_at, updated_at)
+               VALUES ('audit-church', 'Audit Church', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO branch (id, church_id, name, created_at, updated_at)
+               VALUES ('audit-branch', 'audit-church', 'Audit Branch', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO "user" (id, name, email, createdAt, updatedAt)
+               VALUES ('audit-user', 'Audit Actor', 'audit@example.test', 1, 1)"""
+        )
+        self.db.execute(
+            """INSERT INTO staff_profile
+               (id, auth_user_id, full_name, account_status, created_at, updated_at)
+               VALUES ('audit-staff', 'audit-user', 'Audit Actor', 'active',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO sensitive_record_access_audit
+               (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, created_at)
+               VALUES ('sensitive-audit-1', 'audit-branch', 'audit-staff', 'prayer_request',
+                       'prayer-1', 'read', 'Assigned prayer request review',
+                       '2026-01-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE sensitive_record_access_audit SET purpose = 'tampered purpose' WHERE id = 'sensitive-audit-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM sensitive_record_access_audit WHERE id = 'sensitive-audit-1'")
+
+
+    def test_admin_role_elevation_is_not_part_of_ordinary_assignment_grant(self):
+        grants = self.grants("admin_pastor")
+        self.assertIn("staff.role.approve", grants)
+        self.assertIn("prayer.request.share", grants)
+        self.assertNotIn("prayer.request.read", grants)
+        self.assertNotIn("staff.role.assign_admin_pastor", grants)
+
+
+    def test_explicit_record_share_is_time_bounded_revocable_and_audited(self):
+        self.db.execute(
+            """INSERT INTO church (id, name, created_at, updated_at)
+               VALUES ('share-church', 'Share Church', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO branch (id, church_id, name, created_at, updated_at)
+               VALUES ('share-branch', 'share-church', 'Share Branch', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        for user_id, email, staff_id, name in (
+            ("share-user-a", "a@example.test", "share-staff-a", "Grantor"),
+            ("share-user-b", "b@example.test", "share-staff-b", "Recipient"),
+        ):
+            self.db.execute(
+                """INSERT INTO "user" (id, name, email, createdAt, updatedAt) VALUES (?, ?, ?, 1, 1)""",
+                (user_id, name, email),
+            )
+            self.db.execute(
+                """INSERT INTO staff_profile
+                   (id, auth_user_id, full_name, account_status, created_at, updated_at)
+                   VALUES (?, ?, ?, 'active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')""",
+                (staff_id, user_id, name),
+            )
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+               VALUES ('share-admin-role', 'share-staff-a', 'role-admin-pastor', 'share-branch',
+                       'share-staff-a', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+               VALUES ('share-intercessor-role', 'share-staff-b', 'role-prayer-intercessor', 'share-branch',
+                       'share-staff-a', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO staff_record_share
+               (id, branch_id, record_type, record_id, staff_profile_id, granted_by,
+                purpose, starts_at, ends_at, created_at)
+               VALUES ('share-1', 'share-branch', 'prayer_request', 'prayer-1',
+                       'share-staff-b', 'share-staff-a', 'Temporary prayer team coverage',
+                       '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z',
+                       '2026-01-01T00:00:00.000Z')"""
+        )
+        grant_audit = self.db.execute(
+            "SELECT actor_profile_id, action FROM sensitive_record_access_audit WHERE id = 'share-grant-share-1'"
+        ).fetchone()
+        self.assertEqual(grant_audit, ("share-staff-a", "share_granted"))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO staff_record_share
+                   (id, branch_id, record_type, record_id, staff_profile_id, granted_by,
+                    purpose, starts_at, created_at)
+                   VALUES ('share-overlap', 'share-branch', 'prayer_request', 'prayer-1',
+                           'share-staff-b', 'share-staff-a', 'Overlapping prayer coverage',
+                           '2026-01-15T00:00:00.000Z', '2026-01-15T00:00:00.000Z')"""
+            )
+        self.db.execute(
+            """UPDATE staff_record_share SET revoked_at = '2026-01-10T00:00:00.000Z',
+               revoked_by = 'share-staff-a' WHERE id = 'share-1'"""
+        )
+        revoke_audit = self.db.execute(
+            "SELECT actor_profile_id, action FROM sensitive_record_access_audit WHERE id = 'share-revoke-share-1'"
+        ).fetchone()
+        self.assertEqual(revoke_audit, ("share-staff-a", "share_revoked"))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE staff_record_share SET revoked_at = NULL, revoked_by = NULL WHERE id = 'share-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM staff_record_share WHERE id = 'share-1'")
+
+
+class AuthorizationQueryTests(unittest.TestCase):
+    NOW = "2026-01-15T12:00:00.000Z"
+
+    def setUp(self):
+        self.db = sqlite3.connect(":memory:")
+        self.db.execute("PRAGMA foreign_keys = ON")
+        migrations = Path(__file__).resolve().parents[1] / "migrations"
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql"):
+            self.db.executescript((migrations / name).read_text(encoding="utf-8"))
+        self.db.execute(
+            """INSERT INTO church (id, name, created_at, updated_at)
+               VALUES ('authz-church', 'Authorization Church', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO branch (id, church_id, name, created_at, updated_at)
+               VALUES ('authz-branch', 'authz-church', 'Authorization Branch', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.staff = {}
+        identities = (
+            ("admin", "Admin", "admin_pastor"),
+            ("field", "Field Worker", "field_worker"),
+            ("leader", "Team Leader", "team_leader"),
+            ("prayer", "Prayer Intercessor", "prayer_intercessor"),
+            ("followup", "Follow-up Volunteer", "follow_up_volunteer"),
+        )
+        for key, name, role_code in identities:
+            user_id = "authz-user-" + key
+            profile_id = "authz-staff-" + key
+            self.staff[key] = (user_id, profile_id)
+            self.db.execute(
+                """INSERT INTO "user" (id, name, email, createdAt, updatedAt)
+                   VALUES (?, ?, ?, 1, 1)""",
+                (user_id, name, key + "@example.test"),
+            )
+            self.db.execute(
+                """INSERT INTO staff_profile
+                   (id, auth_user_id, full_name, account_status, created_at, updated_at)
+                   VALUES (?, ?, ?, 'active', ?, ?)""",
+                (profile_id, user_id, name, self.NOW, self.NOW),
+            )
+            self.db.execute(
+                """INSERT INTO staff_role_assignment
+                   (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+                   VALUES (?, ?, ?, 'authz-branch', 'authz-staff-admin', ?, ?)""",
+                ("authz-role-" + key, profile_id, "role-" + role_code.replace("_", "-"), self.NOW, self.NOW),
+            ) if key != "admin" else self.db.execute(
+                """INSERT INTO staff_role_assignment
+                   (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+                   VALUES (?, ?, ?, 'authz-branch', ?, ?, ?)""",
+                ("authz-role-admin", profile_id, "role-admin-pastor", profile_id, self.NOW, self.NOW),
+            )
+        self.db.execute(
+            """INSERT INTO team (id, branch_id, name, created_at, updated_at)
+               VALUES ('authz-team', 'authz-branch', 'Field Team', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO staff_team_membership
+               (id, staff_profile_id, team_id, branch_id, membership_role, starts_at, created_by, created_at)
+               VALUES ('authz-team-membership', 'authz-staff-leader', 'authz-team',
+                       'authz-branch', 'leader', ?, 'authz-staff-admin', ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO contact
+               (id, branch_id, first_name, created_by, created_at, updated_at)
+               VALUES ('authz-contact', 'authz-branch', 'Ama', 'authz-user-admin', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO contact_assignment
+               (id, contact_id, branch_id, assignee_user_id, assigned_by, starts_at, created_at)
+               VALUES ('authz-contact-assignment', 'authz-contact', 'authz-branch',
+                       'authz-user-field', 'authz-user-admin', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO followup_task
+               (id, contact_id, branch_id, assignee_user_id, created_by, created_at, updated_at)
+               VALUES ('authz-task', 'authz-contact', 'authz-branch', 'authz-user-followup',
+                       'authz-user-admin', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+
+    def tearDown(self):
+        self.db.close()
+
+    def query_and_bind(self, actor, capability, resource_type=None, record_id=None, team_id=None):
+        source = (Path(__file__).resolve().parents[1] / "src" / "authorization.ts").read_text(encoding="utf-8")
+        match = re.search(r"const AUTHORIZATION_SQL = `([\s\S]*?)`;", source)
+        self.assertIsNotNone(match, "authorization SQL must remain a static, testable query")
+        query = match.group(1)
+        actor_profile = self.staff[actor][1]
+        resource_type = resource_type or ""
+        record_id = record_id or ""
+        team_id = team_id or ""
+        values = (
+            "authz-branch", actor_profile, capability, self.NOW, self.NOW,
+            team_id, team_id, self.NOW, self.NOW,
+            resource_type, record_id, record_id, self.NOW, self.NOW,
+            resource_type, record_id, record_id,
+            resource_type, record_id, resource_type, record_id,
+            self.NOW, self.NOW, actor_profile,
+        )
+        self.assertEqual(query.count("?"), len(values), "SQL placeholders and D1 bind values must match")
+        return self.db.execute(query, values).fetchone()
+
+    def test_branch_grant_requires_active_role_and_branch(self):
+        self.assertIsNotNone(self.query_and_bind("admin", "contacts.read", "contact", "authz-contact"))
+        self.assertIsNone(self.query_and_bind("field", "staff.account.manage"))
+
+    def test_field_worker_reads_only_an_individually_assigned_contact(self):
+        self.assertIsNotNone(self.query_and_bind("field", "contacts.read", "contact", "authz-contact"))
+        self.assertIsNone(self.query_and_bind("field", "contacts.read", "contact", "another-contact"))
+
+    def test_team_leader_requires_active_leader_membership_for_team_scope(self):
+        self.assertIsNotNone(self.query_and_bind("leader", "contacts.read", "contact", "authz-contact", "authz-team"))
+        self.db.execute("UPDATE staff_team_membership SET revoked_at = ? WHERE id = 'authz-team-membership'", (self.NOW,))
+        self.assertIsNone(self.query_and_bind("leader", "contacts.read", "contact", "authz-contact", "authz-team"))
+
+    def test_followup_volunteer_gets_minimal_contact_details_only_via_assigned_task(self):
+        self.assertIsNotNone(self.query_and_bind("followup", "contacts.contact_details.read", "followup_task", "authz-task"))
+        self.assertIsNone(self.query_and_bind("followup", "contacts.read", "contact", "authz-contact"))
+
+    def test_prayer_intercessor_requires_exact_active_explicit_share(self):
+        self.db.execute(
+            """INSERT INTO staff_record_share
+               (id, branch_id, record_type, record_id, staff_profile_id, granted_by,
+                purpose, starts_at, ends_at, created_at)
+               VALUES ('authz-prayer-share', 'authz-branch', 'prayer_request', 'prayer-authz',
+                       'authz-staff-prayer', 'authz-staff-admin', 'Temporary prayer team cover',
+                       ?, '2026-01-16T12:00:00.000Z', ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.assertIsNotNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "prayer-authz"))
+        self.assertIsNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "other-prayer"))
+        self.db.execute(
+            "UPDATE staff_record_share SET revoked_at = ?, revoked_by = 'authz-staff-admin' WHERE id = 'authz-prayer-share'",
+            (self.NOW,),
+        )
+        self.assertIsNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "prayer-authz"))
+
+
+    def test_admin_pastor_elevation_requires_distinct_approval_and_preserves_last_admin(self):
+        second_user = "authz-user-admin-two"
+        second_profile = "authz-staff-admin-two"
+        self.db.execute(
+            """INSERT INTO "user" (id, name, email, createdAt, updatedAt)
+               VALUES (?, 'Second Admin', 'admin-two@example.test', 1, 1)""",
+            (second_user,),
+        )
+        self.db.execute(
+            """INSERT INTO staff_profile
+               (id, auth_user_id, full_name, account_status, created_at, updated_at)
+               VALUES (?, ?, 'Second Admin', 'active', ?, ?)""",
+            (second_profile, second_user, self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+               VALUES ('authz-role-admin-two', ?, 'role-admin-pastor', 'authz-branch',
+                       'authz-staff-admin', ?, ?)""",
+            (second_profile, self.NOW, self.NOW),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT remaining_slots FROM staff_admin_bootstrap_state WHERE id = 1").fetchone()[0],
+            0,
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_elevation_request
+               (id, branch_id, target_profile_id, role_id, requested_by, reason, requested_at)
+               VALUES ('elevation-1', 'authz-branch', 'authz-staff-field', 'role-admin-pastor',
+                       'authz-staff-admin', 'Promote experienced branch field lead', ?)""",
+            (self.NOW,),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE staff_role_elevation_request
+                   SET status = 'approved', reviewed_by = 'authz-staff-admin',
+                       reviewed_at = ?, review_reason = 'Self approval is not permitted'
+                   WHERE id = 'elevation-1'""",
+                (self.NOW,),
+            )
+        self.db.execute(
+            """UPDATE staff_role_elevation_request
+               SET status = 'approved', reviewed_by = ?, reviewed_at = ?,
+                   review_reason = 'Independent second administrator approval'
+               WHERE id = 'elevation-1'""",
+            (second_profile, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, reason, created_at)
+               SELECT 'authz-role-field-promoted', req.target_profile_id, req.role_id,
+                      req.branch_id, ?, req.reviewed_at, req.reason, ?
+               FROM staff_role_elevation_request req
+               WHERE req.id = 'elevation-1'
+                 AND req.branch_id = 'authz-branch'
+                 AND req.status = 'approved'
+                 AND req.reviewed_by = ?
+                 AND changes() = 1""",
+            (second_profile, self.NOW, second_profile),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT status FROM staff_role_elevation_request WHERE id = 'elevation-1'").fetchone()[0],
+            "applied",
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM staff_role_elevation_audit WHERE request_id = 'elevation-1'").fetchone()[0],
+            3,
+        )
+        self.assertIsNotNone(
+            self.db.execute("SELECT 1 FROM staff_access_audit WHERE id = 'admin-elevation-authz-role-field-promoted'").fetchone()
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO staff_role_assignment
+                   (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+                   VALUES ('unauthorized-admin-grant', 'authz-staff-followup', 'role-admin-pastor',
+                           'authz-branch', 'authz-staff-admin', ?, ?)""",
+                (self.NOW, self.NOW),
+            )
+        self.db.execute(
+            "UPDATE staff_role_assignment SET revoked_at = ? WHERE id = 'authz-role-admin'",
+            (self.NOW,),
+        )
+        self.db.execute(
+            "UPDATE staff_role_assignment SET revoked_at = ? WHERE id = 'authz-role-admin-two'",
+            (self.NOW,),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE staff_role_assignment SET revoked_at = ? WHERE id = 'authz-role-field-promoted'",
+                (self.NOW,),
+            )

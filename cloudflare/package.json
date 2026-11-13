@@ -1,0 +1,17 @@
+{
+  "name": "pcg-missions-cloudflare-api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "dev": "wrangler dev --local"
+  },
+  "dependencies": {
+    "better-auth": "1.7.22"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "wrangler": "4.46.0"
+  }
+}
