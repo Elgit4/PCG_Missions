@@ -3439,6 +3439,9 @@ async function listTransportOptions(
   if (!await hasEventAssignmentRole(context,env,eventId,["owner","organizer","transport"],["organizer","transport"])) {
     return json(403,{ok:false,error:{code:"EVENT_TRANSPORT_ASSIGNMENT_REQUIRED"}},requestId,origin);
   }
+  const event=await env.DB.prepare("SELECT id FROM event WHERE id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,context.activeBranch.branchId).first<{id:string}>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
   const rows=await env.DB.prepare(`
     SELECT id,event_id,branch_id,label,capacity,is_enabled,created_at,created_by,updated_by,updated_at
     FROM transport_option WHERE event_id=? AND branch_id=? ORDER BY label,id
@@ -3548,6 +3551,9 @@ async function listTransportReservations(
   if (!await hasEventAssignmentRole(context,env,eventId,["owner","organizer","transport"],["organizer","transport"])) {
     return json(403,{ok:false,error:{code:"EVENT_TRANSPORT_ASSIGNMENT_REQUIRED"}},requestId,origin);
   }
+  const event=await env.DB.prepare("SELECT id FROM event WHERE id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,context.activeBranch.branchId).first<{id:string}>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
   const rows=await env.DB.prepare(`
     SELECT tr.id,tr.event_id,tr.registration_id,tr.transport_option_id,tr.pickup_area,
            tr.seat_count,tr.status,tr.notes,tr.created_at,tr.updated_at,
