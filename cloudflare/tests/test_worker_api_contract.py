@@ -272,6 +272,15 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("calendarReadMatch", self.source)
 
 
+    def test_password_reset_uses_configurable_resend_delivery_and_fails_closed(self):
+        auth = (Path(__file__).resolve().parents[1] / "src" / "auth.ts").read_text(encoding="utf-8")
+        self.assertIn("sendResendEmail",auth)
+        self.assertIn("https://api.resend.com/emails",auth)
+        self.assertIn("PASSWORD_RESET_DELIVERY_NOT_CONFIGURED",auth)
+        self.assertIn("sendResetPassword: async ({ user, url })",auth)
+        self.assertIn("RESEND_API_KEY",auth)
+        self.assertIn("EMAIL_FROM",auth)
+
     def test_password_reset_audit_migration_is_append_only(self):
         self.assertIn("staff_password_reset_audit",self.password_reset_audit_migration)
         self.assertIn("STAFF_PASSWORD_RESET_AUDIT_APPEND_ONLY",self.password_reset_audit_migration)
