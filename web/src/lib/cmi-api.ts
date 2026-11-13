@@ -6,8 +6,7 @@
  * never talks directly to Postgres or carries service-role/provider secrets.
  */
 export interface CmiApiConfig {
-  supabaseUrl: string;
-  publishableKey: string;
+  apiUrl?: string;
 }
 export type AccessTokenProvider = () => Promise<string | null>;
 export interface ApiEnvelope<T> {
@@ -491,43 +490,44 @@ export class CmiApiClient {
   private readonly baseUrl: string;
 
   constructor(
-    private readonly config: CmiApiConfig,
-    private readonly getAccessToken: AccessTokenProvider,
+    config: CmiApiConfig,
+    _getAccessToken: AccessTokenProvider = async () => null,
     private readonly fetcher: typeof fetch = fetch,
   ) {
-    const supabaseUrl = normalizeBaseUrl(config.supabaseUrl);
-    if (!supabaseUrl || !config.publishableKey.trim()) {
-      throw new Error("PCG Missions API configuration is incomplete.");
+    const configured = normalizeBaseUrl(config.apiUrl ?? "");
+    this.baseUrl = configured || (typeof window !== "undefined" ? window.location.origin : "http://localhost");
+    const parsed = new URL(this.baseUrl);
+    if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+      throw new Error("The PCG Missions API URL must use HTTPS outside local development.");
     }
-    const parsedUrl = new URL(supabaseUrl);
-    if (parsedUrl.protocol !== "https:" && parsedUrl.hostname !== "localhost" && parsedUrl.hostname !== "127.0.0.1") {
-      throw new Error("The Supabase URL must use HTTPS outside local development.");
-    }
-    this.baseUrl = `${supabaseUrl}/functions/v1`;
   }
 
-  private async sendWithBrowserFallback(url: string | URL, init: RequestInit): Promise<Response> {
+  private workerPath(service: string, path: string): string {
+    if (service === "staff-session") return "/api/v1/me";
+    let route = path || "/";
+    if (service === "calendar-operations") route = route.replace(/^\/entries(?=\/|$)/, "/calendar");
+    if (service === "content-operations") {
+      route = route.replace(/^\/(sermons|welcome-messages|daily-words|digital-tracts)(?=\/|$)/, "/content/$1");
+    }
+    if (service === "team-operations") route = route.replace(/^\/(teams|areas)(?=\/|$)/, "/$1");
+    if (service === "pastoral-operations") route = route.replace(/^\//, "/pastoral/");
+    if (service === "public-content") return "/api/public/content";
+    if (service === "staff-auth") {
+      route = route.replace(/^\/admin\/staff(?=\/|$)/, "/staff/invitations");
+      route = route.replace(/^\/admin\/password-reset-requests/, "/staff/password-reset-requests");
+    }
+    return `/api/v1${route.startsWith("/") ? route : `/${route}`}`;
+  }
+
+  private async send(url: URL, init: RequestInit): Promise<Response> {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    let fetchError: unknown;
+    const timeout = setTimeout(() => controller.abort(), 15000);
     try {
-      return await this.fetcher(url, { ...init, signal: controller.signal });
+      return await this.fetcher(url, { ...init, credentials: "include", signal: controller.signal });
     } catch (error) {
-      fetchError = error;
+      throw new CmiApiError(0, "NETWORK_ERROR", requestErrorDetail(error), null);
     } finally {
       clearTimeout(timeout);
-    }
-
-    // Do not let a browser fetch hang the staff portal indefinitely.
-    try {
-      return await xhrRequest(url, init);
-    } catch (xhrError) {
-      throw new CmiApiError(
-        0,
-        "NETWORK_ERROR",
-        `Browser request failed or timed out. Fetch: ${requestErrorDetail(fetchError)}; XMLHttpRequest: ${requestErrorDetail(xhrError)}.`,
-        null,
-      );
     }
   }
 
@@ -536,75 +536,91 @@ export class CmiApiClient {
     path: string,
     options: CmiRequestOptions = {},
   ): Promise<ApiEnvelope<T>> {
-    const authenticated = options.authenticated !== false;
-    const token = authenticated ? await this.getAccessToken() : null;
-    if (authenticated && !token) {
-      throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
-    }
-    const suffix = path ? (path.startsWith("/") ? path : `/${path}`) : "";
-    const useSameOriginSessionProxy = functionName === "staff-session" &&
-      typeof window !== "undefined" &&
-      window.location.hostname !== "localhost" &&
-      window.location.hostname !== "127.0.0.1";
-    const url = useSameOriginSessionProxy
-      ? new URL("/api/auth?resource=staff-session", window.location.origin)
-      : new URL(`${this.baseUrl}/${functionName}${suffix}`);
+    const url = new URL(this.workerPath(functionName, path), this.baseUrl);
     for (const [key, value] of Object.entries(options.query ?? {})) {
       if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
     }
-    const headers = new Headers({
-      apikey: this.config.publishableKey,
-      Accept: "application/json",
-    });
-    if (token) headers.set("Authorization", `Bearer ${token}`);
+    const headers = new Headers({ Accept: "application/json" });
+    const branchId = options.query?.branch_id;
+    if (typeof branchId === "string" && branchId) headers.set("X-Branch-Id", branchId);
     if (options.body !== undefined) headers.set("Content-Type", "application/json");
 
-    const requestInit: RequestInit = {
-      method: options.method ?? "GET",
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      cache: "no-store",
-    };
     let response: Response;
     try {
-      response = await this.sendWithBrowserFallback(url, requestInit);
-    } catch (proxyError) {
-      if (!useSameOriginSessionProxy) throw proxyError;
-      // Keep session lookup available through the project's own HTTPS endpoint
-      // if the same-origin Vercel path is unavailable to this browser.
-      const directUrl = new URL(`${this.baseUrl}/${functionName}${suffix}`);
-      for (const [key, value] of Object.entries(options.query ?? {})) {
-        if (value !== undefined && value !== "") directUrl.searchParams.set(key, String(value));
-      }
-      try {
-        response = await this.sendWithBrowserFallback(directUrl, requestInit);
-      } catch (directError) {
-        throw new CmiApiError(
-          0,
-          "NETWORK_ERROR",
-          `Unable to reach PCG Missions. Proxy: ${requestErrorDetail(proxyError)}; Supabase: ${requestErrorDetail(directError)}.`,
-          null,
-        );
-      }
+      response = await this.send(url, {
+        method: options.method ?? "GET",
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        cache: "no-store",
+      });
+    } catch (error) {
+      if (error instanceof CmiApiError) throw error;
+      throw new CmiApiError(0, "NETWORK_ERROR", "Unable to reach PCG Missions.", null);
     }
 
-    const payload = parseJson(await response.text()) as (ApiEnvelope<T> & ApiErrorBody) | null;
+    const payload = parseJson(await response.text()) as (ApiEnvelope<T> & ApiErrorBody & Record<string, unknown>) | null;
     const requestId = payload?.request_id ?? response.headers.get("X-Request-Id");
-    if (!response.ok) {
+    if (!response.ok || payload?.ok === false || payload?.error) {
       throw new CmiApiError(
-        response.status,
-        payload?.error?.code ?? `HTTP_${response.status}`,
-        payload?.error?.message ?? "The request could not be completed.",
+        response.status || 500,
+        payload?.error && typeof payload.error === "object" ? payload.error.code ?? `HTTP_${response.status}` : `HTTP_${response.status}`,
+        payload?.error && typeof payload.error === "object" ? payload.error.message ?? "The request could not be completed." : "The request could not be completed.",
         requestId ?? null,
       );
     }
-    if (!payload || typeof payload !== "object" || !("data" in payload)) {
+    if (!payload || typeof payload !== "object") {
       throw new CmiApiError(502, "INVALID_RESPONSE", "The server returned an unexpected response.", requestId ?? null);
     }
-    return payload;
+    const data = "data" in payload ? payload.data as T : payload as unknown as T;
+    return { data, request_id: requestId ?? "worker-request", ...(typeof payload.total === "number" ? { total: payload.total } : {}) };
   }
 
-  getStaffSession() { return this.request<StaffSession>("staff-session", ""); }
+  async getStaffSession(): Promise<ApiEnvelope<StaffSession>> {
+    const first = await this.request<Record<string, unknown>>("staff-session", "");
+    const context = first.data as Record<string, unknown>;
+    const staff = context.staff as Record<string, unknown> | undefined;
+    const branches = Array.isArray(staff?.branches) ? staff.branches as StaffSession["branches"] : [];
+    let active = context;
+    if (branches[0]?.id) {
+      const selected = await this.fetcher(new URL("/api/v1/me", this.baseUrl), {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+        headers: { Accept: "application/json", "X-Branch-Id": branches[0].id },
+      });
+      const parsed = parseJson(await selected.text()) as Record<string, unknown> | null;
+      if (selected.ok && parsed) active = parsed;
+    }
+    const activeBranch = active.active_branch as Record<string, unknown> | null | undefined;
+    const userId = String(staff?.userId ?? "");
+    const profileId = String(staff?.profileId ?? "");
+    const roleCodes = Array.isArray(activeBranch?.roles) ? activeBranch.roles as string[] : [];
+    const capabilities = Array.isArray(activeBranch?.capabilities) ? activeBranch.capabilities as Array<Record<string, unknown>> : [];
+    const data: StaffSession = {
+      user: { id: userId, email: typeof staff?.email === "string" ? staff.email : null },
+      staff: {
+        id: profileId,
+        auth_user_id: userId,
+        full_name: String(staff?.fullName ?? ""),
+        email: typeof staff?.email === "string" ? staff.email : null,
+        account_status: "active",
+      },
+      branches,
+      roles: roleCodes.map((code) => ({
+        code,
+        name: code.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()),
+        branch_id: String(activeBranch?.branchId ?? branches[0]?.id ?? ""),
+      })),
+      capabilities: capabilities.map((item) => ({
+        code: String(item.code ?? ""),
+        scope_mode: String(item.scopeMode ?? ""),
+        branch_id: String(activeBranch?.branchId ?? branches[0]?.id ?? ""),
+      })),
+      must_change_password: false,
+      password_setup_expires_at: null,
+    };
+    return { data, request_id: String(active.request_id ?? first.request_id) };
+  }
 
   listContacts(branchId: string, options: { limit?: number; offset?: number; search?: string } = {}) {
     return this.request<ContactRecord[]>("staff-operations", "/contacts", {
