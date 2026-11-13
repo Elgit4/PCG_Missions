@@ -10,7 +10,12 @@ export interface CmiApiConfig {
   publishableKey: string;
 }
 export type AccessTokenProvider = () => Promise<string | null>;
-export interface ApiEnvelope<T> { data: T; request_id: string }
+export interface ApiEnvelope<T> {
+  data: T;
+  request_id: string;
+  /** Exact matching record count returned by paginated list endpoints. */
+  total?: number;
+}
 export interface ApiErrorBody { error?: { code?: string; message?: string }; request_id?: string }
 
 export class CmiApiError extends Error {
