@@ -13,6 +13,7 @@ class WorkerApiContractTests(unittest.TestCase):
         cls.event_guard_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0020_event_assignment_privilege_guards.sql").read_text(encoding="utf-8")
         cls.event_operations_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0018_event_operations_guards.sql").read_text(encoding="utf-8")
         cls.announcement_receipt_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0021_announcement_delivery_read_receipts.sql").read_text(encoding="utf-8")
+        cls.event_report_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0022_typed_ministry_reports.sql").read_text(encoding="utf-8")
 
     def test_contact_team_scope_uses_profile_id_and_assigned_scope_uses_auth_user_id(self):
         match = re.search(
@@ -216,6 +217,22 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("prayer_request", handler.group(0))
         self.assertNotIn("request_text", handler.group(0))
         self.assertIn("/api/v1/reports/overview", self.source)
+
+
+    def test_typed_ministry_report_routes_use_d12_capability_scopes(self):
+        for name in ("listMinistryReports", "getMinistryReport", "createMinistryReport",
+                     "reviewMinistryReport", "resubmitMinistryReport", "listReportTeams",
+                     "listReportEvents"):
+            self.assertIn(f"function {name}(", self.source)
+        for route in ("/api/v1/reports", "/api/v1/reports/teams", "/api/v1/reports/events",
+                      "/api/v1/reports/overview", "/resubmit", "/review"):
+            self.assertIn(route, self.source)
+        self.assertIn("report.submit.own", self.source)
+        self.assertIn("report.review.branch", self.source)
+        self.assertIn("report.review.team", self.source)
+        self.assertIn("report_review_event", self.source)
+        self.assertIn("REPORT_SELF_REVIEW_FORBIDDEN", self.event_report_migration)
+        self.assertIn("REPORT_REVIEW_SCOPE_REQUIRED", self.event_report_migration)
 
 
 if __name__ == "__main__":
