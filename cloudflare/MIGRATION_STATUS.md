@@ -29,22 +29,23 @@
 | `0018_event_operations_guards.sql` | 0 new tables | Adds database-enforced registration open/capacity rules, cancellation actor checks, transport option/reservation capacity and actor guards, and closeout audit actor authorization; schema version 18 |
 | `0019_event_cancellation_idempotency.sql` | 0 new tables | Adds persisted cancellation request keys and per-event uniqueness for registration and transport cancellation replay; schema version 19 |
 | `0020_event_assignment_privilege_guards.sql` | 0 new tables | Narrows registration, cancellation and check-in authorization to event assignment roles appropriate to each operation; schema version 20 |
+| `0021_announcement_delivery_read_receipts.sql` | 1 new table | Adds audience-checked in-app delivery fan-out, recipient indexes and immutable staff read receipts; schema version 21 |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
 ## Remote non-production D1 verification
 
 - Database UUID: `376a6782-d059-41f9-9e09-f93718fef2bb`.
-- Migrations `0001` through `0020` applied successfully; schema version reports `20` and environment marker is `non-production`.
-- Database contains 70 application tables and all six expected role records.
+- Migrations `0001` through `0021` applied successfully; schema version reports `21` and environment marker is `non-production`.
+- Database contains 71 application tables and all six expected role records.
 - `PRAGMA foreign_key_check` returned no violations.
-- Wrangler migration ledger `d1_migrations` contains all 20 applied migration filenames. Migrations `0018`–`0020` were applied to the EU non-production database and verified through the Cloudflare D1 API; the expected actor-authorization triggers and cancellation-key indexes are present.
+- Wrangler migration ledger `d1_migrations` contains all 21 applied migration filenames. Migrations `0018`–`0021` were applied to the EU non-production database and verified through the Cloudflare D1 API; expected event actor-authorization triggers, cancellation-key indexes, announcement delivery/read-receipt triggers and the new read-receipt table are present.
 - This is a direct remote D1 schema test; Better Auth login, Worker request lifecycle and domain endpoints have not yet been exercised against a deployed Worker.
 
 ## Current test coverage
 
 The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations against an in-memory SQLite database and checks:
-- migration application through schema version 20 and non-production marker;
+- migration application through schema version 21 and non-production marker;
 - identity foreign keys;
 - temporal overlap rejection for staff role assignments, team membership, area coverage and contact assignments;
 - adjacent assignment periods;
@@ -79,7 +80,7 @@ Last recorded CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actio
 - Worker-level integration tests for staff invitation, account lifecycle, staff governance and the existing contact/follow-up routes.
 - Pastoral-care narrative read/write routes remain disabled until explicit care-reader capability decisions are approved.
 - Worker-level integration tests for the new event registration, capacity, cancellation replay, transport, check-in and closeout endpoints; the handlers and D1 guards are implemented but not runtime-tested.
-- Calendar and announcement CRUD/lifecycle, public content CRUD/publishing, church profile management, HTTPS external links and the published-only public read projection are now in Worker source. Their current head still requires CI and deployed Worker integration testing.
+- Calendar and announcement CRUD/lifecycle, in-app delivery fan-out, recipient-scoped announcement inbox/read receipts, public content CRUD/publishing, church profile management, HTTPS external links and the published-only public read projection are now in Worker source. The current head passes CI but still requires deployed Worker integration testing.
 - Reporting, analytics, export/import tooling and source-to-D1 reconciliation.
 - Cloudflare Pages preview binding and frontend API integration.
 - Email provider integration for invitations and password resets. SMS remains intentionally unconfigured.
@@ -103,6 +104,6 @@ Last recorded CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actio
 
 1. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content, including cross-branch, wrong-team, wrong-assignment, duplicate-key and capacity-race cases.
 2. Deploy the full Worker to a non-production Workers preview and exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
-3. Add announcement delivery/read receipts, ministry reporting and privacy-controlled exports.
+3. Add ministry reporting, privacy-controlled exports and scheduled announcement publishing/delivery.
 4. Validate Better Auth's generated schema against the pinned release and complete source-to-D1 migration export/import and row/count/hash reconciliation for the remaining live schema.
 5. Integrate the frontend with the non-production API and verify end-to-end user workflows. Production cutover remains a separate approval gate.
