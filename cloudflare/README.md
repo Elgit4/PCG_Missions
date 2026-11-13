@@ -33,6 +33,7 @@ The Worker exposes:
 - `GET /api/v1/staff` for a limited branch-scoped staff directory.
 - `GET /api/v1/staff/audit` for a paginated, branch-scoped staff governance audit.
 - `POST/GET /api/v1/staff/invitations`, `POST /api/v1/staff/invitations/{id}/revoke`, and `POST /api/v1/staff/invitations/accept` for one-time, invitation-only staff account provisioning.
+- `GET/POST /api/v1/contacts`, `GET/PATCH /api/v1/contacts/{id}`, and `POST /api/v1/contacts/{id}/interactions` for the first branch/team/assignment-scoped contact workflows.
 - `POST /api/v1/staff/{profileId}/deactivate|suspend|reactivate` for audited account lifecycle changes.
 - `GET/POST /api/v1/staff/role-revocations` and `POST /api/v1/staff/role-revocations/{id}/approve|reject` for two-person Admin/Pastor revocation.
 - `POST /api/v1/staff/roles` and `DELETE /api/v1/staff/roles/{assignmentId}` for audited branch-scoped standard-role assignment and revocation by Admin/Pastor.
