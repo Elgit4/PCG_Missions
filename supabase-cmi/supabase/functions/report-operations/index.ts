@@ -162,8 +162,19 @@ Deno.serve(async (request: Request) => {
       if (!submitScopes.includes("self")) {
         return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
       }
+      const now = new Date().toISOString();
+      const { data: assignments, error: assignmentError } = await auth.service
+        .from("event_staff_assignment").select("event_id")
+        .eq("branch_id", branchId).eq("staff_auth_user_id", auth.actorId)
+        .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
+        .is("revoked_at", null);
+      if (assignmentError) throw new Error("REPORT_EVENT_ASSIGNMENT_LOOKUP_FAILED");
+      const eventIds = [...new Set((assignments ?? []).map((row: { event_id: string }) => row.event_id))];
+      if (!eventIds.length) {
+        return response({ data: [], request_id: requestId }, 200, origin, requestId);
+      }
       const { data, error } = await auth.service.from("event")
-        .select("id,title,starts_at").eq("branch_id", branchId)
+        .select("id,title,starts_at").eq("branch_id", branchId).in("id", eventIds)
         .order("starts_at", { ascending: false }).limit(100);
       if (error) throw new Error("REPORT_EVENT_OPTIONS_FAILED");
       return response({ data: data ?? [], request_id: requestId }, 200, origin, requestId);
