@@ -423,6 +423,65 @@ function requestErrorDetail(error: unknown): string {
   return "Unknown network error";
 }
 
+export type MinistryReportType = "daily_evangelism" | "event_evangelism" | "weekly_ministry";
+export type MinistryReportStatus = "draft" | "submitted" | "returned" | "approved";
+export interface MinistryReportRecord {
+  id: string;
+  branch_id: string;
+  report_type: MinistryReportType;
+  period_start: string;
+  period_end: string;
+  author_profile_id: string;
+  team_id: string | null;
+  event_id: string | null;
+  contacts_captured: number;
+  gospel_presentations: number;
+  decisions_for_christ: number;
+  followup_required: number;
+  followup_completed: number;
+  visits_completed: number;
+  calls_completed: number;
+  events_supported: number;
+  attendance_count: number;
+  status: MinistryReportStatus;
+  submitted_at: string | null;
+  created_at: string;
+  updated_at: string;
+  review_history?: MinistryReportReviewEvent[];
+}
+export interface MinistryReportReviewEvent {
+  id: string;
+  reviewer_profile_id: string;
+  decision: "approved" | "returned" | "comment";
+  comment: string | null;
+  created_at: string;
+}
+export interface MinistryReportCreateInput {
+  branch_id: string;
+  report_type: MinistryReportType;
+  period_start: string;
+  period_end: string;
+  team_id?: string | null;
+  event_id?: string | null;
+  contacts_captured?: number;
+  gospel_presentations?: number;
+  decisions_for_christ?: number;
+  followup_required?: number;
+  followup_completed?: number;
+  visits_completed?: number;
+  calls_completed?: number;
+  events_supported?: number;
+  attendance_count?: number;
+}
+export interface MinistryReportReviewInput {
+  decision: "approved" | "returned" | "comment";
+  comment?: string | null;
+}
+export interface MinistryReportReviewResult {
+  report: MinistryReportRecord;
+  review_history: MinistryReportReviewEvent[];
+}
+
 export class CmiApiClient {
   private readonly baseUrl: string;
 
@@ -669,6 +728,34 @@ export class CmiApiClient {
       { method: "POST", body: { branch_id: branchId, reason } },
     );
   }
+  listMinistryReports(branchId: string, options: {
+    report_type?: MinistryReportType;
+    status?: Exclude<MinistryReportStatus, "draft">;
+    limit?: number;
+    offset?: number;
+  } = {}) {
+    return this.request<MinistryReportRecord[]>("report-operations", "/reports", {
+      query: { branch_id: branchId, ...options },
+    });
+  }
+  getMinistryReport(branchId: string, reportId: string) {
+    return this.request<MinistryReportRecord>("report-operations", "/reports/" + encodeURIComponent(reportId), {
+      query: { branch_id: branchId },
+    });
+  }
+  createMinistryReport(input: MinistryReportCreateInput) {
+    return this.request<MinistryReportRecord>("report-operations", "/reports", {
+      method: "POST", body: input,
+    });
+  }
+  reviewMinistryReport(reportId: string, input: MinistryReportReviewInput) {
+    return this.request<MinistryReportReviewResult>(
+      "report-operations",
+      "/reports/" + encodeURIComponent(reportId) + "/review",
+      { method: "POST", body: input },
+    );
+  }
+
   listEventDrafts(branchId: string, options: { limit?: number; offset?: number } = {}) {
     return this.request<EventDraftRecord[]>("event-operations", "/events", {
       query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0 },
