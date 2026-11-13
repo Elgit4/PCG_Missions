@@ -1,6 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import { readJson } from "../_shared/request_body.ts";
 import {
+  createAllowedOrigins,
+  createCorsHeaders,
+  createPreflightResponse,
+  isAllowedOrigin,
+} from "../_shared/cors.ts";
+import {
   isUuid,
   parseAreaCoverageCreate,
   parseServiceAreaCreate,
@@ -16,11 +22,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "";
 const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const allowedOrigins = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+const allowedOrigins = createAllowedOrigins(
+  Deno.env.get("CMI_ALLOWED_ORIGINS"),
 );
 
 function requestId(): string {
@@ -42,15 +45,9 @@ function response(
     "X-Request-Id": id,
     "Vary": "Origin",
   });
-  if (origin && allowedOrigins.has(origin)) {
-    headers.set("Access-Control-Allow-Origin", origin);
-    headers.set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
-    headers.set(
-      "Access-Control-Allow-Headers",
-      "Authorization, apikey, Content-Type, x-client-info",
-    );
-    headers.set("Access-Control-Max-Age", "600");
-  }
+  createCorsHeaders(origin, allowedOrigins).forEach((value, key) => {
+    headers.set(key, value);
+  });
   return new Response(JSON.stringify(body), { status, headers });
 }
 
@@ -466,22 +463,12 @@ Deno.serve(async (request: Request) => {
   const id = requestId();
   const origin = request.headers.get("Origin");
 
-  if (origin && !allowedOrigins.has(origin)) {
+  if (!isAllowedOrigin(origin, allowedOrigins)) {
     return fail("ORIGIN_NOT_ALLOWED", "Origin not allowed.", 403, null, id);
   }
 
   if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
-        "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-        "Access-Control-Allow-Headers":
-          "Authorization, apikey, Content-Type, x-client-info",
-        "Access-Control-Max-Age": "600",
-        "Vary": "Origin",
-      },
-    });
+    return createPreflightResponse(origin, allowedOrigins);
   }
 
   if (!["GET", "POST", "PATCH"].includes(request.method)) {
