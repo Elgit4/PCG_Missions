@@ -3692,6 +3692,423 @@ async function getPublicContent(
   }, requestId, origin);
 }
 
+type ContentKind = "welcome-messages" | "sermons" | "daily-words" | "digital-tracts";
+
+interface ContentKindConfig {
+  table: string;
+  branchScoped: boolean;
+  hasSlug: boolean;
+  hasPublicationDate: boolean;
+  hasDisplayOrder: boolean;
+  bodyNullable: boolean;
+}
+
+function contentKindConfig(kind: string): ContentKindConfig | null {
+  const config: Record<ContentKind, ContentKindConfig> = {
+    "welcome-messages": { table: "welcome_message", branchScoped: true, hasSlug: false, hasPublicationDate: false, hasDisplayOrder: true, bodyNullable: false },
+    "sermons": { table: "sermon", branchScoped: true, hasSlug: true, hasPublicationDate: false, hasDisplayOrder: false, bodyNullable: false },
+    "daily-words": { table: "daily_word", branchScoped: false, hasSlug: true, hasPublicationDate: true, hasDisplayOrder: false, bodyNullable: false },
+    "digital-tracts": { table: "digital_tract", branchScoped: false, hasSlug: true, hasPublicationDate: false, hasDisplayOrder: false, bodyNullable: true },
+  };
+  return Object.prototype.hasOwnProperty.call(config, kind) ? config[kind as ContentKind] : null;
+}
+
+function isValidPublicSlug(value: unknown): value is string {
+  return typeof value === "string" && value.length >= 2 && value.length <= 180 &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}
+
+function hasContentRead(context: StaffContext): boolean {
+  return !!context.activeBranch?.capabilities.some((grant) => grant.code === "content.read");
+}
+
+function hasContentManage(context: StaffContext): boolean {
+  return !!context.activeBranch?.capabilities.some((grant) => grant.code === "content.manage" && grant.scopeMode === "branch");
+}
+
+async function listContent(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  if (!hasContentRead(context)) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const canManage = hasContentManage(context);
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status") ?? "published";
+  if (!["published", "draft", "archived", "all"].includes(status) ||
+      (status !== "published" && !canManage) ||
+      [...url.searchParams.keys()].some((key) => key !== "status")) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTENT_QUERY" } }, requestId, origin);
+  }
+  const statusClause = status === "all" ? "1=1" : "status=?";
+  const branchId = context.activeBranch.branchId;
+  const content: Record<string, unknown[]> = {};
+  for (const kind of ["welcome-messages", "sermons", "daily-words", "digital-tracts"] as ContentKind[]) {
+    const config = contentKindConfig(kind)!;
+    const branchClause = config.branchScoped ? "AND (branch_id IS NULL OR branch_id=?)" : "";
+    const sql = `SELECT * FROM ${config.table} WHERE ${statusClause} ${branchClause}
+      ORDER BY COALESCE(published_at,created_at) DESC,id DESC LIMIT 100`;
+    const params = status === "all" ? (config.branchScoped ? [branchId] : []) :
+      (config.branchScoped ? [status, branchId] : [status]);
+    const rows = await env.DB.prepare(sql).bind(...params).all<Record<string, unknown>>();
+    content[kind] = rows.results ?? [];
+  }
+  const branch = await env.DB.prepare(
+    "SELECT church_id FROM branch WHERE id=? AND is_active=1 LIMIT 1",
+  ).bind(branchId).first<{ church_id: string }>();
+  const profile = branch ? await env.DB.prepare(
+    "SELECT id,church_id,public_name,welcome_content,public_phone,public_email,address_text,website_url,social_links,updated_by,updated_at FROM church_public_profile WHERE church_id=? LIMIT 1",
+  ).bind(branch.church_id).first<Record<string, unknown>>() : null;
+  return json(200, { ok: true, status, content, profile: profile ?? null }, requestId, origin);
+}
+
+async function createContent(
+  request: Request,
+  env: Env,
+  kind: ContentKind,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "content.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const config = contentKindConfig(kind)!;
+  const bodyResult = await readJsonBody(request);
+  if (!bodyResult.ok) return json(bodyResult.status, { ok: false, error: { code: bodyResult.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = bodyResult.value as Record<string, unknown>;
+  const allowed = new Set(["title", "body", "public_slug", "publication_date", "display_order"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTENT_BODY" } }, requestId, origin);
+  }
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  const body = payload.body === undefined || payload.body === null
+    ? null : typeof payload.body === "string" ? payload.body.trim() : "";
+  const slug = config.hasSlug ? payload.public_slug : null;
+  const publicationDate = config.hasPublicationDate ? payload.publication_date : null;
+  const displayOrder = config.hasDisplayOrder ? (payload.display_order === undefined ? 0 : payload.display_order) : null;
+  if (title.length < 2 || title.length > 180 ||
+      (!config.bodyNullable && (typeof body !== "string" || body.length < 1 || body.length > 30000)) ||
+      (config.bodyNullable && body !== null && (typeof body !== "string" || body.length > 30000)) ||
+      (config.hasSlug && !isValidPublicSlug(slug)) ||
+      (config.hasPublicationDate && (typeof publicationDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(publicationDate) ||
+        new Date(publicationDate + "T00:00:00.000Z").toISOString().slice(0,10) !== publicationDate)) ||
+      (config.hasDisplayOrder && (typeof displayOrder !== "number" || !Number.isInteger(displayOrder) || displayOrder < 0 || displayOrder > 10000))) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTENT_DETAILS" } }, requestId, origin);
+  }
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const columns = ["id"];
+  const values: unknown[] = [id];
+  if (config.branchScoped) { columns.push("branch_id"); values.push(access.activeBranch.branchId); }
+  columns.push("title","body"); values.push(title,body);
+  if (config.hasSlug) { columns.push("public_slug"); values.push(slug); }
+  if (config.hasPublicationDate) { columns.push("publication_date"); values.push(publicationDate); }
+  if (config.hasDisplayOrder) { columns.push("display_order"); values.push(displayOrder); }
+  columns.push("status","published_at","created_by","updated_by","created_at","updated_at");
+  values.push("draft",null,access.staff.userId,access.staff.userId,now,now);
+  try {
+    const result = await env.DB.prepare(
+      `INSERT INTO ${config.table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`,
+    ).bind(...values).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error("CONTENT_CREATE_FAILED");
+  } catch {
+    return json(409, { ok: false, error: { code: "CONTENT_CREATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, { ok: true, kind, content_id: id, status: "draft" }, requestId, origin);
+}
+
+async function updateContent(
+  request: Request,
+  env: Env,
+  kind: ContentKind,
+  contentId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "content.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const config = contentKindConfig(kind)!;
+  const bodyResult = await readJsonBody(request);
+  if (!bodyResult.ok) return json(bodyResult.status, { ok: false, error: { code: bodyResult.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = bodyResult.value as Record<string, unknown>;
+  const allowed = new Set(["title","body","public_slug","publication_date","display_order"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length === 0 || Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTENT_UPDATE" } }, requestId, origin);
+  }
+  const branchClause = config.branchScoped ? "AND branch_id=?" : "";
+  const existing = await env.DB.prepare(
+    `SELECT id,status FROM ${config.table} WHERE id=? ${branchClause} LIMIT 1`,
+  ).bind(...(config.branchScoped ? [contentId,access.activeBranch.branchId] : [contentId])).first<{id:string;status:string}>();
+  if (!existing || existing.status !== "draft") return json(404, { ok: false, error: { code: "DRAFT_CONTENT_NOT_FOUND" } }, requestId, origin);
+
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  if (payload.title !== undefined) {
+    if (typeof payload.title !== "string" || payload.title.trim().length < 2 || payload.title.trim().length > 180) return json(400,{ok:false,error:{code:"INVALID_CONTENT_TITLE"}},requestId,origin);
+    assignments.push("title=?"); values.push(payload.title.trim());
+  }
+  if (payload.body !== undefined) {
+    if (payload.body !== null && (typeof payload.body !== "string" || payload.body.length > 30000)) return json(400,{ok:false,error:{code:"INVALID_CONTENT_BODY"}},requestId,origin);
+    if (!config.bodyNullable && (typeof payload.body !== "string" || payload.body.trim().length === 0)) return json(400,{ok:false,error:{code:"CONTENT_BODY_REQUIRED"}},requestId,origin);
+    assignments.push("body=?"); values.push(typeof payload.body === "string" ? payload.body.trim() || null : null);
+  }
+  if (payload.public_slug !== undefined) {
+    if (!config.hasSlug || !isValidPublicSlug(payload.public_slug)) return json(400,{ok:false,error:{code:"INVALID_PUBLIC_SLUG"}},requestId,origin);
+    assignments.push("public_slug=?"); values.push(payload.public_slug);
+  }
+  if (payload.publication_date !== undefined) {
+    if (!config.hasPublicationDate || typeof payload.publication_date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(payload.publication_date)) return json(400,{ok:false,error:{code:"INVALID_PUBLICATION_DATE"}},requestId,origin);
+    const date = new Date(payload.publication_date + "T00:00:00.000Z");
+    if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== payload.publication_date) return json(400,{ok:false,error:{code:"INVALID_PUBLICATION_DATE"}},requestId,origin);
+    assignments.push("publication_date=?"); values.push(payload.publication_date);
+  }
+  if (payload.display_order !== undefined) {
+    if (!config.hasDisplayOrder || typeof payload.display_order !== "number" || !Number.isInteger(payload.display_order) || payload.display_order < 0 || payload.display_order > 10000) return json(400,{ok:false,error:{code:"INVALID_DISPLAY_ORDER"}},requestId,origin);
+    assignments.push("display_order=?"); values.push(payload.display_order);
+  }
+  assignments.push("updated_by=?"); values.push(access.staff.userId);
+  assignments.push("updated_at=?"); values.push(new Date().toISOString());
+  try {
+    const result = await env.DB.prepare(
+      `UPDATE ${config.table} SET ${assignments.join(",")} WHERE id=? AND status='draft' ${branchClause}`,
+    ).bind(...values,contentId,...(config.branchScoped ? [access.activeBranch.branchId] : [])).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409,{ok:false,error:{code:"CONTENT_CHANGED"}},requestId,origin);
+  } catch {
+    return json(409,{ok:false,error:{code:"CONTENT_UPDATE_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,kind,content_id:contentId,status:"draft"},requestId,origin);
+}
+
+async function publishContent(
+  request: Request,
+  env: Env,
+  kind: ContentKind,
+  contentId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "content.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const config = contentKindConfig(kind)!;
+  const branchClause = config.branchScoped ? "AND branch_id=?" : "";
+  const values: unknown[] = [new Date().toISOString(),access.staff.userId,new Date().toISOString(),contentId];
+  if (config.branchScoped) values.push(access.activeBranch.branchId);
+  try {
+    const result = await env.DB.prepare(
+      `UPDATE ${config.table} SET status='published',published_at=?,updated_by=?,updated_at=? WHERE id=? AND status='draft' ${branchClause}`,
+    ).bind(...values).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409,{ok:false,error:{code:"CONTENT_NOT_PUBLISHABLE"}},requestId,origin);
+  } catch {
+    return json(409,{ok:false,error:{code:"CONTENT_PUBLISH_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,kind,content_id:contentId,status:"published"},requestId,origin);
+}
+
+async function archiveContent(
+  request: Request,
+  env: Env,
+  kind: ContentKind,
+  contentId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "content.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const config = contentKindConfig(kind)!;
+  const branchClause = config.branchScoped ? "AND branch_id=?" : "";
+  const values: unknown[] = [access.staff.userId,new Date().toISOString(),contentId];
+  if (config.branchScoped) values.push(access.activeBranch.branchId);
+  try {
+    const result = await env.DB.prepare(
+      `UPDATE ${config.table} SET status='archived',updated_by=?,updated_at=? WHERE id=? AND status IN ('draft','published') ${branchClause}`,
+    ).bind(...values).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409,{ok:false,error:{code:"CONTENT_NOT_ARCHIVABLE"}},requestId,origin);
+  } catch {
+    return json(409,{ok:false,error:{code:"CONTENT_ARCHIVE_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,kind,content_id:contentId,status:"archived"},requestId,origin);
+}
+
+async function getContentProfile(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  if (!hasContentRead(context)) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const branch = await env.DB.prepare(
+    "SELECT church_id FROM branch WHERE id=? AND is_active=1 LIMIT 1",
+  ).bind(context.activeBranch.branchId).first<{church_id:string}>();
+  if (!branch) return json(404,{ok:false,error:{code:"CHURCH_NOT_FOUND"}},requestId,origin);
+  const profile = await env.DB.prepare(
+    "SELECT id,church_id,public_name,welcome_content,public_phone,public_email,address_text,website_url,social_links,updated_by,updated_at FROM church_public_profile WHERE church_id=? LIMIT 1",
+  ).bind(branch.church_id).first<Record<string,unknown>>();
+  return json(200,{ok:true,profile:profile??null},requestId,origin);
+}
+
+async function updateContentProfile(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request,env,"content.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const bodyResult = await readJsonBody(request);
+  if (!bodyResult.ok) return json(bodyResult.status,{ok:false,error:{code:bodyResult.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload = bodyResult.value as Record<string,unknown>;
+  const allowed = new Set(["public_name","welcome_content","public_phone","public_email","address_text","website_url","social_links"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length===0 || Object.keys(payload).some((key)=>!allowed.has(key))) {
+    return json(400,{ok:false,error:{code:"INVALID_PUBLIC_PROFILE_BODY"}},requestId,origin);
+  }
+  const branch = await env.DB.prepare(
+    "SELECT church_id FROM branch WHERE id=? AND is_active=1 LIMIT 1",
+  ).bind(access.activeBranch.branchId).first<{church_id:string}>();
+  if (!branch) return json(404,{ok:false,error:{code:"CHURCH_NOT_FOUND"}},requestId,origin);
+  const existing = await env.DB.prepare(
+    "SELECT * FROM church_public_profile WHERE church_id=? LIMIT 1",
+  ).bind(branch.church_id).first<Record<string,unknown>>();
+  const publicName = payload.public_name===undefined ? existing?.public_name : payload.public_name;
+  const welcome = payload.welcome_content===undefined ? existing?.welcome_content??null : payload.welcome_content;
+  const phone = payload.public_phone===undefined ? existing?.public_phone??null : payload.public_phone;
+  const email = payload.public_email===undefined ? existing?.public_email??null : payload.public_email;
+  const address = payload.address_text===undefined ? existing?.address_text??null : payload.address_text;
+  const website = payload.website_url===undefined ? existing?.website_url??null : payload.website_url;
+  let socialLinks: unknown = payload.social_links;
+  if (socialLinks===undefined) {
+    try { socialLinks = existing ? JSON.parse(String(existing.social_links)) : {}; }
+    catch { socialLinks = {}; }
+  }
+  const validOptionalText = (value: unknown, max: number) => value===null || (typeof value==="string" && value.length<=max);
+  const validHttps = (value: unknown) => {
+    if (value===null) return true;
+    if (typeof value!=="string" || value.length>2048) return false;
+    try { return new URL(value).protocol==="https:"; } catch { return false; }
+  };
+  if (typeof publicName!=="string" || publicName.trim().length<2 || publicName.trim().length>180 ||
+      !validOptionalText(welcome,10000) || !validOptionalText(phone,40) ||
+      !validOptionalText(email,254) || (typeof email==="string" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ||
+      !validOptionalText(address,500) || !validHttps(website) ||
+      !socialLinks || typeof socialLinks!=="object" || Array.isArray(socialLinks)) {
+    return json(400,{ok:false,error:{code:"INVALID_PUBLIC_PROFILE_DETAILS"}},requestId,origin);
+  }
+  const social = socialLinks as Record<string,unknown>;
+  const socialKeys = new Set(["facebook","instagram","youtube","tiktok","whatsapp","x","linkedin"]);
+  if (Object.keys(social).some((key)=>!socialKeys.has(key)) ||
+      Object.values(social).some((value)=>typeof value!=="string" || !validHttps(value))) {
+    return json(400,{ok:false,error:{code:"INVALID_SOCIAL_LINKS"}},requestId,origin);
+  }
+  const now = new Date().toISOString();
+  const id = typeof existing?.id==="string" ? existing.id : crypto.randomUUID();
+  try {
+    const result = await env.DB.prepare(`
+      INSERT INTO church_public_profile
+        (id,church_id,public_name,welcome_content,public_phone,public_email,address_text,
+         website_url,social_links,updated_by,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(church_id) DO UPDATE SET
+        public_name=excluded.public_name,welcome_content=excluded.welcome_content,
+        public_phone=excluded.public_phone,public_email=excluded.public_email,
+        address_text=excluded.address_text,website_url=excluded.website_url,
+        social_links=excluded.social_links,updated_by=excluded.updated_by,updated_at=excluded.updated_at
+    `).bind(
+      id,branch.church_id,publicName.trim(),welcome,phone,email,address,website,
+      JSON.stringify(social),access.staff.userId,existing?.created_at??now,now,
+    ).run();
+    if (!result.success || (result.meta?.changes??0)<1) throw new Error("PUBLIC_PROFILE_UPSERT_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"PUBLIC_PROFILE_SAVE_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,profile_id:id},requestId,origin);
+}
+
+async function createExternalDocumentLink(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request,env,"content.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const bodyResult = await readJsonBody(request);
+  if (!bodyResult.ok) return json(bodyResult.status,{ok:false,error:{code:bodyResult.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload = bodyResult.value as Record<string,unknown>;
+  const allowed = new Set(["label","url","sermon_id","digital_tract_id"]);
+  if (!payload || typeof payload!=="object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key)=>!allowed.has(key))) {
+    return json(400,{ok:false,error:{code:"INVALID_EXTERNAL_LINK_BODY"}},requestId,origin);
+  }
+  const label = typeof payload.label==="string" ? payload.label.trim() : "";
+  const url = typeof payload.url==="string" ? payload.url.trim() : "";
+  const sermonId = typeof payload.sermon_id==="string" ? payload.sermon_id : null;
+  const tractId = typeof payload.digital_tract_id==="string" ? payload.digital_tract_id : null;
+  let validUrl=false;
+  try { validUrl = new URL(url).protocol==="https:"; } catch { validUrl=false; }
+  if (label.length<2 || label.length>180 || url.length>2048 || !validUrl ||
+      ((sermonId!==null)===(tractId!==null))) {
+    return json(400,{ok:false,error:{code:"INVALID_EXTERNAL_LINK_DETAILS"}},requestId,origin);
+  }
+  if (sermonId) {
+    const target=await env.DB.prepare("SELECT id FROM sermon WHERE id=? AND (branch_id IS NULL OR branch_id=?) LIMIT 1")
+      .bind(sermonId,access.activeBranch.branchId).first<{id:string}>();
+    if (!target) return json(400,{ok:false,error:{code:"SERMON_LINK_TARGET_NOT_FOUND"}},requestId,origin);
+  }
+  if (tractId) {
+    const target=await env.DB.prepare("SELECT id FROM digital_tract WHERE id=? LIMIT 1")
+      .bind(tractId).first<{id:string}>();
+    if (!target) return json(400,{ok:false,error:{code:"TRACT_LINK_TARGET_NOT_FOUND"}},requestId,origin);
+  }
+  const id=crypto.randomUUID(), now=new Date().toISOString();
+  try {
+    const result=await env.DB.prepare(
+      "INSERT INTO external_document_link (id,digital_tract_id,sermon_id,label,url,created_by,created_at) VALUES (?,?,?,?,?,?,?)",
+    ).bind(id,tractId,sermonId,label,url,access.staff.userId,now).run();
+    if (!result.success || (result.meta?.changes??0)!==1) throw new Error("EXTERNAL_LINK_CREATE_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"EXTERNAL_LINK_CREATE_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,link_id:id},requestId,origin);
+}
+
+async function listContentAudit(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"content.manage");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const branch=await env.DB.prepare("SELECT church_id FROM branch WHERE id=? LIMIT 1")
+    .bind(access.activeBranch.branchId).first<{church_id:string}>();
+  const rows=await env.DB.prepare(`
+    SELECT a.id,a.entity_type,a.entity_id,a.branch_id,a.church_id,a.actor_user_id,
+           sp.full_name AS actor_name,a.action,a.before_state,a.after_state,a.created_at
+    FROM public_content_change_audit a
+    JOIN staff_profile sp ON sp.id=a.actor_profile_id
+    WHERE a.branch_id=? OR a.church_id=? OR
+      (a.branch_id IS NULL AND a.church_id IS NULL AND EXISTS (
+        SELECT 1 FROM staff_role_assignment ra
+        WHERE ra.staff_profile_id=a.actor_profile_id AND ra.branch_id=?
+          AND ra.revoked_at IS NULL AND ra.starts_at<=?
+          AND (ra.ends_at IS NULL OR ra.ends_at>?)
+      ))
+    ORDER BY a.created_at DESC,a.id DESC LIMIT 100
+  `).bind(
+    access.activeBranch.branchId,branch?.church_id??"",access.activeBranch.branchId,
+    new Date().toISOString(),new Date().toISOString(),
+  ).all<Record<string,unknown>>();
+  return json(200,{ok:true,audit:rows.results??[]},requestId,origin);
+}
+
 function isAuthPath(pathname: string): boolean {
   return pathname === "/api/auth" || pathname.startsWith("/api/auth/");
 }
@@ -4322,6 +4739,41 @@ async function updatePrayerRequestStatus(
       catch { return json(400, { ok: false, error: { code: "INVALID_CONTACT_ID" } }, requestId, origin); }
       if (request.method === "GET") return listContactInteractions(request, env, contactId, requestId, origin);
       if (request.method === "POST") return createContactInteraction(request, env, contactId, requestId, origin);
+    }
+
+    if (url.pathname === "/api/v1/content" && request.method === "GET") {
+      return listContent(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/content/profile" && request.method === "GET") {
+      return getContentProfile(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/content/profile" && request.method === "PATCH") {
+      return updateContentProfile(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/content/links" && request.method === "POST") {
+      return createExternalDocumentLink(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/content/audit" && request.method === "GET") {
+      return listContentAudit(request, env, requestId, origin);
+    }
+    const contentActionMatch = url.pathname.match(/^\/api\/v1\/content\/(welcome-messages|sermons|daily-words|digital-tracts)\/([^/]+)\/(publish|archive)$/);
+    if (contentActionMatch && request.method === "POST") {
+      const kind = contentActionMatch[1] as ContentKind;
+      const contentId = decodeURIComponent(contentActionMatch[2]);
+      if (!contentKindConfig(kind)) return json(404,{ok:false,error:{code:"CONTENT_KIND_NOT_FOUND"}},requestId,origin);
+      if (contentActionMatch[3] === "publish") return publishContent(request,env,kind,contentId,requestId,origin);
+      return archiveContent(request,env,kind,contentId,requestId,origin);
+    }
+    const contentItemMatch = url.pathname.match(/^\/api\/v1\/content\/(welcome-messages|sermons|daily-words|digital-tracts)\/([^/]+)$/);
+    if (contentItemMatch && request.method === "PATCH") {
+      const kind = contentItemMatch[1] as ContentKind;
+      const contentId = decodeURIComponent(contentItemMatch[2]);
+      return updateContent(request,env,kind,contentId,requestId,origin);
+    }
+    const contentKindMatch = url.pathname.match(/^\/api\/v1\/content\/(welcome-messages|sermons|daily-words|digital-tracts)$/);
+    if (contentKindMatch && request.method === "POST") {
+      const kind = contentKindMatch[1] as ContentKind;
+      return createContent(request,env,kind,requestId,origin);
     }
 
     if (url.pathname === "/api/public/content" && request.method === "GET") {
