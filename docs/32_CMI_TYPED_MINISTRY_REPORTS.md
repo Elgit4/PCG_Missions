@@ -46,7 +46,7 @@ The API enforces these permissions on every request. UI navigation is only a con
 
 ## Review integrity
 
-Review decisions are appended to `report_review_event`. Updates, deletes and truncation are rejected. The service-role-only `cmi_review_ministry_report` database transaction locks the report, rejects self-review and non-submitted reports, changes status when approving/returning, and inserts the review event in the same transaction. The service-role-only `cmi_resubmit_ministry_report` transaction permits only the original author to correct a returned report and resubmit it. A failed review or resubmission cannot partially change the report.
+Review decisions are appended to `report_review_event`. Updates, deletes and truncation are rejected. The service-role-only `cmi_review_ministry_report` database transaction locks the report, revalidates the reviewer's active staff profile, role assignment, capability grant and (for Team Leaders) current team membership, rejects self-review and non-submitted reports, changes status when approving/returning, and inserts the review event in the same transaction. This closes the time-of-check/time-of-use gap between the Edge Function's scope lookup and the write. The service-role-only `cmi_resubmit_ministry_report` transaction similarly revalidates the author's active profile and `report.submit.own` grant before allowing correction of a returned report. A failed review or resubmission cannot partially change the report. The workspace exposes the append-only review history to users who can read the report.
 
 ## Release and verification boundaries
 
