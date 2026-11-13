@@ -5,10 +5,12 @@ import {
   isAllowedOrigin,
 } from "./cors.ts";
 
-Deno.test("production CMI origin is allowed without optional environment config", () => {
-  const allowed = createAllowedOrigins(undefined);
-  if (!isAllowedOrigin("https://pcg-missions.vercel.app", allowed)) {
-    throw new Error("production origin must be included by default");
+Deno.test("production origin remains allowed when optional config is unset or blank", () => {
+  for (const configured of [undefined, "", " , "]) {
+    const allowed = createAllowedOrigins(configured);
+    if (!isAllowedOrigin("https://pcg-missions.vercel.app", allowed)) {
+      throw new Error("production origin must be included by default");
+    }
   }
 });
 
