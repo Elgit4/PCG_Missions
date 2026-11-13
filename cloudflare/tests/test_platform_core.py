@@ -14,6 +14,7 @@ class PlatformCoreMigrationTests(unittest.TestCase):
         self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
         self.db.executescript((MIGRATION.parent / "0002_contacts_followup.sql").read_text(encoding="utf-8"))
         self.db.executescript((MIGRATION.parent / "0004_staff_session_revocation.sql").read_text(encoding="utf-8"))
+        self.db.executescript((MIGRATION.parent / "0005_better_auth_rate_limit.sql").read_text(encoding="utf-8"))
         self.db.execute(
             'INSERT INTO "user" (id, name, email, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
             ("user-1", "Admin Pastor", "admin@example.test", 1, 1),
@@ -77,11 +78,23 @@ class PlatformCoreMigrationTests(unittest.TestCase):
         ).fetchone()[0]
         self.assertEqual(remaining, 0)
 
+
+    def test_better_auth_rate_limit_storage_has_unique_persistent_keys(self):
+        self.db.execute(
+            """INSERT INTO rateLimit (id, key, count, lastRequest)
+               VALUES ('rl-1', '203.0.113.8|/sign-in/email', 1, 1767225600000)"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO rateLimit (id, key, count, lastRequest)
+                   VALUES ('rl-2', '203.0.113.8|/sign-in/email', 1, 1767225600000)"""
+            )
+
     def test_schema_is_non_production_and_expected_tables_exist(self):
         meta = self.db.execute(
             "SELECT schema_version, environment FROM app_meta WHERE id = 1"
         ).fetchone()
-        self.assertEqual(meta, (4, "non-production"))
+        self.assertEqual(meta, (5, "non-production"))
         names = {
             row[0] for row in self.db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'"
@@ -337,7 +350,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
