@@ -103,7 +103,7 @@ const pythonSeed = [
   "db.commit()",
   "version = db.execute(\"SELECT schema_version FROM app_meta WHERE id=1 AND environment='non-production'\").fetchone()",
   "if not version or version[0] != 26:",
-  "    raise SystemExit('Expected non-production schema 24, got ' + str(version))",
+  "    raise SystemExit('Expected non-production schema 26, got ' + str(version))",
   "violations = db.execute('PRAGMA foreign_key_check').fetchall()",
   "if violations:",
   "    raise SystemExit('Foreign key violations: ' + str(len(violations)))",
@@ -119,8 +119,13 @@ try {
   await stopWorker(worker);
   worker = null;
 
-  const sqliteFiles = await findSqliteFiles(stateDir);
-  assert(sqliteFiles.length === 1, "expected one local D1 SQLite file, found " + sqliteFiles.length + ": " + JSON.stringify(sqliteFiles));
+  // Wrangler v4 stores several SQLite-backed local services (cache, KV,
+  // observability, R2 metadata). Seed only the actual D1 database file.
+  const sqliteFiles = (await findSqliteFiles(stateDir)).filter((file) =>
+    file.includes(path.join("d1", "miniflare-D1DatabaseObject")) &&
+    path.basename(file) !== "metadata.sqlite"
+  );
+  assert(sqliteFiles.length === 1, "expected one local D1 database file, found " + sqliteFiles.length + ": " + JSON.stringify(sqliteFiles));
   execFileSync("python", ["-c", pythonSeed, sqliteFiles[0], path.resolve("migrations"), testUserId, testEmail, passwordHash, String(Date.now())], {
     cwd: process.cwd(),
     stdio: "inherit",
@@ -132,7 +137,7 @@ try {
   const health = await fetch(baseUrl + "/health");
   const healthBody = await health.json();
   assert(health.status === 200 && healthBody.ok === true, "Worker health endpoint failed");
-  assert(healthBody.schema_version === 26, "expected D1 schema 24, got " + healthBody.schema_version);
+  assert(healthBody.schema_version === 26, "expected D1 schema 26, got " + healthBody.schema_version);
 
   const authSession = await fetch(baseUrl + "/api/auth/get-session");
   const authSessionBody = await authSession.text();
