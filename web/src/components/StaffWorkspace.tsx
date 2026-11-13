@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Activity, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { Activity, ArrowRight, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, FileText, KeyRound, LockKeyhole, LogOut, Megaphone, MoreHorizontal, Network, Plus, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { OperationsWorkspace } from "./OperationsWorkspace";
 import { TeamAdministrationWorkspace } from "./TeamAdministrationWorkspace";
 import { MinistryReportsWorkspace } from "./MinistryReportsWorkspace";
