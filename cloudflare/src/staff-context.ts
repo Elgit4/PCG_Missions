@@ -1,14 +1,15 @@
 import { createAuth, type AuthEnvironment } from "./auth";
-import { authorizeCapability, type AssignableResource, type AuthorizationDatabase, type AuthorizationDecision } from "./authorization";
+import { authorizeCapability, type AssignableResource, type AuthorizationDecision } from "./authorization";
+
+export interface StaffStatement {
+  bind(...values: unknown[]): StaffStatement;
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+  all<T = Record<string, unknown>>(): Promise<{ results?: T[] }>;
+  run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
+}
 
 export interface StaffDatabase {
-  prepare(sql: string): {
-    bind(...values: unknown[]): {
-      first<T = Record<string, unknown>>(): Promise<T | null>;
-      all<T = Record<string, unknown>>(): Promise<{ results?: T[] }>;
-      run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
-    };
-  };
+  prepare(sql: string): StaffStatement;
 }
 
 export interface StaffEnvironment extends AuthEnvironment {
@@ -147,7 +148,7 @@ export async function authorizeRequestCapability(
   if (context.state !== "authenticated") return context;
   if (!context.activeBranch) return { state: "branch_required" };
 
-  const decision = await authorizeCapability(env.DB as AuthorizationDatabase, {
+  const decision = await authorizeCapability(env.DB, {
     actorProfileId: context.staff.profileId,
     branchId: context.activeBranch.branchId,
     capability,
