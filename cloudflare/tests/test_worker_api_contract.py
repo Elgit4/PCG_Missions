@@ -15,6 +15,7 @@ class WorkerApiContractTests(unittest.TestCase):
         cls.announcement_receipt_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0021_announcement_delivery_read_receipts.sql").read_text(encoding="utf-8")
         cls.event_report_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0022_typed_ministry_reports.sql").read_text(encoding="utf-8")
         cls.prayer_idempotency_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0023_prayer_request_idempotency.sql").read_text(encoding="utf-8")
+        cls.calendar_audit_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0024_calendar_audit_cancellation_read_receipts.sql").read_text(encoding="utf-8")
 
     def test_contact_team_scope_uses_profile_id_and_assigned_scope_uses_auth_user_id(self):
         match = re.search(
@@ -252,4 +253,21 @@ if __name__ == "__main__":
         self.assertIn("schema_version=23", self.prayer_idempotency_migration)
         self.assertIn("request_text.length > 10000", code)
         self.assertIn('url.pathname === "/api/v1/pastoral/prayer/requests"', self.source)
+
+
+    def test_calendar_cancellation_and_read_receipts_are_scoped(self):
+        for name in ("cancelCalendarEntry", "markCalendarEntryRead"):
+            self.assertIn(f"async function {name}(", self.source)
+        cancel = re.search(r"async function cancelCalendarEntry\([\s\S]*?\n\}", self.source)
+        self.assertIsNotNone(cancel)
+        self.assertIn('"calendar.manage"', cancel.group(0))
+        self.assertIn("cancellation_reason", cancel.group(0))
+        read = re.search(r"async function markCalendarEntryRead\([\s\S]*?\n\}", self.source)
+        self.assertIsNotNone(read)
+        self.assertIn("calendarScopePredicate", read.group(0))
+        self.assertIn("calendar_entry_read_receipt", read.group(0))
+        self.assertIn("calendar_entry_change_audit", self.calendar_audit_migration)
+        self.assertIn("schema_version=24", self.calendar_audit_migration)
+        self.assertIn("calendarCancelMatch", self.source)
+        self.assertIn("calendarReadMatch", self.source)
 
