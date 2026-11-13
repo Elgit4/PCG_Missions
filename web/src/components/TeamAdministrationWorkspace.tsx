@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   Archive,
-  Check,
   ChevronRight,
   MapPin,
   Plus,
@@ -9,7 +8,6 @@ import {
   ShieldCheck,
   Users,
   UserRoundPlus,
-  UserRoundX,
   X,
 } from "lucide-react";
 import {
