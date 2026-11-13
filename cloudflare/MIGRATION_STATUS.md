@@ -2,7 +2,7 @@
 
 **Track:** non-production only  
 **Database jurisdiction:** EU (`eu`) — remote non-production database `pcg-missions-dev` created on 2026-11-13 (primary region `EEUR`, replication disabled)  
-**Worker:** full API Worker is not deployed; a separate read-only D1 smoke Worker `pcg-missions-d1-smoke` is deployed with `GET /health` and the EU D1 binding (public response not independently verified); full API deployment waits for the scoped repository secret  
+**Worker:** full API Worker `pcg-missions-api-nonprod` is not deployed; only the separate read-only D1 smoke Worker `pcg-missions-d1-smoke` is present in the account. The full API deployment still waits for the scoped repository secret and Better Auth secret.  
 **Production:** unchanged
 
 ## Implemented D1 schema slices
@@ -43,10 +43,10 @@ These migrations are a first porting slice from the live schema. They are not a 
 ## Remote non-production D1 verification
 
 - Database UUID: `376a6782-d059-41f9-9e09-f93718fef2bb`.
-- Migrations `0001` through `0024` applied successfully to the EU non-production D1 database; schema version is `24` and environment marker is `non-production`.
-- Database contains 77 application tables and all six expected role records.
+- Migrations `0001` through `0028` are present in the EU non-production D1 migration ledger; schema version is `28` and environment marker is `non-production`.
+- Database contains 81 application tables and all six expected role records.
 - `PRAGMA foreign_key_check` returned no violations.
-- Wrangler migration ledger `d1_migrations` contains 24 applied migration filenames. Migrations `0018`–`0024` were applied to the EU non-production database and verified through the Cloudflare D1 API; expected event actor-authorization triggers, cancellation-key indexes, announcement delivery/read-receipt triggers, typed report tables, D-12 role grants, prayer idempotency ledger, calendar cancellation state, append-only calendar audit and immutable calendar read receipts are present.
+- Wrangler migration ledger `d1_migrations` contains 28 applied migration filenames. Migrations `0025`–`0028` are now independently verified in the EU non-production database through the Cloudflare D1 API: explicit-share pastoral-care guards, recurring calendar series, aggregate ministry-report export audit/privacy threshold and append-only staff password-reset audit are present.
 - This is a direct remote D1 schema test. The new local Worker/D1 integration suite is now part of CI and exercises Better Auth, protected route gates, security headers and CORS against the built Worker; non-production remote Worker deployment remains blocked by the missing GitHub Actions token.
 - A source/target audit gap was corrected in migration 0028: the source password-reset audit is no longer mapped to a nonexistent target. Its historical rows can be reconciled without copying ephemeral reset-request state or weakening append-only behavior.
 
