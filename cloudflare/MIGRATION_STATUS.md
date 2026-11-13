@@ -15,6 +15,7 @@
 | `0004_staff_session_revocation.sql` | 0 new tables | Revokes all Better Auth sessions immediately when a staff account is deactivated or suspended |
 | `0005_better_auth_rate_limit.sql` | 1 | Adds the Better Auth rate-limit table; counters persist in D1 across Worker isolates |
 | `0006_last_role_session_revocation.sql` | 0 new tables | Revokes sessions when a staff member loses their final active role across active branches; schema version 6 |
+| `0007_staff_lifecycle_and_admin_revocation.sql` | 3 new audit/workflow tables | Audited deactivate/suspend/reactivate, branch-aware last-Admin protection and two-person Admin/Pastor revocation; schema version 7 |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
@@ -34,7 +35,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - contact normalization, capture idempotency and metadata allowlists;
 - follow-up task completion and target invariants.
 
-Latest verified CI run: [43455567525](https://github.com/Elgit4/PCG_Missions/actions/runs/43455567525) — **37 Python/SQLite tests passed and Worker/Better Auth TypeScript type-check passed**. This proves the SQL is accepted by the CI runner's SQLite engine and the Worker code type-checks against the pinned package. It does not replace a real D1 preview test, runtime Better Auth schema validation, a deployed Worker test or domain authorization tests.
+Latest CI for this branch is pending; the preceding merged foundation passed 37 Python/SQLite tests and Worker/Better Auth TypeScript checks. This proves the SQL is accepted by the CI runner's SQLite engine and the Worker code type-checks against the pinned package. It does not replace a real D1 preview test, runtime Better Auth schema validation, a deployed Worker test or domain authorization tests.
 
 ## Authentication and authorization progress
 
@@ -43,13 +44,14 @@ Latest verified CI run: [43455567525](https://github.com/Elgit4/PCG_Missions/act
 - Exact-origin checks, secure HttpOnly session cookies, no cookie cache, seven-day server-side sessions, Cloudflare client-IP detection and D1-persistent rate-limit counters are configured.
 - `GET /api/v1/me` resolves the session to an active staff profile and branch-valid roles/capability metadata; caller-supplied branch IDs are validated against active assignments.
 - The endpoint is context discovery, not a substitute for server-side authorization.
-- Admin/Pastor-only standard-role assignment/revocation routes are implemented with branch checks, validation and D1-batched audit writes. Separate Admin/Pastor elevation request/list/approve/reject routes enforce distinct requesters and reviewers through both Worker checks and database triggers. Admin/Pastor revocation remains disabled pending a dual-control revocation workflow. No ministry contact/follow-up business routes are enabled yet.
+- Branch-scoped staff directory, deactivate/suspend/reactivate routes and account audit are implemented. D1 enforces actor capability, branch membership, self-change denial and last-Admin/Pastor protection; deactivation/suspension immediately revoke sessions.
+- Admin/Pastor revocation now has its own request/list/approve/reject workflow. The requester and reviewer must be distinct; the assignment update must reference the approved request, and the existing last-Admin/Pastor guard remains in force. No ministry contact/follow-up business routes are enabled yet.
 
 ## Not implemented yet
 
 - Staff invitation/create-account workflow and real email delivery for invitation/password reset.
-- Session revocation is enforced by D1 triggers on deactivation/suspension and loss of the final active branch role; administrative deactivation/reactivation endpoints and their audit-backed workflow remain to be implemented.
-- Staff role and Admin/Pastor elevation routes still need route-level integration tests against local D1 and a Worker preview.
+- Session revocation is enforced by D1 triggers on deactivation/suspension and loss of the final active branch role. The staff account lifecycle endpoints are implemented, but invitation issuance/acceptance and real email delivery remain outstanding.
+- Staff directory/account lifecycle and dual-control role revocation routes still need Worker-level integration tests against local D1.
 - Better Auth schema compatibility validation against the exact pinned package in local D1 and Worker runtime.
 - Capability/record authorization integration into domain handlers; verified session resolution is now available, but protected business routes remain disabled.
 - Ministry-sensitive prayer/care domain tables and runtime access-audit enforcement (the immutable audit ledger is now defined).
