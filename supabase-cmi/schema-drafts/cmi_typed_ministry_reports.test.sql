@@ -115,7 +115,7 @@ insert into public.ministry_report(branch_id,report_type,period_start,period_end
 values('71000000-0000-4000-8000-000000000020','daily_evangelism','2026-11-10','2026-11-10','73000000-0000-4000-8000-000000000020','74000000-0000-4000-8000-000000000020');
 select is((select count(*)::integer from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),1,
   'A valid typed daily report can be stored');
-insert into public.report_review_event(report_id,reviewer_profile_id,decision,comment)
+insert into public.report_review_event(report_id,actor_profile_id,decision,comment)
 select id,'73000000-0000-4000-8000-000000000020','comment','Test review'
 from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020';
 select throws_ok(
