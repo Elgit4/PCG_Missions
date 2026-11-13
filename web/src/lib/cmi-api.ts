@@ -371,54 +371,6 @@ function assertExactlyOneTaskTarget(
   }
 }
 
-function xhrRequest(url: string | URL, init: RequestInit): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    if (typeof XMLHttpRequest === "undefined") {
-      reject(new TypeError("XMLHttpRequest is unavailable in this browser."));
-      return;
-    }
-    const request = new XMLHttpRequest();
-    request.open(init.method ?? "GET", String(url), true);
-    request.timeout = 15000;
-    new Headers(init.headers).forEach((value, key) => request.setRequestHeader(key, value));
-    request.onload = () => {
-      try {
-        if (request.status === 0) {
-          reject(new TypeError("XMLHttpRequest completed without an HTTP response."));
-          return;
-        }
-        const responseHeaders = new Headers();
-        // XHR exposes response headers separated by CRLF. Split on actual
-        // line breaks, not the literal characters "\\r" and "\\n".
-        for (const line of request.getAllResponseHeaders().split(/\r?\n/)) {
-          const separator = line.indexOf(":");
-          if (separator <= 0) continue;
-          const name = line.slice(0, separator).trim();
-          const value = line.slice(separator + 1).trim();
-          if (!name) continue;
-          try {
-            responseHeaders.append(name, value);
-          } catch {
-            // Ignore browser-restricted response headers; preserve status/body.
-          }
-        }
-        resolve(new Response(request.responseText, {
-          status: request.status,
-          statusText: request.statusText,
-          headers: responseHeaders,
-        }));
-      } catch (error) {
-        reject(error instanceof Error ? error : new TypeError("Unable to read the XHR response."));
-      }
-    };
-    request.onerror = () => reject(new TypeError("XMLHttpRequest network error."));
-    request.ontimeout = () => reject(new TypeError("XMLHttpRequest timed out."));
-    request.onabort = () => reject(new TypeError("XMLHttpRequest was aborted."));
-    if (init.body === undefined || init.body === null) request.send();
-    else request.send(init.body as XMLHttpRequestBodyInit);
-  });
-}
-
 function requestErrorDetail(error: unknown): string {
   if (error instanceof Error) {
     const message = error.message.replace(/[\\r\\n]+/g, " ").slice(0, 140);
@@ -953,10 +905,6 @@ export class CmiApiClient {
 }
 
 export function createConfiguredCmiApiClient(getAccessToken: AccessTokenProvider): CmiApiClient {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  if (!supabaseUrl || !publishableKey) {
-    throw new Error("Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY before connecting the staff API.");
-  }
-  return new CmiApiClient({ supabaseUrl, publishableKey }, getAccessToken);
+  const apiUrl = import.meta.env.VITE_CMI_API_URL ?? "";
+  return new CmiApiClient({ apiUrl }, getAccessToken);
 }
