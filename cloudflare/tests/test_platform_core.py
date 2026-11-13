@@ -397,3 +397,39 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db.executescript(sql)
         self.assertEqual(self.db.execute("SELECT COUNT(*) FROM role WHERE is_active = 1").fetchone()[0], 6)
         self.assertGreater(self.db.execute("SELECT COUNT(*) FROM role_capability").fetchone()[0], 0)
+
+
+    def test_sensitive_access_audit_is_append_only_and_excludes_narrative_column(self):
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(sensitive_record_access_audit)")}
+        self.assertNotIn("narrative", columns)
+        self.assertNotIn("body", columns)
+        self.assertIn("purpose", columns)
+        self.db.execute(
+            """INSERT INTO church (id, name, created_at, updated_at)
+               VALUES ('audit-church', 'Audit Church', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO branch (id, church_id, name, created_at, updated_at)
+               VALUES ('audit-branch', 'audit-church', 'Audit Branch', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO "user" (id, name, email, createdAt, updatedAt)
+               VALUES ('audit-user', 'Audit Actor', 'audit@example.test', 1, 1)"""
+        )
+        self.db.execute(
+            """INSERT INTO staff_profile
+               (id, auth_user_id, full_name, account_status, created_at, updated_at)
+               VALUES ('audit-staff', 'audit-user', 'Audit Actor', 'active',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO sensitive_record_access_audit
+               (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, created_at)
+               VALUES ('sensitive-audit-1', 'audit-branch', 'audit-staff', 'prayer_request',
+                       'prayer-1', 'read', 'Assigned prayer request review',
+                       '2026-01-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE sensitive_record_access_audit SET purpose = 'tampered purpose' WHERE id = 'sensitive-audit-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM sensitive_record_access_audit WHERE id = 'sensitive-audit-1'")
