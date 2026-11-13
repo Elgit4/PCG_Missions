@@ -51,7 +51,8 @@ These are table metadata row counts, not a verified backup or row-by-row reconci
 3. Build a per-table transform manifest that records source table, target table, column mapping, null/default conversion, enum conversion, foreign-key dependencies, row count and canonical SHA-256 digest.
 4. Load into an isolated D1 clone or disposable database first; never import directly into the only non-production validation database.
 5. Verify row counts, primary-key uniqueness, foreign-key checks, status/enum distributions, per-table canonical hashes and cross-branch invariants. Report intentionally excluded secret/session records separately.
-6. Run endpoint-level authorization tests against the imported fixture set, including cross-branch, team, assignment, expired-share and deactivated-user denials.
+6. Preserve `private.staff_password_reset_audit` as append-only history in `staff_password_reset_audit`; because one-time reset requests are excluded, retain `request_id` as an opaque historical reference without a foreign key. Never migrate reset tokens or active request state.
+7. Run endpoint-level authorization tests against the imported fixture set, including cross-branch, team, assignment, expired-share and deactivated-user denials.
 7. Obtain owner approval for a production freeze window, backup/restore rehearsal, rollback point and cutover checklist before any production data export/import or Supabase retirement.
 
 ## Current status
@@ -60,6 +61,7 @@ These are table metadata row counts, not a verified backup or row-by-row reconci
 - Source/target drift identified: completed.
 - Metadata-only manifest generation and canonical row-hash comparison utility: implemented in cloudflare/scripts/reconcile_snapshot.py with table policy in cloudflare/reconciliation/table-map.json.
 - Secure source export and D1 import execution: not yet implemented; the utility verifies normalized JSONL snapshots but intentionally does not export, load or move live records.
+- Password-reset audit target: migration `0028_staff_password_reset_audit.sql` adds an append-only target table. Its request reference is intentionally opaque because `private.staff_password_reset_request` is excluded as ephemeral recovery state. Migration 0028 is source-only until the non-production deployment gate is unlocked.
 - Production data export/import: not started and not authorized by this checkpoint.
 - Production frontend/DNS cutover and Supabase shutdown: not started.
 
