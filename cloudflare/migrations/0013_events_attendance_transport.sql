@@ -95,7 +95,7 @@ CREATE TABLE event_registration (
  registration_source TEXT NOT NULL CHECK(registration_source IN ('staff','event_workspace')),
  status TEXT NOT NULL DEFAULT 'registered' CHECK(status IN ('registered','cancelled','attended','no_show')),
  registered_at TEXT NOT NULL,
- client_request_id TEXT,
+ client_request_id TEXT NOT NULL,
  FOREIGN KEY(event_id,branch_id) REFERENCES event(id,branch_id) ON DELETE RESTRICT,
  FOREIGN KEY(contact_id,branch_id) REFERENCES contact(id,branch_id) ON DELETE RESTRICT,
  UNIQUE(id,event_id,branch_id),
