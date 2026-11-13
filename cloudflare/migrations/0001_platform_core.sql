@@ -246,22 +246,6 @@ CREATE TABLE service_area (
   UNIQUE (id, branch_id)
 );
 
-CREATE TRIGGER staff_team_membership_no_overlap_update
-BEFORE UPDATE OF staff_profile_id, team_id, starts_at, ends_at, revoked_at
-ON staff_team_membership
-WHEN NEW.revoked_at IS NULL
-BEGIN
-  SELECT CASE WHEN EXISTS (
-    SELECT 1 FROM staff_team_membership existing
-    WHERE existing.id <> NEW.id
-      AND existing.staff_profile_id = NEW.staff_profile_id
-      AND existing.team_id = NEW.team_id
-      AND existing.revoked_at IS NULL
-      AND COALESCE(existing.ends_at, '9999-12-31T23:59:59.999Z') > NEW.starts_at
-      AND COALESCE(NEW.ends_at, '9999-12-31T23:59:59.999Z') > existing.starts_at
-  ) THEN RAISE(ABORT, 'STAFF_TEAM_MEMBERSHIP_OVERLAP') END;
-END;
-
 CREATE TABLE staff_team_membership (
   id TEXT PRIMARY KEY,
   staff_profile_id TEXT NOT NULL REFERENCES staff_profile(id) ON DELETE RESTRICT,
@@ -277,6 +261,22 @@ CREATE TABLE staff_team_membership (
   CHECK (revoked_at IS NULL OR revoked_at >= starts_at),
   FOREIGN KEY (team_id, branch_id) REFERENCES team(id, branch_id) ON DELETE RESTRICT
 );
+
+CREATE TRIGGER staff_team_membership_no_overlap_update
+BEFORE UPDATE OF staff_profile_id, team_id, starts_at, ends_at, revoked_at
+ON staff_team_membership
+WHEN NEW.revoked_at IS NULL
+BEGIN
+  SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM staff_team_membership existing
+    WHERE existing.id <> NEW.id
+      AND existing.staff_profile_id = NEW.staff_profile_id
+      AND existing.team_id = NEW.team_id
+      AND existing.revoked_at IS NULL
+      AND COALESCE(existing.ends_at, '9999-12-31T23:59:59.999Z') > NEW.starts_at
+      AND COALESCE(NEW.ends_at, '9999-12-31T23:59:59.999Z') > existing.starts_at
+  ) THEN RAISE(ABORT, 'STAFF_TEAM_MEMBERSHIP_OVERLAP') END;
+END;
 
 CREATE TRIGGER staff_team_membership_no_overlap_insert
 BEFORE INSERT ON staff_team_membership
