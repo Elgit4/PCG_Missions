@@ -3718,6 +3718,12 @@ function isValidPublicSlug(value: unknown): value is string {
     /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
 }
 
+function isValidDateOnly(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value + "T00:00:00.000Z");
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 type ContentCapabilityContext = {
   activeBranch: { capabilities: Array<{ code: string; scopeMode: string }> } | null;
 };
@@ -3798,8 +3804,7 @@ async function createContent(
       (!config.bodyNullable && (typeof body !== "string" || body.length < 1 || body.length > 30000)) ||
       (config.bodyNullable && body !== null && (typeof body !== "string" || body.length > 30000)) ||
       (config.hasSlug && !isValidPublicSlug(slug)) ||
-      (config.hasPublicationDate && (typeof publicationDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(publicationDate) ||
-        new Date(publicationDate + "T00:00:00.000Z").toISOString().slice(0,10) !== publicationDate)) ||
+      (config.hasPublicationDate && !isValidDateOnly(publicationDate)) ||
       (config.hasDisplayOrder && (typeof displayOrder !== "number" || !Number.isInteger(displayOrder) || displayOrder < 0 || displayOrder > 10000))) {
     return json(400, { ok: false, error: { code: "INVALID_CONTENT_DETAILS" } }, requestId, origin);
   }
