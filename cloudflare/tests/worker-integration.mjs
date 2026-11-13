@@ -31,7 +31,6 @@ function startWorker() {
   child.stdout.on("data", (chunk) => { logs += chunk.toString(); });
   child.stderr.on("data", (chunk) => { logs += chunk.toString(); });
   child.testLogs = () => logs;
-  child.detached = true;
   return child;
 }
 
