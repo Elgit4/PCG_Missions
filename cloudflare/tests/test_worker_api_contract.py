@@ -118,5 +118,15 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("branch_id", code)
 
 
+    def test_public_content_management_has_capability_gated_draft_and_profile_routes(self):
+        for name in ("contentKindConfig", "listContent", "createContent", "updateContent", "publishContent", "archiveContent", "getContentProfile", "updateContentProfile", "createExternalDocumentLink"):
+            self.assertIn(f"function {name}(", self.source)
+        self.assertIn('"content.manage"', self.source)
+        self.assertIn('"content.read"', self.source)
+        self.assertIn('url.pathname === "/api/v1/content"', self.source)
+        self.assertIn('url.pathname === "/api/v1/content/profile"', self.source)
+        self.assertIn("public_content_change_audit", self.source)
+
+
 if __name__ == "__main__":
     unittest.main()
