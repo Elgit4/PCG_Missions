@@ -452,7 +452,7 @@ export interface MinistryReportRecord {
 export interface MinistryReportReviewEvent {
   id: string;
   actor_profile_id: string;
-  decision: "approved" | "returned" | "comment";
+  decision: "approved" | "returned" | "comment" | "resubmitted";
   comment: string | null;
   created_at: string;
 }
