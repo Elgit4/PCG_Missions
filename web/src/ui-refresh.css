@@ -331,3 +331,18 @@ html[data-theme="dark"] .cmi-mobile-more button{background:#223247;color:#d3deea
 html[data-theme="dark"] .cmi-mobile-more button.active{background:#3a202b;border-color:#75404d;color:#ffdce2}
 @media(max-width:760px){html[data-theme="dark"] .staff-login-main{background:#101722}}
 @media(prefers-reduced-motion:reduce){.cmi-theme-toggle{transition:none}}
+
+
+/* Compact, accessible workspace utility actions */
+.cmi-topbar-actions{display:flex;align-items:center;gap:9px}
+.cmi-icon-action,.cmi-theme-toggle{display:inline-grid;place-items:center;flex:none;width:40px;height:40px;padding:0;border:1px solid var(--cmi-border,#dce2e9);border-radius:12px;background:var(--cmi-surface,#fff);color:var(--cmi-text,#263445);cursor:pointer;transition:background .16s ease,border-color .16s ease,color .16s ease,transform .16s ease}
+.cmi-icon-action:hover,.cmi-theme-toggle:hover{background:var(--cmi-soft,#f3f5f8);border-color:var(--cmi-muted,#9aa7b7);color:var(--cmi-accent,#a51e32)}
+.cmi-icon-action:active,.cmi-theme-toggle:active{transform:scale(.96)}
+.cmi-icon-action:focus-visible,.cmi-theme-toggle:focus-visible{outline:3px solid rgba(30,64,175,.32);outline-offset:2px}
+.cmi-icon-action:disabled{opacity:.55;cursor:wait}
+.cmi-icon-action .is-spinning{animation:cmi-refresh-spin .85s linear infinite}
+@keyframes cmi-refresh-spin{to{transform:rotate(360deg)}}
+html[data-theme="dark"] .cmi-icon-action,html[data-theme="dark"] .cmi-theme-toggle{background:#1b2939;border-color:#40546b;color:#e4edf7}
+html[data-theme="dark"] .cmi-icon-action:hover,html[data-theme="dark"] .cmi-theme-toggle:hover{background:#2a3c51;border-color:#60758e;color:#fff}
+@media(max-width:760px){.cmi-topbar-actions{gap:7px}.cmi-icon-action,.cmi-theme-toggle{width:38px;height:38px;border-radius:11px}}
+@media(prefers-reduced-motion:reduce){.cmi-icon-action,.cmi-theme-toggle{transition:none}.cmi-icon-action .is-spinning{animation:none}}
