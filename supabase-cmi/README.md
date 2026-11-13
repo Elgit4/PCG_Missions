@@ -20,7 +20,7 @@ Supabase CLI v3 is local-first. Do not add `--remote`, hosted credentials or `--
 
 ## Hosted production status — verified 12 November 2026
 
-The connected production project `cgwffpxlwgbnlinzwfoj` has 16 ordered migrations, 50 public tables with RLS enabled, 61 active capability catalogue entries, and 58 active role-capability grants across the six approved roles. Browser roles have no direct business-table access; operational data is accessed through trusted Edge Functions. The deployed staff UI currently exposes Overview, Contacts, Follow-up, Staff and Access requests. The contact-detail dialog supports ordinary notes and call/visit/message interaction history.
+The connected production project `cgwffpxlwgbnlinzwfoj` has 16 ordered migrations, 50 public tables with RLS enabled, 61 active capability catalogue entries and 65 active role-capability grants across six roles. PR #42 is deployed and the staff UI exposes Overview, Contacts, Follow-up, Events, Calendar, Announcements, Visitor Content, Staff and Access Requests. The contact-detail dialog supports ordinary notes and call/visit/message interaction history.
 
 Ten Edge Function entries are active, including the retired `pcg-first-admin-once` endpoint which responds HTTP 410. The production event, calendar, announcement and content functions permit private draft operations only. The `pastoral-operations` function remains undeployed pending the independent security review.
 
@@ -97,7 +97,7 @@ PR #10 merged the `feat/cmi-staff-session-api` implementation into `main` on 202
 - `staff-session`: validates a Supabase Auth access token, checks the active staff profile and returns branch, role and approved capability projections.
 - `staff-operations`: scoped contact list/detail, idempotent contact capture and ordinary-field update endpoints.
 - The same Edge Function now provides scoped follow-up task list/detail, idempotent creation and atomic note/priority/due-date/status updates. It never changes assignment targets through PATCH.
-- The role/capability catalogue contains 58 explicit grants across the six roles. First-admin bootstrap creates the initial church, branch, staff profile and Admin/Pastor branch assignment; it does not create arbitrary role grants or enable SMS, exports or capability-policy editing. Effective capabilities come from the reviewed role-capability matrix and remain scope-checked by the server.
+- The role/capability catalogue originally contained 58 visitor/follow-up grants; PR #42 added seven private-draft grants (65 production grants), and the pending team/area migration adds two Admin/Pastor-only grants for a target source total of 67. First-admin bootstrap creates the initial church, branch, staff profile and Admin/Pastor branch assignment; it does not create arbitrary role grants or enable SMS, exports or capability-policy editing. Effective capabilities come from the reviewed role-capability matrix and remain scope-checked by the server.
 - Phone/email capture, read and update use separate identity capabilities. Without the appropriate grant, identity fields are not returned.
 - Team-scoped capture requires active team membership. Assigned-only capture creates an assignment to the capturing staff member in the same transaction.
 
