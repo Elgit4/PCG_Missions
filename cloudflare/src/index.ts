@@ -1703,7 +1703,7 @@ async function createContactNote(
       !["author_only","assigned_scope","team_scope","branch_scope"].includes(String(visibility))) {
     return json(400, { ok: false, error: { code: "INVALID_CONTACT_NOTE_DETAILS" } }, requestId, origin);
   }
-  const scope = access.decision.scopeMode;
+  const scope = access.decision.scopeMode ?? "";
   if (
     (visibility === "branch_scope" && scope !== "branch") ||
     (visibility === "team_scope" && (scope !== "team" || !resource.teamId)) ||
