@@ -15,6 +15,7 @@ export type StaffAuthView = "sign-in" | "forgot-password" | "recovery" | "change
 
 interface StaffLoginProps {
   view: StaffAuthView;
+  themeToggle?: React.ReactNode;
   configurationError?: string;
   error?: string;
   notice?: string;
@@ -29,6 +30,7 @@ interface StaffLoginProps {
 
 export function StaffLogin({
   view,
+  themeToggle,
   configurationError = "",
   error = "",
   notice = "",
@@ -144,6 +146,7 @@ export function StaffLogin({
         </div>
 
         <div className="staff-login-form-wrap staff-login-auth-wrap">
+          <div className="staff-login-theme-row">{themeToggle}</div>
           <div className="staff-login-security-label">
             <LockKeyhole size={15} strokeWidth={2} />
             <span>SECURE STAFF PORTAL</span>
