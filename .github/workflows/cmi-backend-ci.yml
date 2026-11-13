@@ -114,6 +114,9 @@ jobs:
       - name: Test bounded streaming JSON request bodies
         run: deno test supabase-cmi/supabase/functions/_shared/request_body_test.ts
 
+      - name: Test CMI production origin allowlist and CORS preflight
+        run: deno test supabase-cmi/supabase/functions/_shared/cors_test.ts
+
       - name: Type-check event operations Edge Function
         run: deno check supabase-cmi/supabase/functions/event-operations/index.ts
 
