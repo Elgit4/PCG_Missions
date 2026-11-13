@@ -344,7 +344,19 @@ describe("CmiApiClient", () => {
 
   it("resubmits a corrected returned report through the protected endpoint", async () => {
     const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: { id: "report-1", status: "submitted" }, request_id: "report-resubmit" }),
+      JSON.stringify({
+        data: {
+          report: { id: "report-1", status: "submitted" },
+          review_history: [{
+            id: "history-1",
+            actor_profile_id: "author-1",
+            decision: "resubmitted",
+            comment: null,
+            created_at: "2026-11-13T09:00:00Z",
+          }],
+        },
+        request_id: "report-resubmit",
+      }),
       { status: 200 },
     ));
     const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
