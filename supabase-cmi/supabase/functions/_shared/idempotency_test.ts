@@ -52,8 +52,16 @@ Deno.test("canonical JSON rejects sparse arrays and normalized key collisions", 
 
 Deno.test("digest is stable for equivalent object key order", async () => {
   const secret = "0123456789abcdef0123456789abcdef";
-  const left = await createRequestDigest({ event: "e1", body: { b: 2, a: 1 } }, secret, 1);
-  const right = await createRequestDigest({ body: { a: 1, b: 2 }, event: "e1" }, secret, 1);
+  const left = await createRequestDigest(
+    { event: "e1", body: { b: 2, a: 1 } },
+    secret,
+    1,
+  );
+  const right = await createRequestDigest(
+    { body: { a: 1, b: 2 }, event: "e1" },
+    secret,
+    1,
+  );
   assertEquals(left, right);
 });
 
@@ -61,15 +69,31 @@ Deno.test("digest changes when payload or secret changes", async () => {
   const secret = "0123456789abcdef0123456789abcdef";
   const payload = { event: "e1", attendee: "c1" };
   const original = await createRequestDigest(payload, secret, 1);
-  const changedPayload = await createRequestDigest({ ...payload, attendee: "c2" }, secret, 1);
-  const changedSecret = await createRequestDigest(payload, "abcdef0123456789abcdef0123456789", 1);
-  assertEquals(equalDigestHex(original.digestHex, changedPayload.digestHex), false);
-  assertEquals(equalDigestHex(original.digestHex, changedSecret.digestHex), false);
+  const changedPayload = await createRequestDigest(
+    { ...payload, attendee: "c2" },
+    secret,
+    1,
+  );
+  const changedSecret = await createRequestDigest(
+    payload,
+    "abcdef0123456789abcdef0123456789",
+    1,
+  );
+  assertEquals(
+    equalDigestHex(original.digestHex, changedPayload.digestHex),
+    false,
+  );
+  assertEquals(
+    equalDigestHex(original.digestHex, changedSecret.digestHex),
+    false,
+  );
 });
 
 Deno.test("digest requires a strong secret and a positive key version", async () => {
   await assertRejects(() => createRequestDigest({ ok: true }, "short", 1));
-  await assertRejects(() => createRequestDigest({ ok: true }, "0123456789abcdef0123456789abcdef", 0));
+  await assertRejects(() =>
+    createRequestDigest({ ok: true }, "0123456789abcdef0123456789abcdef", 0)
+  );
 });
 
 Deno.test("digest comparison validates shape and compares matching values", () => {
@@ -79,7 +103,6 @@ Deno.test("digest comparison validates shape and compares matching values", () =
   assertEquals(equalDigestHex("invalid", digest), false);
 });
 
-
 Deno.test("canonical JSON sorts keys after Unicode normalization", () => {
   const decomposed = JSON.parse('{"z":1,"e\\u0301":2}') as never;
   const composed = { z: 1, "é": 2 };
@@ -88,7 +111,9 @@ Deno.test("canonical JSON sorts keys after Unicode normalization", () => {
 });
 
 Deno.test("canonical JSON rejects unsafe object keys", () => {
-  assertThrows(() => canonicalJson(JSON.parse('{"__proto__":{"polluted":true}}')));
+  assertThrows(() =>
+    canonicalJson(JSON.parse('{"__proto__":{"polluted":true}}'))
+  );
   assertThrows(() => canonicalJson(JSON.parse('{"constructor":1}')));
   assertThrows(() => canonicalJson(JSON.parse('{"prototype":1}')));
 });
@@ -149,10 +174,10 @@ Deno.test("HMAC-SHA-256 matches a fixed canonical request vector", async () => {
   assertEquals(digest, {
     algorithm: "hmac-sha-256",
     keyVersion: 7,
-    digestHex: "f0546246da9e2349100c845a8561214788d75d900f3c086a72fcfa03bb1f42ab",
+    digestHex:
+      "f0546246da9e2349100c845a8561214788d75d900f3c086a72fcfa03bb1f42ab",
   });
 });
-
 
 Deno.test("derived idempotency keys are deterministic and purpose separated", async () => {
   const master = "server-side-supabase-service-role-key-material-0123456789";
