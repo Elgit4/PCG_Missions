@@ -59,6 +59,16 @@ describe("capability-driven staff navigation", () => {
     expect(canOpenStaffPage(session, "Reports", "branch-a")).toBe(false);
   });
 
+  it("shows Teams & Areas only with an explicit branch management grant", () => {
+    const noGrant = { ...baseSession, capabilities: [] };
+    const teamGrant = { ...baseSession, capabilities: [{ code: "team.manage", scope_mode: "branch", branch_id: "branch-a" }] };
+    const areaGrant = { ...baseSession, capabilities: [{ code: "area.manage", scope_mode: "branch", branch_id: "branch-a" }] };
+    expect(canOpenStaffPage(noGrant, "Teams & Areas", "branch-a")).toBe(false);
+    expect(canOpenStaffPage(teamGrant, "Teams & Areas", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(areaGrant, "Teams & Areas", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(teamGrant, "Teams & Areas", "branch-b")).toBe(false);
+  });
+
   it("shows event drafts only with event read or management grants", () => {
     const noGrant = { ...baseSession, capabilities: [] };
     const readGrant = { ...baseSession, capabilities: [{ code: "event.read.scoped", scope_mode: "branch", branch_id: "branch-a" }] };
