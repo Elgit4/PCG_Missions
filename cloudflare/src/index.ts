@@ -5199,6 +5199,215 @@ async function archiveAnnouncement(
   return json(200, { ok: true, announcement_id: announcementId, status: "archived" }, requestId, origin);
 }
 
+async function listCareRecords(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "pastoral.case.metadata.read");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status");
+  if ([...url.searchParams.keys()].some((key) => key !== "status") ||
+      (status && !["open","active","monitoring","resolved","closed"].includes(status))) {
+    return json(400, { ok:false, error:{code:"INVALID_CARE_QUERY"} }, requestId, origin);
+  }
+  const rows = await env.DB.prepare(`
+    SELECT cr.id,cr.status,cr.contact_id,cr.care_group_id,cr.created_at,cr.updated_at
+    FROM care_record cr
+    WHERE cr.branch_id=? AND (? IS NULL OR cr.status=?)
+    ORDER BY cr.updated_at DESC LIMIT 100
+  `).bind(access.activeBranch.branchId,status,status).all<Record<string,unknown>>();
+  return json(200,{ok:true,care_records:rows.results??[]},requestId,origin);
+}
+
+async function createCareRecord(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "pastoral.case.create");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload = body.value as {contact_id?:unknown;care_group_id?:unknown};
+  if (!payload || typeof payload!=="object" || Array.isArray(payload) ||
+      Object.keys(payload).some(k=>!["contact_id","care_group_id"].includes(k))) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_BODY"}},requestId,origin);
+  }
+  const contactId = typeof payload.contact_id==="string" ? payload.contact_id.trim() : "";
+  const careGroupId = payload.care_group_id===undefined || payload.care_group_id===null || payload.care_group_id==="" ? null :
+    typeof payload.care_group_id==="string" ? payload.care_group_id.trim() : "";
+  if (!contactId || contactId.length>128 || careGroupId==="" || (careGroupId && careGroupId.length>128)) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_DETAILS"}},requestId,origin);
+  }
+  const now=new Date().toISOString(), id=crypto.randomUUID();
+  try {
+    const result=await env.DB.prepare(`
+      INSERT INTO care_record(id,branch_id,contact_id,care_group_id,status,created_by,created_at,updated_at)
+      VALUES(?,?,?,?,'open',?,?,?)
+    `).bind(id,access.activeBranch.branchId,contactId,careGroupId,access.staff.userId,now,now).run();
+    if (!result.success) throw new Error("CARE_CREATE_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"CARE_RECORD_CREATE_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,care_record_id:id,status:"open"},requestId,origin);
+}
+
+async function assignCareRecord(request: Request, env: Env, careId: string, requestId: string, origin?: string): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"pastoral.case.share");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as {assignee_profile_id?:unknown;purpose?:unknown;starts_at?:unknown;ends_at?:unknown};
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+     Object.keys(payload).some(k=>!["assignee_profile_id","purpose","starts_at","ends_at"].includes(k))) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_ASSIGNMENT_BODY"}},requestId,origin);
+  }
+  const targetProfileId=typeof payload.assignee_profile_id==="string"?payload.assignee_profile_id.trim():"";
+  const purpose=typeof payload.purpose==="string"?payload.purpose.trim():"";
+  const now=new Date().toISOString();
+  const startsAt=parseIsoTimestamp(payload.starts_at,now);
+  const endsAt=payload.ends_at===undefined||payload.ends_at===null||payload.ends_at===""?null:parseIsoTimestamp(payload.ends_at,"");
+  if(!targetProfileId||targetProfileId.length>128||purpose.length<10||purpose.length>300||
+     !startsAt||(endsAt!==null&&(!endsAt||endsAt<=startsAt))) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_ASSIGNMENT_DETAILS"}},requestId,origin);
+  }
+  const target=await env.DB.prepare(`
+    SELECT sp.id,sp.auth_user_id FROM staff_profile sp
+    JOIN staff_role_assignment ra ON ra.staff_profile_id=sp.id AND ra.branch_id=?
+    JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
+    WHERE sp.id=? AND sp.account_status='active' AND ra.revoked_at IS NULL
+      AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?) LIMIT 1
+  `).bind(access.activeBranch.branchId,targetProfileId,now,now).first<{id:string;auth_user_id:string}>();
+  if(!target) return json(404,{ok:false,error:{code:"CARE_ASSIGNEE_NOT_FOUND"}},requestId,origin);
+  const record=await env.DB.prepare("SELECT id FROM care_record WHERE id=? AND branch_id=? LIMIT 1")
+    .bind(careId,access.activeBranch.branchId).first<{id:string}>();
+  if(!record) return json(404,{ok:false,error:{code:"CARE_RECORD_NOT_FOUND"}},requestId,origin);
+  const assignmentId=crypto.randomUUID(),shareId=crypto.randomUUID();
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`INSERT INTO staff_record_share
+        (id,branch_id,record_type,record_id,staff_profile_id,granted_by,purpose,starts_at,ends_at,created_at)
+        VALUES(?,?,'pastoral_case',?,?,?,?,?,?,?)`)
+        .bind(shareId,access.activeBranch.branchId,careId,target.id,access.staff.profileId,purpose,startsAt,endsAt,now),
+      env.DB.prepare(`INSERT INTO care_assignment
+        (id,care_record_id,branch_id,assignee_user_id,assigned_by,starts_at,ends_at,created_at,assignment_reason)
+        VALUES(?,?,?,?,?,?,?,?,?)`)
+        .bind(assignmentId,careId,access.activeBranch.branchId,target.auth_user_id,access.staff.userId,startsAt,endsAt,now,purpose),
+    ]);
+    if(results.some(r=>!r.success)) throw new Error("CARE_ASSIGNMENT_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"CARE_ASSIGNMENT_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,assignment_id:assignmentId,share_id:shareId},requestId,origin);
+}
+
+async function getCareRecord(request: Request, env: Env, careId: string, requestId: string, origin?: string): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"pastoral.case.read",{type:"pastoral_case",recordId:careId});
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const now=new Date().toISOString();
+  const record=await env.DB.prepare(`
+    SELECT cr.id,cr.status,cr.contact_id,cr.care_group_id,cr.created_at,cr.updated_at
+    FROM care_record cr
+    WHERE cr.id=? AND cr.branch_id=? AND EXISTS(
+      SELECT 1 FROM care_assignment ca WHERE ca.care_record_id=cr.id AND ca.branch_id=cr.branch_id
+      AND ca.assignee_user_id=? AND ca.revoked_at IS NULL AND ca.starts_at<=?
+      AND (ca.ends_at IS NULL OR ca.ends_at>?)
+    ) LIMIT 1
+  `).bind(careId,access.activeBranch.branchId,access.staff.userId,now,now).first<Record<string,unknown>>();
+  if(!record) return json(404,{ok:false,error:{code:"CARE_RECORD_NOT_FOUND"}},requestId,origin);
+  const interactions=await env.DB.prepare(`
+    SELECT id,interaction_type,outcome_code,restricted_note,occurred_at,created_at
+    FROM care_interaction WHERE care_record_id=? ORDER BY occurred_at DESC LIMIT 100
+  `).bind(careId).all<Record<string,unknown>>();
+  try {
+    await env.DB.prepare(`INSERT INTO care_access_audit
+      (id,care_record_id,branch_id,actor_user_id,action,reason,request_id,safe_metadata,accessed_at)
+      VALUES(?,?,?,?,'read','Authorized explicit-share pastoral case read',?,'{}',?)`)
+      .bind(crypto.randomUUID(),careId,access.activeBranch.branchId,access.staff.userId,requestId,now).run();
+  } catch { return json(503,{ok:false,error:{code:"CARE_ACCESS_AUDIT_FAILED"}},requestId,origin); }
+  return json(200,{ok:true,care_record:record,interactions:interactions.results??[]},requestId,origin);
+}
+
+async function createCareInteraction(request: Request, env: Env, careId: string, requestId: string, origin?: string): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"pastoral.case.interact",{type:"pastoral_case",recordId:careId});
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as {interaction_type?:unknown;outcome_code?:unknown;restricted_note?:unknown;occurred_at?:unknown};
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+     Object.keys(payload).some(k=>!["interaction_type","outcome_code","restricted_note","occurred_at"].includes(k))) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_INTERACTION_BODY"}},requestId,origin);
+  }
+  const type=payload.interaction_type;
+  const outcome=payload.outcome_code===undefined||payload.outcome_code===null||payload.outcome_code===""?null:
+    typeof payload.outcome_code==="string"?payload.outcome_code.trim():"";
+  const note=typeof payload.restricted_note==="string"?payload.restricted_note.trim():"";
+  const occurredAt=parseIsoTimestamp(payload.occurred_at,new Date().toISOString());
+  if(!["call","visit","meeting","other"].includes(String(type))||outcome===""||note.length>5000||!occurredAt) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_INTERACTION_DETAILS"}},requestId,origin);
+  }
+  const now=new Date().toISOString(),id=crypto.randomUUID();
+  try {
+    const result=await env.DB.prepare(`INSERT INTO care_interaction
+      (id,care_record_id,actor_user_id,interaction_type,outcome_code,restricted_note,occurred_at,created_at)
+      VALUES(?,?,?,?,?,?,?,?)`)
+      .bind(id,careId,access.staff.userId,type,outcome,note||null,occurredAt,now).run();
+    if(!result.success) throw new Error("CARE_INTERACTION_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"CARE_INTERACTION_NOT_AUTHORIZED_OR_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,interaction_id:id},requestId,origin);
+}
+
+async function updateCareRecord(request: Request, env: Env, careId: string, requestId: string, origin?: string): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"pastoral.case.update",{type:"pastoral_case",recordId:careId});
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as {status?:unknown};
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+     Object.keys(payload).length!==1||!["open","active","monitoring","resolved","closed"].includes(String(payload.status))) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_STATUS"}},requestId,origin);
+  }
+  const now=new Date().toISOString();
+  try {
+    const result=await env.DB.prepare(`UPDATE care_record SET status=?,updated_by=?,updated_at=?
+      WHERE id=? AND branch_id=? AND EXISTS(
+        SELECT 1 FROM care_assignment ca WHERE ca.care_record_id=care_record.id
+        AND ca.branch_id=care_record.branch_id AND ca.assignee_user_id=?
+        AND ca.revoked_at IS NULL AND ca.starts_at<=? AND (ca.ends_at IS NULL OR ca.ends_at>?)
+      )`).bind(payload.status,access.staff.userId,now,careId,access.activeBranch.branchId,access.staff.userId,now,now).run();
+    if(!result.success||(result.meta?.changes??0)!==1) throw new Error("CARE_UPDATE_FAILED");
+  } catch { return json(409,{ok:false,error:{code:"CARE_RECORD_UPDATE_CONFLICT"}},requestId,origin); }
+  return json(200,{ok:true,care_record_id:careId,status:payload.status},requestId,origin);
+}
+
+async function revokeCareAssignment(request: Request, env: Env, careId: string, assignmentId: string, requestId: string, origin?: string): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"pastoral.case.share");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as {reason?:unknown};
+  const reason=typeof payload?.reason==="string"?payload.reason.trim():"";
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some(k=>k!=="reason")||reason.length<10||reason.length>300) {
+    return json(400,{ok:false,error:{code:"CARE_REVOCATION_REASON_REQUIRED"}},requestId,origin);
+  }
+  const now=new Date().toISOString();
+  const assignment=await env.DB.prepare(`SELECT assignee_user_id FROM care_assignment
+    WHERE id=? AND care_record_id=? AND branch_id=? AND revoked_at IS NULL LIMIT 1`)
+    .bind(assignmentId,careId,access.activeBranch.branchId).first<{assignee_user_id:string}>();
+  if(!assignment) return json(404,{ok:false,error:{code:"CARE_ASSIGNMENT_NOT_FOUND"}},requestId,origin);
+  const target=await env.DB.prepare("SELECT id FROM staff_profile WHERE auth_user_id=? LIMIT 1")
+    .bind(assignment.assignee_user_id).first<{id:string}>();
+  if(!target) return json(409,{ok:false,error:{code:"CARE_ASSIGNEE_PROFILE_NOT_FOUND"}},requestId,origin);
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`UPDATE care_assignment SET revoked_at=?,revoked_by=?,revocation_reason=?
+        WHERE id=? AND care_record_id=? AND branch_id=? AND revoked_at IS NULL`)
+        .bind(now,access.staff.userId,reason,assignmentId,careId,access.activeBranch.branchId),
+      env.DB.prepare(`UPDATE staff_record_share SET revoked_at=?,revoked_by=?
+        WHERE record_type='pastoral_case' AND record_id=? AND branch_id=? AND staff_profile_id=? AND revoked_at IS NULL`)
+        .bind(now,access.staff.profileId,careId,access.activeBranch.branchId,target.id),
+    ]);
+    if(results.some(r=>!r.success)||(results[0]?.meta?.changes??0)!==1||(results[1]?.meta?.changes??0)<1) throw new Error("CARE_REVOKE_FAILED");
+  } catch { return json(409,{ok:false,error:{code:"CARE_ASSIGNMENT_REVOCATION_CONFLICT"}},requestId,origin); }
+  return json(200,{ok:true,assignment_id:assignmentId,revoked_at:now},requestId,origin);
+}
+
 async function getPublicContent(
   request: Request,
   env: Env,
@@ -6350,6 +6559,34 @@ async function updatePrayerRequestStatus(
 }
 
 
+    if (url.pathname === "/api/v1/pastoral/care" && request.method === "GET") return listCareRecords(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/pastoral/care" && request.method === "POST") return createCareRecord(request,env,requestId,origin);
+    const careRevokeMatch=url.pathname.match(/^\\/api\\/v1\\/pastoral\\/care\\/([^/]+)\\/assignments\\/([^/]+)\\/revoke$/);
+    if(careRevokeMatch&&request.method==="POST") {
+      let careId:string,assignmentId:string;
+      try { careId=decodeURIComponent(careRevokeMatch[1]); assignmentId=decodeURIComponent(careRevokeMatch[2]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CARE_ASSIGNMENT_ID"}},requestId,origin); }
+      return revokeCareAssignment(request,env,careId,assignmentId,requestId,origin);
+    }
+    const careAssignMatch=url.pathname.match(/^\\/api\\/v1\\/pastoral\\/care\\/([^/]+)\\/assignments$/);
+    if(careAssignMatch&&request.method==="POST") {
+      let careId:string; try { careId=decodeURIComponent(careAssignMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_ID"}},requestId,origin); }
+      return assignCareRecord(request,env,careId,requestId,origin);
+    }
+    const careInteractionMatch=url.pathname.match(/^\\/api\\/v1\\/pastoral\\/care\\/([^/]+)\\/interactions$/);
+    if(careInteractionMatch&&request.method==="POST") {
+      let careId:string; try { careId=decodeURIComponent(careInteractionMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_ID"}},requestId,origin); }
+      return createCareInteraction(request,env,careId,requestId,origin);
+    }
+    const careRecordMatch=url.pathname.match(/^\\/api\\/v1\\/pastoral\\/care\\/([^/]+)$/);
+    if(careRecordMatch) {
+      let careId:string; try { careId=decodeURIComponent(careRecordMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_ID"}},requestId,origin); }
+      if(request.method==="GET") return getCareRecord(request,env,careId,requestId,origin);
+      if(request.method==="PATCH") return updateCareRecord(request,env,careId,requestId,origin);
+    }
     if (url.pathname === "/api/v1/pastoral/prayer/requests" && request.method === "POST") {
       return createPrayerRequest(request, env, requestId, origin);
     }
