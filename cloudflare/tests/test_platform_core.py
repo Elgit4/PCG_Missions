@@ -446,6 +446,75 @@ class PlatformCoreMigrationTests(unittest.TestCase):
 
 
 
+    def test_event_creation_is_branch_authorized_and_field_workers_cannot_create_events(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, _ = self.staff["field"]
+        self.db.execute(
+            """INSERT INTO event
+               (id,branch_id,title,starts_at,ends_at,created_by,created_at,updated_at)
+               VALUES ('event-1','authz-branch','Sunday Service',?,?,?, ?, ?)""",
+            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,self.NOW,self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO event
+                   (id,branch_id,title,starts_at,ends_at,created_by,created_at,updated_at)
+                   VALUES ('event-field','authz-branch','Unauthorized Event',?,?,?, ?, ?)""",
+                ("2026-02-02T08:00:00.000Z","2026-02-02T11:00:00.000Z",field_user,self.NOW,self.NOW),
+            )
+
+    def test_event_checkin_requires_event_capability_and_idempotency_key(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, _ = self.staff["field"]
+        self.db.execute(
+            """INSERT INTO event
+               (id,branch_id,title,starts_at,ends_at,created_by,created_at,updated_at)
+               VALUES ('event-checkin','authz-branch','Service',?,?,?, ?, ?)""",
+            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO event_checkin
+               (id,event_id,branch_id,attendee_name_snapshot,checked_in_at,recorded_by,source,client_request_id)
+               VALUES ('checkin-1','event-checkin','authz-branch','Walk-in Guest',? ,?,'staff','checkin-request-1')""",
+            (self.NOW,admin_user),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO event_checkin
+                   (id,event_id,branch_id,attendee_name_snapshot,checked_in_at,recorded_by,source,client_request_id)
+                   VALUES ('checkin-field','event-checkin','authz-branch','Unauthorized Guest',? ,?,'staff','checkin-request-2')""",
+                (self.NOW,field_user),
+            )
+
+    def test_event_registration_requires_a_valid_staff_actor_and_request_key(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, _ = self.staff["field"]
+        self.db.execute(
+            """INSERT INTO event
+               (id,branch_id,title,starts_at,ends_at,created_by,created_at,updated_at)
+               VALUES ('event-registration','authz-branch','Registration Event',?,?,?, ?, ?)""",
+            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO event_registration
+               (id,event_id,branch_id,attendee_name_snapshot,registration_source,registered_at,
+                client_request_id,created_by)
+               VALUES ('registration-1','event-registration','authz-branch','Guest One','staff',?,
+                       'registration-request-1',?)""",
+            (self.NOW,admin_user),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO event_registration
+                   (id,event_id,branch_id,attendee_name_snapshot,registration_source,registered_at,
+                    client_request_id,created_by)
+                   VALUES ('registration-field','event-registration','authz-branch','Guest Two','staff',?,
+                           'registration-request-2',?)""",
+                (self.NOW,field_user),
+            )
+
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -455,7 +524,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
