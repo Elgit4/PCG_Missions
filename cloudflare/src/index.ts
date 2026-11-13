@@ -294,9 +294,9 @@ async function revokeStaffRole(
     const results = await env.DB.batch([
       env.DB.prepare(`
         UPDATE staff_role_assignment
-        SET revoked_at = ?, reason = ?
+        SET revoked_at = ?, revoked_by = ?, reason = ?
         WHERE id = ? AND branch_id = ? AND revoked_at IS NULL
-      `).bind(now, reason, existing.id, access.activeBranch.branchId),
+      `).bind(now, access.staff.profileId, reason, existing.id, access.activeBranch.branchId),
       env.DB.prepare(`
         INSERT INTO staff_access_audit
           (id, branch_id, actor_profile_id, target_profile_id, action, reason, metadata, created_at)
@@ -534,6 +534,274 @@ async function reviewAdminElevationRequest(
   }, requestId, origin);
 }
 
+
+async function listStaffDirectory(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.directory.read");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const rows = await env.DB.prepare(`
+    SELECT sp.id, sp.full_name, sp.account_status, sp.last_active_at,
+           GROUP_CONCAT(DISTINCT r.name) AS roles
+    FROM staff_profile sp
+    JOIN staff_role_assignment sra ON sra.staff_profile_id = sp.id
+    JOIN role r ON r.id = sra.role_id AND r.is_active = 1
+    WHERE sra.branch_id = ?
+      AND sra.revoked_at IS NULL
+      AND sra.starts_at <= ?
+      AND (sra.ends_at IS NULL OR sra.ends_at > ?)
+    GROUP BY sp.id, sp.full_name, sp.account_status, sp.last_active_at
+    ORDER BY sp.full_name COLLATE NOCASE
+    LIMIT 100
+  `).bind(access.activeBranch.branchId, new Date().toISOString(), new Date().toISOString()).all<{
+    id: string; full_name: string; account_status: string; last_active_at: string | null; roles: string | null;
+  }>();
+  return json(200, { ok: true, staff: rows.results ?? [] }, requestId, origin);
+}
+
+async function changeStaffAccountStatus(
+  request: Request,
+  env: Env,
+  targetProfileId: string,
+  action: "deactivate" | "suspend" | "reactivate",
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.account.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  if (!targetProfileId || targetProfileId.length > 128 || targetProfileId === access.staff.profileId) {
+    return json(400, { ok: false, error: { code: "INVALID_STAFF_TARGET" } }, requestId, origin);
+  }
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { reason?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => key !== "reason")) {
+    return json(400, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
+  }
+  const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+  if (reason.length < 10 || reason.length > 500) {
+    return json(400, { ok: false, error: { code: "INVALID_ACCOUNT_STATUS_REASON" } }, requestId, origin);
+  }
+
+  const now = new Date().toISOString();
+  const target = await env.DB.prepare(`
+    SELECT sp.id, sp.account_status
+    FROM staff_profile sp
+    WHERE sp.id = ?
+      AND EXISTS (
+        SELECT 1 FROM staff_role_assignment target_assignment
+        WHERE target_assignment.staff_profile_id = sp.id
+          AND target_assignment.branch_id = ?
+          AND target_assignment.revoked_at IS NULL
+          AND target_assignment.starts_at <= ?
+          AND (target_assignment.ends_at IS NULL OR target_assignment.ends_at > ?)
+      )
+    LIMIT 1
+  `).bind(targetProfileId, access.activeBranch.branchId, now, now).first<{
+    id: string; account_status: string;
+  }>();
+  if (!target) return json(404, { ok: false, error: { code: "STAFF_PROFILE_NOT_FOUND_IN_BRANCH" } }, requestId, origin);
+
+  const nextStatus = action === "deactivate" ? "inactive" : action === "suspend" ? "suspended" : "active";
+  const allowedCurrent = action === "reactivate" ? ["inactive", "suspended"] : ["active"];
+  if (!allowedCurrent.includes(target.account_status)) {
+    return json(409, { ok: false, error: { code: "STAFF_ACCOUNT_STATUS_CONFLICT" } }, requestId, origin);
+  }
+  try {
+    const result = await env.DB.prepare(`
+      UPDATE staff_profile
+      SET account_status = ?,
+          deactivated_at = ?,
+          account_status_changed_by = ?,
+          account_status_changed_branch_id = ?,
+          account_status_reason = ?,
+          updated_at = ?
+      WHERE id = ? AND account_status = ?
+    `).bind(
+      nextStatus,
+      nextStatus === "inactive" ? now : null,
+      access.staff.profileId,
+      access.activeBranch.branchId,
+      reason,
+      now,
+      target.id,
+      target.account_status,
+    ).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+      return json(409, { ok: false, error: { code: "STAFF_ACCOUNT_STATUS_CHANGED" } }, requestId, origin);
+    }
+  } catch {
+    return json(409, {
+      ok: false,
+      error: { code: "STAFF_ACCOUNT_STATUS_CHANGE_BLOCKED", message: "The change may violate branch access or last-Admin/Pastor safeguards." },
+    }, requestId, origin);
+  }
+  return json(200, { ok: true, staff_profile_id: target.id, account_status: nextStatus }, requestId, origin);
+}
+
+async function listAdminRevocationRequests(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.role.approve");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const rows = await env.DB.prepare(`
+    SELECT req.id, req.assignment_id, req.target_profile_id,
+           target.full_name AS target_name, req.requested_by,
+           requester.full_name AS requester_name, req.reason, req.requested_at
+    FROM staff_role_revocation_request req
+    JOIN staff_profile target ON target.id = req.target_profile_id
+    JOIN staff_profile requester ON requester.id = req.requested_by
+    WHERE req.branch_id = ? AND req.status = 'pending'
+    ORDER BY req.requested_at ASC LIMIT 100
+  `).bind(access.activeBranch.branchId).all<{
+    id: string; assignment_id: string; target_profile_id: string; target_name: string;
+    requested_by: string; requester_name: string; reason: string; requested_at: string;
+  }>();
+  return json(200, { ok: true, requests: rows.results ?? [] }, requestId, origin);
+}
+
+async function createAdminRevocationRequest(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.role.assign");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { assignment_id?: unknown; reason?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => key !== "assignment_id" && key !== "reason")) {
+    return json(400, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
+  }
+  const assignmentId = typeof payload.assignment_id === "string" ? payload.assignment_id.trim() : "";
+  const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+  if (!assignmentId || assignmentId.length > 128 || reason.length < 10 || reason.length > 500) {
+    return json(400, { ok: false, error: { code: "INVALID_REVOCATION_REQUEST" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const assignment = await env.DB.prepare(`
+    SELECT a.id, a.staff_profile_id, a.role_id
+    FROM staff_role_assignment a JOIN role r ON r.id = a.role_id
+    WHERE a.id = ? AND a.branch_id = ? AND r.code = 'admin_pastor'
+      AND a.revoked_at IS NULL AND a.starts_at <= ?
+      AND (a.ends_at IS NULL OR a.ends_at > ?)
+  `).bind(assignmentId, access.activeBranch.branchId, now, now).first<{
+    id: string; staff_profile_id: string; role_id: string;
+  }>();
+  if (!assignment) return json(404, { ok: false, error: { code: "ACTIVE_ADMIN_ASSIGNMENT_NOT_FOUND" } }, requestId, origin);
+
+  const requestIdForRevocation = crypto.randomUUID();
+  try {
+    const result = await env.DB.prepare(`
+      INSERT INTO staff_role_revocation_request
+        (id, branch_id, assignment_id, target_profile_id, role_id, requested_by, reason, requested_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      requestIdForRevocation, access.activeBranch.branchId, assignment.id,
+      assignment.staff_profile_id, assignment.role_id, access.staff.profileId, reason, now,
+    ).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error("REVOCATION_REQUEST_NOT_CREATED");
+  } catch {
+    return json(409, { ok: false, error: { code: "REVOCATION_REQUEST_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, {
+    ok: true,
+    revocation_request: {
+      id: requestIdForRevocation,
+      assignment_id: assignment.id,
+      target_profile_id: assignment.staff_profile_id,
+      branch_id: access.activeBranch.branchId,
+      status: "pending",
+      requested_at: now,
+    },
+  }, requestId, origin);
+}
+
+async function reviewAdminRevocationRequest(
+  request: Request,
+  env: Env,
+  revocationId: string,
+  decision: "approve" | "reject",
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.role.approve");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { review_reason?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => key !== "review_reason")) {
+    return json(400, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
+  }
+  const reason = typeof payload.review_reason === "string" ? payload.review_reason.trim() : "";
+  if (!revocationId || revocationId.length > 128 || reason.length < 10 || reason.length > 500) {
+    return json(400, { ok: false, error: { code: "INVALID_REVOCATION_REVIEW" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  if (decision === "reject") {
+    try {
+      const result = await env.DB.prepare(`
+        UPDATE staff_role_revocation_request
+        SET status = 'rejected', reviewed_by = ?, reviewed_at = ?, review_reason = ?
+        WHERE id = ? AND branch_id = ? AND status = 'pending'
+      `).bind(access.staff.profileId, now, reason, revocationId, access.activeBranch.branchId).run();
+      if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+        return json(409, { ok: false, error: { code: "REVOCATION_REQUEST_NOT_PENDING" } }, requestId, origin);
+      }
+    } catch {
+      return json(409, { ok: false, error: { code: "REVOCATION_REVIEW_NOT_AUTHORIZED" } }, requestId, origin);
+    }
+    return json(200, { ok: true, revocation_request_id: revocationId, status: "rejected" }, requestId, origin);
+  }
+
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE staff_role_revocation_request
+        SET status = 'approved', reviewed_by = ?, reviewed_at = ?, review_reason = ?
+        WHERE id = ? AND branch_id = ? AND status = 'pending'
+      `).bind(access.staff.profileId, now, reason, revocationId, access.activeBranch.branchId),
+      env.DB.prepare(`
+        UPDATE staff_role_assignment
+        SET revoked_at = ?, revoked_by = ?, revocation_request_id = ?, reason = ?
+        WHERE id = (
+          SELECT assignment_id FROM staff_role_revocation_request
+          WHERE id = ? AND branch_id = ? AND status = 'approved'
+            AND reviewed_by = ? AND changes() = 1
+        )
+          AND branch_id = ? AND revoked_at IS NULL
+      `).bind(
+        now, access.staff.profileId, revocationId, reason,
+        revocationId, access.activeBranch.branchId, access.staff.profileId, access.activeBranch.branchId,
+      ),
+      env.DB.prepare(`
+        UPDATE staff_role_revocation_request SET status = 'applied'
+        WHERE id = ? AND branch_id = ? AND status = 'approved'
+          AND reviewed_by = ? AND changes() = 1
+      `).bind(revocationId, access.activeBranch.branchId, access.staff.profileId),
+    ]);
+    if (results.some((result) => !result.success) ||
+        (results[0]?.meta?.changes ?? 0) !== 1 ||
+        (results[1]?.meta?.changes ?? 0) !== 1 ||
+        (results[2]?.meta?.changes ?? 0) !== 1) {
+      return json(409, { ok: false, error: { code: "REVOCATION_REQUEST_NOT_APPLIED", message: "The request may be stale or the last-Admin/Pastor safeguard blocked removal." } }, requestId, origin);
+    }
+  } catch {
+    return json(409, { ok: false, error: { code: "REVOCATION_REVIEW_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+  return json(200, { ok: true, revocation_request_id: revocationId, status: "applied" }, requestId, origin);
+}
+
 function isAuthPath(pathname: string): boolean {
   return pathname === "/api/auth" || pathname.startsWith("/api/auth/");
 }
@@ -572,6 +840,37 @@ export default {
           error: { code: "AUTH_NOT_CONFIGURED", message: "Authentication is not configured for this environment." },
         }, requestId, origin);
       }
+    }
+
+    if (url.pathname === "/api/v1/staff" && request.method === "GET") {
+      return listStaffDirectory(request, env, requestId, origin);
+    }
+
+    const staffStatusMatch = url.pathname.match(/^\/api\/v1\/staff\/([^/]+)\/(deactivate|suspend|reactivate)$/);
+    if (staffStatusMatch && request.method === "POST") {
+      let profileId: string;
+      try { profileId = decodeURIComponent(staffStatusMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_STAFF_TARGET" } }, requestId, origin); }
+      return changeStaffAccountStatus(
+        request, env, profileId, staffStatusMatch[2] as "deactivate" | "suspend" | "reactivate", requestId, origin,
+      );
+    }
+
+    if (url.pathname === "/api/v1/staff/role-revocations" && request.method === "GET") {
+      return listAdminRevocationRequests(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/staff/role-revocations" && request.method === "POST") {
+      return createAdminRevocationRequest(request, env, requestId, origin);
+    }
+
+    const revocationReviewMatch = url.pathname.match(/^\/api\/v1\/staff\/role-revocations\/([^/]+)\/(approve|reject)$/);
+    if (revocationReviewMatch && request.method === "POST") {
+      let revocationId: string;
+      try { revocationId = decodeURIComponent(revocationReviewMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_REVOCATION_REQUEST_ID" } }, requestId, origin); }
+      return reviewAdminRevocationRequest(
+        request, env, revocationId, revocationReviewMatch[2] as "approve" | "reject", requestId, origin,
+      );
     }
 
     if (url.pathname === "/api/v1/staff/role-elevations" && request.method === "GET") {
