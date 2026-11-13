@@ -326,7 +326,7 @@ select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   )
 );
 select throws_ok(
-  $q$ select public.cmi_manage_team_operations(
+  $q$ select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
     'team.update',
     jsonb_build_object(
       'branch_id','71000000-0000-4000-8000-000000000010',
