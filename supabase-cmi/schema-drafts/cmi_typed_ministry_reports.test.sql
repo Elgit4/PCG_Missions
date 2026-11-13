@@ -1,5 +1,5 @@
 begin;
-select plan(19);
+select plan(21);
 
 select has_table('public','ministry_report','Typed ministry report table exists');
 select has_table('public','report_review_event','Append-only report review history exists');
@@ -74,6 +74,8 @@ select id,'73000000-0000-4000-8000-000000000020','comment','Test review'
 from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020';
 select has_function('public', 'cmi_review_ministry_report', array['uuid','uuid','text','text'],
   'Atomic report review transaction exists');
+select has_function('public', 'cmi_resubmit_ministry_report', array['uuid','uuid','integer','integer','integer','integer','integer','integer','integer','integer','integer'],
+  'Author report resubmission transaction exists');
 select ok(
   has_function_privilege('service_role','public.cmi_review_ministry_report(uuid,uuid,text,text)','EXECUTE')
   and not has_function_privilege('authenticated','public.cmi_review_ministry_report(uuid,uuid,text,text)','EXECUTE'),
@@ -107,11 +109,22 @@ select throws_ok(
 select ok(
   (select (public.cmi_review_ministry_report(
     (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
-    '73000000-0000-4000-8000-000000000021','approved','Reviewed'
-  )).status) = 'approved'
+    '73000000-0000-4000-8000-000000000021','returned','Please correct the figures.'
+   )).status) = 'returned'
   and (select count(*) from public.report_review_event where report_id in
     (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020')) = 2,
   'Review status and append-only history commit atomically');
+
+select ok(
+  (select (public.cmi_resubmit_ministry_report(
+    (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
+    '73000000-0000-4000-8000-000000000020',
+    4,3,1,2,1,1,0,0,0
+  )).status) = 'submitted'
+  and (select contacts_captured from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020') = 4
+  and (select count(*) from public.report_review_event where report_id in
+    (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020')) = 2,
+  'Author correction resubmits the report without rewriting review history');
 
 select * from finish();
 rollback;
