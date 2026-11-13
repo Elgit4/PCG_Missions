@@ -60,7 +60,6 @@ export function ThemeToggle() {
     <button type="button" className="cmi-theme-toggle" onClick={toggleTheme}
       aria-label={nextLabel} title={nextLabel} aria-pressed={theme === "dark"}>
       {theme === "dark" ? <Sun size={17} strokeWidth={1.9} /> : <Moon size={17} strokeWidth={1.9} />}
-      <span>{theme === "dark" ? "Light" : "Dark"}</span>
     </button>
   );
 }
