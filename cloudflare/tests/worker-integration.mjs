@@ -187,7 +187,6 @@ try {
     "/api/v1/events",
     "/api/v1/calendar",
     "/api/v1/announcements",
-    "/api/v1/announcements/test-announcement/schedule",
     "/api/v1/reports",
   ];
   for (const route of protectedPaths) {
@@ -195,6 +194,16 @@ try {
     assert(response.status === 401, "unauthenticated request to " + route + " should be 401, got " + response.status);
     assert(response.headers.get("x-content-type-options") === "nosniff", "security headers missing on " + route);
   }
+
+  const scheduledAnnouncement = await fetch(baseUrl + "/api/v1/announcements/test-announcement/schedule", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ publish_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() }),
+  });
+  assert(scheduledAnnouncement.status === 401,
+    "unauthenticated POST to announcement schedule should be 401, got " + scheduledAnnouncement.status);
+  assert(scheduledAnnouncement.headers.get("x-content-type-options") === "nosniff",
+    "security headers missing on announcement schedule");
 
   const allowedPreflight = await fetch(baseUrl + "/api/v1/me", {
     method: "OPTIONS",
