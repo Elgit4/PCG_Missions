@@ -25,10 +25,19 @@
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
-## Remote non-production D1 verification\n\n- Database UUID: `376a6782-d059-41f9-9e09-f93718fef2bb`.\n- Migrations `0001` through `0013` applied successfully; schema version reports `13` and environment marker is `non-production`.\n- Database contains 48 application tables and all six expected role records.\n- `PRAGMA foreign_key_check` returned no violations.\n- Wrangler migration ledger `d1_migrations` was initialized with the 11 applied migration filenames after applying the SQL through the Cloudflare D1 API.\n- This is a direct remote D1 schema test; Better Auth login, Worker request lifecycle and domain endpoints have not yet been exercised against a deployed Worker.\n\n## Current test coverage
+## Remote non-production D1 verification
+
+- Database UUID: `376a6782-d059-41f9-9e09-f93718fef2bb`.
+- Migrations `0001` through `0013` applied successfully; schema version reports `13` and environment marker is `non-production`.
+- Database contains 58 application tables and all six expected role records.
+- `PRAGMA foreign_key_check` returned no violations.
+- Wrangler migration ledger `d1_migrations` was initialized with the 13 applied migration filenames after applying the SQL through the Cloudflare D1 API.
+- This is a direct remote D1 schema test; Better Auth login, Worker request lifecycle and domain endpoints have not yet been exercised against a deployed Worker.
+
+## Current test coverage
 
 The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations against an in-memory SQLite database and checks:
-- migration application through schema version 12 and non-production marker;
+- migration application through schema version 13 and non-production marker;
 - identity foreign keys;
 - temporal overlap rejection for staff role assignments, team membership, area coverage and contact assignments;
 - adjacent assignment periods;
@@ -39,7 +48,9 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - explicit-share overlap, expiry/revocation history and automatic share grant/revoke audit events;
 - immediate Better Auth session deletion on staff deactivation/suspension or loss of the final active branch role, plus persistent rate-limit key uniqueness;
 - contact normalization, capture idempotency and metadata allowlists;
-- follow-up task completion and target invariants;\n- restricted prayer/care creation authorization, intercessor-only prayer assignment, no prayer-intercessor CRM/pastoral grants, assignment audit writes and append-only sensitive-access ledgers;\n- branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability.
+- follow-up task completion and target invariants;
+- restricted prayer/care creation authorization, intercessor-only prayer assignment, no prayer-intercessor CRM/pastoral grants, assignment audit writes and append-only sensitive-access ledgers;
+- branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability.
 
 Latest verified CI run: [43461336276](https://github.com/Elgit4/PCG_Missions/actions/runs/43461336276) — **46 Python/SQLite tests passed and Worker/Better Auth TypeScript type-check passed.** This proves the SQL is accepted by the CI runner's SQLite engine and the Worker code type-checks against the pinned package. It does not replace a real D1 preview test, runtime Better Auth schema validation, a deployed Worker test or domain authorization tests.
 
@@ -66,7 +77,21 @@ Latest verified CI run: [43461336276](https://github.com/Elgit4/PCG_Missions/act
 - Data export/import tooling and reconciliation reports.
 - Cloudflare Pages preview binding or frontend API cutover.
 
-## Events, registration, transport and attendance\n\n- Event schema and core constraints are now present in D1. Event creation and check-in are protected by database actor/capability triggers. Staff registration requires an authenticated actor and idempotency key. Transport assignment and closeout review have explicit branch/capability boundaries.\n- Public registration is deliberately excluded. Capacity enforcement, request-digest verification, transactional replay handling, event lifecycle routes and reporting are Worker responsibilities and remain disabled until implemented and tested.\n- Event walk-in identity is currently represented by a name snapshot; deduplication across walk-in names is not claimed.\n\n## Restricted prayer and pastoral care\n\n- Prayer Intercessor remains isolated from the visitor CRM; only the `prayer.request.read` and `prayer.request.respond` capabilities are baseline grants, both with explicit-share scope.\n- Prayer requests can be created by Admin/Pastor and Coordinator, but narrative reads are not granted by those roles. Assignment requires an active Admin/Pastor share capability and an active Prayer Intercessor role in the same branch.\n- Pastoral-care record creation and sharing are Admin/Pastor-controlled. Care assignment is branch-bound; actual narrative reads must still be authorized through the separate care access ledger.\n- Prayer and care read ledgers are append-only. Worker read handlers must append the access event in the same D1 batch before returning narrative fields.\n- No public prayer intake, public care intake, SMS, export, generic search, report or offline access is enabled.\n\n## Required next steps
+## Events, registration, transport and attendance
+
+- Event schema and core constraints are now present in D1. Event creation and check-in are protected by database actor/capability triggers. Staff registration requires an authenticated actor and idempotency key. Transport assignment and closeout review have explicit branch/capability boundaries.
+- Public registration is deliberately excluded. Capacity enforcement, request-digest verification, transactional replay handling, event lifecycle routes and reporting are Worker responsibilities and remain disabled until implemented and tested.
+- Event walk-in identity is currently represented by a name snapshot; deduplication across walk-in names is not claimed.
+
+## Restricted prayer and pastoral care
+
+- Prayer Intercessor remains isolated from the visitor CRM; only the `prayer.request.read` and `prayer.request.respond` capabilities are baseline grants, both with explicit-share scope.
+- Prayer requests can be created by Admin/Pastor and Coordinator, but narrative reads are not granted by those roles. Assignment requires an active Admin/Pastor share capability and an active Prayer Intercessor role in the same branch.
+- Pastoral-care record creation and sharing are Admin/Pastor-controlled. Care assignment is branch-bound; actual narrative reads must still be authorized through the separate care access ledger.
+- Prayer and care read ledgers are append-only. Worker read handlers must append the access event in the same D1 batch before returning narrative fields.
+- No public prayer intake, public care intake, SMS, export, generic search, report or offline access is enabled.
+
+## Required next steps
 
 1. Validate Better Auth's generated schema against the identity tables using a pinned release.
 2. Add authorization middleware and staff-session resolution before adding protected routes.
