@@ -142,6 +142,12 @@ begin
     if p_payload - array['branch_id','name','description'] <> '{}'::jsonb then
       raise exception using errcode = '22023', message = 'UNSUPPORTED_TEAM_FIELDS';
     end if;
+    if pg_catalog.jsonb_typeof(p_payload->'name') is distinct from 'string' then
+      raise exception using errcode = '22023', message = 'INVALID_TEAM_NAME';
+    end if;
+    if p_payload ? 'description' and pg_catalog.jsonb_typeof(p_payload->'description') not in ('string','null') then
+      raise exception using errcode = '22023', message = 'INVALID_TEAM_DESCRIPTION';
+    end if;
     v_name := pg_catalog.btrim(coalesce(p_payload->>'name',''));
     v_description := nullif(pg_catalog.btrim(coalesce(p_payload->>'description','')),'');
     if pg_catalog.length(v_name) not between 2 and 160
@@ -171,12 +177,18 @@ begin
     end if;
     v_team_id := (p_payload->>'team_id')::uuid;
     if p_payload ? 'name' then
+      if pg_catalog.jsonb_typeof(p_payload->'name') is distinct from 'string' then
+        raise exception using errcode = '22023', message = 'INVALID_TEAM_NAME';
+      end if;
       v_name := pg_catalog.btrim(coalesce(p_payload->>'name',''));
       if pg_catalog.length(v_name) not between 2 and 160 then
         raise exception using errcode = '22023', message = 'INVALID_TEAM_NAME';
       end if;
     end if;
     if p_payload ? 'description' then
+      if pg_catalog.jsonb_typeof(p_payload->'description') not in ('string','null') then
+        raise exception using errcode = '22023', message = 'INVALID_TEAM_DESCRIPTION';
+      end if;
       v_description := nullif(pg_catalog.btrim(coalesce(p_payload->>'description','')),'');
       if pg_catalog.length(coalesce(v_description,'')) > 1000 then
         raise exception using errcode = '22023', message = 'INVALID_TEAM_DESCRIPTION';
@@ -228,6 +240,9 @@ begin
     end if;
     v_team_id := (p_payload->>'team_id')::uuid;
     v_staff_profile_id := (p_payload->>'staff_profile_id')::uuid;
+    if p_payload ? 'membership_role' and pg_catalog.jsonb_typeof(p_payload->'membership_role') is distinct from 'string' then
+      raise exception using errcode = '22023', message = 'INVALID_MEMBERSHIP_ROLE';
+    end if;
     v_membership_role := coalesce(p_payload->>'membership_role','member');
     if v_membership_role not in ('member','leader') then
       raise exception using errcode = '22023', message = 'INVALID_MEMBERSHIP_ROLE';
@@ -293,6 +308,9 @@ begin
     end if;
     v_team_id := (p_payload->>'team_id')::uuid;
     v_membership_id := (p_payload->>'membership_id')::uuid;
+    if pg_catalog.jsonb_typeof(p_payload->'membership_role') is distinct from 'string' then
+      raise exception using errcode = '22023', message = 'INVALID_MEMBERSHIP_ROLE';
+    end if;
     v_membership_role := p_payload->>'membership_role';
     if v_membership_role not in ('member','leader') then
       raise exception using errcode = '22023', message = 'INVALID_MEMBERSHIP_ROLE';
@@ -366,6 +384,10 @@ begin
     if p_payload - array['branch_id','name','code'] <> '{}'::jsonb then
       raise exception using errcode = '22023', message = 'UNSUPPORTED_AREA_FIELDS';
     end if;
+    if pg_catalog.jsonb_typeof(p_payload->'name') is distinct from 'string'
+       or (p_payload ? 'code' and pg_catalog.jsonb_typeof(p_payload->'code') not in ('string','null')) then
+      raise exception using errcode = '22023', message = 'INVALID_SERVICE_AREA_DETAILS';
+    end if;
     v_name := pg_catalog.btrim(coalesce(p_payload->>'name',''));
     v_code := nullif(pg_catalog.upper(pg_catalog.btrim(coalesce(p_payload->>'code',''))),'');
     if pg_catalog.length(v_name) not between 2 and 160
@@ -395,12 +417,18 @@ begin
     end if;
     v_area_id := (p_payload->>'area_id')::uuid;
     if p_payload ? 'name' then
+      if pg_catalog.jsonb_typeof(p_payload->'name') is distinct from 'string' then
+        raise exception using errcode = '22023', message = 'INVALID_SERVICE_AREA_NAME';
+      end if;
       v_name := pg_catalog.btrim(coalesce(p_payload->>'name',''));
       if pg_catalog.length(v_name) not between 2 and 160 then
         raise exception using errcode = '22023', message = 'INVALID_SERVICE_AREA_NAME';
       end if;
     end if;
     if p_payload ? 'code' then
+      if pg_catalog.jsonb_typeof(p_payload->'code') not in ('string','null') then
+        raise exception using errcode = '22023', message = 'INVALID_SERVICE_AREA_CODE';
+      end if;
       v_code := nullif(pg_catalog.upper(pg_catalog.btrim(coalesce(p_payload->>'code',''))),'');
       if v_code is not null and v_code !~ '^[A-Z0-9_-]{2,24}$' then
         raise exception using errcode = '22023', message = 'INVALID_SERVICE_AREA_CODE';
