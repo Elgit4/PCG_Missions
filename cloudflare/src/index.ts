@@ -5188,6 +5188,87 @@ async function publishAnnouncement(
   ).bind(announcementId).first<{count:number}>();
   return json(200,{ok:true,announcement_id:announcementId,status:"published",delivery_count:count?.count??0},requestId,origin);
 }
+async function scheduleAnnouncement(request: Request, env: Env, announcementId: string, requestId: string, origin?: string): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"announcements.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as {publish_at?:unknown};
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).length!==1||!Object.prototype.hasOwnProperty.call(payload,"publish_at")) return json(400,{ok:false,error:{code:"INVALID_ANNOUNCEMENT_SCHEDULE"}},requestId,origin);
+  const now=new Date().toISOString(), publishAt=parseIsoTimestamp(payload.publish_at,"");
+  if(!publishAt||Date.parse(publishAt)<Date.now()+300000||Date.parse(publishAt)>Date.now()+365*86400000) return json(400,{ok:false,error:{code:"ANNOUNCEMENT_SCHEDULE_OUT_OF_RANGE"}},requestId,origin);
+  try {
+    const result=await env.DB.prepare(\`
+      UPDATE announcement SET status='scheduled',publish_at=?,updated_by=?,updated_at=?
+      WHERE id=? AND branch_id=? AND status IN ('draft','scheduled')
+    \`).bind(publishAt,access.staff.userId,now,announcementId,access.activeBranch.branchId).run();
+    if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"ANNOUNCEMENT_NOT_SCHEDULABLE"}},requestId,origin);
+  } catch { return json(409,{ok:false,error:{code:"ANNOUNCEMENT_SCHEDULE_CONFLICT"}},requestId,origin); }
+  return json(200,{ok:true,announcement_id:announcementId,status:"scheduled",publish_at:publishAt},requestId,origin);
+}
+
+async function publishDueAnnouncements(env: Env, now: string): Promise<void> {
+  const due=await env.DB.prepare(\`
+    SELECT a.id,a.branch_id,a.updated_by FROM announcement a
+    WHERE a.status='scheduled' AND a.publish_at IS NOT NULL AND a.publish_at<=?
+      AND EXISTS(SELECT 1 FROM staff_profile sp
+        JOIN staff_role_assignment ra ON ra.staff_profile_id=sp.id AND ra.branch_id=a.branch_id
+        JOIN role r ON r.id=ra.role_id AND r.is_active=1
+        JOIN role_capability rc ON rc.role_id=r.id AND rc.scope_mode='branch'
+        JOIN capability c ON c.id=rc.capability_id AND c.code='announcements.manage' AND c.is_active=1
+        WHERE sp.auth_user_id=a.updated_by AND sp.account_status='active'
+          AND ra.revoked_at IS NULL AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?))
+    ORDER BY a.publish_at ASC,a.id ASC LIMIT 50
+  \`).bind(now,now,now).all<{id:string;branch_id:string;updated_by:string}>();
+  const deliverySql=\`
+    WITH target AS (SELECT id,branch_id,audience_type FROM announcement WHERE id=? AND branch_id=? AND status='published'),
+    recipients(staff_profile_id) AS (
+      SELECT DISTINCT sp.id FROM target a JOIN staff_role_assignment ra ON ra.branch_id=a.branch_id
+      JOIN role r ON r.id=ra.role_id AND r.is_active=1 JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
+      JOIN staff_profile sp ON sp.id=ra.staff_profile_id AND sp.account_status='active'
+      WHERE a.audience_type IN ('branch','staff') AND ra.revoked_at IS NULL AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?)
+      UNION
+      SELECT DISTINCT sp.id FROM target a JOIN announcement_team_audience ata ON ata.announcement_id=a.id AND ata.branch_id=a.branch_id
+      JOIN staff_team_membership stm ON stm.team_id=ata.team_id AND stm.branch_id=ata.branch_id
+      JOIN staff_profile sp ON sp.id=stm.staff_profile_id AND sp.account_status='active'
+      WHERE a.audience_type='team' AND stm.revoked_at IS NULL AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+      UNION
+      SELECT DISTINCT sp.id FROM target a JOIN announcement_event_audience aea ON aea.announcement_id=a.id AND aea.branch_id=a.branch_id
+      JOIN event_staff_assignment esa ON esa.event_id=aea.event_id AND esa.branch_id=aea.branch_id
+      JOIN staff_profile sp ON sp.auth_user_id=esa.staff_auth_user_id AND sp.account_status='active'
+      WHERE a.audience_type='event' AND esa.revoked_at IS NULL AND esa.starts_at<=? AND (esa.ends_at IS NULL OR esa.ends_at>?)
+      UNION
+      SELECT DISTINCT sp.id FROM target a JOIN announcement_event_audience aea ON aea.announcement_id=a.id AND aea.branch_id=a.branch_id
+      JOIN event_team_assignment eta ON eta.event_id=aea.event_id AND eta.branch_id=aea.branch_id
+      JOIN staff_team_membership stm ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id
+      JOIN staff_profile sp ON sp.id=stm.staff_profile_id AND sp.account_status='active'
+      WHERE a.audience_type='event' AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL
+        AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
+        AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+    )
+    INSERT OR IGNORE INTO announcement_delivery(id,announcement_id,channel,recipient_ref,status,attempted_at,safe_error_code,created_at)
+    SELECT 'announcement-delivery-'||lower(hex(randomblob(16))),a.id,'in_app',recipients.staff_profile_id,'delivered',?,NULL,?
+    FROM target a JOIN recipients ON 1=1
+  \`;
+  for(const item of due.results??[]) {
+    try {
+      await env.DB.batch([
+        env.DB.prepare(\`
+          UPDATE announcement SET status='published',published_at=?,updated_at=?
+          WHERE id=? AND branch_id=? AND status='scheduled' AND publish_at<=? AND updated_by=?
+            AND EXISTS(SELECT 1 FROM staff_profile sp
+              JOIN staff_role_assignment ra ON ra.staff_profile_id=sp.id AND ra.branch_id=announcement.branch_id
+              JOIN role r ON r.id=ra.role_id AND r.is_active=1 JOIN role_capability rc ON rc.role_id=r.id AND rc.scope_mode='branch'
+              JOIN capability c ON c.id=rc.capability_id AND c.code='announcements.manage' AND c.is_active=1
+              WHERE sp.auth_user_id=announcement.updated_by AND sp.account_status='active'
+                AND ra.revoked_at IS NULL AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?))
+        \`).bind(now,now,item.id,item.branch_id,now,item.updated_by,now,now),
+        env.DB.prepare(deliverySql).bind(item.id,item.branch_id,now,now,now,now,now,now,now,now,now,now,now,now),
+      ]);
+    } catch { /* retry on the next cron tick; no record data is logged */ }
+  }
+}
+
 async function archiveAnnouncement(
   request: Request,
   env: Env,
@@ -5931,6 +6012,9 @@ function isAuthPath(pathname: string): boolean {
 }
 
 export default {
+  scheduled(controller: { scheduledTime: number }, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }): void {
+    ctx.waitUntil(publishDueAnnouncements(env,new Date(controller.scheduledTime).toISOString()));
+  },
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const requestId = crypto.randomUUID();
@@ -6774,6 +6858,12 @@ async function updatePrayerRequestStatus(
     }
     if (url.pathname === "/api/v1/announcements" && request.method === "POST") {
       return createAnnouncement(request, env, requestId, origin);
+    }
+    const announcementScheduleMatch=url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)\/schedule$/);
+    if(announcementScheduleMatch&&request.method==="POST") {
+      let announcementId:string; try { announcementId=decodeURIComponent(announcementScheduleMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_ANNOUNCEMENT_ID"}},requestId,origin); }
+      return scheduleAnnouncement(request,env,announcementId,requestId,origin);
     }
     const announcementActionMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)\/(publish|archive)$/);
     if (announcementActionMatch && request.method === "POST") {
