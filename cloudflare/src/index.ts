@@ -3651,13 +3651,13 @@ async function submitEventCloseout(
   const summary=payload.summary_notes===undefined||payload.summary_notes===null?null:
     typeof payload.summary_notes==="string"?payload.summary_notes.trim():"";
   if (summary!==null&&(typeof summary!=="string"||summary.length>5000)) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_NOTES"}},requestId,origin);
+  const digest=await eventRequestDigest({event_id:eventId,summary_notes:summary});
+  const replay=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
   const event=await env.DB.prepare("SELECT id FROM event WHERE id=? AND branch_id=? AND status='published' LIMIT 1")
     .bind(eventId,access.activeBranch.branchId).first<{id:string}>();
   if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_CLOSEOUT_READY"}},requestId,origin);
   const counts=await eventCloseoutCounts(env,eventId,access.activeBranch.branchId);
-  const digest=await eventRequestDigest({event_id:eventId,summary_notes:summary});
-  const replay=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
-  if (replay) return replay;
   const existing=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=? LIMIT 1")
     .bind(eventId,access.activeBranch.branchId).first<{id:string;status:string}>();
   if (existing) return json(409,{ok:false,error:{code:existing.status==="returned"?"CLOSEOUT_RESUBMIT_REQUIRED":"CLOSEOUT_ALREADY_EXISTS"}},requestId,origin);
