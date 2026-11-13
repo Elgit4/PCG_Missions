@@ -78,7 +78,7 @@ Last recorded CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actio
 - Better Auth schema compatibility validation against the exact pinned package in a real local D1/Worker runtime.
 - Worker-level integration tests for staff invitation, account lifecycle, staff governance and the existing contact/follow-up routes.
 - Pastoral-care narrative read/write routes remain disabled until explicit care-reader capability decisions are approved.
-- Event staff registration, capacity enforcement, replay-safe request-digest verification, transport reservations, check-in and closeout workflows.
+- Worker-level integration tests for the new event registration, capacity, cancellation replay, transport, check-in and closeout endpoints; the handlers and D1 guards are implemented but not runtime-tested.
 - Calendar and announcement CRUD/lifecycle, public content CRUD/publishing, church profile management, HTTPS external links and the published-only public read projection are now in Worker source. Their current head still requires CI and deployed Worker integration testing.
 - Reporting, analytics, export/import tooling and source-to-D1 reconciliation.
 - Cloudflare Pages preview binding and frontend API integration.
@@ -101,8 +101,8 @@ Last recorded CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actio
 
 ## Required next steps
 
-1. Implement staff event registration, capacity enforcement, replay-safe request-digest validation, transport reservations, check-in and closeout workflows.
-2. Add calendar, announcement and content Worker integration tests, plus announcement delivery/read receipts and reporting.
-3. Validate Better Auth's generated schema against the pinned release and exercise the complete auth/session lifecycle on the EU D1 binding.
-4. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content; then implement migration export/import and reconciliation for the remaining live schema.
-5. Configure a non-production Workers Build/preview deployment and verify the deployed Worker against EU D1. Production cutover remains a separate approval gate.
+1. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content, including cross-branch, wrong-team, wrong-assignment, duplicate-key and capacity-race cases.
+2. Deploy the full Worker to a non-production Workers preview and exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
+3. Add announcement delivery/read receipts, ministry reporting and privacy-controlled exports.
+4. Validate Better Auth's generated schema against the pinned release and complete source-to-D1 migration export/import and row/count/hash reconciliation for the remaining live schema.
+5. Integrate the frontend with the non-production API and verify end-to-end user workflows. Production cutover remains a separate approval gate.
