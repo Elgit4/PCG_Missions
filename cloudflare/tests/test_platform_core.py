@@ -137,5 +137,59 @@ class PlatformCoreMigrationTests(unittest.TestCase):
             )
 
 
+    def test_team_membership_update_overlap_is_rejected(self):
+        self.db.execute(
+            """INSERT INTO staff_team_membership
+               (id, staff_profile_id, team_id, branch_id, starts_at, ends_at, created_by, created_at)
+               VALUES ('member-1', 'staff-1', 'team-1', 'branch-1',
+                       '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z',
+                       'staff-1', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO staff_team_membership
+               (id, staff_profile_id, team_id, branch_id, starts_at, ends_at, created_by, created_at)
+               VALUES ('member-2', 'staff-1', 'team-1', 'branch-1',
+                       '2026-02-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z',
+                       'staff-1', '2026-02-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE staff_team_membership SET starts_at = ? WHERE id = ?",
+                ("2026-01-15T00:00:00.000Z", "member-2"),
+            )
+
+    def test_area_coverage_update_overlap_is_rejected(self):
+        self.db.execute(
+            """INSERT INTO staff_area_coverage
+               (id, staff_profile_id, service_area_id, branch_id, starts_at, ends_at, created_by, created_at)
+               VALUES ('coverage-1', 'staff-1', 'area-1', 'branch-1',
+                       '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z',
+                       'staff-1', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO staff_area_coverage
+               (id, staff_profile_id, service_area_id, branch_id, starts_at, ends_at, created_by, created_at)
+               VALUES ('coverage-2', 'staff-1', 'area-1', 'branch-1',
+                       '2026-02-01T00:00:00.000Z', '2026-03-01T00:00:00.000Z',
+                       'staff-1', '2026-02-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE staff_area_coverage SET starts_at = ? WHERE id = ?",
+                ("2026-01-15T00:00:00.000Z", "coverage-2"),
+            )
+
+    def test_capability_code_format_is_constrained(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO capability (id, code, description, created_at)
+                   VALUES ('cap-bad', 'Invalid Code!', 'invalid', '2026-01-01T00:00:00.000Z')"""
+            )
+        self.db.execute(
+            """INSERT INTO capability (id, code, description, created_at)
+               VALUES ('cap-good', 'contacts.read', 'Read contacts', '2026-01-01T00:00:00.000Z')"""
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
