@@ -33,6 +33,7 @@ The prayer/care, events/attendance/transport and calendar/announcement/content s
 - `GET /health` and `GET /api/v1/health` — non-production database readiness.
 - `/api/auth/*` — Better Auth endpoints for provisioned accounts.
 - `GET /api/v1/me` — verified staff context, branch assignments and capability metadata.
+- `GET /api/v1/reports/overview?from=YYYY-MM-DD&to=YYYY-MM-DD` — aggregate-only branch KPIs; report access requires the `reports.read` capability and excludes personal identifiers and prayer narratives.
 - `GET /api/v1/staff` and `GET /api/v1/staff/audit` — scoped staff directory and governance audit.
 - `POST/GET /api/v1/staff/invitations`, `POST /api/v1/staff/invitations/{id}/revoke`, `POST /api/v1/staff/invitations/accept` — invitation lifecycle.
 - `POST /api/v1/staff/{profileId}/deactivate|suspend|reactivate` — audited account lifecycle.
