@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "");
+  const env = loadEnv(mode, ".", "");
   const apiOrigin = env.CMI_DEV_API_ORIGIN || "http://127.0.0.1:8787";
   return {
     plugins: [react(), tailwindcss()],
