@@ -47,7 +47,7 @@ export default {
       }, requestId);
     }
 
-    if (request.method !== "GET" && request.method !== "HEAD") {
+    if (request.method !== "GET") {
       return json(405, {
         ok: false,
         error: { code: "METHOD_NOT_ALLOWED", message: "This endpoint is read-only." },
