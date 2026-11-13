@@ -31,6 +31,11 @@ The Worker is a single entry point in `src/index.ts`. Protected routes resolve t
 | Assigned prayer | `GET /api/v1/pastoral/prayer/assigned` | Narrative projection only for active intercessor assignment and explicit share |
 | Prayer shares | `POST /api/v1/pastoral/prayer/requests/{id}/shares`, `POST /.../{shareId}/revoke` | Explicit share grant and reasoned revocation |
 | Prayer response | `PATCH /api/v1/pastoral/prayer/requests/{id}` | Assigned intercessor can move request into progress or answered |
+| Events | `GET/POST /api/v1/events`, `GET/PATCH /api/v1/events/{id}` | Branch/team/assigned-scope list/detail; Admin/Pastor and Coordinator can create/edit private drafts |
+| Event lifecycle | `POST /api/v1/events/{id}/publish`, `POST /api/v1/events/{id}/cancel` | Staff-only publish (visibility remains staff and registration closed) and cancellation; D1 records actor and before/after audit |
+| Calendar | `GET/POST /api/v1/calendar`, `GET/PATCH /api/v1/calendar/{id}` | Branch/team/own/event-scoped reads; branch manager creates and updates entries with database actor checks |
+| Announcements | `GET/POST /api/v1/announcements`, `GET/PATCH /api/v1/announcements/{id}`, `POST /{id}/publish`, `POST /{id}/archive` | Branch-managed drafts with branch/staff/public/team/event audience targets; team/event targets are validated and inserted transactionally |
+| Public content | `GET /api/public/content?branch_id={id}` | Anonymous published-only projection for church profile, welcome messages, sermons, daily word, tracts, public announcements, public events and HTTPS links |
 | Events | `GET/POST /api/v1/events`, `GET/PATCH /api/v1/events/{id}` | Branch/team/assigned-scope list/detail; Admin/Pastor and Coordinator can create/edit drafts |
 | Event lifecycle | `POST /api/v1/events/{id}/publish`, `POST /api/v1/events/{id}/cancel` | Staff-only publish (visibility remains staff and registration closed) and cancellation; D1 records actor and before/after audit |
 
@@ -45,6 +50,7 @@ All protected business routes require a verified session and an authorized activ
 5. **Bounded JSON parsing:** request bodies are now rejected using declared Content-Length where available and streamed with a strict byte ceiling. Oversized streams are cancelled instead of being fully buffered before checking the limit.
 6. **Regression contracts:** added Python unit tests for contact identity mapping, CORS headers, interaction history route, merged-record exclusion and bounded request parsing.
 7. **Event lifecycle foundation:** added scoped event list/detail and draft create/update/publish/cancel routes. Publishing remains staff-only with registration closed. Migration 0016 adds a database-enforced event manager actor and append-only before/after event audit.
+8. **Calendar and announcement workflows:** added branch/team/assigned calendar reads, branch-manager calendar create/update, audience-scoped announcement list/create/update/publish/archive, and a published-only anonymous content projection. The key SQL statements were compiled with `EXPLAIN` against the real EU D1 schema without mutating records.
 
 ## API security review checklist
 
@@ -68,9 +74,9 @@ All protected business routes require a verified session and an authorized activ
 | P1 | Prayer intake | Add authenticated prayer-request creation and lifecycle controls; keep public intake disabled until separately approved |
 | P1 | Pastoral care | Implement case metadata and narrative handlers only after a distinct care-reader capability, explicit-share policy and audit tests are approved |
 | P1 | Events | Staff registration, capacity-safe public registration, idempotency digest verification, transport reservation, check-in and closeout; current lifecycle routes are staff-only and registration remains closed |
-| P1 | Calendar | Branch/team/event-scoped list, create, update and cancellation handlers |
-| P1 | Announcements | Draft, audience assignment, publish/archive and in-app delivery ledger handlers |
-| P1 | Public content | Published-only public read projections and capability-gated content editing/publishing |
+| P1 | Calendar | Add cancellation/recurrence rules, scoped event integration tests and calendar audit/read-receipt behavior; core list/create/update routes are now in source |
+| P1 | Announcements | Add in-app delivery/read receipts and integration tests; draft, audience assignment, publish/archive handlers are now in source |
+| P1 | Public content | Capability-gated content editing/publishing and church profile management; published-only public read projection is now in source |
 | P2 | Ministry reports | Typed report submissions, review/resubmit, aggregation and privacy-controlled exports |
 | P2 | Data reconciliation | Supabase export, transformation, D1 import and source-to-target row/count/hash reconciliation; no production data copied yet |
 | P2 | Communications | Verified email provider for invitations/password resets; Hubtel remains disabled until consent, sender and cost controls are approved |
@@ -82,6 +88,6 @@ All protected business routes require a verified session and an authorized activ
 - No deployed Worker request has exercised Better Auth against the EU D1 binding.
 - Invitation email and password-reset delivery are not configured; invitation token delivery remains a manual one-time handoff.
 - Pastoral-care narrative routes remain disabled.
-- Event registration/transport/check-in/closeout, calendar, announcements, public-content and reporting handlers remain incomplete.
+- Event registration/transport/check-in/closeout, public-content editing and reporting handlers remain incomplete. Calendar and announcement lifecycle plus public read projection are source-only and not deployed.
 - The D1 schema is a first porting slice, not a complete replacement for the full live Supabase schema.
 - No production data migration, frontend cutover, production DNS change or Supabase shutdown is authorized or performed.
