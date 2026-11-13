@@ -143,7 +143,7 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn('request.headers.get("Idempotency-Key")', self.source)
         self.assertIn("event_idempotency_receipt", self.source)
         self.assertIn("EVENT_CAPACITY_REACHED", self.source)
-        self.assertIn('registration_state=\'open\'', self.source)
+        self.assertIn("registration_state='open'", self.event_operations_migration)
 
     def test_event_checkin_and_transport_routes_are_idempotent_and_scoped(self):
         for name in ("getScopedEventForStaff", "createEventCheckin", "listEventCheckins", "listTransportOptions", "createTransportOption", "updateTransportOption", "listTransportReservations", "createTransportReservation", "cancelTransportReservation"):
