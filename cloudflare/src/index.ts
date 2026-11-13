@@ -58,7 +58,7 @@ function authCorsHeaders(origin: string): Headers {
   return new Headers({
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Branch-Id",
     "Access-Control-Max-Age": "600",
     "Vary": "Origin",
@@ -326,11 +326,12 @@ export default {
       }, requestId);
     }
 
+    if (request.method === "OPTIONS") {
+      if (!origin) return new Response(null, { status: 204 });
+      return new Response(null, { status: 204, headers: authCorsHeaders(origin) });
+    }
+
     if (isAuthPath(url.pathname)) {
-      if (request.method === "OPTIONS") {
-        if (!origin) return new Response(null, { status: 204 });
-        return new Response(null, { status: 204, headers: authCorsHeaders(origin) });
-      }
       if (request.method !== "GET" && request.method !== "POST") {
         return json(405, {
           ok: false,
