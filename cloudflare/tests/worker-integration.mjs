@@ -8,7 +8,7 @@ const migrationDir = path.resolve("migrations");
 const scriptPath = path.resolve("build/index.js");
 const mf = new Miniflare({
   modules: true,
-  scriptPath,
+  script: await readFile(scriptPath, "utf8"),
   compatibilityDate: "2026-11-13",
   compatibilityFlags: ["nodejs_compat"],
   d1Databases: { DB: "pcg-missions-dev" },
