@@ -130,6 +130,14 @@ BEGIN
   ) THEN RAISE(ABORT,'CARE_ASSIGNMENT_REVOKE_NOT_AUTHORIZED') END;
 END;
 
+CREATE TRIGGER care_assignment_revocation_immutable
+BEFORE UPDATE OF revoked_by,revocation_reason ON care_assignment
+WHEN OLD.revoked_at IS NOT NULL
+  AND (NEW.revoked_by IS NOT OLD.revoked_by OR NEW.revocation_reason IS NOT OLD.revocation_reason)
+BEGIN
+  SELECT RAISE(ABORT,'CARE_ASSIGNMENT_REVOCATION_IMMUTABLE');
+END;
+
 CREATE TRIGGER care_assignment_no_delete
 BEFORE DELETE ON care_assignment
 BEGIN
@@ -158,6 +166,7 @@ BEGIN
     JOIN care_assignment ca ON ca.care_record_id=cr.id AND ca.branch_id=cr.branch_id
     JOIN staff_profile actor ON actor.auth_user_id=NEW.actor_user_id AND actor.account_status='active'
     JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=cr.branch_id
+    JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
     JOIN role r ON r.id=ra.role_id AND r.is_active=1
     JOIN role_capability rc ON rc.role_id=r.id AND rc.scope_mode='explicit_share'
     JOIN capability c ON c.id=rc.capability_id AND c.code='pastoral.case.interact' AND c.is_active=1
@@ -219,6 +228,7 @@ BEGIN
     FROM care_assignment ca
     JOIN staff_profile actor ON actor.auth_user_id=NEW.updated_by AND actor.account_status='active'
     JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+    JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
     JOIN role r ON r.id=ra.role_id AND r.is_active=1
     JOIN role_capability rc ON rc.role_id=r.id AND rc.scope_mode='explicit_share'
     JOIN capability c ON c.id=rc.capability_id AND c.code='pastoral.case.update' AND c.is_active=1
@@ -255,7 +265,7 @@ BEGIN
   INSERT INTO care_access_audit
     (id,care_record_id,branch_id,actor_user_id,action,reason,request_id,safe_metadata,accessed_at)
   VALUES
-    ('care-updated-'||NEW.id||'-'||NEW.updated_at,NEW.id,NEW.branch_id,NEW.updated_by,'updated',
+    ('care-updated-'||lower(hex(randomblob(16))),NEW.id,NEW.branch_id,NEW.updated_by,'updated',
      'Pastoral-care case status changed',NULL,json_object('status',NEW.status),NEW.updated_at);
 END;
 
