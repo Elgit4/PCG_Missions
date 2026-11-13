@@ -50,7 +50,12 @@ export function canOpenStaffPage(
   }
   if (session.staff.account_status !== "active") return false;
   if (page === "Overview") return true;
-  if (page === "Prayer" || page === "Reports") return false;
+  if (page === "Prayer") return false;
+  if (page === "Reports") {
+    return hasCapability(session, "report.read.own", branchId) ||
+      hasCapability(session, "report.review.branch", branchId) ||
+      hasCapability(session, "report.review.team", branchId);
+  }
 
   const required = PAGE_CAPABILITIES[page] ?? [];
   return required.some((code) => hasCapability(session, code, branchId));
@@ -67,6 +72,7 @@ export function getAvailableStaffPages(session: StaffSession, branchId?: string)
     "Announcements",
     "Content",
     "Teams & Areas",
+    "Reports",
   ];
   return candidates.filter((page) => canOpenStaffPage(session, page, branchId));
 }
