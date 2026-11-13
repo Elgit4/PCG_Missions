@@ -2539,6 +2539,420 @@ async function reassignFollowupTask(
   return json(200, { ok: true, task_id: taskId, assignee_profile_id: assigneeProfileId || null, team_id: nextTeam }, requestId, origin);
 }
 
+
+function hasScopedGrant(
+  context: Extract<Awaited<ReturnType<typeof resolveStaffContext>>, { state: "authenticated" }>,
+  code: string,
+  scopeMode: string,
+): boolean {
+  return !!context.activeBranch?.capabilities.some(
+    (grant) => grant.code === code && grant.scopeMode === scopeMode,
+  );
+}
+
+async function listPrayerQueue(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  if (!hasScopedGrant(context, "prayer.request.share", "branch")) {
+    return json(403, { ok: false, error: { code: "PRAYER_QUEUE_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+  const url = new URL(request.url);
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 50 : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      [...url.searchParams.keys()].some((key) => key !== "limit")) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_QUEUE_QUERY" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const actorAuthorized = `
+    EXISTS (
+      SELECT 1
+      FROM staff_profile actor
+      JOIN staff_role_assignment ra ON ra.staff_profile_id = actor.id
+      JOIN role r ON r.id = ra.role_id AND r.is_active = 1
+      JOIN role_capability rc ON rc.role_id = r.id
+      JOIN capability cap ON cap.id = rc.capability_id AND cap.is_active = 1
+      WHERE actor.id = ? AND actor.account_status = 'active'
+        AND ra.branch_id = prayer_request.branch_id
+        AND ra.revoked_at IS NULL AND ra.starts_at <= ?
+        AND (ra.ends_at IS NULL OR ra.ends_at > ?)
+        AND cap.code = 'prayer.request.share' AND rc.scope_mode = 'branch'
+    )
+  `;
+  const batch = await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO prayer_access_audit
+        (id, prayer_request_id, branch_id, actor_user_id, action, reason, request_id, accessed_at, safe_metadata)
+      SELECT 'prayer-queue-' || lower(hex(randomblob(16))), prayer_request.id,
+             prayer_request.branch_id, ?, 'read',
+             'Prayer queue metadata accessed for assignment', ?, ?,
+             json_object('projection', 'metadata_only')
+      FROM prayer_request
+      WHERE prayer_request.branch_id = ?
+        AND prayer_request.status IN ('open','assigned','in_progress')
+        AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
+        AND ${actorAuthorized}
+    `).bind(
+      context.staff.userId, requestId, now, context.activeBranch.branchId,
+      now, context.staff.profileId, now, now,
+    ),
+    env.DB.prepare(`
+      SELECT id, status, sensitivity, expires_at, created_at, updated_at
+      FROM prayer_request
+      WHERE branch_id = ?
+        AND status IN ('open','assigned','in_progress')
+        AND (expires_at IS NULL OR expires_at > ?)
+        AND ${actorAuthorized}
+      ORDER BY created_at ASC, id ASC
+      LIMIT ?
+    `).bind(
+      context.activeBranch.branchId, now,
+      context.staff.profileId, now, now, limit,
+    ),
+  ]);
+  const rows = batch[1]?.results ?? [];
+  return json(200, { ok: true, requests: rows }, requestId, origin);
+}
+
+async function listAssignedPrayerRequests(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  if (!hasScopedGrant(context, "prayer.request.read", "explicit_share")) {
+    return json(403, { ok: false, error: { code: "PRAYER_ASSIGNMENT_READ_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+  const url = new URL(request.url);
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 50 : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      [...url.searchParams.keys()].some((key) => key !== "limit")) {
+    return json(400, { ok: false, error: { code: "INVALID_ASSIGNED_PRAYER_QUERY" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const activeShareAndAssignment = `
+    prayer_assignment.intercessor_user_id = ?
+    AND prayer_assignment.branch_id = prayer_request.branch_id
+    AND prayer_assignment.revoked_at IS NULL
+    AND prayer_assignment.starts_at <= ?
+    AND (prayer_assignment.ends_at IS NULL OR prayer_assignment.ends_at > ?)
+    AND staff_record_share.staff_profile_id = ?
+    AND staff_record_share.record_type = 'prayer_request'
+    AND staff_record_share.record_id = prayer_request.id
+    AND staff_record_share.branch_id = prayer_request.branch_id
+    AND staff_record_share.revoked_at IS NULL
+    AND staff_record_share.starts_at <= ?
+    AND (staff_record_share.ends_at IS NULL OR staff_record_share.ends_at > ?)
+    AND EXISTS (
+      SELECT 1
+      FROM staff_role_assignment ra
+      JOIN role r ON r.id = ra.role_id AND r.is_active = 1
+      JOIN role_capability rc ON rc.role_id = r.id
+      JOIN capability cap ON cap.id = rc.capability_id AND cap.is_active = 1
+      WHERE ra.staff_profile_id = ?
+        AND ra.branch_id = prayer_request.branch_id
+        AND ra.revoked_at IS NULL
+        AND ra.starts_at <= ?
+        AND (ra.ends_at IS NULL OR ra.ends_at > ?)
+        AND cap.code = 'prayer.request.read'
+        AND rc.scope_mode = 'explicit_share'
+    )
+  `;
+  const batch = await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO prayer_access_audit
+        (id, prayer_request_id, branch_id, actor_user_id, action, reason, request_id, accessed_at, safe_metadata)
+      SELECT 'prayer-read-' || lower(hex(randomblob(16))), prayer_request.id,
+             prayer_request.branch_id, ?, 'read',
+             'Assigned intercessor read through explicit share', ?, ?,
+             json_object('access_mode', 'explicit_share')
+      FROM prayer_request
+      JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
+      JOIN staff_record_share ON staff_record_share.record_id = prayer_request.id
+      WHERE prayer_request.branch_id = ?
+        AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
+        AND ${activeShareAndAssignment}
+    `).bind(
+      context.staff.userId, requestId, now, context.activeBranch.branchId, now,
+      context.staff.userId, now, now, context.staff.profileId, now, now,
+    ),
+    env.DB.prepare(`
+      SELECT prayer_request.id, prayer_request.request_text, prayer_request.status,
+             prayer_request.sensitivity, prayer_request.expires_at,
+             prayer_request.answered_at, prayer_request.created_at, prayer_request.updated_at
+      FROM prayer_request
+      JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
+      JOIN staff_record_share ON staff_record_share.record_id = prayer_request.id
+      WHERE prayer_request.branch_id = ?
+        AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
+        AND ${activeShareAndAssignment}
+      ORDER BY prayer_request.created_at DESC, prayer_request.id DESC
+      LIMIT ?
+    `).bind(
+      context.activeBranch.branchId, now,
+      context.staff.userId, now, now, context.staff.profileId, now, now, limit,
+    ),
+  ]);
+  return json(200, { ok: true, requests: batch[1]?.results ?? [] }, requestId, origin);
+}
+
+async function sharePrayerRequest(
+  request: Request,
+  env: Env,
+  prayerRequestId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "prayer.request.share");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { staff_profile_id?: unknown; purpose?: unknown; starts_at?: unknown; ends_at?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !["staff_profile_id","purpose","starts_at","ends_at"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_SHARE_BODY" } }, requestId, origin);
+  }
+  const recipientProfileId = typeof payload.staff_profile_id === "string" ? payload.staff_profile_id.trim() : "";
+  const purpose = typeof payload.purpose === "string" ? payload.purpose.trim() : "";
+  const now = new Date().toISOString();
+  const startsAt = parseIsoTimestamp(payload.starts_at, now);
+  const endsAt = payload.ends_at === undefined || payload.ends_at === null || payload.ends_at === ""
+    ? null : parseIsoTimestamp(payload.ends_at, "");
+  if (
+    !recipientProfileId || recipientProfileId.length > 128 ||
+    purpose.length < 10 || purpose.length > 300 ||
+    !startsAt || startsAt < now ||
+    (payload.ends_at !== undefined && payload.ends_at !== null && payload.ends_at !== "" && !endsAt) ||
+    (endsAt !== null && endsAt <= startsAt)
+  ) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_SHARE_DETAILS" } }, requestId, origin);
+  }
+  const requestRow = await env.DB.prepare(`
+    SELECT id FROM prayer_request
+    WHERE id = ? AND branch_id = ? AND status IN ('open','assigned','in_progress')
+      AND (expires_at IS NULL OR expires_at > ?)
+    LIMIT 1
+  `).bind(prayerRequestId, access.activeBranch.branchId, now).first<{ id: string }>();
+  if (!requestRow) return json(404, { ok: false, error: { code: "PRAYER_REQUEST_NOT_AVAILABLE" } }, requestId, origin);
+  const recipient = await env.DB.prepare(`
+    SELECT sp.id, sp.auth_user_id
+    FROM staff_profile sp
+    JOIN staff_role_assignment ra ON ra.staff_profile_id = sp.id
+    JOIN role r ON r.id = ra.role_id AND r.is_active = 1
+    WHERE sp.id = ? AND sp.account_status = 'active'
+      AND r.code = 'prayer_intercessor'
+      AND ra.branch_id = ? AND ra.revoked_at IS NULL
+      AND ra.starts_at <= ? AND (ra.ends_at IS NULL OR ra.ends_at > ?)
+    LIMIT 1
+  `).bind(recipientProfileId, access.activeBranch.branchId, now, now).first<{
+    id: string; auth_user_id: string;
+  }>();
+  if (!recipient) return json(400, { ok: false, error: { code: "RECIPIENT_NOT_ACTIVE_INTERCESSOR" } }, requestId, origin);
+
+  const shareId = crypto.randomUUID();
+  const assignmentId = crypto.randomUUID();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO staff_record_share
+          (id, branch_id, record_type, record_id, staff_profile_id, granted_by,
+           purpose, starts_at, ends_at, created_at)
+        SELECT ?, p.branch_id, 'prayer_request', p.id, ?, ?, ?, ?, ?, ?
+        FROM prayer_request p
+        WHERE p.id = ? AND p.branch_id = ?
+          AND p.status IN ('open','assigned','in_progress')
+          AND (p.expires_at IS NULL OR p.expires_at > ?)
+      `).bind(
+        shareId, recipient.id, access.staff.profileId, purpose, startsAt, endsAt, now,
+        prayerRequestId, access.activeBranch.branchId, now,
+      ),
+      env.DB.prepare(`
+        INSERT INTO prayer_assignment
+          (id, prayer_request_id, branch_id, intercessor_user_id, assigned_by, starts_at, ends_at, created_at)
+        SELECT ?, p.id, p.branch_id, ?, ?, ?, ?, ?
+        FROM prayer_request p
+        JOIN staff_record_share s
+          ON s.record_type = 'prayer_request' AND s.record_id = p.id
+         AND s.branch_id = p.branch_id AND s.staff_profile_id = ?
+         AND s.revoked_at IS NULL
+        WHERE p.id = ? AND p.branch_id = ?
+      `).bind(
+        assignmentId, recipient.auth_user_id, access.staff.userId,
+        startsAt, endsAt, now, recipient.id, prayerRequestId, access.activeBranch.branchId,
+      ),
+      env.DB.prepare(`
+        UPDATE prayer_request SET status = 'assigned', updated_at = ?
+        WHERE id = ? AND branch_id = ? AND status = 'open'
+      `).bind(now, prayerRequestId, access.activeBranch.branchId),
+    ]);
+    if (results.some((result) => !result.success) ||
+        (results[0]?.meta?.changes ?? 0) !== 1 ||
+        (results[1]?.meta?.changes ?? 0) !== 1) {
+      throw new Error("PRAYER_SHARE_CREATE_FAILED");
+    }
+  } catch {
+    return json(409, { ok: false, error: { code: "PRAYER_SHARE_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, {
+    ok: true,
+    share_id: shareId,
+    assignment_id: assignmentId,
+    staff_profile_id: recipient.id,
+    starts_at: startsAt,
+    ends_at: endsAt,
+  }, requestId, origin);
+}
+
+async function revokePrayerShare(
+  request: Request,
+  env: Env,
+  prayerRequestId: string,
+  shareId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "prayer.request.share");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { reason?: unknown };
+  const reason = payload && typeof payload === "object" && !Array.isArray(payload) &&
+    typeof payload.reason === "string" ? payload.reason.trim() : "";
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => key !== "reason") ||
+      reason.length < 10 || reason.length > 300) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_SHARE_REVOCATION" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE staff_record_share
+        SET revoked_at = ?, revoked_by = ?, revocation_reason = ?
+        WHERE id = ? AND branch_id = ? AND record_type = 'prayer_request'
+          AND record_id = ? AND revoked_at IS NULL
+      `).bind(
+        now, access.staff.profileId, reason, shareId,
+        access.activeBranch.branchId, prayerRequestId,
+      ),
+      env.DB.prepare(`
+        UPDATE prayer_assignment
+        SET revoked_at = ?, revoked_by = ?
+        WHERE prayer_request_id = ? AND branch_id = ?
+          AND intercessor_user_id = (
+            SELECT recipient.auth_user_id
+            FROM staff_record_share s
+            JOIN staff_profile recipient ON recipient.id = s.staff_profile_id
+            WHERE s.id = ? AND s.revoked_at = ?
+          )
+          AND revoked_at IS NULL
+      `).bind(
+        now, access.staff.userId, prayerRequestId, access.activeBranch.branchId, shareId, now,
+      ),
+    ]);
+    if (results.some((result) => !result.success) || (results[0]?.meta?.changes ?? 0) !== 1) {
+      return json(404, { ok: false, error: { code: "ACTIVE_PRAYER_SHARE_NOT_FOUND" } }, requestId, origin);
+    }
+  } catch {
+    return json(409, { ok: false, error: { code: "PRAYER_SHARE_REVOCATION_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, share_id: shareId, revoked_at: now }, requestId, origin);
+}
+
+async function updatePrayerRequestStatus(
+  request: Request,
+  env: Env,
+  prayerRequestId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  if (!hasScopedGrant(context, "prayer.request.respond", "explicit_share")) {
+    return json(403, { ok: false, error: { code: "PRAYER_RESPONSE_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { status?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length !== 1 || typeof payload.status !== "string" ||
+      !["in_progress","answered"].includes(payload.status)) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_STATUS" } }, requestId, origin);
+  }
+  const nextStatus = payload.status;
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare(`
+    UPDATE prayer_request
+    SET status = ?, answered_at = CASE WHEN ? = 'answered' THEN ? ELSE NULL END,
+        updated_at = ?
+    WHERE id = ? AND branch_id = ?
+      AND status IN ('open','assigned','in_progress')
+      AND (expires_at IS NULL OR expires_at > ?)
+      AND EXISTS (
+        SELECT 1 FROM prayer_assignment pa
+        WHERE pa.prayer_request_id = prayer_request.id
+          AND pa.branch_id = prayer_request.branch_id
+          AND pa.intercessor_user_id = ?
+          AND pa.revoked_at IS NULL
+          AND pa.starts_at <= ? AND (pa.ends_at IS NULL OR pa.ends_at > ?)
+      )
+      AND EXISTS (
+        SELECT 1 FROM staff_record_share s
+        WHERE s.record_type = 'prayer_request' AND s.record_id = prayer_request.id
+          AND s.branch_id = prayer_request.branch_id
+          AND s.staff_profile_id = ?
+          AND s.revoked_at IS NULL
+          AND s.starts_at <= ? AND (s.ends_at IS NULL OR s.ends_at > ?)
+      )
+      AND EXISTS (
+        SELECT 1 FROM staff_role_assignment ra
+        JOIN role r ON r.id = ra.role_id AND r.is_active = 1
+        JOIN role_capability rc ON rc.role_id = r.id
+        JOIN capability cap ON cap.id = rc.capability_id AND cap.is_active = 1
+        JOIN staff_profile sp ON sp.id = ra.staff_profile_id
+        WHERE sp.auth_user_id = ? AND sp.account_status = 'active'
+          AND ra.branch_id = prayer_request.branch_id
+          AND ra.revoked_at IS NULL AND ra.starts_at <= ?
+          AND (ra.ends_at IS NULL OR ra.ends_at > ?)
+          AND cap.code = 'prayer.request.respond' AND rc.scope_mode = 'explicit_share'
+      )
+  `).bind(
+    nextStatus, nextStatus, now, now,
+    prayerRequestId, context.activeBranch.branchId, now,
+    context.staff.userId, now, now,
+    context.staff.profileId, now, now,
+    context.staff.userId, now, now,
+  ).run();
+  if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+    return json(404, { ok: false, error: { code: "ASSIGNED_PRAYER_REQUEST_NOT_FOUND" } }, requestId, origin);
+  }
+  const audit = await env.DB.batch([
+    env.DB.prepare(`
+      INSERT INTO prayer_access_audit
+        (id, prayer_request_id, branch_id, actor_user_id, action, reason, request_id, accessed_at, safe_metadata)
+      VALUES (?, ?, ?, ?, 'update', 'Assigned intercessor updated prayer status', ?, ?, ?)
+    `).bind(
+      crypto.randomUUID(), prayerRequestId, context.activeBranch.branchId,
+      context.staff.userId, requestId, now, JSON.stringify({ status: nextStatus }),
+    ),
+  ]);
+  if (audit.some((row) => !row.success)) {
+    return json(500, { ok: false, error: { code: "PRAYER_AUDIT_WRITE_FAILED" } }, requestId, origin);
+  }
+  return json(200, { ok: true, prayer_request_id: prayerRequestId, status: nextStatus }, requestId, origin);
+}
+
 async function listStaffAudit(
   request: Request,
   env: Env,
@@ -2660,6 +3074,39 @@ export default {
           error: { code: "AUTH_NOT_CONFIGURED", message: "Authentication is not configured for this environment." },
         }, requestId, origin);
       }
+    }
+
+    if (url.pathname === "/api/v1/pastoral/prayer/queue" && request.method === "GET") {
+      return listPrayerQueue(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/pastoral/prayer/assigned" && request.method === "GET") {
+      return listAssignedPrayerRequests(request, env, requestId, origin);
+    }
+    const prayerShareRevokeMatch = url.pathname.match(/^\/api\/v1\/pastoral\/prayer\/requests\/([^/]+)\/shares\/([^/]+)\/revoke$/);
+    if (prayerShareRevokeMatch && request.method === "POST") {
+      let prayerId: string;
+      let shareId: string;
+      try {
+        prayerId = decodeURIComponent(prayerShareRevokeMatch[1]);
+        shareId = decodeURIComponent(prayerShareRevokeMatch[2]);
+      } catch {
+        return json(400, { ok: false, error: { code: "INVALID_PRAYER_SHARE_ID" } }, requestId, origin);
+      }
+      return revokePrayerShare(request, env, prayerId, shareId, requestId, origin);
+    }
+    const prayerShareMatch = url.pathname.match(/^\/api\/v1\/pastoral\/prayer\/requests\/([^/]+)\/shares$/);
+    if (prayerShareMatch && request.method === "POST") {
+      let prayerId: string;
+      try { prayerId = decodeURIComponent(prayerShareMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_PRAYER_REQUEST_ID" } }, requestId, origin); }
+      return sharePrayerRequest(request, env, prayerId, requestId, origin);
+    }
+    const prayerRequestMatch = url.pathname.match(/^\/api\/v1\/pastoral\/prayer\/requests\/([^/]+)$/);
+    if (prayerRequestMatch && request.method === "PATCH") {
+      let prayerId: string;
+      try { prayerId = decodeURIComponent(prayerRequestMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_PRAYER_REQUEST_ID" } }, requestId, origin); }
+      return updatePrayerRequestStatus(request, env, prayerId, requestId, origin);
     }
 
     if (url.pathname === "/api/v1/followup/tasks" && request.method === "GET") {
