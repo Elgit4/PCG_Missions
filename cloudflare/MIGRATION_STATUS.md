@@ -33,11 +33,20 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 
 A successful CI result proves the SQL is accepted by the CI runner's SQLite engine. It does not replace a D1 preview test, a Better Auth schema compatibility check, a Worker runtime test or a domain authorization test.
 
+## Authentication and authorization progress
+
+- Better Auth `1.7.22` is pinned; D1-backed auth is initialized per request and mounted under `/api/auth/*`.
+- Email/password sign-in for provisioned identities is enabled; public self-registration is disabled.
+- Exact-origin checks, secure HttpOnly session cookies, no cookie cache, seven-day server-side sessions and IP-based rate-limit configuration are in place.
+- `GET /api/v1/me` resolves the session to an active staff profile and branch-valid roles/capability metadata; caller-supplied branch IDs are validated against active assignments.
+- The endpoint is context discovery, not a substitute for server-side authorization. No ministry business route is enabled yet.
+
 ## Not implemented yet
 
-- Better Auth runtime configuration and actual sign-in/session endpoints.
-- Resend invitation and password-reset delivery.
-- Capability and branch authorization helper in src/authorization.ts; verified session resolution and protected-route integration remain pending.
+- Staff invitation/create-account workflow and real email delivery for invitation/password reset.
+- Session revocation wired to deactivation and complete account reactivation workflow.
+- Better Auth schema compatibility validation against the exact pinned package in local D1 and Worker runtime.
+- Capability/record authorization integration into domain handlers; verified session resolution is now available, but protected business routes remain disabled.
 - Ministry-sensitive prayer/care domain tables and runtime access-audit enforcement (the immutable audit ledger is now defined).
 - Events, registrations, check-in, transport, calendar, announcements, public content and reports.
 - Data export/import tooling and reconciliation reports.
