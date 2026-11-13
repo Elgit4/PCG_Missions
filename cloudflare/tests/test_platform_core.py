@@ -11,6 +11,7 @@ class PlatformCoreMigrationTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
+        self.db.executescript((MIGRATION.parent / "0002_contacts_followup.sql").read_text(encoding="utf-8"))
         self.db.execute(
             'INSERT INTO "user" (id, name, email, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
             ("user-1", "Admin Pastor", "admin@example.test", 1, 1),
@@ -189,6 +190,119 @@ class PlatformCoreMigrationTests(unittest.TestCase):
             """INSERT INTO capability (id, code, description, created_at)
                VALUES ('cap-good', 'contacts.read', 'Read contacts', '2026-01-01T00:00:00.000Z')"""
         )
+
+
+    def add_contact(self, contact_id="contact-1", email=None):
+        self.db.execute(
+            """INSERT INTO contact
+               (id, branch_id, first_name, email_normalized, created_by, created_at, updated_at)
+               VALUES (?, 'branch-1', 'Ama', ?, 'user-1',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')""",
+            (contact_id, email),
+        )
+
+    def test_contact_email_must_be_normalized(self):
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.add_contact(email="Ama@Example.com")
+        self.add_contact(email="ama@example.com")
+
+    def test_contact_capture_idempotency_and_metadata_allowlist(self):
+        self.add_contact()
+        values = (
+            "capture-1", "contact-1", "branch-1", "staff_manual", "request-1",
+            bytes(range(32)), "2026-01-01T00:00:00.000Z", '{"app_version":"1.0"}',
+            "2026-01-01T00:00:00.000Z",
+        )
+        self.db.execute(
+            """INSERT INTO contact_capture
+               (id, contact_id, branch_id, capture_source, client_request_id,
+                request_digest, captured_at, source_metadata, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            values,
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO contact_capture
+                   (id, contact_id, branch_id, capture_source, client_request_id,
+                    request_digest, captured_at, source_metadata, created_at)
+                   VALUES ('capture-2', 'contact-1', 'branch-1', 'staff_manual', 'request-1',
+                           ?, '2026-01-01T00:00:00.000Z', '{}', '2026-01-01T00:00:00.000Z')""",
+                (bytes(range(32)),),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO contact_capture
+                   (id, contact_id, branch_id, capture_source, client_request_id,
+                    request_digest, captured_at, source_metadata, created_at)
+                   VALUES ('capture-3', 'contact-1', 'branch-1', 'staff_manual', 'request-3',
+                           ?, '2026-01-01T00:00:00.000Z', '{"unexpected":"secret"}',
+                           '2026-01-01T00:00:00.000Z')""",
+                (bytes(range(32)),),
+            )
+
+    def test_contact_assignment_rejects_overlapping_staff_periods(self):
+        self.add_contact()
+        self.db.execute(
+            """INSERT INTO contact_assignment
+               (id, contact_id, branch_id, assignee_user_id, assigned_by, starts_at, ends_at, created_at)
+               VALUES ('assign-1', 'contact-1', 'branch-1', 'user-1', 'user-1',
+                       '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z',
+                       '2026-01-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO contact_assignment
+                   (id, contact_id, branch_id, assignee_user_id, assigned_by, starts_at, created_at)
+                   VALUES ('assign-2', 'contact-1', 'branch-1', 'user-1', 'user-1',
+                           '2026-01-15T00:00:00.000Z', '2026-01-15T00:00:00.000Z')"""
+            )
+
+    def test_contact_assignment_requires_exactly_one_target(self):
+        self.add_contact()
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO contact_assignment
+                   (id, contact_id, branch_id, assigned_by, starts_at, created_at)
+                   VALUES ('assign-invalid', 'contact-1', 'branch-1', 'user-1',
+                           '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+            )
+
+    def test_followup_task_completion_requires_timestamp_and_one_target(self):
+        self.add_contact()
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO followup_task
+                   (id, contact_id, branch_id, assignee_user_id, created_by,
+                    status, created_at, updated_at)
+                   VALUES ('task-invalid', 'contact-1', 'branch-1', 'user-1', 'user-1',
+                           'completed', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO followup_task
+                   (id, contact_id, branch_id, created_by, created_at, updated_at)
+                   VALUES ('task-no-target', 'contact-1', 'branch-1', 'user-1',
+                           '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+            )
+
+    def test_followup_task_event_is_append_only(self):
+        self.add_contact()
+        self.db.execute(
+            """INSERT INTO followup_task
+               (id, contact_id, branch_id, assignee_user_id, created_by, created_at, updated_at)
+               VALUES ('task-1', 'contact-1', 'branch-1', 'user-1', 'user-1',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO followup_task_event
+               (id, task_id, actor_user_id, event_type, details, created_at)
+               VALUES ('task-event-1', 'task-1', 'user-1', 'created', '{}',
+                       '2026-01-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE followup_task_event SET event_type = 'cancelled' WHERE id = 'task-event-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM followup_task_event WHERE id = 'task-event-1'")
 
 
 if __name__ == "__main__":
