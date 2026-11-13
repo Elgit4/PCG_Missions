@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Activity, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { Activity, ArrowRight, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, FileText, KeyRound, LockKeyhole, LogOut, Megaphone, MoreHorizontal, Network, Plus, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { OperationsWorkspace } from "./OperationsWorkspace";
 import { TeamAdministrationWorkspace } from "./TeamAdministrationWorkspace";
 import { MinistryReportsWorkspace } from "./MinistryReportsWorkspace";
@@ -630,47 +630,61 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                 <article className="cmi-stat-card"><span>OVERDUE TASKS</span><strong>{canReadTasks ? overdueTasks.length : "—"}</strong><small>{canReadTasks ? "Open tasks past their due time" : "Task access not granted"}</small></article>
                 <article className="cmi-stat-card"><span>COMPLETED TASKS</span><strong>{canReadTasks ? completedTasks.length : "—"}</strong><small>{canReadTasks ? "In the loaded task records" : "Task access not granted"}</small></article>
               </div>
-              <div className="cmi-quick-actions">
-                <span>QUICK ACCESS</span>
-                {canReadContacts && <button type="button" onClick={() => setPage("Contacts")}><Users size={15} /> Open contacts</button>}
-                {canReadTasks && <button type="button" onClick={() => setPage("Follow-up")}><ClipboardList size={15} /> Review follow-up</button>}
-              </div>
-              {canReadContacts && contacts.length === 0 && !loading && <section className="cmi-getting-started">
-                <div className="cmi-getting-started-copy">
-                  <p className="cmi-eyebrow">GETTING STARTED</p>
-                  <h3>Your branch is ready for its first contact.</h3>
-                  <p>There are currently no contact or follow-up records in this branch. Add a real contact to unlock the contact profile, notes, call and visit history, and linked follow-up tasks.</p>
-                  <button type="button" className="cmi-button cmi-button-primary" onClick={() => { setPage("Contacts"); setShowContactForm(true); }}>
+              <div className="cmi-overview-tools">
+                <section className="cmi-overview-card cmi-onboarding-card">
+                  <div className="cmi-overview-card-heading">
+                    <div><p className="cmi-eyebrow">GETTING STARTED</p><h3>Build your branch contact workflow</h3><p>Follow these three steps to capture a contact and organise the next action.</p></div>
+                    <span className="cmi-overview-count">01–03</span>
+                  </div>
+                  <button type="button" className="cmi-button cmi-button-primary cmi-overview-primary-action" onClick={() => { setPage("Contacts"); setShowContactForm(true); }}>
                     <Plus size={15} /> Add your first contact
                   </button>
-                </div>
-                <ol className="cmi-getting-started-steps">
-                  <li><strong>Capture a contact</strong><span>Use the Contacts page to record a visitor or person needing follow-up.</span></li>
-                  <li><strong>Open the contact name</strong><span>View the profile, add ordinary notes, and record calls, visits or messages.</span></li>
-                  <li><strong>Create a follow-up task</strong><span>Link the task to that contact, set a priority and due date, then track its progress.</span></li>
-                </ol>
-              </section>}
-              <div className="cmi-panel"><div className="cmi-panel-heading"><div><p className="cmi-eyebrow">ACCESS SUMMARY</p><h3>What is actually available</h3><p>The Admin workspace only lists modules whose screens and permissions are currently enabled.</p></div></div>
-                <div className="cmi-permission-list">
-                  <div><span className="cmi-dot enabled" />Overview and branch workspace <strong>Available</strong></div>
-                  <div><span className={canReadContacts ? "cmi-dot enabled" : "cmi-dot"} />Contacts, notes and activity history <strong>{canReadContacts ? "Available in Contacts" : "Not granted"}</strong></div>
-                  <div><span className={canReadTasks ? "cmi-dot enabled" : "cmi-dot"} />Follow-up tasks <strong>{canReadTasks ? "Available" : "Not granted"}</strong></div>
-                  <div><span className={canReadStaffDirectory ? "cmi-dot enabled" : "cmi-dot"} />Staff accounts <strong>{canReadStaffDirectory ? "Available" : "Not granted"}</strong></div>
-                  <div><span className={canManagePasswordResets ? "cmi-dot enabled" : "cmi-dot"} />Password-reset requests <strong>{canManagePasswordResets ? "Available" : "Not granted"}</strong></div>
-                  <div><span className={availablePages.includes("Teams & Areas") ? "cmi-dot enabled" : "cmi-dot"} />Teams & service areas <strong>{availablePages.includes("Teams & Areas") ? "Available" : "Not granted"}</strong></div>
-                  <div><span className={availablePages.includes("Reports") ? "cmi-dot enabled" : "cmi-dot"} />Typed ministry reports <strong>{availablePages.includes("Reports") ? "Available" : "Not granted"}</strong></div>
-                </div>
-                <div className="cmi-module-boundary">
-                  <p className="cmi-eyebrow">RESTRICTED OR NOT YET ENABLED</p>
-                  <div className="cmi-module-boundary-grid">
-                    <span><strong>Events & calendar drafts</strong><small>Private branch-scoped authoring is available to Admin/Pastor; registration, transport, attendance and check-in remain disabled</small></span>
-                    <span><strong>Announcements & visitor content</strong><small>Admin/Pastor can prepare private announcement, sermon and welcome-message drafts; publication and delivery remain disabled</small></span>
-                    <span><strong>Prayer & pastoral care</strong><small>Restricted workflows are not exposed in this workspace</small></span>
-                    <span><strong>Report exports</strong><small>Typed reports support role-scoped submission and review; bulk export remains disabled</small></span>
-                    <span><strong>SMS campaigns & automation</strong><small>Dispatch, consent and delivery tracking are not enabled</small></span>
-                    <span><strong>Offline capture and sync</strong><small>Disabled for this release</small></span>
+                  <div className="cmi-overview-steps">
+                    <details className="cmi-overview-disclosure">
+                      <summary><span className="cmi-step-number">01</span><span><strong>Capture a contact</strong><small>Record a visitor or person who needs follow-up.</small></span><ChevronDown size={17} /></summary>
+                      <div className="cmi-disclosure-body"><p>Use the Contacts page to add a person's name and only the optional details needed for ministry follow-up. Access to identity fields remains permission-controlled.</p><button type="button" className="cmi-text-action" onClick={() => { setPage("Contacts"); setShowContactForm(true); }}>Open contact form <ArrowRight size={14} /></button></div>
+                    </details>
+                    <details className="cmi-overview-disclosure">
+                      <summary><span className="cmi-step-number">02</span><span><strong>Open the contact profile</strong><small>Keep notes and interaction history together.</small></span><ChevronDown size={17} /></summary>
+                      <div className="cmi-disclosure-body"><p>Select a contact's name to view the profile, add ordinary notes, and record calls, visits or messages when your role permits.</p><button type="button" className="cmi-text-action" onClick={() => setPage("Contacts")}>Go to Contacts <ArrowRight size={14} /></button></div>
+                    </details>
+                    <details className="cmi-overview-disclosure">
+                      <summary><span className="cmi-step-number">03</span><span><strong>Create a follow-up task</strong><small>Assign a priority and due date, then track progress.</small></span><ChevronDown size={17} /></summary>
+                      <div className="cmi-disclosure-body"><p>Tasks are linked to a visible contact. Create one from Follow-up, set a priority and due date, then update it as work progresses.</p><button type="button" className="cmi-text-action" onClick={() => setPage("Follow-up")}>Open Follow-up <ArrowRight size={14} /></button></div>
+                    </details>
                   </div>
-                </div>
+                </section>
+
+                <section className="cmi-overview-card cmi-access-card">
+                  <div className="cmi-overview-card-heading">
+                    <div><p className="cmi-eyebrow">ACCESS & MODULES</p><h3>Your workspace at a glance</h3><p>Open a category to see what your current role can use and what is not enabled.</p></div>
+                    <span className="cmi-access-summary-count">{[canReadContacts,canReadTasks,canReadStaffDirectory,canManagePasswordResets,availablePages.includes("Teams & Areas"),availablePages.includes("Reports")].filter(Boolean).length} enabled</span>
+                  </div>
+                  <details className="cmi-overview-disclosure cmi-access-disclosure">
+                    <summary><span className="cmi-access-icon"><ShieldCheck size={17} /></span><span><strong>Available in this workspace</strong><small>Modules enabled for your account</small></span><span className="cmi-inline-count">{[canReadContacts,canReadTasks,canReadStaffDirectory,canManagePasswordResets,availablePages.includes("Teams & Areas"),availablePages.includes("Reports")].filter(Boolean).length}</span><ChevronDown size={17} /></summary>
+                    <div className="cmi-disclosure-body cmi-access-list">
+                      <div><span>Overview & branch workspace</span><strong>Available</strong></div>
+                      <div><span>Contacts, notes & activity history</span><strong>{canReadContacts ? "Available" : "Not granted"}</strong></div>
+                      <div><span>Follow-up tasks</span><strong>{canReadTasks ? "Available" : "Not granted"}</strong></div>
+                      <div><span>Staff accounts</span><strong>{canReadStaffDirectory ? "Available" : "Not granted"}</strong></div>
+                      <div><span>Password-reset requests</span><strong>{canManagePasswordResets ? "Available" : "Not granted"}</strong></div>
+                      <div><span>Teams & service areas</span><strong>{availablePages.includes("Teams & Areas") ? "Available" : "Not granted"}</strong></div>
+                      <div><span>Typed ministry reports</span><strong>{availablePages.includes("Reports") ? "Available" : "Not granted"}</strong></div>
+                    </div>
+                  </details>
+                  <details className="cmi-overview-disclosure cmi-access-disclosure">
+                    <summary><span className="cmi-access-icon muted"><LockKeyhole size={17} /></span><span><strong>Restricted or not yet enabled</strong><small>Current product and permission boundaries</small></span><span className="cmi-inline-count">6</span><ChevronDown size={17} /></summary>
+                    <div className="cmi-disclosure-body cmi-restricted-list">
+                      <article><strong>Events & calendar</strong><p>Private branch-scoped drafts are available to Admin/Pastor. Registration, transport, attendance and check-in are not enabled.</p></article>
+                      <article><strong>Announcements & visitor content</strong><p>Admin/Pastor can prepare private drafts. Publication and delivery are not enabled.</p></article>
+                      <article><strong>Prayer & pastoral care</strong><p>Restricted workflows are not exposed in this workspace.</p></article>
+                      <article><strong>Report exports</strong><p>Role-scoped report submission and review are supported; bulk export is disabled.</p></article>
+                      <article><strong>SMS campaigns & automation</strong><p>Dispatch, consent and delivery tracking are not enabled.</p></article>
+                      <article><strong>Offline capture & sync</strong><p>Offline mode is disabled for this release.</p></article>
+                    </div>
+                  </details>
+                  <p className="cmi-access-footnote"><LockKeyhole size={13} /> Access is enforced by your active role grants and branch assignment.</p>
+                </section>
               </div>
             </>
           )}
