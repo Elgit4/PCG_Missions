@@ -21,6 +21,7 @@ set search_path = ''
 as $$
 declare
   v_report public.ministry_report;
+  v_can_submit boolean := false;
 begin
   select * into v_report
   from public.ministry_report
@@ -33,6 +34,26 @@ begin
   if v_report.author_profile_id <> p_author_profile_id then
     raise exception using errcode = '42501', message = 'REPORT_AUTHOR_MISMATCH';
   end if;
+
+  -- Revalidate the author's self-submit grant in the correction transaction.
+  select exists (
+    select 1
+    from public.staff_role_assignment sra
+    join public.role r on r.id = sra.role_id and r.is_active
+    join public.role_capability rc on rc.role_id = r.id and rc.scope_mode = 'self'
+    join public.capability c on c.id = rc.capability_id
+      and c.code = 'report.submit.own' and c.is_active
+    where sra.staff_profile_id = p_author_profile_id
+      and sra.branch_id = v_report.branch_id
+      and sra.starts_at <= pg_catalog.clock_timestamp()
+      and (sra.ends_at is null or sra.ends_at > pg_catalog.clock_timestamp())
+      and sra.revoked_at is null
+  ) into v_can_submit;
+
+  if not v_can_submit then
+    raise exception using errcode = '42501', message = 'REPORT_SUBMIT_SCOPE_REQUIRED';
+  end if;
+
   if v_report.status <> 'returned' then
     raise exception using errcode = '55000', message = 'REPORT_NOT_RETURNED';
   end if;
