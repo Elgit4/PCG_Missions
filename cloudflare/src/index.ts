@@ -3068,6 +3068,627 @@ async function cancelEvent(
   return json(200, { ok: true, event_id: eventId, status: "cancelled" }, requestId, origin);
 }
 
+type CalendarScopeMode = "branch" | "team" | "assigned";
+
+function bestCalendarScope(scopes: string[]): CalendarScopeMode | null {
+  if (scopes.includes("branch")) return "branch";
+  if (scopes.includes("team")) return "team";
+  if (scopes.includes("assigned")) return "assigned";
+  return null;
+}
+
+function calendarScopePredicate(
+  mode: CalendarScopeMode,
+  alias: string,
+  staffProfileId: string,
+  staffUserId: string,
+  now: string,
+): { sql: string; values: unknown[] } {
+  if (mode === "branch") return { sql: "1 = 1", values: [] };
+  if (mode === "assigned") return {
+    sql: \`(
+      (\${alias}.scope_type='own' AND \${alias}.owner_user_id=?)
+      OR (\${alias}.scope_type='event' AND EXISTS (
+        SELECT 1 FROM event_staff_assignment esa
+        WHERE esa.event_id=\${alias}.event_id AND esa.branch_id=\${alias}.branch_id
+          AND esa.staff_auth_user_id=? AND esa.revoked_at IS NULL
+          AND esa.starts_at<=? AND (esa.ends_at IS NULL OR esa.ends_at>?)
+      ))
+    )\`,
+    values: [staffUserId, staffUserId, now, now],
+  };
+  return {
+    sql: \`(
+      (\${alias}.scope_type='team' AND EXISTS (
+        SELECT 1 FROM staff_team_membership tm
+        WHERE tm.team_id=\${alias}.team_id AND tm.branch_id=\${alias}.branch_id
+          AND tm.staff_profile_id=? AND tm.revoked_at IS NULL
+          AND tm.starts_at<=? AND (tm.ends_at IS NULL OR tm.ends_at>?)
+      ))
+      OR (\${alias}.scope_type='event' AND EXISTS (
+        SELECT 1 FROM event_team_assignment eta
+        JOIN staff_team_membership tm ON tm.team_id=eta.team_id AND tm.branch_id=eta.branch_id
+        WHERE eta.event_id=\${alias}.event_id AND eta.branch_id=\${alias}.branch_id
+          AND tm.staff_profile_id=? AND eta.revoked_at IS NULL AND tm.revoked_at IS NULL
+          AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
+          AND tm.starts_at<=? AND (tm.ends_at IS NULL OR tm.ends_at>?)
+      ))
+    )\`,
+    values: [staffProfileId, now, now, staffProfileId, now, now, now, now],
+  };
+}
+
+async function listCalendarEntries(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestCalendarScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "calendar.read")
+    .map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+
+  const url = new URL(request.url);
+  const fromRaw = url.searchParams.get("from");
+  const toRaw = url.searchParams.get("to");
+  const from = fromRaw ? parseIsoTimestamp(fromRaw, "") : new Date(Date.now() - 30 * 86400000).toISOString();
+  const to = toRaw ? parseIsoTimestamp(toRaw, "") : new Date(Date.now() + 180 * 86400000).toISOString();
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 100 : Number(rawLimit);
+  if (!from || !to || to <= from || !Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      [...url.searchParams.keys()].some((key) => !["from", "to", "limit"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_QUERY" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const predicate = calendarScopePredicate(scope, "ce", context.staff.profileId, context.staff.userId, now);
+  const rows = await env.DB.prepare(\`
+    SELECT ce.id, ce.branch_id, ce.entry_type, ce.title, ce.starts_at, ce.ends_at,
+           ce.timezone, ce.scope_type, ce.team_id, ce.event_id, ce.owner_user_id,
+           ce.created_by, ce.created_at, ce.updated_at
+    FROM calendar_entry ce
+    WHERE ce.branch_id = ?
+      AND ce.starts_at < ?
+      AND (ce.ends_at IS NULL OR ce.ends_at >= ?)
+      AND (\${predicate.sql})
+    ORDER BY ce.starts_at ASC, ce.id ASC
+    LIMIT ?
+  \`).bind(
+    context.activeBranch.branchId, to, from, ...predicate.values, limit,
+  ).all<Record<string, unknown>>();
+  return json(200, { ok: true, entries: rows.results ?? [] }, requestId, origin);
+}
+
+async function getCalendarEntry(
+  request: Request,
+  env: Env,
+  entryId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestCalendarScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "calendar.read")
+    .map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const now = new Date().toISOString();
+  const predicate = calendarScopePredicate(scope, "ce", context.staff.profileId, context.staff.userId, now);
+  const row = await env.DB.prepare(\`
+    SELECT ce.id, ce.branch_id, ce.entry_type, ce.title, ce.starts_at, ce.ends_at,
+           ce.timezone, ce.scope_type, ce.team_id, ce.event_id, ce.owner_user_id,
+           ce.created_by, ce.created_at, ce.updated_at
+    FROM calendar_entry ce
+    WHERE ce.id=? AND ce.branch_id=? AND (\${predicate.sql})
+    LIMIT 1
+  \`).bind(entryId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
+  if (!row) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, entry: row }, requestId, origin);
+}
+
+async function createCalendarEntry(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "calendar.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["entry_type", "title", "starts_at", "ends_at", "timezone", "scope_type", "team_id", "event_id"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_BODY" } }, requestId, origin);
+  }
+  const entryType = typeof payload.entry_type === "string" ? payload.entry_type : "";
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  const startsAt = parseIsoTimestamp(payload.starts_at, "");
+  const endsAt = payload.ends_at === undefined || payload.ends_at === null || payload.ends_at === ""
+    ? null : parseIsoTimestamp(payload.ends_at, "");
+  const timezone = payload.timezone === undefined ? "Africa/Accra" :
+    typeof payload.timezone === "string" ? payload.timezone.trim() : "";
+  const scopeType = typeof payload.scope_type === "string" ? payload.scope_type : "";
+  const teamId = typeof payload.team_id === "string" ? payload.team_id : null;
+  const eventId = typeof payload.event_id === "string" ? payload.event_id : null;
+  if (!["service", "event", "followup", "prayer_schedule", "other"].includes(entryType) ||
+      title.length < 2 || title.length > 180 || !startsAt ||
+      (payload.ends_at !== undefined && payload.ends_at !== null && payload.ends_at !== "" && !endsAt) ||
+      (endsAt !== null && endsAt <= startsAt) ||
+      timezone.length < 3 || timezone.length > 64 || !isValidTimezone(timezone) ||
+      !["branch", "team", "event", "own"].includes(scopeType) ||
+      (scopeType === "team" && !teamId) || (scopeType !== "team" && teamId !== null) ||
+      (scopeType === "event" && !eventId) || (scopeType !== "event" && eventId !== null)) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_DETAILS" } }, requestId, origin);
+  }
+  if (teamId) {
+    const team = await env.DB.prepare(
+      "SELECT id FROM team WHERE id=? AND branch_id=? AND is_active=1 LIMIT 1",
+    ).bind(teamId, access.activeBranch.branchId).first<{ id: string }>();
+    if (!team) return json(400, { ok: false, error: { code: "TEAM_NOT_ACTIVE_IN_BRANCH" } }, requestId, origin);
+  }
+  if (eventId) {
+    const event = await env.DB.prepare(
+      "SELECT id FROM event WHERE id=? AND branch_id=? AND status<>'cancelled' LIMIT 1",
+    ).bind(eventId, access.activeBranch.branchId).first<{ id: string }>();
+    if (!event) return json(400, { ok: false, error: { code: "EVENT_NOT_AVAILABLE_IN_BRANCH" } }, requestId, origin);
+  }
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const ownerUserId = scopeType === "own" ? access.staff.userId : null;
+  try {
+    const result = await env.DB.prepare(\`
+      INSERT INTO calendar_entry
+        (id,branch_id,entry_type,title,starts_at,ends_at,timezone,scope_type,
+         team_id,event_id,owner_user_id,created_by,updated_by,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    \`).bind(
+      id, access.activeBranch.branchId, entryType, title, startsAt, endsAt,
+      timezone, scopeType, teamId, eventId, ownerUserId,
+      access.staff.userId, access.staff.userId, now, now,
+    ).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error("CALENDAR_CREATE_FAILED");
+  } catch {
+    return json(409, { ok: false, error: { code: "CALENDAR_CREATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, { ok: true, entry_id: id }, requestId, origin);
+}
+
+async function updateCalendarEntry(
+  request: Request,
+  env: Env,
+  entryId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "calendar.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["title", "starts_at", "ends_at", "timezone"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length === 0 || Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_UPDATE" } }, requestId, origin);
+  }
+  const existing = await env.DB.prepare(
+    "SELECT id,starts_at,ends_at FROM calendar_entry WHERE id=? AND branch_id=? LIMIT 1",
+  ).bind(entryId, access.activeBranch.branchId).first<{ id: string; starts_at: string; ends_at: string | null }>();
+  if (!existing) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  if (payload.title !== undefined) {
+    if (typeof payload.title !== "string" || payload.title.trim().length < 2 || payload.title.trim().length > 180) {
+      return json(400, { ok: false, error: { code: "INVALID_CALENDAR_TITLE" } }, requestId, origin);
+    }
+    assignments.push("title=?"); values.push(payload.title.trim());
+  }
+  if (payload.starts_at !== undefined) {
+    const value = parseIsoTimestamp(payload.starts_at, "");
+    if (!value) return json(400, { ok: false, error: { code: "INVALID_CALENDAR_START" } }, requestId, origin);
+    assignments.push("starts_at=?"); values.push(value);
+  }
+  if (payload.ends_at !== undefined) {
+    const value = payload.ends_at === null || payload.ends_at === "" ? null : parseIsoTimestamp(payload.ends_at, "");
+    if (payload.ends_at !== null && payload.ends_at !== "" && !value) return json(400, { ok: false, error: { code: "INVALID_CALENDAR_END" } }, requestId, origin);
+    assignments.push("ends_at=?"); values.push(value);
+  }
+  if (payload.timezone !== undefined) {
+    if (typeof payload.timezone !== "string" || payload.timezone.length > 64 || !isValidTimezone(payload.timezone)) {
+      return json(400, { ok: false, error: { code: "INVALID_CALENDAR_TIMEZONE" } }, requestId, origin);
+    }
+    assignments.push("timezone=?"); values.push(payload.timezone);
+  }
+  const nextStart = typeof payload.starts_at === "string" ? parseIsoTimestamp(payload.starts_at, "")! : existing.starts_at;
+  const nextEnd = payload.ends_at === undefined ? existing.ends_at :
+    payload.ends_at === null || payload.ends_at === "" ? null : parseIsoTimestamp(payload.ends_at, "");
+  if (nextEnd !== null && nextEnd <= nextStart) {
+    return json(400, { ok: false, error: { code: "CALENDAR_END_MUST_FOLLOW_START" } }, requestId, origin);
+  }
+  assignments.push("updated_by=?"); values.push(access.staff.userId);
+  assignments.push("updated_at=?"); values.push(new Date().toISOString());
+  try {
+    const result = await env.DB.prepare(\`
+      UPDATE calendar_entry SET \${assignments.join(",")}
+      WHERE id=? AND branch_id=?
+    \`).bind(...values, entryId, access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "CALENDAR_ENTRY_CHANGED" } }, requestId, origin);
+  } catch {
+    return json(409, { ok: false, error: { code: "CALENDAR_UPDATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, entry_id: entryId }, requestId, origin);
+}
+
+type AnnouncementScopeMode = "branch" | "team" | "assigned";
+
+function bestAnnouncementScope(scopes: string[]): AnnouncementScopeMode | null {
+  if (scopes.includes("branch")) return "branch";
+  if (scopes.includes("team")) return "team";
+  if (scopes.includes("assigned")) return "assigned";
+  return null;
+}
+
+function announcementScopePredicate(
+  mode: AnnouncementScopeMode,
+  alias: string,
+  staffProfileId: string,
+  staffUserId: string,
+  now: string,
+): { sql: string; values: unknown[] } {
+  if (mode === "branch") return { sql: "1 = 1", values: [] };
+  const base = \`(\${alias}.audience_type IN ('branch','staff') OR (\${alias}.audience_type='public' AND \${alias}.is_public=1))\`;
+  const team = \`(\${alias}.audience_type='team' AND EXISTS (
+    SELECT 1 FROM announcement_team_audience ata
+    JOIN staff_team_membership tm ON tm.team_id=ata.team_id AND tm.branch_id=ata.branch_id
+    WHERE ata.announcement_id=\${alias}.id AND ata.branch_id=\${alias}.branch_id
+      AND tm.staff_profile_id=? AND tm.revoked_at IS NULL
+      AND tm.starts_at<=? AND (tm.ends_at IS NULL OR tm.ends_at>?)
+  ))\`;
+  const eventTeam = \`(\${alias}.audience_type='event' AND EXISTS (
+    SELECT 1 FROM announcement_event_audience aea
+    JOIN event_team_assignment eta ON eta.event_id=aea.event_id AND eta.branch_id=aea.branch_id
+    JOIN staff_team_membership tm ON tm.team_id=eta.team_id AND tm.branch_id=eta.branch_id
+    WHERE aea.announcement_id=\${alias}.id AND aea.branch_id=\${alias}.branch_id
+      AND tm.staff_profile_id=? AND eta.revoked_at IS NULL AND tm.revoked_at IS NULL
+      AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
+      AND tm.starts_at<=? AND (tm.ends_at IS NULL OR tm.ends_at>?)
+  ))\`;
+  if (mode === "team") {
+    return {
+      sql: \`(\${base} OR \${team} OR \${eventTeam})\`,
+      values: [staffProfileId, now, now, staffProfileId, now, now, now, now],
+    };
+  }
+  const eventStaff = \`(\${alias}.audience_type='event' AND EXISTS (
+    SELECT 1 FROM announcement_event_audience aea
+    JOIN event_staff_assignment esa ON esa.event_id=aea.event_id AND esa.branch_id=aea.branch_id
+    WHERE aea.announcement_id=\${alias}.id AND aea.branch_id=\${alias}.branch_id
+      AND esa.staff_auth_user_id=? AND esa.revoked_at IS NULL
+      AND esa.starts_at<=? AND (esa.ends_at IS NULL OR esa.ends_at>?)
+  ))\`;
+  return {
+    sql: \`(\${base} OR \${team} OR \${eventTeam} OR \${eventStaff})\`,
+    values: [staffProfileId, now, now, staffProfileId, now, now, now, now, staffUserId, now, now],
+  };
+}
+
+async function listAnnouncements(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestAnnouncementScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "announcements.read")
+    .map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const canManage = context.activeBranch.capabilities.some((grant) => grant.code === "announcements.manage" && grant.scopeMode === "branch");
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status") ?? "published";
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 50 : Number(rawLimit);
+  if (!["draft", "published", "archived", "all"].includes(status) ||
+      (status !== "published" && !canManage) ||
+      !Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      [...url.searchParams.keys()].some((key) => !["status", "limit"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_QUERY" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const predicate = announcementScopePredicate(scope, "a", context.staff.profileId, context.staff.userId, now);
+  const statusPredicate = status === "all" ? "1=1" : "a.status=?";
+  const rows = await env.DB.prepare(\`
+    SELECT a.id,a.branch_id,a.title,a.body,a.audience_type,a.is_public,a.status,
+           a.publish_at,a.published_at,a.created_by,a.created_at,a.updated_at
+    FROM announcement a
+    WHERE a.branch_id=? AND \${statusPredicate} AND (\${predicate.sql})
+    ORDER BY COALESCE(a.published_at,a.created_at) DESC,a.id DESC
+    LIMIT ?
+  \`).bind(
+    context.activeBranch.branchId,
+    ...(status === "all" ? [] : [status]),
+    ...predicate.values,
+    limit,
+  ).all<Record<string, unknown>>();
+  return json(200, { ok: true, announcements: rows.results ?? [] }, requestId, origin);
+}
+
+async function getAnnouncement(
+  request: Request,
+  env: Env,
+  announcementId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestAnnouncementScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "announcements.read")
+    .map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const now = new Date().toISOString();
+  const predicate = announcementScopePredicate(scope, "a", context.staff.profileId, context.staff.userId, now);
+  const row = await env.DB.prepare(\`
+    SELECT a.id,a.branch_id,a.title,a.body,a.audience_type,a.is_public,a.status,
+           a.publish_at,a.published_at,a.created_by,a.created_at,a.updated_at
+    FROM announcement a
+    WHERE a.id=? AND a.branch_id=? AND a.status='published' AND (\${predicate.sql})
+    LIMIT 1
+  \`).bind(announcementId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
+  if (!row) return json(404, { ok: false, error: { code: "ANNOUNCEMENT_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, announcement: row }, requestId, origin);
+}
+
+async function createAnnouncement(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "announcements.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["title", "body", "audience_type", "team_ids", "event_ids"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_BODY" } }, requestId, origin);
+  }
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  const message = typeof payload.body === "string" ? payload.body.trim() : "";
+  const audience = typeof payload.audience_type === "string" ? payload.audience_type : "";
+  const teamIds = payload.team_ids === undefined ? [] : payload.team_ids;
+  const eventIds = payload.event_ids === undefined ? [] : payload.event_ids;
+  if (title.length < 2 || title.length > 180 || message.length < 1 || message.length > 20000 ||
+      !["public", "branch", "team", "event", "staff"].includes(audience) ||
+      !Array.isArray(teamIds) || !Array.isArray(eventIds) ||
+      teamIds.length > 20 || eventIds.length > 20 ||
+      teamIds.some((id) => typeof id !== "string" || id.length > 128) ||
+      eventIds.some((id) => typeof id !== "string" || id.length > 128) ||
+      new Set(teamIds).size !== teamIds.length || new Set(eventIds).size !== eventIds.length ||
+      (audience === "team" ? teamIds.length === 0 || eventIds.length !== 0 : teamIds.length !== 0) ||
+      (audience === "event" ? eventIds.length === 0 : eventIds.length !== 0)) {
+    return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_DETAILS" } }, requestId, origin);
+  }
+  const branchId = access.activeBranch.branchId;
+  if (teamIds.length) {
+    const found = await env.DB.prepare(
+      \`SELECT COUNT(*) AS count FROM team WHERE branch_id=? AND is_active=1 AND id IN (\${teamIds.map(() => "?").join(",")})\`,
+    ).bind(branchId, ...teamIds).first<{ count: number }>();
+    if ((found?.count ?? 0) !== teamIds.length) return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_TEAM_AUDIENCE" } }, requestId, origin);
+  }
+  if (eventIds.length) {
+    const found = await env.DB.prepare(
+      \`SELECT COUNT(*) AS count FROM event WHERE branch_id=? AND status<>'cancelled' AND id IN (\${eventIds.map(() => "?").join(",")})\`,
+    ).bind(branchId, ...eventIds).first<{ count: number }>();
+    if ((found?.count ?? 0) !== eventIds.length) return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_EVENT_AUDIENCE" } }, requestId, origin);
+  }
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const statements = [
+    env.DB.prepare(\`
+      INSERT INTO announcement
+        (id,branch_id,title,body,audience_type,is_public,status,publish_at,published_at,
+         created_by,updated_by,created_at,updated_at)
+      VALUES (?,?,?,?,?,?, 'draft',NULL,NULL,?,?,?,?,?)
+    \`).bind(
+      id, branchId, title, message, audience, audience === "public" ? 1 : 0,
+      access.staff.userId, access.staff.userId, now, now,
+    ),
+  ];
+  for (const teamId of teamIds as string[]) {
+    statements.push(env.DB.prepare(
+      "INSERT INTO announcement_team_audience (announcement_id,branch_id,team_id,created_at,created_by) VALUES (?,?,?,?,?)",
+    ).bind(id, branchId, teamId, now, access.staff.userId));
+  }
+  for (const eventId of eventIds as string[]) {
+    statements.push(env.DB.prepare(
+      "INSERT INTO announcement_event_audience (announcement_id,branch_id,event_id,created_at,created_by) VALUES (?,?,?,?,?)",
+    ).bind(id, branchId, eventId, now, access.staff.userId));
+  }
+  try {
+    const results = await env.DB.batch(statements);
+    if (results.some((result) => !result.success || (result.meta?.changes ?? 0) !== 1)) throw new Error("ANNOUNCEMENT_BATCH_FAILED");
+  } catch {
+    return json(409, { ok: false, error: { code: "ANNOUNCEMENT_CREATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, { ok: true, announcement_id: id, status: "draft" }, requestId, origin);
+}
+
+async function updateAnnouncement(
+  request: Request,
+  env: Env,
+  announcementId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "announcements.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["title", "body"]);
+  if (!payload || typeof payload !== "object' || Array.isArray(payload) ||
+      Object.keys(payload).length === 0 || Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_UPDATE" } }, requestId, origin);
+  }
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  if (payload.title !== undefined) {
+    if (typeof payload.title !== "string" || payload.title.trim().length < 2 || payload.title.trim().length > 180) {
+      return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_TITLE" } }, requestId, origin);
+    }
+    assignments.push("title=?"); values.push(payload.title.trim());
+  }
+  if (payload.body !== undefined) {
+    if (typeof payload.body !== "string" || payload.body.trim().length < 1 || payload.body.length > 20000) {
+      return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_TEXT" } }, requestId, origin);
+    }
+    assignments.push("body=?"); values.push(payload.body.trim());
+  }
+  const now = new Date().toISOString();
+  assignments.push("updated_by=?"); values.push(access.staff.userId);
+  assignments.push("updated_at=?"); values.push(now);
+  try {
+    const result = await env.DB.prepare(\`
+      UPDATE announcement SET \${assignments.join(",")}
+      WHERE id=? AND branch_id=? AND status='draft'
+    \`).bind(...values, announcementId, access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "ANNOUNCEMENT_NOT_EDITABLE" } }, requestId, origin);
+  } catch {
+    return json(409, { ok: false, error: { code: "ANNOUNCEMENT_UPDATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, announcement_id: announcementId }, requestId, origin);
+}
+
+async function publishAnnouncement(
+  request: Request,
+  env: Env,
+  announcementId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "announcements.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(\`
+      UPDATE announcement
+      SET status='published',published_at=?,updated_at=?,updated_by=?
+      WHERE id=? AND branch_id=? AND status='draft'
+        AND (publish_at IS NULL OR publish_at<=?)
+    \`).bind(now, now, access.staff.userId, announcementId, access.activeBranch.branchId, now).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "ANNOUNCEMENT_NOT_PUBLISHABLE" } }, requestId, origin);
+  } catch {
+    return json(409, { ok: false, error: { code: "ANNOUNCEMENT_PUBLISH_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, announcement_id: announcementId, status: "published" }, requestId, origin);
+}
+
+async function archiveAnnouncement(
+  request: Request,
+  env: Env,
+  announcementId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "announcements.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(\`
+      UPDATE announcement
+      SET status='archived',updated_at=?,updated_by=?
+      WHERE id=? AND branch_id=? AND status IN ('draft','published','scheduled')
+    \`).bind(now, access.staff.userId, announcementId, access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "ANNOUNCEMENT_NOT_ARCHIVABLE" } }, requestId, origin);
+  } catch {
+    return json(409, { ok: false, error: { code: "ANNOUNCEMENT_ARCHIVE_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, announcement_id: announcementId, status: "archived" }, requestId, origin);
+}
+
+async function getPublicContent(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const branchId = url.searchParams.get("branch_id") ?? "";
+  if (!branchId || branchId.length > 128 || [...url.searchParams.keys()].some((key) => key !== "branch_id")) {
+    return json(400, { ok: false, error: { code: "PUBLIC_BRANCH_REQUIRED" } }, requestId, origin);
+  }
+  const branch = await env.DB.prepare(
+    "SELECT b.id,b.church_id FROM branch b WHERE b.id=? AND b.is_active=1 LIMIT 1",
+  ).bind(branchId).first<{ id: string; church_id: string }>();
+  if (!branch) return json(404, { ok: false, error: { code: "PUBLIC_BRANCH_NOT_FOUND" } }, requestId, origin);
+  const [profile,welcome,sermons,dailyWord,tracts,announcements,events,links] = await Promise.all([
+    env.DB.prepare(\`
+      SELECT public_name,welcome_content,public_phone,public_email,address_text,website_url,social_links
+      FROM church_public_profile WHERE church_id=? LIMIT 1
+    \`).bind(branch.church_id).first<Record<string, unknown>>(),
+    env.DB.prepare(\`
+      SELECT id,title,body,display_order,published_at
+      FROM welcome_message WHERE status='published' AND (branch_id IS NULL OR branch_id=?)
+      ORDER BY display_order ASC,published_at DESC LIMIT 20
+    \`).bind(branchId).all<Record<string, unknown>>(),
+    env.DB.prepare(\`
+      SELECT id,title,body,public_slug,published_at
+      FROM sermon WHERE status='published' AND (branch_id IS NULL OR branch_id=?)
+      ORDER BY published_at DESC LIMIT 20
+    \`).bind(branchId).all<Record<string, unknown>>(),
+    env.DB.prepare(\`
+      SELECT id,title,body,publication_date,public_slug,published_at
+      FROM daily_word WHERE status='published'
+      ORDER BY publication_date DESC LIMIT 10
+    \`).all<Record<string, unknown>>(),
+    env.DB.prepare(\`
+      SELECT id,title,body,public_slug,published_at
+      FROM digital_tract WHERE status='published'
+      ORDER BY published_at DESC LIMIT 30
+    \`).all<Record<string, unknown>>(),
+    env.DB.prepare(\`
+      SELECT id,title,body,published_at FROM announcement
+      WHERE branch_id=? AND is_public=1 AND audience_type='public' AND status='published'
+      ORDER BY published_at DESC LIMIT 20
+    \`).bind(branchId).all<Record<string, unknown>>(),
+    env.DB.prepare(\`
+      SELECT id,title,description,starts_at,ends_at,timezone,location,capacity
+      FROM event WHERE branch_id=? AND visibility='public' AND status='published'
+      ORDER BY starts_at ASC LIMIT 20
+    \`).bind(branchId).all<Record<string, unknown>>(),
+    env.DB.prepare(\`
+      SELECT l.id,l.label,l.url,l.digital_tract_id,l.sermon_id
+      FROM external_document_link l
+      WHERE (l.digital_tract_id IN (SELECT id FROM digital_tract WHERE status='published')
+         OR l.sermon_id IN (SELECT id FROM sermon WHERE status='published' AND (branch_id IS NULL OR branch_id=?)))
+      ORDER BY l.created_at DESC LIMIT 100
+    \`).bind(branchId).all<Record<string, unknown>>(),
+  ]);
+  return json(200, {
+    ok: true,
+    branch_id: branchId,
+    profile: profile ?? null,
+    welcome_messages: welcome.results ?? [],
+    sermons: sermons.results ?? [],
+    daily_word: dailyWord.results ?? [],
+    digital_tracts: tracts.results ?? [],
+    announcements: announcements.results ?? [],
+    events: events.results ?? [],
+    external_links: links.results ?? [],
+  }, requestId, origin);
+}
+
 function isAuthPath(pathname: string): boolean {
   return pathname === "/api/auth" || pathname.startsWith("/api/auth/");
 }
@@ -3698,6 +4319,46 @@ async function updatePrayerRequestStatus(
       catch { return json(400, { ok: false, error: { code: "INVALID_CONTACT_ID" } }, requestId, origin); }
       if (request.method === "GET") return listContactInteractions(request, env, contactId, requestId, origin);
       if (request.method === "POST") return createContactInteraction(request, env, contactId, requestId, origin);
+    }
+
+    if (url.pathname === "/api/public/content" && request.method === "GET") {
+      return getPublicContent(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/calendar" && request.method === "GET") {
+      return listCalendarEntries(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/calendar" && request.method === "POST") {
+      return createCalendarEntry(request, env, requestId, origin);
+    }
+    const calendarMatch = url.pathname.match(/^\/api\/v1\/calendar\/([^/]+)$/);
+    if (calendarMatch) {
+      let entryId: string;
+      try { entryId = decodeURIComponent(calendarMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CALENDAR_ENTRY_ID" } }, requestId, origin); }
+      if (request.method === "GET") return getCalendarEntry(request, env, entryId, requestId, origin);
+      if (request.method === "PATCH") return updateCalendarEntry(request, env, entryId, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/announcements" && request.method === "GET") {
+      return listAnnouncements(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/announcements" && request.method === "POST") {
+      return createAnnouncement(request, env, requestId, origin);
+    }
+    const announcementActionMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)\/(publish|archive)$/);
+    if (announcementActionMatch && request.method === "POST") {
+      let announcementId: string;
+      try { announcementId = decodeURIComponent(announcementActionMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_ID" } }, requestId, origin); }
+      if (announcementActionMatch[2] === "publish") return publishAnnouncement(request, env, announcementId, requestId, origin);
+      return archiveAnnouncement(request, env, announcementId, requestId, origin);
+    }
+    const announcementMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)$/);
+    if (announcementMatch) {
+      let announcementId: string;
+      try { announcementId = decodeURIComponent(announcementMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_ID" } }, requestId, origin); }
+      if (request.method === "GET") return getAnnouncement(request, env, announcementId, requestId, origin);
+      if (request.method === "PATCH") return updateAnnouncement(request, env, announcementId, requestId, origin);
     }
 
     if (url.pathname === "/api/v1/events" && request.method === "GET") {
