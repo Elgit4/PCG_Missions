@@ -593,6 +593,10 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
                            'intercessor-user', 'pastor-user',
                            '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
             )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM prayer_assignment WHERE id = 'prayer-assignment-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE prayer_assignment SET ends_at = '2026-01-03T00:00:00.000Z' WHERE id = 'prayer-assignment-1'")
         self.db.execute(
             """UPDATE staff_record_share
                SET revoked_at = '2026-01-02T00:00:00.000Z', revoked_by = 'pastor-profile',
@@ -680,6 +684,14 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
                        'care-worker-user', 'visit', 'Restricted care note',
                        '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
         )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE care_interaction SET restricted_note = 'tampered' WHERE id = 'care-interaction-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM care_interaction WHERE id = 'care-interaction-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM care_assignment WHERE id = 'care-assignment-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM care_group_membership WHERE id = 'care-membership-1'")
         self.db.execute(
             """INSERT INTO care_access_audit
                (id, care_record_id, branch_id, actor_user_id, action, reason,
