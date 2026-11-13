@@ -120,7 +120,7 @@ try {
   worker = null;
 
   const sqliteFiles = await findSqliteFiles(stateDir);
-  assert(sqliteFiles.length === 1, "expected one local D1 SQLite file, found " + sqliteFiles.length);
+  assert(sqliteFiles.length === 1, "expected one local D1 SQLite file, found " + sqliteFiles.length + ": " + JSON.stringify(sqliteFiles));
   execFileSync("python", ["-c", pythonSeed, sqliteFiles[0], path.resolve("migrations"), testUserId, testEmail, passwordHash, String(Date.now())], {
     cwd: process.cwd(),
     stdio: "inherit",
