@@ -84,6 +84,8 @@ function createServiceClient() {
   });
 }
 
+type ServiceClient = ReturnType<typeof createServiceClient>;
+
 type StaffResult =
   | {
     ok: true;
@@ -468,7 +470,7 @@ Deno.serve(async (request: Request) => {
       if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
       const allowed = await hasBranchCapability(auth.service, auth.profileId, parsed.value.branch_id, "team.manage");
       if (!allowed) return fail("FORBIDDEN", "Your account does not have team management access to this branch.", 403, origin, id);
-      const result = await performRpc(auth, "team.create", parsed.value);
+      const result = await performRpc(auth, "team.create", { ...parsed.value });
       if (result.error) {
         const mapped = rpcError(result.error);
         return fail(mapped.code, mapped.message, mapped.status, origin, id);
@@ -544,7 +546,7 @@ Deno.serve(async (request: Request) => {
       if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
       const allowed = await hasBranchCapability(auth.service, auth.profileId, parsed.value.branch_id, "area.manage");
       if (!allowed) return fail("FORBIDDEN", "Your account does not have service-area management access to this branch.", 403, origin, id);
-      const result = await performRpc(auth, "area.create", parsed.value);
+      const result = await performRpc(auth, "area.create", { ...parsed.value });
       if (result.error) {
         const mapped = rpcError(result.error);
         return fail(mapped.code, mapped.message, mapped.status, origin, id);
