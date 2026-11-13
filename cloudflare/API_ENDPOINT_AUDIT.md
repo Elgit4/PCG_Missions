@@ -11,11 +11,11 @@ The Worker is a single entry point in `src/index.ts`. Protected routes resolve t
 | Area | Method and path | Current behavior |
 |---|---|---|
 | Readiness | `GET /health`, `GET /api/v1/health` | Checks the non-production D1 schema marker |
-| Authentication | `GET/POST /api/auth/*` | Better Auth session and email/password operations; public signup disabled |
+| Authentication | `GET/POST /api/auth/*` | Better Auth session and email/password operations; password-reset delivery uses Resend when configured and fails closed otherwise; public signup disabled |
 | Staff context | `GET /api/v1/me` | Verified identity, branches, roles and capability metadata |
 | Staff directory | `GET /api/v1/staff` | Capability-gated, branch-scoped directory |
 | Staff audit | `GET /api/v1/staff/audit` | Cursor-paginated governance audit; password-reset history is retained separately in append-only `staff_password_reset_audit` without live reset tokens or request state |
-| Invitations | `GET/POST /api/v1/staff/invitations` | List and create invitation; token currently returned once for manual secure delivery |
+| Invitations | `GET/POST /api/v1/staff/invitations` | List and create invitation; token currently returned once for manual secure delivery until the invitation acceptance UI is integrated |
 | Invitation lifecycle | `POST /api/v1/staff/invitations/accept`, `POST /api/v1/staff/invitations/{id}/revoke` | One-time invitation acceptance/revocation |
 | Account lifecycle | `POST /api/v1/staff/{id}/deactivate`, `suspend`, `reactivate` | Audited branch-scoped account status changes; database triggers revoke sessions |
 | Standard roles | `POST /api/v1/staff/roles`, `DELETE /api/v1/staff/roles/{id}` | Assign/revoke only the five standard roles |
