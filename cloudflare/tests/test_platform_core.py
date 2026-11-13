@@ -363,8 +363,8 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
     def test_field_worker_has_no_reassignment_or_private_field_grant(self):
         grants = self.grants("field_worker")
         self.assertIn("contacts.create", grants)
-        self.assertEqual(self.db.execute(\"SELECT scope_mode FROM role_capability WHERE role_id = 'role-field-worker' AND capability_id = 'contacts.create'\").fetchone()[0], 'branch')
-        self.assertEqual(self.db.execute(\"SELECT scope_mode FROM role_capability WHERE role_id = 'role-field-worker' AND capability_id = 'contacts.read'\").fetchone()[0], 'assigned')
+        self.assertEqual(self.db.execute("SELECT scope_mode FROM role_capability WHERE role_id = 'role-field-worker' AND capability_id = 'contacts.create'").fetchone()[0], 'branch')
+        self.assertEqual(self.db.execute("SELECT scope_mode FROM role_capability WHERE role_id = 'role-field-worker' AND capability_id = 'contacts.read'").fetchone()[0], 'assigned')
         self.assertIn("contacts.interaction.create", grants)
         self.assertNotIn("contacts.assign", grants)
         self.assertNotIn("contacts.private_fields.read", grants)
