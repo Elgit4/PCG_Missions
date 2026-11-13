@@ -8,6 +8,7 @@ import {
 import { readJson } from "../_shared/request_body.ts";
 import {
   createAllowedOrigins,
+  createCorsHeaders,
   createPreflightResponse,
   isAllowedOrigin,
 } from "../_shared/cors.ts";
@@ -57,23 +58,12 @@ function response(
   origin: string | null,
   id: string,
 ): Response {
-  const headers = new Headers({
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-    "X-Request-Id": id,
-    "Vary": "Origin",
-  });
-  if (origin && allowedOrigins.has(origin)) {
-    headers.set("Access-Control-Allow-Origin", origin);
-    headers.set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
-    headers.set(
-      "Access-Control-Allow-Headers",
-      "Authorization, apikey, Content-Type",
-    );
-    headers.set("Access-Control-Max-Age", "600");
-  }
+  const headers = createCorsHeaders(origin, allowedOrigins);
+  headers.set("Content-Type", "application/json; charset=utf-8");
+  headers.set("Cache-Control", "no-store");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set("X-Request-Id", id);
   return new Response(JSON.stringify(body), { status, headers });
 }
 
