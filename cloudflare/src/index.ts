@@ -535,6 +535,301 @@ async function reviewAdminElevationRequest(
 }
 
 
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function createInvitationToken(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+async function applyInvitationAcceptRateLimit(request: Request, env: Env): Promise<boolean> {
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  const key = `staff-invite-accept:${await sha256Hex(ip)}`;
+  const now = Date.now();
+  const row = await env.DB.prepare(`
+    INSERT INTO rateLimit (id, key, count, lastRequest)
+    VALUES (?, ?, 1, ?)
+    ON CONFLICT(key) DO UPDATE SET
+      count = CASE WHEN excluded.lastRequest - rateLimit.lastRequest > 900000
+        THEN 1 ELSE rateLimit.count + 1 END,
+      lastRequest = excluded.lastRequest
+    RETURNING count
+  `).bind(crypto.randomUUID(), key, now).first<{ count: number }>();
+  return !!row && row.count <= 10;
+}
+
+async function createStaffInvitation(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.account.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const roleAccess = await authorizeRequestCapability(request, env, "staff.role.assign");
+  if (roleAccess.state !== "authorized" ||
+      roleAccess.staff.profileId !== access.staff.profileId ||
+      roleAccess.activeBranch.branchId !== access.activeBranch.branchId) {
+    return json(403, { ok: false, error: { code: "STAFF_ROLE_ASSIGNMENT_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as {
+    full_name?: unknown; email?: unknown; phone_e164?: unknown; role_code?: unknown; reason?: unknown;
+  };
+  const allowed = new Set(["full_name", "email", "phone_e164", "role_code", "reason"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_INVITATION_BODY" } }, requestId, origin);
+  }
+  const fullName = typeof payload.full_name === "string" ? payload.full_name.trim() : "";
+  const email = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
+  const phone = payload.phone_e164 === undefined || payload.phone_e164 === null || payload.phone_e164 === ""
+    ? null : typeof payload.phone_e164 === "string" ? payload.phone_e164.trim() : "";
+  const roleCode = typeof payload.role_code === "string" ? payload.role_code : "";
+  const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+  if (
+    fullName.length < 2 || fullName.length > 180 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 254 ||
+    (phone !== null && (typeof phone !== "string" || !/^\+[1-9]\d{7,14}$/.test(phone))) ||
+    !STANDARD_ASSIGNABLE_ROLES.has(roleCode) ||
+    reason.length < 10 || reason.length > 500
+  ) {
+    return json(400, { ok: false, error: { code: "INVALID_INVITATION_DETAILS" } }, requestId, origin);
+  }
+
+  const role = await env.DB.prepare(
+    "SELECT id FROM role WHERE code = ? AND is_active = 1 LIMIT 1",
+  ).bind(roleCode).first<{ id: string }>();
+  if (!role) return json(400, { ok: false, error: { code: "ROLE_NOT_AVAILABLE" } }, requestId, origin);
+
+  const token = createInvitationToken();
+  const tokenHash = await sha256Hex(token);
+  const now = new Date();
+  const createdAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + 72 * 60 * 60 * 1000).toISOString();
+  const invitationId = crypto.randomUUID();
+  try {
+    const result = await env.DB.prepare(`
+      INSERT INTO staff_invitation
+        (id, branch_id, invited_by, email, full_name, phone_e164, role_id,
+         token_hash, expires_at, reason, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).bind(
+      invitationId, access.activeBranch.branchId, access.staff.profileId,
+      email, fullName, phone, role.id, tokenHash, expiresAt, reason, createdAt, createdAt,
+    ).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error("INVITATION_NOT_CREATED");
+  } catch {
+    return json(409, { ok: false, error: { code: "INVITATION_CONFLICT", message: "The email may already belong to a staff account or have a pending invitation." } }, requestId, origin);
+  }
+
+  return json(201, {
+    ok: true,
+    invitation: {
+      id: invitationId,
+      email,
+      full_name: fullName,
+      role_code: roleCode,
+      branch_id: access.activeBranch.branchId,
+      expires_at: expiresAt,
+      delivery_status: "manual_copy_required",
+      invitation_token: token,
+    },
+  }, requestId, origin);
+}
+
+async function listStaffInvitations(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.account.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const rows = await env.DB.prepare(`
+    SELECT i.id, i.email, i.full_name, i.phone_e164, r.code AS role_code,
+           i.status, i.expires_at, i.created_at
+    FROM staff_invitation i
+    JOIN role r ON r.id = i.role_id
+    WHERE i.branch_id = ? AND i.status = 'pending'
+    ORDER BY i.created_at DESC
+    LIMIT 100
+  `).bind(access.activeBranch.branchId).all<{
+    id: string; email: string; full_name: string; phone_e164: string | null;
+    role_code: string; status: string; expires_at: string; created_at: string;
+  }>();
+  return json(200, { ok: true, invitations: rows.results ?? [] }, requestId, origin);
+}
+
+async function revokeStaffInvitation(
+  request: Request,
+  env: Env,
+  invitationId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.account.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { reason?: unknown };
+  const reason = payload && typeof payload === "object" && !Array.isArray(payload) &&
+    typeof payload.reason === "string" ? payload.reason.trim() : "";
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => key !== "reason") ||
+      !invitationId || invitationId.length > 128 || reason.length < 10 || reason.length > 500) {
+    return json(400, { ok: false, error: { code: "INVALID_INVITATION_REVOCATION" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(`
+      UPDATE staff_invitation
+      SET status = 'revoked', revoked_at = ?, revoked_by = ?,
+          token_hash = NULL, updated_at = ?
+      WHERE id = ? AND branch_id = ? AND status = 'pending'
+    `).bind(
+      now, access.staff.profileId, now, invitationId, access.activeBranch.branchId,
+    ).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+      return json(404, { ok: false, error: { code: "PENDING_INVITATION_NOT_FOUND" } }, requestId, origin);
+    }
+  } catch {
+    return json(409, { ok: false, error: { code: "INVITATION_REVOCATION_BLOCKED" } }, requestId, origin);
+  }
+  return json(200, { ok: true, invitation_id: invitationId, status: "revoked" }, requestId, origin);
+}
+
+async function acceptStaffInvitation(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  if (!await applyInvitationAcceptRateLimit(request, env)) {
+    return json(429, { ok: false, error: { code: "INVITATION_ACCEPT_RATE_LIMITED" } }, requestId, origin);
+  }
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { invitation_token?: unknown; password?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => key !== "invitation_token" && key !== "password")) {
+    return json(400, { ok: false, error: { code: "INVALID_INVITATION_ACCEPTANCE" } }, requestId, origin);
+  }
+  const token = typeof payload.invitation_token === "string" ? payload.invitation_token.trim() : "";
+  const password = typeof payload.password === "string" ? payload.password : "";
+  if (!/^[A-Za-z0-9_-]{43}$/.test(token) || password.length < 12 || password.length > 128) {
+    return json(400, { ok: false, error: { code: "INVALID_INVITATION_CREDENTIALS" } }, requestId, origin);
+  }
+
+  const tokenHash = await sha256Hex(token);
+  const now = new Date().toISOString();
+  const invitation = await env.DB.prepare(`
+    SELECT i.id, i.branch_id, i.invited_by, i.email, i.full_name, i.phone_e164,
+           i.role_id, r.code AS role_code, i.expires_at
+    FROM staff_invitation i
+    JOIN role r ON r.id = i.role_id AND r.is_active = 1
+    WHERE i.token_hash = ? AND i.status = 'pending'
+    LIMIT 1
+  `).bind(tokenHash).first<{
+    id: string; branch_id: string; invited_by: string; email: string;
+    full_name: string; phone_e164: string | null; role_id: string; role_code: string; expires_at: string;
+  }>();
+  if (!invitation) return json(404, { ok: false, error: { code: "INVITATION_INVALID_OR_USED" } }, requestId, origin);
+  if (invitation.expires_at <= now) {
+    return json(410, { ok: false, error: { code: "INVITATION_EXPIRED" } }, requestId, origin);
+  }
+
+  let authUserId = "";
+  try {
+    const auth = createAuth(env, true);
+    const signup = await auth.api.signUpEmail({
+      body: {
+        name: invitation.full_name,
+        email: invitation.email,
+        password,
+      },
+    });
+    authUserId = signup.user.id;
+  } catch {
+    return json(409, {
+      ok: false,
+      error: { code: "INVITATION_CANNOT_BE_ACCEPTED", message: "The invitation could not be accepted. It may already have been used or the account may already exist." },
+    }, requestId, origin);
+  }
+
+  const profileId = crypto.randomUUID();
+  const assignmentId = crypto.randomUUID();
+  const acceptedAt = new Date().toISOString();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO staff_profile
+          (id, auth_user_id, full_name, email, phone_e164, account_status,
+           created_at, updated_at, must_change_password, password_changed_at)
+        VALUES (?, ?, ?, ?, ?, 'active', ?, ?, 0, ?)
+      `).bind(
+        profileId, authUserId, invitation.full_name, invitation.email,
+        invitation.phone_e164, acceptedAt, acceptedAt, acceptedAt,
+      ),
+      env.DB.prepare(`
+        INSERT INTO staff_role_assignment
+          (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, reason, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        assignmentId, profileId, invitation.role_id, invitation.branch_id,
+        invitation.invited_by, acceptedAt, "Assigned through accepted staff invitation", acceptedAt,
+      ),
+      env.DB.prepare(`
+        UPDATE staff_invitation
+        SET status = 'accepted', accepted_at = ?, accepted_user_id = ?,
+            accepted_profile_id = ?, token_hash = NULL, updated_at = ?
+        WHERE id = ? AND status = 'pending' AND token_hash = ? AND expires_at > ?
+      `).bind(
+        acceptedAt, authUserId, profileId, acceptedAt,
+        invitation.id, tokenHash, acceptedAt,
+      ),
+      env.DB.prepare(`
+        INSERT INTO staff_access_audit
+          (id, branch_id, actor_profile_id, target_profile_id, action, reason, metadata, created_at)
+        VALUES (?, ?, ?, ?, 'account_created', ?, ?, ?)
+      `).bind(
+        crypto.randomUUID(), invitation.branch_id, invitation.invited_by, profileId,
+        "Staff invitation accepted and private password established",
+        JSON.stringify({ invitation_id: invitation.id, role_code: invitation.role_code }),
+        acceptedAt,
+      ),
+    ]);
+    if (results.some((result) => !result.success) ||
+        results.some((result) => (result.meta?.changes ?? 0) !== 1)) {
+      throw new Error("INVITATION_ACCEPTANCE_BATCH_FAILED");
+    }
+  } catch {
+    // The Better Auth identity has no staff profile/session if provisioning
+    // fails. Remove the orphan credential identity so the same invite can retry.
+    try {
+      await env.DB.prepare('DELETE FROM "user" WHERE id = ?').bind(authUserId).run();
+    } catch {
+      // The orphan remains blocked by the session-create staff-profile gate.
+    }
+    return json(409, { ok: false, error: { code: "INVITATION_PROVISIONING_FAILED" } }, requestId, origin);
+  }
+
+  return json(201, {
+    ok: true,
+    staff_profile_id: profileId,
+    account_status: "active",
+    sign_in_required: true,
+  }, requestId, origin);
+}
+
 async function listStaffDirectory(
   request: Request,
   env: Env,
@@ -924,6 +1219,24 @@ export default {
           error: { code: "AUTH_NOT_CONFIGURED", message: "Authentication is not configured for this environment." },
         }, requestId, origin);
       }
+    }
+
+    if (url.pathname === "/api/v1/staff/invitations/accept" && request.method === "POST") {
+      return acceptStaffInvitation(request, env, requestId, origin);
+    }
+
+    if (url.pathname === "/api/v1/staff/invitations" && request.method === "POST") {
+      return createStaffInvitation(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/staff/invitations" && request.method === "GET") {
+      return listStaffInvitations(request, env, requestId, origin);
+    }
+    const invitationRevokeMatch = url.pathname.match(/^\/api\/v1\/staff\/invitations\/([^/]+)\/revoke$/);
+    if (invitationRevokeMatch && request.method === "POST") {
+      let invitationId: string;
+      try { invitationId = decodeURIComponent(invitationRevokeMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_INVITATION_ID" } }, requestId, origin); }
+      return revokeStaffInvitation(request, env, invitationId, requestId, origin);
     }
 
     if (url.pathname === "/api/v1/staff/audit" && request.method === "GET") {
