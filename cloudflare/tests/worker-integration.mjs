@@ -156,12 +156,12 @@ try {
   const signedInBody = await signedInSession.text();
   assert(signedInSession.status === 200 && signedInBody.includes(testEmail),
     "Better Auth session lookup failed: " + signedInSession.status + ": " + signedInBody);
-  const me = await fetch(baseUrl + "/api/v1/me", { headers: { Cookie: cookie } });
+  const me = await fetch(baseUrl + "/api/v1/me", { headers: { Cookie: cookie, "X-Branch-Id": "test-branch" } });
   const meBody = await me.text();
   assert(me.status === 200 && meBody.includes("test-branch"),
     "authenticated staff context failed: " + me.status + ": " + meBody);
 
-  const contacts = await fetch(baseUrl + "/api/v1/contacts", { headers: { Cookie: cookie } });
+  const contacts = await fetch(baseUrl + "/api/v1/contacts", { headers: { Cookie: cookie, "X-Branch-Id": "test-branch" } });
   const contactsBody = await contacts.text();
   assert(contacts.status === 200, "authorized branch-scoped contacts read failed: " + contacts.status + ": " + contactsBody);
 
