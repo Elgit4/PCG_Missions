@@ -16,6 +16,7 @@ class WorkerApiContractTests(unittest.TestCase):
         cls.event_report_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0022_typed_ministry_reports.sql").read_text(encoding="utf-8")
         cls.prayer_idempotency_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0023_prayer_request_idempotency.sql").read_text(encoding="utf-8")
         cls.calendar_audit_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0024_calendar_audit_cancellation_read_receipts.sql").read_text(encoding="utf-8")
+        cls.calendar_series_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0026_calendar_recurring_series.sql").read_text(encoding="utf-8")
 
     def test_contact_team_scope_uses_profile_id_and_assigned_scope_uses_auth_user_id(self):
         match = re.search(
@@ -268,6 +269,17 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("calendarCancelMatch", self.source)
         self.assertIn("calendarReadMatch", self.source)
 
+
+    def test_calendar_recurring_series_uses_timezone_aware_bounded_expansion(self):
+        self.assertIn("function buildCalendarOccurrenceStarts(", self.source)
+        self.assertIn("function zonedCalendarLocalToUtc(", self.source)
+        self.assertIn("async function createCalendarSeries(", self.source)
+        self.assertIn("async function cancelCalendarSeries(", self.source)
+        self.assertIn("calendarSeriesCancelMatch", self.source)
+        self.assertIn("calendar_series", self.source)
+        self.assertIn("calendar_entry_series_occurrence_uq", self.calendar_series_migration)
+        self.assertIn("calendar_series_audit_no_update", self.calendar_series_migration)
+        self.assertIn("CALENDAR_SERIES_CREATE_NOT_AUTHORIZED", self.calendar_series_migration)
 
     def test_scheduled_announcement_publication_is_actor_bound_and_idempotent(self):
         self.assertIn("async function scheduleAnnouncement(", self.source)
