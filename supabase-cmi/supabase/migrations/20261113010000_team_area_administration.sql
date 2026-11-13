@@ -570,6 +570,10 @@ $$;
 
 revoke all on function public.cmi_manage_team_operations(text,jsonb)
   from public, anon, authenticated, service_role;
+-- Authenticated users need public-schema namespace access to call this
+-- single reviewed RPC through PostgREST. No business-table privileges are
+-- granted; all table reads/writes remain inside the trusted operations API.
+grant usage on schema public to authenticated;
 grant execute on function public.cmi_manage_team_operations(text,jsonb)
   to authenticated;
 
