@@ -39,8 +39,6 @@ The Worker is a single entry point in `src/index.ts`. Protected routes resolve t
 | Content management | `GET /api/v1/content`, `POST /api/v1/content/{kind}`, `PATCH /api/v1/content/{kind}/{id}`, `POST /{kind}/{id}/publish`, `POST /{kind}/{id}/archive` | Branch capability-gated draft and publication lifecycle for welcome messages, sermons, daily words and digital tracts |
 | Church profile and links | `GET/PATCH /api/v1/content/profile`, `POST /api/v1/content/links` | Church-scoped profile upsert and immutable HTTPS links to sermon/tract content |
 | Content audit | `GET /api/v1/content/audit` | Branch/church-visible append-only public-content change history |
-| Events | `GET/POST /api/v1/events`, `GET/PATCH /api/v1/events/{id}` | Branch/team/assigned-scope list/detail; Admin/Pastor and Coordinator can create/edit drafts |
-| Event lifecycle | `POST /api/v1/events/{id}/publish`, `POST /api/v1/events/{id}/cancel` | Staff-only publish (visibility remains staff and registration closed) and cancellation; D1 records actor and before/after audit |
 
 All protected business routes require a verified session and an authorized active branch. Caller-supplied profile, role, capability, assignee and branch values are not accepted as authorization authority.
 
