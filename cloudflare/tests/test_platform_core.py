@@ -960,6 +960,27 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.assertEqual(scopes, {"explicit_share"})
 
 
+
+    def test_prayer_capabilities_remain_explicit_share_only(self):
+        intercessor = self.grants("prayer_intercessor")
+        self.assertIn("prayer.request.read", intercessor)
+        self.assertIn("prayer.request.respond", intercessor)
+        self.assertNotIn("prayer.request.share", intercessor)
+        for code in ("prayer.request.read", "prayer.request.respond"):
+            grant = self.db.execute(
+                """SELECT rc.scope_mode FROM role_capability rc
+                   JOIN role r ON r.id = rc.role_id
+                   JOIN capability c ON c.id = rc.capability_id
+                   WHERE r.code = 'prayer_intercessor' AND c.code = ?""",
+                (code,),
+            ).fetchone()
+            self.assertEqual(grant, ("explicit_share",))
+        self.assertIn("prayer.request.share", self.grants("admin_pastor"))
+        for role in ("coordinator", "team_leader", "field_worker", "follow_up_volunteer"):
+            self.assertNotIn("prayer.request.share", self.grants(role))
+        for role in ("admin_pastor", "coordinator", "team_leader", "field_worker", "follow_up_volunteer", "prayer_intercessor"):
+            self.assertNotIn("pastoral.case.read", self.grants(role))
+
     def test_private_contact_field_write_is_admin_only(self):
         self.assertIn("contacts.private_fields.update", self.grants("admin_pastor"))
         for role in ("coordinator", "team_leader", "field_worker", "follow_up_volunteer", "prayer_intercessor"):
@@ -968,7 +989,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
     def test_no_baseline_role_gets_pastoral_case_export_or_sms_capability(self):
         count = self.db.execute(
             """SELECT COUNT(*) FROM role_capability rc JOIN capability c ON c.id = rc.capability_id
-               WHERE c.code IN ('pastoral.case.read','pastoral.case.update','contacts.export','sms.dispatch')"""
+               WHERE c.code IN ('pastoral.case.read','pastoral.case.update','pastoral.case.create','pastoral.case.assign','contacts.export','sms.dispatch')"""
         ).fetchone()[0]
         self.assertEqual(count, 0)
 
