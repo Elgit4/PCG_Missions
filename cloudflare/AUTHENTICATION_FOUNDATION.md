@@ -42,6 +42,20 @@ Never set production secrets or bind this Worker to production DNS during this p
 
 All other business routes remain unavailable.
 
+
+## Staff role administration endpoints
+
+These routes are available only to an authenticated Admin/Pastor with the active branch's `staff.role.assign` capability.
+
+| Method and path | Purpose |
+|---|---|
+| `POST /api/v1/staff/roles` | Assign one of the five standard roles to a staff profile in the selected branch |
+| `DELETE /api/v1/staff/roles/{assignmentId}` | Revoke a standard role assignment while preserving its history |
+
+Both routes require `X-Branch-Id` to select an active branch already assigned to the caller. Assignment requests accept only `target_profile_id`, `role_code`, optional ISO-8601 `starts_at` / `ends_at`, and a mandatory reason. The target must be an invited or active staff profile; self-assignment is rejected. Role grants and their audit rows are written in one D1 batch. Duplicate overlapping assignments fail with a conflict response.
+
+Admin/Pastor elevation and revocation are intentionally excluded from these standard routes. Elevation requires the separate two-person approval workflow; Admin/Pastor revocation remains blocked until its dual-control workflow is implemented. The endpoint never allows a caller to select a different branch in the request body.
+
 ## Deliberately incomplete
 
 - Public sign-up is disabled. There is not yet a staff invitation/create-account endpoint.
