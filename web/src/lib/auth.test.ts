@@ -25,7 +25,7 @@ describe("PcgAuthClient — Better Auth cookie sessions", () => {
     const client = new PcgAuthClient(fetcher as typeof fetch);
     await expect(client.getSession()).resolves.toMatchObject({ user: { id: "staff-user" } });
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/auth/get-session");
-    expect((fetcher.mock.calls[0]?.[1] as RequestInit).credentials).toBe("include");
+    expect((fetcher.mock.calls[0]?.[1] as unknown as RequestInit).credentials).toBe("include");
   });
 
   it("returns null when there is no signed-in session", async () => {
@@ -39,7 +39,7 @@ describe("PcgAuthClient — Better Auth cookie sessions", () => {
     const client = new PcgAuthClient(fetcher as typeof fetch);
     await client.signOut();
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/auth/sign-out");
-    expect((fetcher.mock.calls[0]?.[1] as RequestInit).method).toBe("POST");
+    expect((fetcher.mock.calls[0]?.[1] as unknown as RequestInit).method).toBe("POST");
   });
 
   it("tests API readiness without sending fake credentials", async () => {
