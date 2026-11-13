@@ -1098,6 +1098,459 @@ async function reviewAdminRevocationRequest(
 }
 
 
+
+type ContactScopeMode = "branch" | "team" | "assigned";
+
+function bestScope(scopes: string[]): ContactScopeMode | null {
+  if (scopes.includes("branch")) return "branch";
+  if (scopes.includes("team")) return "team";
+  if (scopes.includes("assigned")) return "assigned";
+  return null;
+}
+
+function contactScopePredicate(
+  mode: ContactScopeMode | null,
+  alias: string,
+  staffUserId: string,
+  branchId: string,
+  now: string,
+): { sql: string; values: unknown[] } {
+  if (mode === "branch") return { sql: "1 = 1", values: [] };
+  if (mode === "team") return {
+    sql: `EXISTS (
+      SELECT 1
+      FROM contact_assignment ca
+      JOIN staff_team_membership tm
+        ON tm.team_id = ca.team_id AND tm.branch_id = ca.branch_id
+      WHERE ca.contact_id = ${alias}.id
+        AND ca.branch_id = ${alias}.branch_id
+        AND tm.staff_profile_id = ?
+        AND tm.membership_role = 'leader'
+        AND tm.revoked_at IS NULL
+        AND tm.starts_at <= ?
+        AND (tm.ends_at IS NULL OR tm.ends_at > ?)
+        AND ca.starts_at <= ?
+        AND (ca.ends_at IS NULL OR ca.ends_at > ?)
+    )`,
+    values: [staffUserId, now, now, now, now],
+  };
+  if (mode === "assigned") return {
+    sql: `EXISTS (
+      SELECT 1 FROM contact_assignment ca
+      WHERE ca.contact_id = ${alias}.id
+        AND ca.branch_id = ${alias}.branch_id
+        AND ca.assignee_user_id = ?
+        AND ca.starts_at <= ?
+        AND (ca.ends_at IS NULL OR ca.ends_at > ?)
+    )`,
+    values: [staffUserId, now, now],
+  };
+  return { sql: "0 = 1", values: [] };
+}
+
+async function contactResourceContext(
+  request: Request,
+  env: Env,
+  contactId: string,
+): Promise<
+  | { ok: true; context: Extract<Awaited<ReturnType<typeof resolveStaffContext>>, { state: "authenticated" }>; teamId?: string }
+  | { ok: false; response: Response }
+> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") {
+    return { ok: false, response: mapCapabilityFailure(context.state, crypto.randomUUID(), request.headers.get("Origin") ?? undefined) };
+  }
+  if (!context.activeBranch) {
+    return { ok: false, response: mapCapabilityFailure("branch_required", crypto.randomUUID(), request.headers.get("Origin") ?? undefined) };
+  }
+  const contact = await env.DB.prepare(`
+    SELECT id FROM contact
+    WHERE id = ? AND branch_id = ? AND contact_status <> 'merged'
+    LIMIT 1
+  `).bind(contactId, context.activeBranch.branchId).first<{ id: string }>();
+  if (!contact) {
+    return { ok: false, response: json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND" } }, crypto.randomUUID(), request.headers.get("Origin") ?? undefined) };
+  }
+  const team = await env.DB.prepare(`
+    SELECT ca.team_id
+    FROM contact_assignment ca
+    JOIN staff_team_membership tm
+      ON tm.team_id = ca.team_id AND tm.branch_id = ca.branch_id
+    WHERE ca.contact_id = ? AND ca.branch_id = ?
+      AND tm.staff_profile_id = ? AND tm.membership_role = 'leader'
+      AND tm.revoked_at IS NULL
+      AND tm.starts_at <= ?
+      AND (tm.ends_at IS NULL OR tm.ends_at > ?)
+      AND ca.starts_at <= ?
+      AND (ca.ends_at IS NULL OR ca.ends_at > ?)
+    LIMIT 1
+  `).bind(
+    contactId, context.activeBranch.branchId, context.staff.profileId,
+    new Date().toISOString(), new Date().toISOString(),
+    new Date().toISOString(), new Date().toISOString(),
+  ).first<{ team_id: string }>();
+  return { ok: true, context, teamId: team?.team_id };
+}
+
+async function listContacts(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const grants = context.activeBranch.capabilities;
+  const readScope = bestScope(grants.filter((g) => g.code === "contacts.read").map((g) => g.scopeMode));
+  if (!readScope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const detailScope = bestScope(grants.filter((g) => g.code === "contacts.contact_details.read").map((g) => g.scopeMode));
+  const now = new Date().toISOString();
+  const readPredicate = contactScopePredicate(readScope, "c", context.staff.userId, context.activeBranch.branchId, now);
+  const detailPredicate = contactScopePredicate(detailScope, "c", context.staff.userId, context.activeBranch.branchId, now);
+  const url = new URL(request.url);
+  const search = (url.searchParams.get("search") ?? "").trim().slice(0, 100);
+  const status = url.searchParams.get("status") ?? "active";
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 50 : Number(rawLimit);
+  if (!["active", "archived", "all"].includes(status) ||
+      !Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      [...url.searchParams.keys()].some((key) => !["search", "status", "limit"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTACT_QUERY" } }, requestId, origin);
+  }
+  const statusPredicate = status === "all" ? "1 = 1" : "c.contact_status = ?";
+  const bindValues: unknown[] = [
+    detailPredicate.values.length > 0 ? 1 : detailScope === "branch" ? 1 : 0,
+    ...detailPredicate.values,
+    context.activeBranch.branchId,
+  ];
+  if (status !== "all") bindValues.push(status);
+  bindValues.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  bindValues.push(...readPredicate.values, limit);
+  const rows = await env.DB.prepare(`
+    SELECT c.id, c.first_name, c.last_name, c.preferred_name,
+           CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.phone_e164 ELSE NULL END AS phone_e164,
+           CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.email_normalized ELSE NULL END AS email,
+           c.age_range, c.preferred_language, c.contact_status, c.created_at, c.updated_at
+    FROM contact c
+    WHERE c.branch_id = ?
+      AND ${statusPredicate}
+      AND (? = '%%' OR c.first_name LIKE ? OR COALESCE(c.last_name, '') LIKE ?)
+      AND (${readPredicate.sql})
+    ORDER BY c.created_at DESC, c.id DESC
+    LIMIT ?
+  `).bind(
+    detailScope ? 1 : 0, ...detailPredicate.values,
+    detailScope ? 1 : 0, ...detailPredicate.values,
+    context.activeBranch.branchId,
+    ...(status === "all" ? [] : [status]),
+    search ? `%${search}%` : "%%",
+    search ? `%${search}%` : "%%",
+    search ? `%${search}%` : "%%",
+    ...readPredicate.values,
+    limit,
+  ).all<{
+    id: string; first_name: string; last_name: string | null; preferred_name: string | null;
+    phone_e164: string | null; email: string | null; age_range: string | null;
+    preferred_language: string | null; contact_status: string; created_at: string; updated_at: string;
+  }>();
+  return json(200, { ok: true, contacts: rows.results ?? [] }, requestId, origin);
+}
+
+async function createContact(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "contacts.create");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() ?? "";
+  if (idempotencyKey.length < 8 || idempotencyKey.length > 128) {
+    return json(400, { ok: false, error: { code: "IDEMPOTENCY_KEY_REQUIRED" } }, requestId, origin);
+  }
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as {
+    first_name?: unknown; last_name?: unknown; preferred_name?: unknown; phone_e164?: unknown;
+    email?: unknown; age_range?: unknown; preferred_language?: unknown; service_area_id?: unknown;
+    source_metadata?: unknown;
+  };
+  const allowed = new Set(["first_name","last_name","preferred_name","phone_e164","email","age_range","preferred_language","service_area_id","source_metadata"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTACT_BODY" } }, requestId, origin);
+  }
+  const firstName = typeof payload.first_name === "string" ? payload.first_name.trim() : "";
+  const lastName = typeof payload.last_name === "string" ? payload.last_name.trim() || null : null;
+  const preferredName = typeof payload.preferred_name === "string" ? payload.preferred_name.trim() || null : null;
+  const phone = typeof payload.phone_e164 === "string" ? payload.phone_e164.trim() || null : null;
+  const email = typeof payload.email === "string" ? payload.email.trim().toLowerCase() || null : null;
+  const ageRange = typeof payload.age_range === "string" ? payload.age_range.trim() || null : null;
+  const preferredLanguage = typeof payload.preferred_language === "string" ? payload.preferred_language.trim() || null : null;
+  const serviceAreaId = typeof payload.service_area_id === "string" ? payload.service_area_id.trim() || null : null;
+  const metadata = payload.source_metadata === undefined ? {} : payload.source_metadata;
+  const metadataAllowed = new Set(["app_version","form_version","device_type","locale"]);
+  if (
+    firstName.length < 1 || firstName.length > 120 ||
+    (lastName !== null && lastName.length > 120) ||
+    (preferredName !== null && preferredName.length > 120) ||
+    (phone !== null && !/^\+[1-9]\d{7,14}$/.test(phone)) ||
+    (email !== null && (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) || email.length > 254)) ||
+    (ageRange !== null && ageRange.length > 50) ||
+    (preferredLanguage !== null && preferredLanguage.length > 60) ||
+    (serviceAreaId !== null && serviceAreaId.length > 128) ||
+    !metadata || typeof metadata !== "object" || Array.isArray(metadata) ||
+    Object.keys(metadata as Record<string, unknown>).length > 4 ||
+    Object.keys(metadata as Record<string, unknown>).some((key) => !metadataAllowed.has(key)) ||
+    Object.values(metadata as Record<string, unknown>).some((value) => typeof value !== "string" || value.length > 80)
+  ) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTACT_DETAILS" } }, requestId, origin);
+  }
+
+  if (serviceAreaId) {
+    const area = await env.DB.prepare(
+      "SELECT id FROM service_area WHERE id = ? AND branch_id = ? AND is_active = 1 LIMIT 1",
+    ).bind(serviceAreaId, access.activeBranch.branchId).first<{ id: string }>();
+    if (!area) return json(400, { ok: false, error: { code: "SERVICE_AREA_NOT_AVAILABLE" } }, requestId, origin);
+  }
+
+  const digestPayload = {
+    first_name: firstName, last_name: lastName, preferred_name: preferredName,
+    phone_e164: phone, email, age_range: ageRange, preferred_language: preferredLanguage,
+    service_area_id: serviceAreaId, source_metadata: metadata,
+  };
+  const digestHex = await sha256Hex(JSON.stringify(digestPayload));
+  const existing = await env.DB.prepare(`
+    SELECT contact_id, hex(request_digest) AS digest_hex
+    FROM contact_capture
+    WHERE branch_id = ? AND client_request_id = ?
+    LIMIT 1
+  `).bind(access.activeBranch.branchId, idempotencyKey).first<{ contact_id: string; digest_hex: string }>();
+  if (existing) {
+    if (existing.digest_hex.toLowerCase() !== digestHex) {
+      return json(409, { ok: false, error: { code: "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD" } }, requestId, origin);
+    }
+    return json(200, { ok: true, contact_id: existing.contact_id, idempotent_replay: true }, requestId, origin);
+  }
+
+  const contactId = crypto.randomUUID();
+  const captureId = crypto.randomUUID();
+  const assignmentId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const digestBytes = new Uint8Array(digestHex.match(/.{2}/g)!.map((pair) => parseInt(pair, 16)));
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO contact
+          (id, branch_id, first_name, last_name, preferred_name, phone_e164,
+           email_normalized, age_range, preferred_language, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        contactId, access.activeBranch.branchId, firstName, lastName, preferredName,
+        phone, email, ageRange, preferredLanguage, access.staff.userId, now, now,
+      ),
+      env.DB.prepare(`
+        INSERT INTO contact_capture
+          (id, contact_id, branch_id, captured_by, capture_source, service_area_id,
+           client_request_id, digest_key_version, request_digest, captured_at, source_metadata, created_at)
+        VALUES (?, ?, ?, ?, 'staff_manual', ?, ?, 1, ?, ?, ?, ?)
+      `).bind(
+        captureId, contactId, access.activeBranch.branchId, access.staff.userId,
+        serviceAreaId, idempotencyKey, digestBytes, now, JSON.stringify(metadata), now,
+      ),
+      env.DB.prepare(`
+        INSERT INTO contact_assignment
+          (id, contact_id, branch_id, assignee_user_id, assigned_by, starts_at, reason, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, 'Auto-assigned to the capturing staff member', ?)
+      `).bind(
+        assignmentId, contactId, access.activeBranch.branchId, access.staff.userId,
+        access.staff.userId, now, now,
+      ),
+    ]);
+    if (results.some((result) => !result.success) || results.some((result) => (result.meta?.changes ?? 0) !== 1)) {
+      throw new Error("CONTACT_CAPTURE_BATCH_FAILED");
+    }
+  } catch {
+    const raced = await env.DB.prepare(`
+      SELECT contact_id, hex(request_digest) AS digest_hex
+      FROM contact_capture WHERE branch_id = ? AND client_request_id = ? LIMIT 1
+    `).bind(access.activeBranch.branchId, idempotencyKey).first<{ contact_id: string; digest_hex: string }>();
+    if (raced && raced.digest_hex.toLowerCase() === digestHex) {
+      return json(200, { ok: true, contact_id: raced.contact_id, idempotent_replay: true }, requestId, origin);
+    }
+    return json(409, { ok: false, error: { code: "CONTACT_CAPTURE_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, { ok: true, contact_id: contactId, idempotent_replay: false }, requestId, origin);
+}
+
+async function getContact(
+  request: Request,
+  env: Env,
+  contactId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const resource = await contactResourceContext(request, env, contactId);
+  if (!resource.ok) return resource.response;
+  const access = await authorizeRequestCapability(request, env, "contacts.read", {
+    type: "contact", recordId: contactId, teamId: resource.teamId,
+  });
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const scope = access.decision.scopeMode as ContactScopeMode;
+  const now = new Date().toISOString();
+  const predicate = contactScopePredicate(scope, "c", access.staff.userId, access.activeBranch.branchId, now);
+  const details = await authorizeRequestCapability(request, env, "contacts.contact_details.read", {
+    type: "contact", recordId: contactId, teamId: resource.teamId,
+  });
+  const includeDetails = details.state === "authorized";
+  const row = await env.DB.prepare(`
+    SELECT c.id, c.first_name, c.last_name, c.preferred_name,
+           CASE WHEN ? = 1 THEN c.phone_e164 ELSE NULL END AS phone_e164,
+           CASE WHEN ? = 1 THEN c.email_normalized ELSE NULL END AS email,
+           c.age_range, c.preferred_language, c.contact_status, c.created_at, c.updated_at
+    FROM contact c
+    WHERE c.id = ? AND c.branch_id = ? AND (${predicate.sql})
+    LIMIT 1
+  `).bind(
+    includeDetails ? 1 : 0, includeDetails ? 1 : 0,
+    contactId, access.activeBranch.branchId, ...predicate.values,
+  ).first<Record<string, unknown>>();
+  if (!row) return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, contact: row }, requestId, origin);
+}
+
+async function updateContact(
+  request: Request,
+  env: Env,
+  contactId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const resource = await contactResourceContext(request, env, contactId);
+  if (!resource.ok) return resource.response;
+  const access = await authorizeRequestCapability(request, env, "contacts.update", {
+    type: "contact", recordId: contactId, teamId: resource.teamId,
+  });
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["first_name","last_name","preferred_name","phone_e164","email","age_range","preferred_language","contact_status"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length === 0 || Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTACT_UPDATE" } }, requestId, origin);
+  }
+  const values: Record<string, string | null> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (value !== null && typeof value !== "string") {
+      return json(400, { ok: false, error: { code: "INVALID_CONTACT_UPDATE_VALUE" } }, requestId, origin);
+    }
+    const normalized = typeof value === "string" ? value.trim() : null;
+    if (key === "first_name" && (!normalized || normalized.length > 120)) {
+      return json(400, { ok: false, error: { code: "INVALID_FIRST_NAME" } }, requestId, origin);
+    }
+    if (key === "last_name" && normalized !== null && normalized.length > 120) {
+      return json(400, { ok: false, error: { code: "INVALID_LAST_NAME" } }, requestId, origin);
+    }
+    if (key === "preferred_name" && normalized !== null && normalized.length > 120) {
+      return json(400, { ok: false, error: { code: "INVALID_PREFERRED_NAME" } }, requestId, origin);
+    }
+    if (key === "phone_e164" && normalized !== null && !/^\+[1-9]\d{7,14}$/.test(normalized)) {
+      return json(400, { ok: false, error: { code: "INVALID_PHONE" } }, requestId, origin);
+    }
+    if (key === "email" && normalized !== null && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(normalized)) {
+      return json(400, { ok: false, error: { code: "INVALID_EMAIL" } }, requestId, origin);
+    }
+    if (key === "age_range" && normalized !== null && normalized.length > 50) {
+      return json(400, { ok: false, error: { code: "INVALID_AGE_RANGE" } }, requestId, origin);
+    }
+    if (key === "preferred_language" && normalized !== null && normalized.length > 60) {
+      return json(400, { ok: false, error: { code: "INVALID_LANGUAGE" } }, requestId, origin);
+    }
+    if (key === "contact_status" && normalized !== "active" && normalized !== "archived") {
+      return json(400, { ok: false, error: { code: "INVALID_CONTACT_STATUS" } }, requestId, origin);
+    }
+    const column = key === "email" ? "email_normalized" : key;
+    values[column] = key === "email" && normalized !== null ? normalized.toLowerCase() : normalized;
+  }
+  const assignments = Object.keys(values).map((key) => `${key} = ?`);
+  const now = new Date().toISOString();
+  assignments.push("updated_at = ?");
+  const predicate = contactScopePredicate(access.decision.scopeMode as ContactScopeMode, "contact", access.staff.userId, access.activeBranch.branchId, now);
+  const result = await env.DB.prepare(`
+    UPDATE contact SET ${assignments.join(", ")}
+    WHERE id = ? AND branch_id = ? AND contact_status <> 'merged' AND (${predicate.sql})
+  `).bind(
+    ...Object.values(values), now, contactId, access.activeBranch.branchId, ...predicate.values,
+  ).run();
+  if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+    return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND_OR_NOT_ACCESSIBLE" } }, requestId, origin);
+  }
+  return json(200, { ok: true, contact_id: contactId, updated_at: now }, requestId, origin);
+}
+
+async function createContactInteraction(
+  request: Request,
+  env: Env,
+  contactId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const resource = await contactResourceContext(request, env, contactId);
+  if (!resource.ok) return resource.response;
+  const access = await authorizeRequestCapability(request, env, "contacts.interaction.create", {
+    type: "contact", recordId: contactId, teamId: resource.teamId,
+  });
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as {
+    interaction_type?: unknown; occurred_at?: unknown; outcome_code?: unknown;
+    summary?: unknown; next_action_at?: unknown;
+  };
+  const allowed = new Set(["interaction_type","occurred_at","outcome_code","summary","next_action_at"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_INTERACTION_BODY" } }, requestId, origin);
+  }
+  const type = typeof payload.interaction_type === "string" ? payload.interaction_type : "";
+  const occurredAt = payload.occurred_at === undefined ? new Date().toISOString() : parseIsoTimestamp(payload.occurred_at, "");
+  const outcome = typeof payload.outcome_code === "string" ? payload.outcome_code.trim() || null : null;
+  const summary = typeof payload.summary === "string" ? payload.summary.trim() || null : null;
+  const nextActionAt = payload.next_action_at === undefined || payload.next_action_at === null || payload.next_action_at === ""
+    ? null : parseIsoTimestamp(payload.next_action_at, "");
+  if (
+    !["call","visit","message","meeting","other"].includes(type) || !occurredAt ||
+    (payload.outcome_code !== undefined && payload.outcome_code !== null && typeof payload.outcome_code !== "string") ||
+    (outcome !== null && !/^[a-z][a-z0-9_]{1,59}$/.test(outcome)) ||
+    (payload.summary !== undefined && payload.summary !== null && typeof payload.summary !== "string") ||
+    (summary !== null && summary.length > 1000) ||
+    (payload.next_action_at !== undefined && payload.next_action_at !== null && payload.next_action_at !== "" && !nextActionAt)
+  ) {
+    return json(400, { ok: false, error: { code: "INVALID_INTERACTION_DETAILS" } }, requestId, origin);
+  }
+  const interactionId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const predicate = contactScopePredicate(access.decision.scopeMode as ContactScopeMode, "c", access.staff.userId, access.activeBranch.branchId, now);
+  const result = await env.DB.prepare(`
+    INSERT INTO contact_interaction
+      (id, contact_id, branch_id, actor_user_id, interaction_type, occurred_at,
+       outcome_code, summary, next_action_at, created_at)
+    SELECT ?, c.id, c.branch_id, ?, ?, ?, ?, ?, ?, ?
+    FROM contact c
+    WHERE c.id = ? AND c.branch_id = ? AND c.contact_status <> 'merged'
+      AND (${predicate.sql})
+  `).bind(
+    interactionId, access.staff.userId, type, occurredAt, outcome, summary,
+    nextActionAt, now, contactId, access.activeBranch.branchId, ...predicate.values,
+  ).run();
+  if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+    return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND_OR_NOT_ACCESSIBLE" } }, requestId, origin);
+  }
+  return json(201, { ok: true, interaction_id: interactionId }, requestId, origin);
+}
+
 async function listStaffAudit(
   request: Request,
   env: Env,
@@ -1219,6 +1672,28 @@ export default {
           error: { code: "AUTH_NOT_CONFIGURED", message: "Authentication is not configured for this environment." },
         }, requestId, origin);
       }
+    }
+
+    if (url.pathname === "/api/v1/contacts" && request.method === "GET") {
+      return listContacts(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/contacts" && request.method === "POST") {
+      return createContact(request, env, requestId, origin);
+    }
+    const contactMatch = url.pathname.match(/^\/api\/v1\/contacts\/([^/]+)$/);
+    if (contactMatch) {
+      let contactId: string;
+      try { contactId = decodeURIComponent(contactMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CONTACT_ID" } }, requestId, origin); }
+      if (request.method === "GET") return getContact(request, env, contactId, requestId, origin);
+      if (request.method === "PATCH") return updateContact(request, env, contactId, requestId, origin);
+    }
+    const interactionMatch = url.pathname.match(/^\/api\/v1\/contacts\/([^/]+)\/interactions$/);
+    if (interactionMatch && request.method === "POST") {
+      let contactId: string;
+      try { contactId = decodeURIComponent(interactionMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CONTACT_ID" } }, requestId, origin); }
+      return createContactInteraction(request, env, contactId, requestId, origin);
     }
 
     if (url.pathname === "/api/v1/staff/invitations/accept" && request.method === "POST") {
