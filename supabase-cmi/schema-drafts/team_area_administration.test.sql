@@ -1,5 +1,5 @@
 begin;
-select plan(28);
+select plan(30);
 
 select has_table('public','team_management_audit','Team administration audit ledger exists');
 select ok(
@@ -27,6 +27,17 @@ select ok(
   (select coalesce(array_to_string(proconfig,','),'') like '%search_path=""%'
    from pg_proc where oid='private.cmi_manage_team_operations(text,jsonb)'::regprocedure),
   'Private mutation function pins an empty search_path'
+);
+select ok(
+  has_schema_privilege('authenticated','public','USAGE'),
+  'Authenticated users receive namespace access for the guarded RPC without table grants'
+);
+select ok(
+  not has_table_privilege('authenticated','public.team','SELECT')
+  and not has_table_privilege('authenticated','public.staff_team_membership','SELECT')
+  and not has_table_privilege('authenticated','public.service_area','SELECT')
+  and not has_table_privilege('authenticated','public.staff_area_coverage','SELECT'),
+  'Authenticated browser sessions retain no direct read access to team or service-area tables'
 );
 select ok(
   has_function_privilege('authenticated','public.cmi_manage_team_operations(text,jsonb)','EXECUTE'),
