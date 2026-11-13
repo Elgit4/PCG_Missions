@@ -1,7 +1,15 @@
 import { betterAuth } from "better-auth";
 
+export interface AuthDatabase {
+  prepare(sql: string): {
+    bind(...values: unknown[]): {
+      first<T = Record<string, unknown>>(): Promise<T | null>;
+    };
+  };
+}
+
 export interface AuthEnvironment {
-  DB: unknown;
+  DB: AuthDatabase;
   BETTER_AUTH_SECRET?: string;
   BETTER_AUTH_URL?: string;
   BETTER_AUTH_TRUSTED_ORIGINS?: string;
@@ -50,6 +58,22 @@ export function createAuth(env: AuthEnvironment) {
     secret: env.BETTER_AUTH_SECRET,
     database: env.DB as never,
     trustedOrigins: trustedOrigins(env, baseUrl),
+    databaseHooks: {
+      session: {
+        create: {
+          before: async (session) => {
+            const staff = await env.DB.prepare(`
+              SELECT account_status
+              FROM staff_profile
+              WHERE auth_user_id = ?
+              LIMIT 1
+            `).bind(session.userId).first<{ account_status: string }>();
+            if (!staff || staff.account_status !== "active") return false;
+            return { data: session };
+          },
+        },
+      },
+    },
     emailAndPassword: {
       enabled: true,
       disableSignUp: true,
