@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Activity, ArrowRight, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, FileText, KeyRound, LockKeyhole, LogOut, Megaphone, MoreHorizontal, Network, Plus, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { Activity, ArrowRight, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, FileText, KeyRound, LockKeyhole, LogOut, Megaphone, MoreHorizontal, Network, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { OperationsWorkspace } from "./OperationsWorkspace";
 import { TeamAdministrationWorkspace } from "./TeamAdministrationWorkspace";
 import { MinistryReportsWorkspace } from "./MinistryReportsWorkspace";
@@ -75,7 +75,7 @@ function isOverdue(task: FollowUpTask): boolean {
 }
 
 export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps) {
-  const [branchId, setBranchId] = useState(session.branches[0]?.id ?? "");
+  const branchId = session.branches[0]?.id ?? "";
   const [page, setPage] = useState<Page>(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "access-requests") return "Access requests";
     return "Overview";
@@ -592,27 +592,9 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           </div>
           <div className="cmi-topbar-actions">
             <ThemeToggle />
-            <label className="cmi-branch-picker"><span>BRANCH</span><select aria-label="Active branch" value={branchId} onChange={(event) => {
-                setContacts([]);
-                setSelectedContact(null);
-                setTasks([]);
-                setResetRequests([]);
-                setStaffMembers([]);
-                setShowStaffForm(false);
-                setStaffStatusEdit(null);
-                setStaffStatusReason("");
-                setResetReasons({});
-                setContactsHasMore(false);
-                setTasksHasMore(false);
-                setQuery("");
-                setShowContactForm(false);
-                setShowTaskForm(false);
-                setBranchId(event.target.value);
-                setPage("Overview");
-              }}>
-              {session.branches.map((branch) => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-            </select></label>
-            <button className="cmi-button cmi-button-secondary" onClick={() => void refresh()} disabled={refreshing || loading}>{refreshing ? "Refreshing…" : "Refresh"}</button>
+            <button type="button" className="cmi-icon-action" onClick={() => void refresh()} disabled={refreshing || loading} aria-label={refreshing ? "Refreshing workspace" : "Refresh workspace"} title={refreshing ? "Refreshing" : "Refresh"}>
+              <RefreshCw size={17} className={refreshing ? "is-spinning" : undefined} />
+            </button>
           </div>
         </header>
         <section className="cmi-content" id="cmi-content" tabIndex={-1} aria-busy={loading}>
