@@ -370,7 +370,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql", "0018_event_operations_guards.sql", "0019_event_cancellation_idempotency.sql", "0020_event_assignment_privilege_guards.sql", "0021_announcement_delivery_read_receipts.sql", "0022_typed_ministry_reports.sql", "0023_prayer_request_idempotency.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql", "0018_event_operations_guards.sql", "0019_event_cancellation_idempotency.sql", "0020_event_assignment_privilege_guards.sql", "0021_announcement_delivery_read_receipts.sql", "0022_typed_ministry_reports.sql", "0023_prayer_request_idempotency.sql", "0024_calendar_audit_cancellation_read_receipts.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def test_prayer_intake_idempotency_is_branch_scoped_and_unique(self):
@@ -386,6 +386,16 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             "PRAGMA table_info(prayer_request_idempotency)"
         )}
         self.assertTrue({"branch_id", "actor_user_id", "idempotency_key", "digest_hex", "prayer_request_id"}.issubset(columns))
+
+    def test_calendar_cancellation_audit_and_read_receipts_are_present(self):
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(calendar_entry)")}
+        self.assertTrue({"updated_by", "status", "cancelled_at", "cancelled_by", "cancellation_reason"}.issubset(columns))
+        tables = {row[0] for row in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.assertTrue({"calendar_entry_change_audit", "calendar_entry_read_receipt"}.issubset(tables))
+        triggers = {row[0] for row in self.db.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+        self.assertTrue({"calendar_entry_audit_insert", "calendar_entry_audit_update",
+                         "calendar_entry_change_audit_no_update", "calendar_entry_change_audit_no_delete",
+                         "calendar_entry_read_receipt_no_update", "calendar_entry_read_receipt_no_delete"}.issubset(triggers))
 
     def tearDown(self):
         self.db.close()
