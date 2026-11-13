@@ -1411,16 +1411,16 @@ class AuthorizationQueryTests(unittest.TestCase):
         field_user, _ = self.staff["field"]
         self.db.execute(
             """INSERT INTO event
-               (id,branch_id,title,starts_at,ends_at,created_by,created_at,updated_at)
-               VALUES ('event-1','authz-branch','Sunday Service',?,?,?, ?, ?)""",
-            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,self.NOW,self.NOW),
+               (id,branch_id,title,starts_at,ends_at,created_by,last_modified_by,created_at,updated_at)
+               VALUES ('event-1','authz-branch','Sunday Service',?,?,?,?,?,?)""",
+            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,admin_user,self.NOW,self.NOW),
         )
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute(
                 """INSERT INTO event
-                   (id,branch_id,title,starts_at,ends_at,created_by,created_at,updated_at)
-                   VALUES ('event-field','authz-branch','Unauthorized Event',?,?,?, ?, ?)""",
-                ("2026-02-02T08:00:00.000Z","2026-02-02T11:00:00.000Z",field_user,self.NOW,self.NOW),
+                   (id,branch_id,title,starts_at,ends_at,created_by,last_modified_by,created_at,updated_at)
+                   VALUES ('event-field','authz-branch','Unauthorized Event',?,?,?,?,?,?)""",
+                ("2026-02-02T08:00:00.000Z","2026-02-02T11:00:00.000Z",field_user,field_user,self.NOW,self.NOW),
             )
 
     def test_event_checkin_requires_event_capability_and_idempotency_key(self):
@@ -1428,9 +1428,9 @@ class AuthorizationQueryTests(unittest.TestCase):
         field_user, _ = self.staff["field"]
         self.db.execute(
             """INSERT INTO event
-               (id,branch_id,title,starts_at,ends_at,created_by,created_at,updated_at)
-               VALUES ('event-checkin','authz-branch','Service',?,?,?, ?, ?)""",
-            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,self.NOW,self.NOW),
+               (id,branch_id,title,starts_at,ends_at,created_by,last_modified_by,created_at,updated_at)
+               VALUES ('event-checkin','authz-branch','Service',?,?,?,?,?,?)""",
+            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,admin_user,self.NOW,self.NOW),
         )
         self.db.execute(
             """INSERT INTO event_checkin
@@ -1451,9 +1451,9 @@ class AuthorizationQueryTests(unittest.TestCase):
         field_user, _ = self.staff["field"]
         self.db.execute(
             """INSERT INTO event
-               (id,branch_id,title,starts_at,ends_at,created_by,created_at,updated_at)
-               VALUES ('event-registration','authz-branch','Registration Event',?,?,?, ?, ?)""",
-            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,self.NOW,self.NOW),
+               (id,branch_id,title,starts_at,ends_at,created_by,last_modified_by,created_at,updated_at)
+               VALUES ('event-registration','authz-branch','Registration Event',?,?,?,?,?,?)""",
+            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,admin_user,self.NOW,self.NOW),
         )
         self.db.execute(
             """INSERT INTO event_registration
@@ -1695,7 +1695,7 @@ class AuthorizationQueryTests(unittest.TestCase):
                WHERE id='registration-organizer'""",
             (field_user,self.NOW,"cancel-event-key"),
         )
-        self.db.execute(registration_sql,("registration-second","request-second",self.NOW,field_user))
+        self.db.execute(registration_sql,("registration-second",self.NOW,"request-second",field_user))
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute(
                 """UPDATE event_registration
