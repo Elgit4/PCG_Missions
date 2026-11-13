@@ -4587,6 +4587,170 @@ async function getCalendarEntry(
   return json(200, { ok: true, entry: row }, requestId, origin);
 }
 
+interface ZonedCalendarParts { year:number; month:number; day:number; hour:number; minute:number; second:number; }
+
+function zonedCalendarParts(date: Date, timezone: string): ZonedCalendarParts {
+  const parts=new Intl.DateTimeFormat("en-US",{
+    timeZone:timezone,year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23",
+  }).formatToParts(date);
+  const part=(name:string)=>Number(parts.find(item=>item.type===name)?.value??"0");
+  return {year:part("year"),month:part("month"),day:part("day"),
+    hour:part("hour"),minute:part("minute"),second:part("second")};
+}
+
+function zonedCalendarLocalToUtc(parts: ZonedCalendarParts, timezone: string): string {
+  const desired=Date.UTC(parts.year,parts.month-1,parts.day,parts.hour,parts.minute,parts.second);
+  let guess=desired;
+  for(let i=0;i<5;i++) {
+    const actual=zonedCalendarParts(new Date(guess),timezone);
+    const actualAsUtc=Date.UTC(actual.year,actual.month-1,actual.day,actual.hour,actual.minute,actual.second);
+    guess=desired-(actualAsUtc-guess);
+  }
+  const final=zonedCalendarParts(new Date(guess),timezone);
+  if(final.year!==parts.year||final.month!==parts.month||final.day!==parts.day||
+     final.hour!==parts.hour||final.minute!==parts.minute||final.second!==parts.second) {
+    throw new Error("NONEXISTENT_LOCAL_CALENDAR_TIME");
+  }
+  return new Date(guess).toISOString();
+}
+
+function buildCalendarOccurrenceStarts(
+  startsAt:string,timezone:string,frequency:"daily"|"weekly"|"monthly",interval:number,count:number,
+):string[] {
+  const base=zonedCalendarParts(new Date(startsAt),timezone);
+  const milliseconds=Date.parse(startsAt)%1000;
+  const result=[new Date(startsAt).toISOString()];
+  for(let index=1;index<count;index++) {
+    let next:ZonedCalendarParts;
+    if(frequency==="monthly") {
+      const monthIndex=base.year*12+(base.month-1)+index*interval;
+      const year=Math.floor(monthIndex/12),month=(monthIndex%12)+1;
+      const lastDay=new Date(Date.UTC(year,month,0)).getUTCDate();
+      next={...base,year,month,day:Math.min(base.day,lastDay)};
+    } else {
+      const days=index*interval*(frequency==="weekly"?7:1);
+      const date=new Date(Date.UTC(base.year,base.month-1,base.day+days));
+      next={...base,year:date.getUTCFullYear(),month:date.getUTCMonth()+1,day:date.getUTCDate()};
+    }
+    const value=Date.parse(zonedCalendarLocalToUtc(next,timezone))+milliseconds;
+    if(!Number.isFinite(value)||value<=Date.parse(result[result.length-1])) throw new Error("INVALID_CALENDAR_RECURRENCE");
+    result.push(new Date(value).toISOString());
+  }
+  return result;
+}
+
+async function createCalendarSeries(request:Request,env:Env,requestId:string,origin?:string):Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"calendar.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["entry_type","title","starts_at","ends_at","timezone","scope_type","team_id","event_id","recurrence"]);
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some(k=>!allowed.has(k))) {
+    return json(400,{ok:false,error:{code:"INVALID_CALENDAR_SERIES_BODY"}},requestId,origin);
+  }
+  const entryType=typeof payload.entry_type==="string"?payload.entry_type:"";
+  const title=typeof payload.title==="string"?payload.title.trim():"";
+  const startsAt=parseIsoTimestamp(payload.starts_at,"");
+  const endsAt=payload.ends_at===undefined||payload.ends_at===null||payload.ends_at===""?null:parseIsoTimestamp(payload.ends_at,"");
+  const timezone=payload.timezone===undefined?"Africa/Accra":typeof payload.timezone==="string"?payload.timezone.trim():"";
+  const scopeType=typeof payload.scope_type==="string"?payload.scope_type:"";
+  const teamId=typeof payload.team_id==="string"?payload.team_id.trim()||null:null;
+  const eventId=typeof payload.event_id==="string"?payload.event_id.trim()||null:null;
+  const recurrence=payload.recurrence as {frequency?:unknown;interval?:unknown;count?:unknown};
+  const frequency=recurrence?.frequency;
+  const interval=recurrence?.interval;
+  const count=recurrence?.count;
+  if((payload.team_id!==undefined&&payload.team_id!==null&&typeof payload.team_id!=="string")||
+     (payload.event_id!==undefined&&payload.event_id!==null&&typeof payload.event_id!=="string")||
+     !["service","event","followup","prayer_schedule","other"].includes(entryType)||
+     title.length<2||title.length>180||!startsAt||
+     (payload.ends_at!==undefined&&payload.ends_at!==null&&payload.ends_at!==""&&!endsAt)||
+     (endsAt!==null&&endsAt<=startsAt)||timezone.length<3||timezone.length>64||!isValidTimezone(timezone)||
+     !["branch","team","event","own"].includes(scopeType)||
+     (scopeType==="team"&&!teamId)||(scopeType!=="team"&&teamId!==null)||
+     (scopeType==="event"&&!eventId)||(scopeType!=="event"&&eventId!==null)||
+     !["daily","weekly","monthly"].includes(String(frequency))||
+     !Number.isInteger(interval)||Number(interval)<1||Number(interval)>12||
+     !Number.isInteger(count)||Number(count)<2||Number(count)>52||
+     (frequency==="monthly"&&Number(count)>24)) {
+    return json(400,{ok:false,error:{code:"INVALID_CALENDAR_SERIES_DETAILS"}},requestId,origin);
+  }
+  if(teamId) {
+    const team=await env.DB.prepare("SELECT id FROM team WHERE id=? AND branch_id=? AND is_active=1 LIMIT 1")
+      .bind(teamId,access.activeBranch.branchId).first<{id:string}>();
+    if(!team) return json(400,{ok:false,error:{code:"TEAM_NOT_ACTIVE_IN_BRANCH"}},requestId,origin);
+  }
+  if(eventId) {
+    const event=await env.DB.prepare("SELECT id FROM event WHERE id=? AND branch_id=? AND status<>'cancelled' LIMIT 1")
+      .bind(eventId,access.activeBranch.branchId).first<{id:string}>();
+    if(!event) return json(400,{ok:false,error:{code:"EVENT_NOT_AVAILABLE_IN_BRANCH"}},requestId,origin);
+  }
+  let occurrenceStarts:string[];
+  try { occurrenceStarts=buildCalendarOccurrenceStarts(startsAt,timezone,frequency as "daily"|"weekly"|"monthly",Number(interval),Number(count)); }
+  catch { return json(400,{ok:false,error:{code:"CALENDAR_RECURRENCE_TIME_INVALID"}},requestId,origin); }
+  const duration=endsAt===null?null:Date.parse(endsAt)-Date.parse(startsAt);
+  const seriesId=crypto.randomUUID(),now=new Date().toISOString();
+  const ownerUserId=scopeType==="own"?access.staff.userId:null;
+  const statements=[
+    env.DB.prepare(`
+      INSERT INTO calendar_series
+        (id,branch_id,title,entry_type,starts_at,ends_at,timezone,scope_type,team_id,event_id,
+         owner_user_id,recurrence_frequency,recurrence_interval,occurrence_count,status,
+         created_by,updated_by,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?)
+    `).bind(seriesId,access.activeBranch.branchId,title,entryType,occurrenceStarts[0],
+      duration===null?null:new Date(Date.parse(occurrenceStarts[0])+duration).toISOString(),
+      timezone,scopeType,teamId,eventId,ownerUserId,frequency,Number(interval),Number(count),
+      access.staff.userId,access.staff.userId,now,now),
+    ...occurrenceStarts.map((start,index)=>env.DB.prepare(`
+      INSERT INTO calendar_entry
+        (id,branch_id,entry_type,title,starts_at,ends_at,timezone,scope_type,team_id,event_id,
+         owner_user_id,created_by,updated_by,created_at,updated_at,series_id)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).bind(crypto.randomUUID(),access.activeBranch.branchId,entryType,title,start,
+      duration===null?null:new Date(Date.parse(start)+duration).toISOString(),timezone,scopeType,
+      teamId,eventId,ownerUserId,access.staff.userId,access.staff.userId,now,now,seriesId)),
+  ];
+  try {
+    const results=await env.DB.batch(statements);
+    if(results.some(result=>!result.success)||(results[0]?.meta?.changes??0)!==1||
+       results.slice(1).some(result=>(result.meta?.changes??0)!==1)) throw new Error("CALENDAR_SERIES_CREATE_FAILED");
+  } catch { return json(409,{ok:false,error:{code:"CALENDAR_SERIES_CREATE_CONFLICT"}},requestId,origin); }
+  return json(201,{ok:true,series_id:seriesId,occurrence_count:occurrenceStarts.length},requestId,origin);
+}
+
+async function cancelCalendarSeries(request:Request,env:Env,seriesId:string,requestId:string,origin?:string):Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"calendar.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as {reason?:unknown};
+  const reason=typeof payload?.reason==="string"?payload.reason.trim():"";
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some(k=>k!=="reason")||
+     reason.length<10||reason.length>300) return json(400,{ok:false,error:{code:"CALENDAR_SERIES_CANCELLATION_REASON_REQUIRED"}},requestId,origin);
+  const now=new Date().toISOString();
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE calendar_series SET status='cancelled',cancelled_at=?,cancelled_by=?,
+          cancellation_reason=?,updated_by=?,updated_at=?
+        WHERE id=? AND branch_id=? AND status='active'
+      `).bind(now,access.staff.userId,reason,access.staff.userId,now,seriesId,access.activeBranch.branchId),
+      env.DB.prepare(`
+        UPDATE calendar_entry SET status='cancelled',cancelled_at=?,cancelled_by=?,
+          cancellation_reason=?,updated_by=?,updated_at=?
+        WHERE series_id=? AND branch_id=? AND status='active' AND starts_at>=?
+      `).bind(now,access.staff.userId,reason,access.staff.userId,now,seriesId,access.activeBranch.branchId,now),
+    ]);
+    if(!results[0]?.success||(results[0].meta?.changes??0)!==1||!results[1]?.success) {
+      return json(409,{ok:false,error:{code:"CALENDAR_SERIES_NOT_CANCELLABLE"}},requestId,origin);
+    }
+    return json(200,{ok:true,series_id:seriesId,status:"cancelled",future_occurrences_cancelled:results[1].meta?.changes??0},requestId,origin);
+  } catch { return json(409,{ok:false,error:{code:"CALENDAR_SERIES_CANCELLATION_CONFLICT"}},requestId,origin); }
+}
+
 async function createCalendarEntry(
   request: Request,
   env: Env,
@@ -6841,6 +7005,13 @@ async function updatePrayerRequestStatus(
 
     if (url.pathname === "/api/public/content" && request.method === "GET") {
       return getPublicContent(request, env, requestId, origin);
+    }
+    if(url.pathname==="/api/v1/calendar/series"&&request.method==="POST") return createCalendarSeries(request,env,requestId,origin);
+    const calendarSeriesCancelMatch=url.pathname.match(/^\/api\/v1\/calendar\/series\/([^/]+)\/cancel$/);
+    if(calendarSeriesCancelMatch&&request.method==="POST") {
+      let seriesId:string; try { seriesId=decodeURIComponent(calendarSeriesCancelMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CALENDAR_SERIES_ID"}},requestId,origin); }
+      return cancelCalendarSeries(request,env,seriesId,requestId,origin);
     }
     if (url.pathname === "/api/v1/calendar" && request.method === "GET") {
       return listCalendarEntries(request, env, requestId, origin);
