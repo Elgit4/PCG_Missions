@@ -263,6 +263,13 @@ function rpcError(error: { code?: string; message?: string }): {
   if (code === "23505") {
     return { code: "DUPLICATE_RECORD", message: "A team, service-area code or membership with these details already exists.", status: 409 };
   }
+  if (code === "23P01") {
+    return {
+      code: "ACTIVE_ASSIGNMENT_EXISTS",
+      message: "This staff member already has an overlapping active membership or service-area coverage assignment.",
+      status: 409,
+    };
+  }
   if (code === "23514" || /TEAM_HAS_ACTIVE_MEMBERS|AREA_HAS_ACTIVE_COVERAGE/.test(message)) {
     return {
       code: "ACTIVE_ASSIGNMENTS_EXIST",
