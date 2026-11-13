@@ -222,6 +222,10 @@ export interface ServiceAreaRecord {
   coverage: AreaCoverageRecord[];
 }
 export interface ServiceAreaWorkspaceData { areas: ServiceAreaRecord[] }
+export type TeamMutationResult = Omit<TeamRecord, "members">;
+export type TeamMembershipMutationResult = Omit<TeamMemberRecord, "staff">;
+export type ServiceAreaMutationResult = Omit<ServiceAreaRecord, "coverage">;
+export type AreaCoverageMutationResult = Omit<AreaCoverageRecord, "staff">;
 export interface ServiceAreaCreateInput {
   branch_id: string;
   name: string;
@@ -741,34 +745,34 @@ export class CmiApiClient {
     });
   }
   createTeam(input: TeamCreateInput) {
-    return this.request<TeamRecord>("team-operations", "/teams", {
+    return this.request<TeamMutationResult>("team-operations", "/teams", {
       method: "POST",
       body: input,
     });
   }
   updateTeam(branchId: string, teamId: string, input: TeamPatchInput) {
-    return this.request<TeamRecord>("team-operations", "/teams/" + encodeURIComponent(teamId), {
+    return this.request<TeamMutationResult>("team-operations", "/teams/" + encodeURIComponent(teamId), {
       method: "PATCH",
       query: { branch_id: branchId },
       body: input,
     });
   }
   addTeamMember(branchId: string, teamId: string, input: TeamMemberCreateInput) {
-    return this.request<TeamMemberRecord>("team-operations", "/teams/" + encodeURIComponent(teamId) + "/members", {
+    return this.request<TeamMembershipMutationResult>("team-operations", "/teams/" + encodeURIComponent(teamId) + "/members", {
       method: "POST",
       query: { branch_id: branchId },
       body: input,
     });
   }
   updateTeamMemberRole(branchId: string, teamId: string, membershipId: string, input: TeamMemberRoleInput) {
-    return this.request<TeamMemberRecord>("team-operations", "/teams/" + encodeURIComponent(teamId) + "/members/" + encodeURIComponent(membershipId), {
+    return this.request<TeamMembershipMutationResult>("team-operations", "/teams/" + encodeURIComponent(teamId) + "/members/" + encodeURIComponent(membershipId), {
       method: "PATCH",
       query: { branch_id: branchId },
       body: input,
     });
   }
   revokeTeamMember(branchId: string, teamId: string, membershipId: string) {
-    return this.request<TeamMemberRecord>("team-operations", "/teams/" + encodeURIComponent(teamId) + "/members/" + encodeURIComponent(membershipId) + "/revoke", {
+    return this.request<TeamMembershipMutationResult>("team-operations", "/teams/" + encodeURIComponent(teamId) + "/members/" + encodeURIComponent(membershipId) + "/revoke", {
       method: "POST",
       query: { branch_id: branchId },
     });
@@ -780,27 +784,27 @@ export class CmiApiClient {
     });
   }
   createServiceArea(input: ServiceAreaCreateInput) {
-    return this.request<ServiceAreaRecord>("team-operations", "/areas", {
+    return this.request<ServiceAreaMutationResult>("team-operations", "/areas", {
       method: "POST",
       body: input,
     });
   }
   updateServiceArea(branchId: string, areaId: string, input: ServiceAreaPatchInput) {
-    return this.request<ServiceAreaRecord>("team-operations", "/areas/" + encodeURIComponent(areaId), {
+    return this.request<ServiceAreaMutationResult>("team-operations", "/areas/" + encodeURIComponent(areaId), {
       method: "PATCH",
       query: { branch_id: branchId },
       body: input,
     });
   }
   addAreaCoverage(branchId: string, areaId: string, input: AreaCoverageCreateInput) {
-    return this.request<AreaCoverageRecord>("team-operations", "/areas/" + encodeURIComponent(areaId) + "/coverage", {
+    return this.request<AreaCoverageMutationResult>("team-operations", "/areas/" + encodeURIComponent(areaId) + "/coverage", {
       method: "POST",
       query: { branch_id: branchId },
       body: input,
     });
   }
   revokeAreaCoverage(branchId: string, areaId: string, coverageId: string) {
-    return this.request<AreaCoverageRecord>("team-operations", "/areas/" + encodeURIComponent(areaId) + "/coverage/" + encodeURIComponent(coverageId) + "/revoke", {
+    return this.request<AreaCoverageMutationResult>("team-operations", "/areas/" + encodeURIComponent(areaId) + "/coverage/" + encodeURIComponent(coverageId) + "/revoke", {
       method: "POST",
       query: { branch_id: branchId },
     });
