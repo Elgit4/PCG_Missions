@@ -38,6 +38,10 @@ Never set production secrets or bind this Worker to production DNS during this p
 | `/api/auth/sign-out` | Ends the current Better Auth session |
 | `/api/auth/get-session` | Returns the current Better Auth session |
 | `/api/v1/me` | Returns verified staff context and branch-scoped role/capability metadata |
+| `GET /api/v1/staff` | Returns a limited branch-scoped staff directory to authorized roles |
+| `POST /api/v1/staff/{profileId}/deactivate|suspend|reactivate` | Changes staff account status with reason, branch authorization, audit event and immediate session revocation |
+| `GET/POST /api/v1/staff/role-revocations` | Lists pending dual-control Admin/Pastor revocations or requests one |
+| `POST /api/v1/staff/role-revocations/{id}/approve|reject` | Applies/rejects a high-privilege revocation through a distinct Admin/Pastor reviewer |
 | `/health` | Read-only non-production D1 readiness |
 
 All other business routes remain unavailable.
@@ -70,7 +74,7 @@ The separate dual-control workflow is now exposed:
 
 Request creation requires `staff.role.assign`; listing and review require `staff.role.approve`. The database triggers independently verify the actor's active branch assignment, capability, target status, distinct requester/reviewer, pending request state and approved assignment. Approval and role creation execute in one D1 batch; the database audit triggers record request, review, assignment and application events. A requestor cannot approve their own request. The initial two owner-controlled bootstrap slots remain a separate bootstrap-only operation, not an ordinary API grant.
 
-Admin/Pastor revocation remains blocked in the standard-role endpoint and has no public Worker route yet. That needs its own two-person revocation workflow before it can be enabled.
+Admin/Pastor revocation is blocked in the standard-role endpoint and is available only through the distinct-requester/reviewer workflow. The database requires the approved request reference on the assignment update and preserves the last-Admin/Pastor safeguard.
 
 ## Deliberately incomplete
 
