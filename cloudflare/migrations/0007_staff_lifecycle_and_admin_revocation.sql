@@ -73,7 +73,8 @@ BEGIN
   SELECT CASE WHEN NEW.account_status IN ('inactive','suspended') AND EXISTS (
     SELECT 1
     FROM staff_role_assignment target_admin
-    JOIN role ar ON ar.id = target_admin.role_id AND ar.code = 'admin_pastor'
+    JOIN role ar ON ar.id = target_admin.role_id AND ar.code = 'admin_pastor' AND ar.is_active = 1
+    JOIN branch target_branch ON target_branch.id = target_admin.branch_id AND target_branch.is_active = 1
     WHERE target_admin.staff_profile_id = NEW.id
       AND target_admin.revoked_at IS NULL
       AND target_admin.starts_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now')
@@ -101,7 +102,7 @@ BEGIN
   INSERT INTO staff_account_audit
     (id, branch_id, actor_profile_id, target_profile_id, action, reason, metadata, created_at)
   VALUES (
-    'account-status-' || NEW.id || '-' || NEW.updated_at,
+    'account-status-' || lower(hex(randomblob(16))),
     NEW.account_status_changed_branch_id,
     NEW.account_status_changed_by,
     NEW.id,
@@ -231,6 +232,14 @@ BEFORE UPDATE OF status ON staff_role_revocation_request
 WHEN OLD.status <> 'pending' AND NOT (OLD.status = 'approved' AND NEW.status = 'applied')
 BEGIN
   SELECT RAISE(ABORT, 'ROLE_REVOCATION_REQUEST_TERMINAL');
+END;
+
+
+CREATE TRIGGER staff_role_revocation_request_review_immutable
+BEFORE UPDATE OF reviewed_by, reviewed_at, review_reason ON staff_role_revocation_request
+WHEN OLD.status <> 'pending'
+BEGIN
+  SELECT RAISE(ABORT, 'ROLE_REVOCATION_REVIEW_IMMUTABLE');
 END;
 
 CREATE TRIGGER staff_role_assignment_admin_revoke_requires_approval
