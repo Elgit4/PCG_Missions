@@ -33,7 +33,7 @@ These migrations are a first porting slice from the live schema. They are not a 
 
 - Database UUID: `376a6782-d059-41f9-9e09-f93718fef2bb`.
 - Migrations `0001` through `0017` applied successfully; schema version reports `17` and environment marker is `non-production`.
-- Database contains 69 application tables and all six expected role records.
+- Database contains 70 application tables and all six expected role records.
 - `PRAGMA foreign_key_check` returned no violations.
 - Wrangler migration ledger `d1_migrations` contains all 17 applied migration filenames. Migrations `0016` and `0017` were applied to the EU non-production database and verified through the Cloudflare D1 API.
 - This is a direct remote D1 schema test; Better Auth login, Worker request lifecycle and domain endpoints have not yet been exercised against a deployed Worker.
