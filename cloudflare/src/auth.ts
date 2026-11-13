@@ -13,6 +13,35 @@ export interface AuthEnvironment {
   BETTER_AUTH_SECRET?: string;
   BETTER_AUTH_URL?: string;
   BETTER_AUTH_TRUSTED_ORIGINS?: string;
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
+}
+
+export interface TransactionalEmailMessage {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+}
+
+export async function sendResendEmail(
+  env: Pick<AuthEnvironment,"RESEND_API_KEY"|"EMAIL_FROM">,
+  message: TransactionalEmailMessage,
+): Promise<void> {
+  if(!env.RESEND_API_KEY||!env.EMAIL_FROM) throw new Error("PASSWORD_RESET_DELIVERY_NOT_CONFIGURED");
+  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(message.to)||message.subject.length>180||
+     message.text.length>12000||message.html.length>24000) throw new Error("TRANSACTIONAL_EMAIL_INVALID");
+  const response=await fetch("https://api.resend.com/emails",{
+    method:"POST",
+    headers:{
+      Authorization:"Bearer "+env.RESEND_API_KEY,
+      "Content-Type":"application/json",
+    },
+    body:JSON.stringify({from:env.EMAIL_FROM,to:[message.to],subject:message.subject,text:message.text,html:message.html}),
+  });
+  if(!response.ok) throw new Error("TRANSACTIONAL_EMAIL_PROVIDER_FAILED");
+  const result=await response.json() as {id?:unknown};
+  if(typeof result.id!=="string"||!result.id) throw new Error("TRANSACTIONAL_EMAIL_PROVIDER_INVALID_RESPONSE");
 }
 
 function trustedOrigins(env: AuthEnvironment, baseUrl: URL): string[] {
@@ -90,10 +119,14 @@ export function createAuth(env: AuthEnvironment, allowInvitationSignUp = false) 
       disableSignUp: !allowInvitationSignUp,
       autoSignIn: false,
       requireEmailVerification: false,
-      // Email delivery is intentionally not faked. Password reset remains
-      // unavailable until a real provider is configured and tested.
-      sendResetPassword: async () => {
-        throw new Error("PASSWORD_RESET_DELIVERY_NOT_CONFIGURED");
+      sendResetPassword: async ({ user, url }) => {
+        const safeUrl=url.replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+        await sendResendEmail(env,{
+          to:user.email,
+          subject:"Reset your PCG Missions password",
+          text:"A password reset was requested for your PCG Missions account. Use this link to set a new password: "+url+"\n\nIf you did not request this, ignore this message.",
+          html:"<p>A password reset was requested for your PCG Missions account.</p><p><a href=\""+safeUrl+"\">Reset your password</a></p><p>If you did not request this, ignore this message.</p>",
+        });
       },
     },
     session: {
