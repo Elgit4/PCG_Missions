@@ -32,7 +32,7 @@ A successful CI result proves the SQL is accepted by the CI runner's SQLite engi
 
 - Better Auth runtime configuration and actual sign-in/session endpoints.
 - Resend invitation and password-reset delivery.
-- Capability and branch authorization helper (session/branch inputs must be supplied by trusted middleware; protected routes remain disabled).
+- Capability and branch authorization helper in src/authorization.ts; verified session resolution and protected-route integration remain pending.
 - Ministry-sensitive prayer/care domain tables and runtime access-audit enforcement (the immutable audit ledger is now defined).
 - Events, registrations, check-in, transport, calendar, announcements, public content and reports.
 - Data export/import tooling and reconciliation reports.
