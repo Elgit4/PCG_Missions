@@ -191,6 +191,75 @@ describe("CmiApiClient", () => {
     expect(welcome[0].searchParams.get("branch_id")).toBe("branch-a");
   });
 
+  it("lists teams through the authenticated branch-scoped team function", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { teams: [] }, request_id: "team-list" }), { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.listTeams("branch-a");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/team-operations/teams");
+    expect(url.searchParams.get("branch_id")).toBe("branch-a");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
+  });
+
+  it("creates teams with only client-editable fields", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "team-1" }, request_id: "team-create" }), { status: 201 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.createTeam({
+      branch_id: "branch-a",
+      name: "Welcome Team",
+      description: null,
+    });
+    const [, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      branch_id: "branch-a",
+      name: "Welcome Team",
+      description: null,
+    });
+  });
+
+  it("uses branch-scoped routes for membership assignment and revocation", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "membership-1" }, request_id: "membership-change" }), { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.addTeamMember("branch-a", "team-1", {
+      staff_profile_id: "staff-1",
+      membership_role: "leader",
+    });
+    await client.revokeTeamMember("branch-a", "team-1", "membership-1");
+    const add = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    const revoke = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(add[0].pathname).toBe("/functions/v1/team-operations/teams/team-1/members");
+    expect(add[0].searchParams.get("branch_id")).toBe("branch-a");
+    expect(JSON.parse(String(add[1].body))).toEqual({
+      staff_profile_id: "staff-1",
+      membership_role: "leader",
+    });
+    expect(revoke[0].pathname).toBe("/functions/v1/team-operations/teams/team-1/members/membership-1/revoke");
+    expect(revoke[1].method).toBe("POST");
+  });
+
+  it("lists and assigns service-area coverage through the protected team function", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { areas: [] }, request_id: "area-change" }), { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.listServiceAreas("branch-a");
+    await client.addAreaCoverage("branch-a", "area-1", { staff_profile_id: "staff-1" });
+    const list = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    const add = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(list[0].pathname).toBe("/functions/v1/team-operations/areas");
+    expect(list[0].searchParams.get("branch_id")).toBe("branch-a");
+    expect(add[0].pathname).toBe("/functions/v1/team-operations/areas/area-1/coverage");
+    expect(add[0].searchParams.get("branch_id")).toBe("branch-a");
+    expect(JSON.parse(String(add[1].body))).toEqual({ staff_profile_id: "staff-1" });
+  });
+
   it("records an allowlisted interaction payload", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: { id: "interaction-2", interaction_type: "call" }, request_id: "interaction-create" }),
