@@ -1,12 +1,26 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import { readJson } from "../_shared/request_body.ts";
+import {
+  createAllowedOrigins,
+  createCorsHeaders,
+  createPreflightResponse,
+  isAllowedOrigin,
+} from "../_shared/cors.ts";
+import {
+  canReadReport,
+  canReviewReport,
+  canSelectReportEvent,
+  canSelectReportTeam,
+  canSubmitOwnReport,
+} from "./access.ts";
 import { isUuid, parseReportCorrection, parseReportCreate, parseReportListQuery, parseReview } from "./validation.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const allowedOrigins = new Set((Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
-  .split(",").map((item) => item.trim()).filter(Boolean));
+const allowedOrigins = createAllowedOrigins(
+  Deno.env.get("CMI_ALLOWED_ORIGINS"),
+);
 
 function serviceClient() {
   return createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -20,16 +34,15 @@ const REPORT_COLUMNS = "id,branch_id,report_type,period_start,period_end,author_
 
 function response(body: unknown, status: number, origin: string | null, requestId: string): Response {
   const headers = new Headers({
-    "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store",
-    "X-Content-Type-Options": "nosniff", "Referrer-Policy": "strict-origin-when-cross-origin",
-    "X-Request-Id": requestId, "Vary": "Origin",
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Request-Id": requestId,
   });
-  if (origin && allowedOrigins.has(origin)) {
-    headers.set("Access-Control-Allow-Origin", origin);
-    headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Authorization, apikey, Content-Type");
-    headers.set("Access-Control-Max-Age", "600");
-  }
+  createCorsHeaders(origin, allowedOrigins).forEach((value, key) => {
+    headers.set(key, value);
+  });
   return new Response(JSON.stringify(body), { status, headers });
 }
 function fail(code: string, message: string, status: number, origin: string | null, requestId: string) {
@@ -108,14 +121,11 @@ function readJsonError(error: unknown): { code: string; message: string; status:
 Deno.serve(async (request: Request) => {
   const requestId = crypto.randomUUID();
   const origin = request.headers.get("Origin");
-  if (origin && !allowedOrigins.has(origin)) return fail("ORIGIN_NOT_ALLOWED", "Origin not allowed.", 403, null, requestId);
+  if (!isAllowedOrigin(origin, allowedOrigins)) {
+    return fail("ORIGIN_NOT_ALLOWED", "Origin not allowed.", 403, null, requestId);
+  }
   if (request.method === "OPTIONS") {
-    return new Response(null, { status: 204, headers: {
-      ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Authorization, apikey, Content-Type, x-client-info",
-      "Access-Control-Max-Age": "600", "Vary": "Origin",
-    } });
+    return createPreflightResponse(origin, allowedOrigins);
   }
   if (!["GET", "POST"].includes(request.method)) return fail("METHOD_NOT_ALLOWED", "Method not allowed.", 405, origin, requestId);
   if (!SUPABASE_URL || !SERVICE_KEY || !PUBLIC_KEY) return fail("SERVICE_NOT_CONFIGURED", "Report operations service is not configured.", 503, origin, requestId);
@@ -253,12 +263,23 @@ Deno.serve(async (request: Request) => {
         .select(REPORT_COLUMNS).eq("id", last).eq("branch_id", branchId).maybeSingle();
       if (error) throw new Error("REPORT_DETAIL_FAILED");
       if (!report) return fail("NOT_FOUND", "Report not found.", 404, origin, requestId);
-      const own = report.author_profile_id === auth.profileId &&
-        (await scopes(auth.service, auth.profileId, branchId, "report.read.own")).includes("self");
-      const branchRead = (await scopes(auth.service, auth.profileId, branchId, "report.review.branch")).includes("branch");
-      const teamIds = (await scopes(auth.service, auth.profileId, branchId, "report.review.team")).includes("team")
-        ? await activeTeamIds(auth.service, auth.profileId, branchId) : [];
-      if (!own && !branchRead && !(report.team_id && teamIds.includes(report.team_id))) {
+      const [ownScopes, branchReviewScopes, teamReviewScopes] = await Promise.all([
+        scopes(auth.service, auth.profileId, branchId, "report.read.own"),
+        scopes(auth.service, auth.profileId, branchId, "report.review.branch"),
+        scopes(auth.service, auth.profileId, branchId, "report.review.team"),
+      ]);
+      const teamIds = teamReviewScopes.includes("team")
+        ? await activeTeamIds(auth.service, auth.profileId, branchId)
+        : [];
+      if (!canReadReport({
+        actorProfileId: auth.profileId,
+        authorProfileId: report.author_profile_id,
+        teamId: report.team_id,
+        canReadOwn: ownScopes.includes("self"),
+        canReviewBranch: branchReviewScopes.includes("branch"),
+        canReviewTeam: teamReviewScopes.includes("team"),
+        activeTeamIds: teamIds,
+      })) {
         return fail("NOT_FOUND", "Report not found.", 404, origin, requestId);
       }
       const { data: history, error: historyError } = await auth.service.from("report_review_event")
@@ -277,12 +298,30 @@ Deno.serve(async (request: Request) => {
       const parsed = parseReportCreate(body);
       if (!parsed.ok) return fail("INVALID_REPORT", parsed.error, 400, origin, requestId);
       const { value } = parsed;
-      if (!(await scopes(auth.service, auth.profileId, value.branch_id, "report.submit.own")).includes("self")) {
+      const submitScopes = await scopes(
+        auth.service,
+        auth.profileId,
+        value.branch_id,
+        "report.submit.own",
+      );
+      if (!canSubmitOwnReport(submitScopes)) {
         return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
       }
       if (value.team_id) {
-        const memberships = await activeTeamIds(auth.service, auth.profileId, value.branch_id);
-        if (!memberships.includes(value.team_id)) return fail("TEAM_SCOPE_REQUIRED", "Select a team you actively belong to.", 403, origin, requestId);
+        const memberships = await activeTeamIds(
+          auth.service,
+          auth.profileId,
+          value.branch_id,
+        );
+        if (!canSelectReportTeam(value.team_id, memberships)) {
+          return fail(
+            "TEAM_SCOPE_REQUIRED",
+            "Select a team you actively belong to.",
+            403,
+            origin,
+            requestId,
+          );
+        }
       }
       if (value.event_id) {
         const now = new Date().toISOString();
@@ -305,8 +344,19 @@ Deno.serve(async (request: Request) => {
             hasTeamAssignment = !!teamAssignments?.length;
           }
         }
-        if (!staffAssignments?.length && !hasTeamAssignment) {
-          return fail("EVENT_SCOPE_REQUIRED", "You or your active team must be assigned to the selected event.", 403, origin, requestId);
+        if (
+          !canSelectReportEvent(
+            Boolean(staffAssignments?.length),
+            hasTeamAssignment,
+          )
+        ) {
+          return fail(
+            "EVENT_SCOPE_REQUIRED",
+            "You or your active team must be assigned to the selected event.",
+            403,
+            origin,
+            requestId,
+          );
         }
       }
       const now = new Date().toISOString();
@@ -376,14 +426,28 @@ Deno.serve(async (request: Request) => {
         .select("id,branch_id,author_profile_id,team_id,status").eq("id", reportId).maybeSingle();
       if (error) throw new Error("REPORT_REVIEW_LOOKUP_FAILED");
       if (!report) return fail("NOT_FOUND", "Report not found.", 404, origin, requestId);
-      if (report.author_profile_id === auth.profileId) return fail("SELF_REVIEW_FORBIDDEN", "You cannot review your own report.", 403, origin, requestId);
-      const branchReview = (await scopes(auth.service, auth.profileId, report.branch_id, "report.review.branch")).includes("branch");
-      const teamReview = (await scopes(auth.service, auth.profileId, report.branch_id, "report.review.team")).includes("team");
-      let allowed = branchReview;
-      if (!allowed && teamReview && report.team_id) {
-        allowed = (await activeTeamIds(auth.service, auth.profileId, report.branch_id)).includes(report.team_id);
+      const [branchReviewScopes, teamReviewScopes] = await Promise.all([
+        scopes(auth.service, auth.profileId, report.branch_id, "report.review.branch"),
+        scopes(auth.service, auth.profileId, report.branch_id, "report.review.team"),
+      ]);
+      const teamIds = teamReviewScopes.includes("team")
+        ? await activeTeamIds(auth.service, auth.profileId, report.branch_id)
+        : [];
+      const reviewPolicy = {
+        actorProfileId: auth.profileId,
+        authorProfileId: report.author_profile_id,
+        teamId: report.team_id,
+        canReadOwn: false,
+        canReviewBranch: branchReviewScopes.includes("branch"),
+        canReviewTeam: teamReviewScopes.includes("team"),
+        activeTeamIds: teamIds,
+      };
+      if (report.author_profile_id === auth.profileId) {
+        return fail("SELF_REVIEW_FORBIDDEN", "You cannot review your own report.", 403, origin, requestId);
       }
-      if (!allowed) return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+      if (!canReviewReport(reviewPolicy)) {
+        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+      }
       const { data: reviewed, error: reviewError } = await auth.service.rpc("cmi_review_ministry_report", {
         p_report_id: reportId, p_reviewer_profile_id: auth.profileId,
         p_decision: parsed.value.decision, p_comment: parsed.value.comment,
