@@ -35,7 +35,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - contact normalization, capture idempotency and metadata allowlists;
 - follow-up task completion and target invariants.
 
-Latest CI for this branch is pending; the preceding merged foundation passed 37 Python/SQLite tests and Worker/Better Auth TypeScript checks. This proves the SQL is accepted by the CI runner's SQLite engine and the Worker code type-checks against the pinned package. It does not replace a real D1 preview test, runtime Better Auth schema validation, a deployed Worker test or domain authorization tests.
+Latest verified CI run: [43458105523](https://github.com/Elgit4/PCG_Missions/actions/runs/43458105523) — **40 Python/SQLite tests passed and Worker/Better Auth TypeScript type-check passed.** This proves the SQL is accepted by the CI runner's SQLite engine and the Worker code type-checks against the pinned package. It does not replace a real D1 preview test, runtime Better Auth schema validation, a deployed Worker test or domain authorization tests.
 
 ## Authentication and authorization progress
 
@@ -51,7 +51,7 @@ Latest CI for this branch is pending; the preceding merged foundation passed 37 
 
 - Staff invitation/create-account workflow and real email delivery for invitation/password reset.
 - Session revocation is enforced by D1 triggers on deactivation/suspension and loss of the final active branch role. The staff account lifecycle endpoints are implemented, but invitation issuance/acceptance and real email delivery remain outstanding.
-- Staff directory/account lifecycle and dual-control role revocation routes still need Worker-level integration tests against local D1.
+- Staff directory/account lifecycle, audit-read and dual-control role revocation routes still need Worker-level integration tests against local D1.
 - Better Auth schema compatibility validation against the exact pinned package in local D1 and Worker runtime.
 - Capability/record authorization integration into domain handlers; verified session resolution is now available, but protected business routes remain disabled.
 - Ministry-sensitive prayer/care domain tables and runtime access-audit enforcement (the immutable audit ledger is now defined).
