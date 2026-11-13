@@ -56,7 +56,7 @@ Latest verified CI run: [43459620387](https://github.com/Elgit4/PCG_Missions/act
 - Session revocation is enforced by D1 triggers on deactivation/suspension and loss of the final active branch role. The staff account lifecycle endpoints are implemented, but invitation issuance/acceptance and real email delivery remain outstanding.
 - Staff directory/account lifecycle, audit-read and dual-control role revocation routes still need Worker-level integration tests against local D1.
 - Better Auth schema compatibility validation against the exact pinned package in local D1 and Worker runtime.
-- First contact handlers are implemented for scoped list/create/read/update and interactions. Contact creation is idempotent and auto-assigns the contact to the capturing staff member. Phone/email visibility and private demographic/language field writes are separately gated. Contact notes, reassignments, follow-up task APIs and other ministry handlers remain outstanding.
+- First contact handlers are implemented for scoped list/create/read/update, interactions and visibility-filtered notes. Contact creation is idempotent and auto-assigns the contact to the capturing staff member. Phone/email visibility and private demographic/language field writes are separately gated. Contact notes, reassignments, follow-up task APIs and other ministry handlers remain outstanding.
 - Ministry-sensitive prayer/care domain tables and runtime access-audit enforcement (the immutable audit ledger is now defined).
 - Events, registrations, check-in, transport, calendar, announcements, public content and reports.
 - Data export/import tooling and reconciliation reports.
