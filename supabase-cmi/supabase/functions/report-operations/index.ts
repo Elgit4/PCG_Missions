@@ -369,6 +369,9 @@ Deno.serve(async (request: Request) => {
       }).select(REPORT_COLUMNS).single();
       if (error) {
         const message = error.message ?? "";
+        if (error.code === "23505") {
+          return fail("REPORT_ALREADY_EXISTS", "A report already exists for this author, period and team/event scope.", 409, origin, requestId);
+        }
         if (message.includes("REPORT_TEAM_BRANCH_MISMATCH")) return fail("INVALID_TEAM_SCOPE", "The selected team does not belong to this branch.", 400, origin, requestId);
         if (message.includes("REPORT_EVENT_BRANCH_MISMATCH") || error.code === "23503") return fail("INVALID_EVENT_SCOPE", "The selected event does not belong to an available branch event.", 400, origin, requestId);
         throw new Error("REPORT_CREATE_FAILED");
