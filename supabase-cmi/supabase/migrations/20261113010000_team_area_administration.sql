@@ -179,6 +179,13 @@ begin
       raise exception using errcode = '22023', message = 'INVALID_TEAM_ID';
     end if;
     v_team_id := (p_payload->>'team_id')::uuid;
+    -- Serialize deactivation against concurrent membership creation.
+    perform 1 from public.team t
+    where t.id = v_team_id and t.branch_id = v_branch_id
+    for update;
+    if not found then
+      raise exception using errcode = 'P0002', message = 'TEAM_NOT_FOUND';
+    end if;
     if p_payload ? 'name' then
       if pg_catalog.jsonb_typeof(p_payload->'name') is distinct from 'string' then
         raise exception using errcode = '22023', message = 'INVALID_TEAM_NAME';
@@ -250,10 +257,11 @@ begin
     if v_membership_role not in ('member','leader') then
       raise exception using errcode = '22023', message = 'INVALID_MEMBERSHIP_ROLE';
     end if;
-    if not exists (
-      select 1 from public.team t
-      where t.id = v_team_id and t.branch_id = v_branch_id and t.is_active
-    ) then
+    -- Lock the parent before inserting a membership to prevent a race with deactivation.
+    perform 1 from public.team t
+    where t.id = v_team_id and t.branch_id = v_branch_id and t.is_active
+    for update;
+    if not found then
       raise exception using errcode = 'P0002', message = 'ACTIVE_TEAM_NOT_FOUND';
     end if;
     if not exists (
@@ -419,6 +427,13 @@ begin
       raise exception using errcode = '22023', message = 'INVALID_AREA_ID';
     end if;
     v_area_id := (p_payload->>'area_id')::uuid;
+    -- Serialize deactivation against concurrent coverage creation.
+    perform 1 from public.service_area sa
+    where sa.id = v_area_id and sa.branch_id = v_branch_id
+    for update;
+    if not found then
+      raise exception using errcode = 'P0002', message = 'SERVICE_AREA_NOT_FOUND';
+    end if;
     if p_payload ? 'name' then
       if pg_catalog.jsonb_typeof(p_payload->'name') is distinct from 'string' then
         raise exception using errcode = '22023', message = 'INVALID_SERVICE_AREA_NAME';
