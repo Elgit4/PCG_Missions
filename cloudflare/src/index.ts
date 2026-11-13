@@ -2598,9 +2598,11 @@ async function listPrayerQueue(
         AND prayer_request.status IN ('open','assigned','in_progress')
         AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
         AND ${actorAuthorized}
+      ORDER BY prayer_request.created_at ASC, prayer_request.id ASC
+      LIMIT ?
     `).bind(
       context.staff.userId, requestId, now, context.activeBranch.branchId,
-      now, context.staff.profileId, now, now,
+      now, context.staff.profileId, now, now, limit,
     ),
     env.DB.prepare(`
       SELECT id, status, sensitivity, expires_at, created_at, updated_at
@@ -2682,9 +2684,11 @@ async function listAssignedPrayerRequests(
       WHERE prayer_request.branch_id = ?
         AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
         AND ${activeShareAndAssignment}
+      ORDER BY prayer_request.created_at DESC, prayer_request.id DESC
+      LIMIT ?
     `).bind(
       context.staff.userId, requestId, now, context.activeBranch.branchId, now,
-      context.staff.userId, now, now, context.staff.profileId, now, now,
+      context.staff.userId, now, now, context.staff.profileId, now, now, limit,
     ),
     env.DB.prepare(`
       SELECT prayer_request.id, prayer_request.request_text, prayer_request.status,
@@ -2892,63 +2896,67 @@ async function updatePrayerRequestStatus(
   }
   const nextStatus = payload.status;
   const now = new Date().toISOString();
-  const result = await env.DB.prepare(`
-    UPDATE prayer_request
-    SET status = ?, answered_at = CASE WHEN ? = 'answered' THEN ? ELSE NULL END,
-        updated_at = ?
-    WHERE id = ? AND branch_id = ?
-      AND status IN ('open','assigned','in_progress')
-      AND (expires_at IS NULL OR expires_at > ?)
-      AND EXISTS (
-        SELECT 1 FROM prayer_assignment pa
-        WHERE pa.prayer_request_id = prayer_request.id
-          AND pa.branch_id = prayer_request.branch_id
-          AND pa.intercessor_user_id = ?
-          AND pa.revoked_at IS NULL
-          AND pa.starts_at <= ? AND (pa.ends_at IS NULL OR pa.ends_at > ?)
-      )
-      AND EXISTS (
-        SELECT 1 FROM staff_record_share s
-        WHERE s.record_type = 'prayer_request' AND s.record_id = prayer_request.id
-          AND s.branch_id = prayer_request.branch_id
-          AND s.staff_profile_id = ?
-          AND s.revoked_at IS NULL
-          AND s.starts_at <= ? AND (s.ends_at IS NULL OR s.ends_at > ?)
-      )
-      AND EXISTS (
-        SELECT 1 FROM staff_role_assignment ra
-        JOIN role r ON r.id = ra.role_id AND r.is_active = 1
-        JOIN role_capability rc ON rc.role_id = r.id
-        JOIN capability cap ON cap.id = rc.capability_id AND cap.is_active = 1
-        JOIN staff_profile sp ON sp.id = ra.staff_profile_id
-        WHERE sp.auth_user_id = ? AND sp.account_status = 'active'
-          AND ra.branch_id = prayer_request.branch_id
-          AND ra.revoked_at IS NULL AND ra.starts_at <= ?
-          AND (ra.ends_at IS NULL OR ra.ends_at > ?)
-          AND cap.code = 'prayer.request.respond' AND rc.scope_mode = 'explicit_share'
-      )
-  `).bind(
-    nextStatus, nextStatus, now, now,
-    prayerRequestId, context.activeBranch.branchId, now,
-    context.staff.userId, now, now,
-    context.staff.profileId, now, now,
-    context.staff.userId, now, now,
-  ).run();
-  if (!result.success || (result.meta?.changes ?? 0) !== 1) {
-    return json(404, { ok: false, error: { code: "ASSIGNED_PRAYER_REQUEST_NOT_FOUND" } }, requestId, origin);
-  }
-  const audit = await env.DB.batch([
+  const results = await env.DB.batch([
+    env.DB.prepare(`
+      UPDATE prayer_request
+      SET status = ?, answered_at = CASE WHEN ? = 'answered' THEN ? ELSE NULL END,
+          updated_at = ?
+      WHERE id = ? AND branch_id = ?
+        AND status IN ('open','assigned','in_progress')
+        AND (expires_at IS NULL OR expires_at > ?)
+        AND EXISTS (
+          SELECT 1 FROM prayer_assignment pa
+          WHERE pa.prayer_request_id = prayer_request.id
+            AND pa.branch_id = prayer_request.branch_id
+            AND pa.intercessor_user_id = ?
+            AND pa.revoked_at IS NULL
+            AND pa.starts_at <= ? AND (pa.ends_at IS NULL OR pa.ends_at > ?)
+        )
+        AND EXISTS (
+          SELECT 1 FROM staff_record_share s
+          WHERE s.record_type = 'prayer_request' AND s.record_id = prayer_request.id
+            AND s.branch_id = prayer_request.branch_id
+            AND s.staff_profile_id = ?
+            AND s.revoked_at IS NULL
+            AND s.starts_at <= ? AND (s.ends_at IS NULL OR s.ends_at > ?)
+        )
+        AND EXISTS (
+          SELECT 1 FROM staff_role_assignment ra
+          JOIN role r ON r.id = ra.role_id AND r.is_active = 1
+          JOIN role_capability rc ON rc.role_id = r.id
+          JOIN capability cap ON cap.id = rc.capability_id AND cap.is_active = 1
+          JOIN staff_profile sp ON sp.id = ra.staff_profile_id
+          WHERE sp.auth_user_id = ? AND sp.account_status = 'active'
+            AND ra.branch_id = prayer_request.branch_id
+            AND ra.revoked_at IS NULL AND ra.starts_at <= ?
+            AND (ra.ends_at IS NULL OR ra.ends_at > ?)
+            AND cap.code = 'prayer.request.respond' AND rc.scope_mode = 'explicit_share'
+        )
+    `).bind(
+      nextStatus, nextStatus, now, now,
+      prayerRequestId, context.activeBranch.branchId, now,
+      context.staff.userId, now, now,
+      context.staff.profileId, now, now,
+      context.staff.userId, now, now,
+    ),
     env.DB.prepare(`
       INSERT INTO prayer_access_audit
         (id, prayer_request_id, branch_id, actor_user_id, action, reason, request_id, accessed_at, safe_metadata)
-      VALUES (?, ?, ?, ?, 'update', 'Assigned intercessor updated prayer status', ?, ?, ?)
+      SELECT ?, prayer_request.id, prayer_request.branch_id, ?, 'update',
+             'Assigned intercessor updated prayer status', ?, ?, ?
+      FROM prayer_request
+      WHERE prayer_request.id = ? AND prayer_request.branch_id = ?
+        AND changes() = 1
     `).bind(
-      crypto.randomUUID(), prayerRequestId, context.activeBranch.branchId,
-      context.staff.userId, requestId, now, JSON.stringify({ status: nextStatus }),
+      crypto.randomUUID(), context.staff.userId, requestId, now,
+      JSON.stringify({ status: nextStatus }),
+      prayerRequestId, context.activeBranch.branchId,
     ),
   ]);
-  if (audit.some((row) => !row.success)) {
-    return json(500, { ok: false, error: { code: "PRAYER_AUDIT_WRITE_FAILED" } }, requestId, origin);
+  if (results.some((result) => !result.success) ||
+      (results[0]?.meta?.changes ?? 0) !== 1 ||
+      (results[1]?.meta?.changes ?? 0) !== 1) {
+    return json(404, { ok: false, error: { code: "ASSIGNED_PRAYER_REQUEST_NOT_FOUND" } }, requestId, origin);
   }
   return json(200, { ok: true, prayer_request_id: prayerRequestId, status: nextStatus }, requestId, origin);
 }
