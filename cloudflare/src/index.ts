@@ -2718,6 +2718,354 @@ async function listStaffAudit(
   }, requestId, origin);
 }
 
+type EventScopeMode = "branch" | "team" | "assigned";
+
+function bestEventScope(scopes: string[]): EventScopeMode | null {
+  if (scopes.includes("branch")) return "branch";
+  if (scopes.includes("team")) return "team";
+  if (scopes.includes("assigned")) return "assigned";
+  return null;
+}
+
+function eventScopePredicate(
+  mode: EventScopeMode,
+  alias: string,
+  staffProfileId: string,
+  staffUserId: string,
+  now: string,
+): { sql: string; values: unknown[] } {
+  if (mode === "branch") return { sql: "1 = 1", values: [] };
+  if (mode === "assigned") return {
+    sql: \`EXISTS (
+      SELECT 1 FROM event_staff_assignment esa
+      WHERE esa.event_id = \${alias}.id
+        AND esa.branch_id = \${alias}.branch_id
+        AND esa.staff_auth_user_id = ?
+        AND esa.revoked_at IS NULL
+        AND esa.starts_at <= ?
+        AND (esa.ends_at IS NULL OR esa.ends_at > ?)
+    )\`,
+    values: [staffUserId, now, now],
+  };
+  return {
+    sql: \`EXISTS (
+      SELECT 1
+      FROM event_team_assignment eta
+      JOIN staff_team_membership tm
+        ON tm.team_id = eta.team_id AND tm.branch_id = eta.branch_id
+      WHERE eta.event_id = \${alias}.id
+        AND eta.branch_id = \${alias}.branch_id
+        AND tm.staff_profile_id = ?
+        AND eta.revoked_at IS NULL
+        AND eta.starts_at <= ?
+        AND (eta.ends_at IS NULL OR eta.ends_at > ?)
+        AND tm.revoked_at IS NULL
+        AND tm.starts_at <= ?
+        AND (tm.ends_at IS NULL OR tm.ends_at > ?)
+    )\`,
+    values: [staffProfileId, now, now, now, now],
+  };
+}
+
+function isValidTimezone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function listEvents(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestEventScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "events.read")
+    .map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status") ?? "all";
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 50 : Number(rawLimit);
+  if (!["draft", "published", "cancelled", "completed", "all"].includes(status) ||
+      !Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      [...url.searchParams.keys()].some((key) => !["status", "limit"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_EVENT_QUERY" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const predicate = eventScopePredicate(
+    scope, "e", context.staff.profileId, context.staff.userId, now,
+  );
+  const statusPredicate = status === "all" ? "1 = 1" : "e.status = ?";
+  const rows = await env.DB.prepare(\`
+    SELECT e.id, e.branch_id, e.title, e.description, e.starts_at, e.ends_at,
+           e.timezone, e.location, e.capacity, e.registration_state,
+           e.visibility, e.status, e.transport_enabled, e.created_at, e.updated_at
+    FROM event e
+    WHERE e.branch_id = ?
+      AND \${statusPredicate}
+      AND (\${predicate.sql})
+    ORDER BY e.starts_at DESC, e.id DESC
+    LIMIT ?
+  \`).bind(
+    context.activeBranch.branchId,
+    ...(status === "all" ? [] : [status]),
+    ...predicate.values,
+    limit,
+  ).all<Record<string, unknown>>();
+  return json(200, { ok: true, events: rows.results ?? [] }, requestId, origin);
+}
+
+async function getEvent(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestEventScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "events.read")
+    .map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const now = new Date().toISOString();
+  const predicate = eventScopePredicate(
+    scope, "e", context.staff.profileId, context.staff.userId, now,
+  );
+  const row = await env.DB.prepare(\`
+    SELECT e.id, e.branch_id, e.title, e.description, e.starts_at, e.ends_at,
+           e.timezone, e.location, e.capacity, e.registration_state,
+           e.visibility, e.status, e.transport_enabled, e.created_at, e.updated_at
+    FROM event e
+    WHERE e.id = ? AND e.branch_id = ? AND (\${predicate.sql})
+    LIMIT 1
+  \`).bind(eventId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
+  if (!row) return json(404, { ok: false, error: { code: "EVENT_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, event: row }, requestId, origin);
+}
+
+async function createEvent(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["title", "description", "starts_at", "ends_at", "timezone", "location", "capacity", "transport_enabled"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_EVENT_BODY" } }, requestId, origin);
+  }
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  const description = payload.description === undefined || payload.description === null
+    ? null : typeof payload.description === "string" ? payload.description.trim() || null : "";
+  const startsAt = parseIsoTimestamp(payload.starts_at, "");
+  const endsAt = parseIsoTimestamp(payload.ends_at, "");
+  const timezone = payload.timezone === undefined ? "Africa/Accra" :
+    typeof payload.timezone === "string" ? payload.timezone.trim() : "";
+  const location = payload.location === undefined || payload.location === null
+    ? null : typeof payload.location === "string" ? payload.location.trim() || null : "";
+  const capacity = payload.capacity === undefined || payload.capacity === null || payload.capacity === ""
+    ? null : payload.capacity;
+  const transportEnabled = payload.transport_enabled === undefined ? false : payload.transport_enabled;
+  if (
+    title.length < 2 || title.length > 180 ||
+    (description !== null && (typeof description !== "string" || description.length > 5000)) ||
+    !startsAt || !endsAt || endsAt <= startsAt ||
+    timezone.length < 3 || timezone.length > 64 || !isValidTimezone(timezone) ||
+    (location !== null && (typeof location !== "string" || location.length > 200)) ||
+    (capacity !== null && (typeof capacity !== "number" || !Number.isInteger(capacity) || capacity < 1 || capacity > 100000)) ||
+    typeof transportEnabled !== "boolean"
+  ) {
+    return json(400, { ok: false, error: { code: "INVALID_EVENT_DETAILS" } }, requestId, origin);
+  }
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(\`
+      INSERT INTO event
+        (id, branch_id, title, description, starts_at, ends_at, timezone,
+         location, capacity, registration_state, visibility, status,
+         transport_enabled, created_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', 'private', 'draft', ?, ?, ?, ?)
+    \`).bind(
+      id, access.activeBranch.branchId, title, description, startsAt, endsAt,
+      timezone, location, capacity, transportEnabled ? 1 : 0,
+      access.staff.userId, now, now,
+    ).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error("EVENT_CREATE_FAILED");
+  } catch {
+    return json(409, { ok: false, error: { code: "EVENT_CREATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, {
+    ok: true,
+    event: {
+      id, branch_id: access.activeBranch.branchId, title, starts_at: startsAt,
+      ends_at: endsAt, timezone, capacity, registration_state: "closed",
+      visibility: "private", status: "draft", transport_enabled: transportEnabled,
+    },
+  }, requestId, origin);
+}
+
+async function updateEvent(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["title", "description", "starts_at", "ends_at", "timezone", "location", "capacity", "transport_enabled"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length === 0 || Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_EVENT_UPDATE" } }, requestId, origin);
+  }
+  const existing = await env.DB.prepare(\`
+    SELECT id, starts_at, ends_at FROM event
+    WHERE id = ? AND branch_id = ? AND status = 'draft'
+    LIMIT 1
+  \`).bind(eventId, access.activeBranch.branchId).first<{
+    id: string; starts_at: string; ends_at: string;
+  }>();
+  if (!existing) return json(404, { ok: false, error: { code: "DRAFT_EVENT_NOT_FOUND" } }, requestId, origin);
+
+  const values: unknown[] = [];
+  const assignments: string[] = [];
+  const title = payload.title;
+  if (title !== undefined) {
+    if (typeof title !== "string" || title.trim().length < 2 || title.trim().length > 180) {
+      return json(400, { ok: false, error: { code: "INVALID_EVENT_TITLE" } }, requestId, origin);
+    }
+    assignments.push("title = ?"); values.push(title.trim());
+  }
+  if (payload.description !== undefined) {
+    if (payload.description !== null && (typeof payload.description !== "string" || payload.description.length > 5000)) {
+      return json(400, { ok: false, error: { code: "INVALID_EVENT_DESCRIPTION" } }, requestId, origin);
+    }
+    assignments.push("description = ?"); values.push(typeof payload.description === "string" ? payload.description.trim() || null : null);
+  }
+  if (payload.starts_at !== undefined) {
+    const value = parseIsoTimestamp(payload.starts_at, "");
+    if (!value) return json(400, { ok: false, error: { code: "INVALID_EVENT_START" } }, requestId, origin);
+    assignments.push("starts_at = ?"); values.push(value);
+  }
+  if (payload.ends_at !== undefined) {
+    const value = parseIsoTimestamp(payload.ends_at, "");
+    if (!value) return json(400, { ok: false, error: { code: "INVALID_EVENT_END" } }, requestId, origin);
+    assignments.push("ends_at = ?"); values.push(value);
+  }
+  if (payload.timezone !== undefined) {
+    if (typeof payload.timezone !== "string" || payload.timezone.length > 64 || !isValidTimezone(payload.timezone)) {
+      return json(400, { ok: false, error: { code: "INVALID_EVENT_TIMEZONE" } }, requestId, origin);
+    }
+    assignments.push("timezone = ?"); values.push(payload.timezone);
+  }
+  if (payload.location !== undefined) {
+    if (payload.location !== null && (typeof payload.location !== "string" || payload.location.length > 200)) {
+      return json(400, { ok: false, error: { code: "INVALID_EVENT_LOCATION" } }, requestId, origin);
+    }
+    assignments.push("location = ?"); values.push(typeof payload.location === "string" ? payload.location.trim() || null : null);
+  }
+  if (payload.capacity !== undefined) {
+    if (payload.capacity !== null && (typeof payload.capacity !== "number" || !Number.isInteger(payload.capacity) || payload.capacity < 1 || payload.capacity > 100000)) {
+      return json(400, { ok: false, error: { code: "INVALID_EVENT_CAPACITY" } }, requestId, origin);
+    }
+    assignments.push("capacity = ?"); values.push(payload.capacity);
+  }
+  if (payload.transport_enabled !== undefined) {
+    if (typeof payload.transport_enabled !== "boolean") {
+      return json(400, { ok: false, error: { code: "INVALID_TRANSPORT_SETTING" } }, requestId, origin);
+    }
+    assignments.push("transport_enabled = ?"); values.push(payload.transport_enabled ? 1 : 0);
+  }
+  const nextStart = typeof payload.starts_at === "string" ? parseIsoTimestamp(payload.starts_at, "")! : existing.starts_at;
+  const nextEnd = typeof payload.ends_at === "string" ? parseIsoTimestamp(payload.ends_at, "")! : existing.ends_at;
+  if (nextEnd <= nextStart) return json(400, { ok: false, error: { code: "EVENT_END_MUST_FOLLOW_START" } }, requestId, origin);
+  assignments.push("updated_at = ?");
+  values.push(new Date().toISOString());
+  try {
+    const result = await env.DB.prepare(\`
+      UPDATE event SET \${assignments.join(", ")}
+      WHERE id = ? AND branch_id = ? AND status = 'draft'
+    \`).bind(...values, eventId, access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+      return json(409, { ok: false, error: { code: "EVENT_CHANGED" } }, requestId, origin);
+    }
+  } catch {
+    return json(409, { ok: false, error: { code: "EVENT_UPDATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, event_id: eventId, status: "draft" }, requestId, origin);
+}
+
+async function publishEvent(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(\`
+      UPDATE event
+      SET status = 'published', visibility = 'staff',
+          registration_state = 'closed', updated_at = ?
+      WHERE id = ? AND branch_id = ? AND status = 'draft'
+        AND length(trim(title)) >= 2 AND ends_at > starts_at
+    \`).bind(now, eventId, access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+      return json(409, { ok: false, error: { code: "EVENT_NOT_PUBLISHABLE" } }, requestId, origin);
+    }
+  } catch {
+    return json(409, { ok: false, error: { code: "EVENT_PUBLISH_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, event_id: eventId, status: "published", visibility: "staff" }, requestId, origin);
+}
+
+async function cancelEvent(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(\`
+      UPDATE event
+      SET status = 'cancelled', registration_state = 'closed', updated_at = ?
+      WHERE id = ? AND branch_id = ? AND status IN ('draft','published')
+    \`).bind(now, eventId, access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+      return json(409, { ok: false, error: { code: "EVENT_NOT_CANCELLABLE" } }, requestId, origin);
+    }
+  } catch {
+    return json(409, { ok: false, error: { code: "EVENT_CANCEL_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, event_id: eventId, status: "cancelled" }, requestId, origin);
+}
+
 function isAuthPath(pathname: string): boolean {
   return pathname === "/api/auth" || pathname.startsWith("/api/auth/");
 }
@@ -3348,6 +3696,29 @@ async function updatePrayerRequestStatus(
       catch { return json(400, { ok: false, error: { code: "INVALID_CONTACT_ID" } }, requestId, origin); }
       if (request.method === "GET") return listContactInteractions(request, env, contactId, requestId, origin);
       if (request.method === "POST") return createContactInteraction(request, env, contactId, requestId, origin);
+    }
+
+    if (url.pathname === "/api/v1/events" && request.method === "GET") {
+      return listEvents(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/events" && request.method === "POST") {
+      return createEvent(request, env, requestId, origin);
+    }
+    const eventActionMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/(publish|cancel)$/);
+    if (eventActionMatch && request.method === "POST") {
+      let eventId: string;
+      try { eventId = decodeURIComponent(eventActionMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_EVENT_ID" } }, requestId, origin); }
+      if (eventActionMatch[2] === "publish") return publishEvent(request, env, eventId, requestId, origin);
+      return cancelEvent(request, env, eventId, requestId, origin);
+    }
+    const eventMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)$/);
+    if (eventMatch) {
+      let eventId: string;
+      try { eventId = decodeURIComponent(eventMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_EVENT_ID" } }, requestId, origin); }
+      if (request.method === "GET") return getEvent(request, env, eventId, requestId, origin);
+      if (request.method === "PATCH") return updateEvent(request, env, eventId, requestId, origin);
     }
 
     if (url.pathname === "/api/v1/staff/invitations/accept" && request.method === "POST") {
