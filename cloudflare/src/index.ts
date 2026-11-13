@@ -6561,26 +6561,26 @@ async function updatePrayerRequestStatus(
 
     if (url.pathname === "/api/v1/pastoral/care" && request.method === "GET") return listCareRecords(request,env,requestId,origin);
     if (url.pathname === "/api/v1/pastoral/care" && request.method === "POST") return createCareRecord(request,env,requestId,origin);
-    const careRevokeMatch=url.pathname.match(/^\\/api\\/v1\\/pastoral\\/care\\/([^/]+)\\/assignments\\/([^/]+)\\/revoke$/);
+    const careRevokeMatch=url.pathname.match(/^\/api\/v1\/pastoral\/care\/([^/]+)\/assignments\/([^/]+)\/revoke$/);
     if(careRevokeMatch&&request.method==="POST") {
       let careId:string,assignmentId:string;
       try { careId=decodeURIComponent(careRevokeMatch[1]); assignmentId=decodeURIComponent(careRevokeMatch[2]); }
       catch { return json(400,{ok:false,error:{code:"INVALID_CARE_ASSIGNMENT_ID"}},requestId,origin); }
       return revokeCareAssignment(request,env,careId,assignmentId,requestId,origin);
     }
-    const careAssignMatch=url.pathname.match(/^\\/api\\/v1\\/pastoral\\/care\\/([^/]+)\\/assignments$/);
+    const careAssignMatch=url.pathname.match(/^\/api\/v1\/pastoral\/care\/([^/]+)\/assignments$/);
     if(careAssignMatch&&request.method==="POST") {
       let careId:string; try { careId=decodeURIComponent(careAssignMatch[1]); }
       catch { return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_ID"}},requestId,origin); }
       return assignCareRecord(request,env,careId,requestId,origin);
     }
-    const careInteractionMatch=url.pathname.match(/^\\/api\\/v1\\/pastoral\\/care\\/([^/]+)\\/interactions$/);
+    const careInteractionMatch=url.pathname.match(/^\/api\/v1\/pastoral\/care\/([^/]+)\/interactions$/);
     if(careInteractionMatch&&request.method==="POST") {
       let careId:string; try { careId=decodeURIComponent(careInteractionMatch[1]); }
       catch { return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_ID"}},requestId,origin); }
       return createCareInteraction(request,env,careId,requestId,origin);
     }
-    const careRecordMatch=url.pathname.match(/^\\/api\\/v1\\/pastoral\\/care\\/([^/]+)$/);
+    const careRecordMatch=url.pathname.match(/^\/api\/v1\/pastoral\/care\/([^/]+)$/);
     if(careRecordMatch) {
       let careId:string; try { careId=decodeURIComponent(careRecordMatch[1]); }
       catch { return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_ID"}},requestId,origin); }
