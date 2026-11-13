@@ -63,6 +63,8 @@ set search_path = ''
 as $$
 declare
   v_report public.ministry_report;
+  v_can_review_branch boolean := false;
+  v_can_review_team boolean := false;
 begin
   if p_decision not in ('approved', 'returned', 'comment') then
     raise exception using errcode = '22023', message = 'INVALID_REPORT_DECISION';
@@ -82,6 +84,53 @@ begin
   if v_report.author_profile_id = p_reviewer_profile_id then
     raise exception using errcode = '42501', message = 'REPORT_SELF_REVIEW_FORBIDDEN';
   end if;
+
+  -- Re-check reviewer authority inside the same transaction that changes the
+  -- report. This closes the API check/write race if a role or team assignment
+  -- is revoked between the Edge Function lookup and this RPC.
+  select exists (
+    select 1
+    from public.staff_role_assignment sra
+    join public.role r on r.id = sra.role_id and r.is_active
+    join public.role_capability rc on rc.role_id = r.id and rc.scope_mode = 'branch'
+    join public.capability c on c.id = rc.capability_id
+      and c.code = 'report.review.branch' and c.is_active
+    where sra.staff_profile_id = p_reviewer_profile_id
+      and sra.branch_id = v_report.branch_id
+      and sra.starts_at <= pg_catalog.clock_timestamp()
+      and (sra.ends_at is null or sra.ends_at > pg_catalog.clock_timestamp())
+      and sra.revoked_at is null
+  ) into v_can_review_branch;
+
+  if not v_can_review_branch and v_report.team_id is not null then
+    select exists (
+      select 1
+      from public.staff_role_assignment sra
+      join public.role r on r.id = sra.role_id and r.is_active
+      join public.role_capability rc on rc.role_id = r.id and rc.scope_mode = 'team'
+      join public.capability c on c.id = rc.capability_id
+        and c.code = 'report.review.team' and c.is_active
+      join public.staff_team_membership stm
+        on stm.staff_profile_id = sra.staff_profile_id
+        and stm.branch_id = sra.branch_id
+        and stm.team_id = v_report.team_id
+        and stm.starts_at <= pg_catalog.clock_timestamp()
+        and (stm.ends_at is null or stm.ends_at > pg_catalog.clock_timestamp())
+        and stm.revoked_at is null
+      join public.team t on t.id = stm.team_id
+        and t.branch_id = stm.branch_id and t.is_active
+      where sra.staff_profile_id = p_reviewer_profile_id
+        and sra.branch_id = v_report.branch_id
+        and sra.starts_at <= pg_catalog.clock_timestamp()
+        and (sra.ends_at is null or sra.ends_at > pg_catalog.clock_timestamp())
+        and sra.revoked_at is null
+    ) into v_can_review_team;
+  end if;
+
+  if not v_can_review_branch and not v_can_review_team then
+    raise exception using errcode = '42501', message = 'REPORT_REVIEW_SCOPE_REQUIRED';
+  end if;
+
   if v_report.status <> 'submitted' then
     raise exception using errcode = '55000', message = 'REPORT_NOT_SUBMITTED';
   end if;
