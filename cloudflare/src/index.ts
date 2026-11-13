@@ -5853,6 +5853,16 @@ async function updatePrayerRequestStatus(
       if (announcementActionMatch[2] === "publish") return publishAnnouncement(request, env, announcementId, requestId, origin);
       return archiveAnnouncement(request, env, announcementId, requestId, origin);
     }
+    if (url.pathname === "/api/v1/announcements/inbox" && request.method === "GET") {
+      return listAnnouncementInbox(request,env,requestId,origin);
+    }
+    const announcementReadMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)\/read$/);
+    if (announcementReadMatch && request.method === "POST") {
+      let announcementId:string;
+      try { announcementId=decodeURIComponent(announcementReadMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_ANNOUNCEMENT_ID"}},requestId,origin); }
+      return markAnnouncementRead(request,env,announcementId,requestId,origin);
+    }
     const announcementMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)$/);
     if (announcementMatch) {
       let announcementId: string;
