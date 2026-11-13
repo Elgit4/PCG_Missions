@@ -10,7 +10,8 @@
 | Migration | Tables | Main invariants |
 | --- | --- | --- |
 | `0001_platform_core.sql` | 17 | Better Auth core identity table shape, church/branch tenancy, roles/capabilities, staff profiles and scoped assignments, append-only access audit, teams and service areas |
-| `0002_contacts_followup.sql` | 9 | Contacts, capture provenance/idempotency, assignment history, visibility-scoped notes, interactions, merge history, follow-up lists/tasks and append-only task events |\n| `0003_staff_authorization_policy.sql` | 0 new domain tables | Seeds six fixed roles, operation-level capabilities, least-privilege role grants, and an append-only sensitive-record access audit ledger |
+| `0002_contacts_followup.sql` | 9 | Contacts, capture provenance/idempotency, assignment history, visibility-scoped notes, interactions, merge history, follow-up lists/tasks and append-only task events |
+| `0003_staff_authorization_policy.sql` | 0 new domain tables | Seeds six fixed roles, operation-level capabilities, least-privilege role grants, and an append-only sensitive-record access audit ledger |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
