@@ -406,7 +406,9 @@ Deno.serve(async (request: Request) => {
       if (resubmitError) {
         const message = resubmitError.message ?? "";
         if (message.includes("REPORT_NOT_RETURNED")) return fail("REPORT_NOT_RETURNED", "Only a returned report can be corrected and resubmitted.", 409, origin, requestId);
-        if (message.includes("REPORT_AUTHOR_MISMATCH")) return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+        if (message.includes("REPORT_AUTHOR_MISMATCH") || message.includes("REPORT_SUBMIT_SCOPE_REQUIRED")) {
+          return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+        }
         throw new Error("REPORT_RESUBMIT_FAILED");
       }
       return response({ data, request_id: requestId }, 200, origin, requestId);
@@ -456,6 +458,7 @@ Deno.serve(async (request: Request) => {
         const message = reviewError.message ?? "";
         if (message.includes("REPORT_NOT_SUBMITTED")) return fail("REPORT_NOT_SUBMITTED", "Only submitted reports can be reviewed.", 409, origin, requestId);
         if (message.includes("REPORT_SELF_REVIEW_FORBIDDEN")) return fail("SELF_REVIEW_FORBIDDEN", "You cannot review your own report.", 403, origin, requestId);
+        if (message.includes("REPORT_REVIEW_SCOPE_REQUIRED")) return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
         throw new Error("REPORT_REVIEW_FAILED");
       }
       const { data: history, error: historyError } = await auth.service.from("report_review_event")
