@@ -31,22 +31,23 @@
 | `0020_event_assignment_privilege_guards.sql` | 0 new tables | Narrows registration, cancellation and check-in authorization to event assignment roles appropriate to each operation; schema version 20 |
 | `0021_announcement_delivery_read_receipts.sql` | 1 new table | Adds audience-checked in-app delivery fan-out, recipient indexes and immutable staff read receipts; schema version 21 |
 | `0022_typed_ministry_reports.sql` | 2 new tables | Adds typed daily/event/weekly ministry reports, D-12 report capabilities, branch/team reviewer scopes, self-review protection and atomic append-only review/resubmission history; schema version 22 |
+| `0023_prayer_request_idempotency.sql` | 1 new table | Adds branch-scoped actor-bound idempotency receipts for authenticated prayer intake; schema version 23 |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
 ## Remote non-production D1 verification
 
 - Database UUID: `376a6782-d059-41f9-9e09-f93718fef2bb`.
-- Migrations `0001` through `0022` applied successfully; schema version reports `22` and environment marker is `non-production`.
+- Migrations `0001` through `0022` applied successfully at last remote verification; migration `0023` is committed but not yet applied to remote D1, so remote schema remains version `22` and environment marker is `non-production`.
 - Database contains 73 application tables and all six expected role records.
 - `PRAGMA foreign_key_check` returned no violations.
-- Wrangler migration ledger `d1_migrations` contains all 22 applied migration filenames. Migrations `0018`–`0022` were applied to the EU non-production database and verified through the Cloudflare D1 API; expected event actor-authorization triggers, cancellation-key indexes, announcement delivery/read-receipt triggers, typed report tables, D-12 role grants and append-only review triggers are present.
+- Wrangler migration ledger `d1_migrations` contains 22 applied migration filenames at last remote verification. Migration `0023` is pending remote application. Migrations `0018`–`0022` were applied to the EU non-production database and verified through the Cloudflare D1 API; expected event actor-authorization triggers, cancellation-key indexes, announcement delivery/read-receipt triggers, typed report tables, D-12 role grants and append-only review triggers are present.
 - This is a direct remote D1 schema test; Better Auth login, Worker request lifecycle and domain endpoints have not yet been exercised against a deployed Worker.
 
 ## Current test coverage
 
 The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations against an in-memory SQLite database and checks:
-- migration application through schema version 22 and non-production marker;
+- migration application through schema version 23 and non-production marker;
 - identity foreign keys;
 - temporal overlap rejection for staff role assignments, team membership, area coverage and contact assignments;
 - adjacent assignment periods;
