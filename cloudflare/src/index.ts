@@ -2703,6 +2703,7 @@ async function listAssignedPrayerRequests(
       JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
       JOIN staff_record_share ON staff_record_share.record_id = prayer_request.id
       WHERE prayer_request.branch_id = ?
+        AND prayer_request.status IN ('assigned','in_progress','answered')
         AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
         AND ${activeShareAndAssignment}
       ORDER BY prayer_request.created_at DESC, prayer_request.id DESC
