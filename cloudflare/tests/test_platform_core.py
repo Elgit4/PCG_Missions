@@ -368,7 +368,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
@@ -548,6 +548,53 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute("DELETE FROM staff_role_revocation_audit")
 
+
+
+    def test_contact_assignment_requires_scope_and_writes_append_only_audit(self):
+        self._lifecycle_fixture()
+        self._lifecycle_staff("assignment-admin-user", "assignment-admin", "Assignment Admin", "assignment-admin@example.test")
+        self._lifecycle_staff("assignment-worker-user", "assignment-worker", "Assignment Worker", "assignment-worker@example.test")
+        self._lifecycle_staff("assignment-target-user", "assignment-target", "Assignment Target", "assignment-target@example.test")
+        self._lifecycle_assignment("assignment-admin-role", "assignment-admin", "admin_pastor", "lifecycle-branch", "assignment-admin")
+        self._lifecycle_assignment("assignment-worker-role", "assignment-worker", "field_worker", "lifecycle-branch", "assignment-admin")
+        self._lifecycle_assignment("assignment-target-role", "assignment-target", "coordinator", "lifecycle-branch", "assignment-admin")
+        self.db.execute(
+            """INSERT INTO contact (id, branch_id, first_name, created_by, created_at, updated_at)
+               VALUES ('assignment-contact', 'lifecycle-branch', 'Contact', 'assignment-admin-user',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO contact_assignment
+                   (id, contact_id, branch_id, assignee_user_id, assigned_by, starts_at, reason, created_at)
+                   VALUES ('assignment-forbidden', 'assignment-contact', 'lifecycle-branch',
+                           'assignment-target-user', 'assignment-worker-user',
+                           '2026-01-01T00:00:00.000Z', 'Worker cannot assign another person',
+                           '2026-01-01T00:00:00.000Z')"""
+            )
+        self.db.execute(
+            """INSERT INTO contact_assignment
+               (id, contact_id, branch_id, assignee_user_id, assigned_by, starts_at, reason, created_at)
+               VALUES ('assignment-valid', 'assignment-contact', 'lifecycle-branch',
+                       'assignment-worker-user', 'assignment-admin-user',
+                       '2026-01-01T00:00:00.000Z', 'Admin assigned the field worker',
+                       '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """UPDATE contact_assignment
+               SET ends_at = '2026-01-02T00:00:00.000Z',
+                   ended_by = 'assignment-admin-user',
+                   reason = 'Admin reassigned contact to another worker'
+               WHERE id = 'assignment-valid'"""
+        )
+        self.assertEqual(
+            self.db.execute("SELECT action FROM contact_assignment_audit WHERE assignment_id = 'assignment-valid' ORDER BY created_at").fetchall(),
+            [("assigned",), ("ended",)],
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE contact_assignment_audit SET reason = 'tampered assignment audit'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM contact_assignment_audit")
 
     def test_staff_invitation_requires_admin_and_is_audited(self):
         self._lifecycle_fixture()
@@ -868,7 +915,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
