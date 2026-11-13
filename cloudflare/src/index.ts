@@ -3590,6 +3590,223 @@ async function cancelTransportReservation(
   return json(200,{ok:true,reservation_id:reservationId,status:"cancelled"},requestId,origin);
 }
 
+async function eventCloseoutCounts(
+  env: Env,
+  eventId: string,
+  branchId: string,
+): Promise<{ attendeeCount: number; registrationCount: number; transportSeatCount: number }> {
+  const [attendees,registrations,transport]=await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS count FROM event_checkin WHERE event_id=? AND branch_id=?").bind(eventId,branchId).first<{count:number}>(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM event_registration WHERE event_id=? AND branch_id=? AND status IN ('registered','attended','no_show')").bind(eventId,branchId).first<{count:number}>(),
+    env.DB.prepare("SELECT COALESCE(SUM(seat_count),0) AS count FROM transport_reservation WHERE event_id=? AND branch_id=? AND status IN ('reserved','boarded')").bind(eventId,branchId).first<{count:number}>(),
+  ]);
+  return {
+    attendeeCount:attendees?.count??0,
+    registrationCount:registrations?.count??0,
+    transportSeatCount:transport?.count??0,
+  };
+}
+
+async function getEventCloseout(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const allowed=context.activeBranch.capabilities.some((grant)=>grant.code==="events.manage"||grant.code==="events.closeout.review");
+  if (!allowed) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const closeout=await env.DB.prepare(
+    "SELECT * FROM event_closeout WHERE event_id=? AND branch_id=? LIMIT 1",
+  ).bind(eventId,context.activeBranch.branchId).first<Record<string,unknown>>();
+  if (!closeout) return json(404,{ok:false,error:{code:"EVENT_CLOSEOUT_NOT_FOUND"}},requestId,origin);
+  const history=await env.DB.prepare(`
+    SELECT ce.id,ce.actor_user_id,sp.full_name AS actor_name,ce.action,ce.details,ce.created_at
+    FROM event_closeout_event ce JOIN staff_profile sp ON sp.auth_user_id=ce.actor_user_id
+    WHERE ce.closeout_id=? ORDER BY ce.created_at ASC,ce.id ASC
+  `).bind(closeout.id).all<Record<string,unknown>>();
+  return json(200,{ok:true,closeout,history:history.results??[]},requestId,origin);
+}
+
+async function submitEventCloseout(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"events.manage");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const key=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (key.length<8||key.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||
+      Object.keys(payload).some((field)=>field!=="summary_notes")) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_BODY"}},requestId,origin);
+  const summary=payload.summary_notes===undefined||payload.summary_notes===null?null:
+    typeof payload.summary_notes==="string"?payload.summary_notes.trim():"";
+  if (summary!==null&&(typeof summary!=="string"||summary.length>5000)) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_NOTES"}},requestId,origin);
+  const event=await env.DB.prepare("SELECT id FROM event WHERE id=? AND branch_id=? AND status='published' LIMIT 1")
+    .bind(eventId,access.activeBranch.branchId).first<{id:string}>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_CLOSEOUT_READY"}},requestId,origin);
+  const counts=await eventCloseoutCounts(env,eventId,access.activeBranch.branchId);
+  const digest=await eventRequestDigest({event_id:eventId,summary_notes:summary,...counts});
+  const replay=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  const existing=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,access.activeBranch.branchId).first<{id:string;status:string}>();
+  if (existing) return json(409,{ok:false,error:{code:existing.status==="returned"?"CLOSEOUT_RESUBMIT_REQUIRED":"CLOSEOUT_ALREADY_EXISTS"}},requestId,origin);
+  const id=crypto.randomUUID(),now=new Date().toISOString();
+  const details=JSON.stringify({attendee_count:counts.attendeeCount,registration_count:counts.registrationCount,transport_seat_count:counts.transportSeatCount});
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO event_closeout
+          (id,event_id,branch_id,submitted_by,submitted_at,status,attendee_count,
+           registration_count,transport_seat_count,summary_notes,created_at,updated_at)
+        VALUES (?,?,?,?,?,'submitted',?,?,?,?,?,?)
+      `).bind(id,eventId,access.activeBranch.branchId,access.staff.userId,now,
+        counts.attendeeCount,counts.registrationCount,counts.transportSeatCount,summary,now,now),
+      env.DB.prepare(`
+        INSERT INTO event_closeout_event (id,closeout_id,actor_user_id,action,details,created_at)
+        VALUES (?,?,?,'submitted',?,?)
+      `).bind(crypto.randomUUID(),id,access.staff.userId,details,now),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES (?,?,?,'closeout_submit','staff',?,?,1,?,'event_closeout',?,201,?)
+      `).bind(crypto.randomUUID(),eventId,access.activeBranch.branchId,access.staff.userId,key,digest.bytes,id,now),
+    ]);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) throw new Error("CLOSEOUT_SUBMIT_BATCH_FAILED");
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    return json(409,{ok:false,error:{code:"CLOSEOUT_SUBMIT_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,closeout_id:id,status:"submitted",...counts},requestId,origin);
+}
+
+async function resubmitEventCloseout(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"events.manage");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const key=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (key.length<8||key.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some((field)=>field!=="summary_notes")) {
+    return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_BODY"}},requestId,origin);
+  }
+  const summary=payload.summary_notes===undefined||payload.summary_notes===null?null:
+    typeof payload.summary_notes==="string"?payload.summary_notes.trim():"";
+  if (summary!==null&&(typeof summary!=="string"||summary.length>5000)) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_NOTES"}},requestId,origin);
+  const existing=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,access.activeBranch.branchId).first<{id:string;status:string}>();
+  if (!existing||existing.status!=="returned") return json(409,{ok:false,error:{code:"CLOSEOUT_NOT_RESUBMITTABLE"}},requestId,origin);
+  const counts=await eventCloseoutCounts(env,eventId,access.activeBranch.branchId);
+  const digest=await eventRequestDigest({event_id:eventId,resubmission:true,summary_notes:summary,...counts});
+  const replay=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  const now=new Date().toISOString();
+  const details=JSON.stringify({resubmitted:true,attendee_count:counts.attendeeCount,registration_count:counts.registrationCount,transport_seat_count:counts.transportSeatCount});
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE event_closeout
+        SET status='submitted',submitted_by=?,submitted_at=?,reviewed_by=NULL,reviewed_at=NULL,
+            attendee_count=?,registration_count=?,transport_seat_count=?,summary_notes=?,updated_at=?
+        WHERE id=? AND event_id=? AND branch_id=? AND status='returned'
+      `).bind(access.staff.userId,now,counts.attendeeCount,counts.registrationCount,counts.transportSeatCount,summary,now,existing.id,eventId,access.activeBranch.branchId),
+      env.DB.prepare(`
+        INSERT INTO event_closeout_event (id,closeout_id,actor_user_id,action,details,created_at)
+        SELECT ?,?,?, 'submitted',?,?
+        WHERE EXISTS (SELECT 1 FROM event_closeout WHERE id=? AND status='submitted' AND submitted_by=? AND submitted_at=?)
+      `).bind(crypto.randomUUID(),existing.id,access.staff.userId,details,now,existing.id,access.staff.userId,now),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        SELECT ?,?,?, 'closeout_submit','staff',?,?,1,?,'event_closeout',?,200,?
+        WHERE EXISTS (SELECT 1 FROM event_closeout WHERE id=? AND status='submitted' AND submitted_by=? AND submitted_at=?)
+      `).bind(crypto.randomUUID(),eventId,access.activeBranch.branchId,access.staff.userId,key,digest.bytes,existing.id,now,existing.id,access.staff.userId,now),
+    ]);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) return json(409,{ok:false,error:{code:"CLOSEOUT_RESUBMIT_CONFLICT"}},requestId,origin);
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    return json(409,{ok:false,error:{code:"CLOSEOUT_RESUBMIT_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,closeout_id:existing.id,status:"submitted",...counts},requestId,origin);
+}
+
+async function reviewEventCloseout(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"events.closeout.review");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const key=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (key.length<8||key.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["decision","notes"]);
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some((field)=>!allowed.has(field))) {
+    return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_REVIEW_BODY"}},requestId,origin);
+  }
+  const decision=payload.decision==="approve"?"approved":payload.decision==="return"?"returned":null;
+  const notes=payload.notes===undefined||payload.notes===null?null:typeof payload.notes==="string"?payload.notes.trim():"";
+  if (!decision||(notes!==null&&(typeof notes!=="string"||notes.length>2000))) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_REVIEW_DECISION"}},requestId,origin);
+  const closeout=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,access.activeBranch.branchId).first<{id:string;status:string}>();
+  if (!closeout||closeout.status!=="submitted") return json(409,{ok:false,error:{code:"CLOSEOUT_NOT_REVIEWABLE"}},requestId,origin);
+  const digest=await eventRequestDigest({closeout_id:closeout.id,decision,notes});
+  const replay=await findEventReceipt(env,eventId,"closeout_review",key,access.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  const now=new Date().toISOString();
+  const details=JSON.stringify({notes});
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE event_closeout SET status=?,reviewed_by=?,reviewed_at=?,updated_at=?
+        WHERE id=? AND event_id=? AND branch_id=? AND status='submitted'
+      `).bind(decision,access.staff.userId,now,now,closeout.id,eventId,access.activeBranch.branchId),
+      env.DB.prepare(`
+        INSERT INTO event_closeout_event (id,closeout_id,actor_user_id,action,details,created_at)
+        SELECT ?,?,?,?, ?,?
+        WHERE EXISTS (SELECT 1 FROM event_closeout WHERE id=? AND status=? AND reviewed_by=? AND reviewed_at=?)
+      `).bind(crypto.randomUUID(),closeout.id,access.staff.userId,decision,details,now,closeout.id,decision,access.staff.userId,now),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        SELECT ?,?,?, 'closeout_review','staff',?,?,1,?,'event_closeout',?,200,?
+        WHERE EXISTS (SELECT 1 FROM event_closeout WHERE id=? AND status=? AND reviewed_by=? AND reviewed_at=?)
+      `).bind(crypto.randomUUID(),eventId,access.activeBranch.branchId,access.staff.userId,key,digest.bytes,closeout.id,now,closeout.id,decision,access.staff.userId,now),
+    ]);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) return json(409,{ok:false,error:{code:"CLOSEOUT_REVIEW_CONFLICT"}},requestId,origin);
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"closeout_review",key,access.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    return json(409,{ok:false,error:{code:"CLOSEOUT_REVIEW_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,closeout_id:closeout.id,status:decision},requestId,origin);
+}
+
 async function listEventAudit(
   request: Request,
   env: Env,
@@ -5474,6 +5691,29 @@ async function updatePrayerRequestStatus(
       catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
       if (request.method==="GET") return listTransportOptions(request,env,eventId,requestId,origin);
       if (request.method==="POST") return createTransportOption(request,env,eventId,requestId,origin);
+    }
+
+    const eventCloseoutReviewMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/closeout\/review$/);
+    if (eventCloseoutReviewMatch && request.method==="POST") {
+      let eventId:string;
+      try { eventId=decodeURIComponent(eventCloseoutReviewMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      return reviewEventCloseout(request,env,eventId,requestId,origin);
+    }
+    const eventCloseoutResubmitMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/closeout\/resubmit$/);
+    if (eventCloseoutResubmitMatch && request.method==="POST") {
+      let eventId:string;
+      try { eventId=decodeURIComponent(eventCloseoutResubmitMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      return resubmitEventCloseout(request,env,eventId,requestId,origin);
+    }
+    const eventCloseoutMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/closeout$/);
+    if (eventCloseoutMatch) {
+      let eventId:string;
+      try { eventId=decodeURIComponent(eventCloseoutMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      if (request.method==="GET") return getEventCloseout(request,env,eventId,requestId,origin);
+      if (request.method==="POST") return submitEventCloseout(request,env,eventId,requestId,origin);
     }
 
     const eventAuditMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/audit$/);
