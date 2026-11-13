@@ -1,0 +1,41 @@
+name: Frontend Worker Integration
+
+on:
+  pull_request:
+    paths:
+      - "web/**"
+      - "cloudflare/src/**"
+      - ".github/workflows/frontend-worker-integration.yml"
+  push:
+    branches:
+      - migration/cloudflare-nonprod-completion
+    paths:
+      - "web/**"
+      - "cloudflare/src/**"
+      - ".github/workflows/frontend-worker-integration.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend typecheck, tests and production build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci
+      - name: Type-check
+        run: npm run typecheck
+      - name: Run frontend tests
+        run: npm test
+      - name: Build preview artifact
+        run: npm run build
