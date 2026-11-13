@@ -10,9 +10,14 @@ on:
     paths:
       - "cloudflare/**"
       - ".github/workflows/cloudflare-d1-foundation.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: pcg-missions-cloudflare-nonprod
+  cancel-in-progress: false
 
 jobs:
   sqlite-foundation:
@@ -27,7 +32,7 @@ jobs:
 
   worker-typecheck:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: cloudflare
@@ -49,32 +54,33 @@ jobs:
         run: npm run build
       - name: Exercise Worker routes and Better Auth against local D1
         run: npm run test:integration
-      - name: Apply pending migrations to EU non-production D1
-        if: github.ref == 'refs/heads/migration/cloudflare-nonprod-completion'
+
+      # Never deploy from pull_request context. A push to the dedicated migration
+      # branch (or a manual dispatch on that branch) is the only deployment path.
+      - name: Require non-production deployment credentials
+        if: github.ref == 'refs/heads/migration/cloudflare-nonprod-completion' && github.event_name != 'pull_request'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
         run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::notice::CLOUDFLARE_API_TOKEN is not configured; remote D1 migrations were not applied."
-            exit 0
-          fi
-          npx wrangler d1 migrations apply pcg-missions-dev --remote
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing repository secret CLOUDFLARE_API_TOKEN."; exit 1; }
+          test -n "$BETTER_AUTH_SECRET" || { echo "::error::Missing repository secret BETTER_AUTH_SECRET."; exit 1; }
+          test "${#BETTER_AUTH_SECRET}" -ge 32 || { echo "::error::BETTER_AUTH_SECRET must contain at least 32 characters."; exit 1; }
+
+      - name: Apply pending migrations to EU non-production D1
+        if: github.ref == 'refs/heads/migration/cloudflare-nonprod-completion' && github.event_name != 'pull_request'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: npx wrangler d1 migrations apply pcg-missions-dev --remote
+
       - name: Deploy isolated non-production Worker
-        if: github.ref == 'refs/heads/migration/cloudflare-nonprod-completion'
+        if: github.ref == 'refs/heads/migration/cloudflare-nonprod-completion' && github.event_name != 'pull_request'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
         run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::notice::CLOUDFLARE_API_TOKEN is not configured; non-production deployment was not attempted."
-            exit 0
-          fi
-          if [ -z "$BETTER_AUTH_SECRET" ]; then
-            echo "::notice::BETTER_AUTH_SECRET is not configured; full API Worker deployment was not attempted."
-            exit 0
-          fi
           printf "%s" "$BETTER_AUTH_SECRET" | npx wrangler secret put BETTER_AUTH_SECRET
           if [ -n "$RESEND_API_KEY" ]; then
             printf "%s" "$RESEND_API_KEY" | npx wrangler secret put RESEND_API_KEY
@@ -84,10 +90,36 @@ jobs:
           else
             npx wrangler deploy
           fi
+
+      - name: Verify deployed Worker and EU D1 readiness
+        if: github.ref == 'refs/heads/migration/cloudflare-nonprod-completion' && github.event_name != 'pull_request'
+        env:
+          WORKER_HEALTH_URL: https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev/health
+          WORKER_API_URL: https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev/api/v1/me
+        run: |
+          set -eu
+          ready=0
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error "$WORKER_HEALTH_URL" -o /tmp/worker-health.json; then
+              if node -e 'const x=require("/tmp/worker-health.json"); process.exit(x.ok === true && x.environment === "non-production" && x.schema_version === 28 ? 0 : 1)'; then
+                ready=1
+                break
+              fi
+            fi
+            echo "Worker not ready with EU D1 schema 28 yet (attempt $attempt/12)."
+            sleep 5
+          done
+          test "$ready" -eq 1 || { cat /tmp/worker-health.json 2>/dev/null || true; echo "::error::Worker health did not confirm non-production D1 schema 28."; exit 1; }
+
+          api_status=$(curl --silent --output /tmp/worker-me.json --write-out "%{http_code}" "$WORKER_API_URL")
+          test "$api_status" = "401" || { cat /tmp/worker-me.json; echo "::error::Unauthenticated staff-context gate returned HTTP $api_status; expected 401."; exit 1; }
+          echo "Verified Worker health, non-production environment, D1 schema 28 and unauthenticated API gate."
+
       - name: Preserve non-production Worker bundle for deployment review
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: pcg-missions-worker-bundle
           path: cloudflare/build/
-          if-no-files-found: error
-          retention-days: 1
+          if-no-files-found: warn
+          retention-days: 3
