@@ -1,6 +1,7 @@
 import {
   canonicalJson,
   createRequestDigest,
+  deriveIdempotencySecret,
   equalDigestHex,
 } from "../_shared/idempotency.ts";
 import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@1";
@@ -150,4 +151,25 @@ Deno.test("HMAC-SHA-256 matches a fixed canonical request vector", async () => {
     keyVersion: 7,
     digestHex: "f0546246da9e2349100c845a8561214788d75d900f3c086a72fcfa03bb1f42ab",
   });
+});
+
+
+Deno.test("derived idempotency keys are deterministic and purpose separated", async () => {
+  const master = "server-side-supabase-service-role-key-material-0123456789";
+  const contact = await deriveIdempotencySecret(master, "contact");
+  const contactAgain = await deriveIdempotencySecret(master, "contact");
+  const followup = await deriveIdempotencySecret(master, "followup");
+  assertEquals(contact, contactAgain);
+  assertEquals(contact.length, 64);
+  assertEquals(followup.length, 64);
+  assertEquals(contact === followup, false);
+  assertEquals(
+    await deriveIdempotencySecret(master + "-rotated", "contact") === contact,
+    false,
+  );
+});
+
+Deno.test("derived idempotency keys reject missing or weak master secrets", async () => {
+  await assertRejects(() => deriveIdempotencySecret("", "contact"));
+  await assertRejects(() => deriveIdempotencySecret("too-short", "followup"));
 });
