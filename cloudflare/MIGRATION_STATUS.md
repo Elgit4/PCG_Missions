@@ -2,7 +2,7 @@
 
 **Track:** non-production only  
 **Database jurisdiction:** EU (`eu`) — remote non-production database `pcg-missions-dev` created on 2026-11-13 (primary region `EEUR`, replication disabled)  
-**Worker:** source type-checks and bundles; deployment is skipped until the repository secret CLOUDFLARE_API_TOKEN is configured; D1 schema applied directly to the isolated non-production database  
+**Worker:** full API Worker is not deployed; a separate read-only D1 smoke Worker `pcg-missions-d1-smoke` is deployed with `GET /health` and the EU D1 binding (public response not independently verified); full API deployment waits for the scoped repository secret  
 **Production:** unchanged
 
 ## Implemented D1 schema slices
