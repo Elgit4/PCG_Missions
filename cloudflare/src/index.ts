@@ -4476,21 +4476,89 @@ async function publishAnnouncement(
 ): Promise<Response> {
   const access = await authorizeRequestCapability(request, env, "announcements.manage");
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
-  const now = new Date().toISOString();
-  try {
-    const result = await env.DB.prepare(`
-      UPDATE announcement
-      SET status='published',published_at=?,updated_at=?,updated_by=?
-      WHERE id=? AND branch_id=? AND status='draft'
-        AND (publish_at IS NULL OR publish_at<=?)
-    `).bind(now, now, access.staff.userId, announcementId, access.activeBranch.branchId, now).run();
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "ANNOUNCEMENT_NOT_PUBLISHABLE" } }, requestId, origin);
-  } catch {
-    return json(409, { ok: false, error: { code: "ANNOUNCEMENT_PUBLISH_CONFLICT" } }, requestId, origin);
-  }
-  return json(200, { ok: true, announcement_id: announcementId, status: "published" }, requestId, origin);
-}
+  const branchId=access.activeBranch.branchId;
+  const current=await env.DB.prepare(
+    "SELECT id,audience_type FROM announcement WHERE id=? AND branch_id=? AND status='draft' LIMIT 1",
+  ).bind(announcementId,branchId).first<{id:string;audience_type:string}>();
+  if (!current) return json(409,{ok:false,error:{code:"ANNOUNCEMENT_NOT_PUBLISHABLE"}},requestId,origin);
 
+  const now=new Date().toISOString();
+  const deliverySql=`
+    WITH target AS (
+      SELECT id,branch_id,audience_type FROM announcement
+      WHERE id=? AND branch_id=? AND status='published'
+    ),
+    recipients(staff_profile_id) AS (
+      SELECT DISTINCT sp.id
+      FROM target a
+      JOIN staff_role_assignment ra ON ra.branch_id=a.branch_id
+      JOIN role r ON r.id=ra.role_id AND r.is_active=1
+      JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
+      JOIN staff_profile sp ON sp.id=ra.staff_profile_id AND sp.account_status='active'
+      WHERE a.audience_type IN ('branch','staff')
+        AND ra.revoked_at IS NULL AND ra.starts_at<=?
+        AND (ra.ends_at IS NULL OR ra.ends_at>?)
+      UNION
+      SELECT DISTINCT sp.id
+      FROM target a
+      JOIN announcement_team_audience ata ON ata.announcement_id=a.id AND ata.branch_id=a.branch_id
+      JOIN staff_team_membership stm ON stm.team_id=ata.team_id AND stm.branch_id=ata.branch_id
+      JOIN staff_profile sp ON sp.id=stm.staff_profile_id AND sp.account_status='active'
+      WHERE a.audience_type='team' AND stm.revoked_at IS NULL
+        AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+      UNION
+      SELECT DISTINCT sp.id
+      FROM target a
+      JOIN announcement_event_audience aea ON aea.announcement_id=a.id AND aea.branch_id=a.branch_id
+      JOIN event_staff_assignment esa ON esa.event_id=aea.event_id AND esa.branch_id=aea.branch_id
+      JOIN staff_profile sp ON sp.auth_user_id=esa.staff_auth_user_id AND sp.account_status='active'
+      WHERE a.audience_type='event' AND esa.revoked_at IS NULL
+        AND esa.starts_at<=? AND (esa.ends_at IS NULL OR esa.ends_at>?)
+      UNION
+      SELECT DISTINCT sp.id
+      FROM target a
+      JOIN announcement_event_audience aea ON aea.announcement_id=a.id AND aea.branch_id=a.branch_id
+      JOIN event_team_assignment eta ON eta.event_id=aea.event_id AND eta.branch_id=aea.branch_id
+      JOIN staff_team_membership stm ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id
+      JOIN staff_profile sp ON sp.id=stm.staff_profile_id AND sp.account_status='active'
+      WHERE a.audience_type='event' AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL
+        AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
+        AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+    )
+    INSERT OR IGNORE INTO announcement_delivery
+      (id,announcement_id,channel,recipient_ref,status,attempted_at,safe_error_code,created_at)
+    SELECT 'announcement-delivery-'||lower(hex(randomblob(16))),a.id,'in_app',
+           recipients.staff_profile_id,'delivered',?,NULL,?
+    FROM target a JOIN recipients ON 1=1
+  `;
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE announcement
+        SET status='published',published_at=?,updated_at=?,updated_by=?
+        WHERE id=? AND branch_id=? AND status='draft'
+          AND (publish_at IS NULL OR publish_at<=?)
+      `).bind(now,now,access.staff.userId,announcementId,branchId,now),
+      env.DB.prepare(deliverySql).bind(
+        announcementId,branchId,
+        now,now,
+        now,now,
+        now,now,
+        now,now,now,now,
+        now,now,
+      ),
+    ]);
+    if (!results[0]?.success || (results[0].meta?.changes??0)!==1) {
+      return json(409,{ok:false,error:{code:"ANNOUNCEMENT_NOT_PUBLISHABLE"}},requestId,origin);
+    }
+  } catch {
+    return json(409,{ok:false,error:{code:"ANNOUNCEMENT_PUBLISH_CONFLICT"}},requestId,origin);
+  }
+  const count=await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM announcement_delivery WHERE announcement_id=? AND channel='in_app' AND status='delivered'",
+  ).bind(announcementId).first<{count:number}>();
+  return json(200,{ok:true,announcement_id:announcementId,status:"published",delivery_count:count?.count??0},requestId,origin);
+}
 async function archiveAnnouncement(
   request: Request,
   env: Env,
