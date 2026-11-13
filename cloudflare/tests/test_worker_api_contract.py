@@ -12,6 +12,7 @@ class WorkerApiContractTests(unittest.TestCase):
         cls.source = WORKER_SOURCE.read_text(encoding="utf-8")
         cls.event_guard_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0020_event_assignment_privilege_guards.sql").read_text(encoding="utf-8")
         cls.event_operations_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0018_event_operations_guards.sql").read_text(encoding="utf-8")
+        cls.announcement_receipt_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0021_announcement_delivery_read_receipts.sql").read_text(encoding="utf-8")
 
     def test_contact_team_scope_uses_profile_id_and_assigned_scope_uses_auth_user_id(self):
         match = re.search(
@@ -190,6 +191,20 @@ class WorkerApiContractTests(unittest.TestCase):
             handler = re.search(rf"async function {name}\([\s\S]*?\n\}}", self.source)
             self.assertIsNotNone(handler, name)
             self.assertIn("hasEventCheckinAccess", handler.group(0), name)
+
+    def test_announcement_inbox_and_read_receipts_are_recipient_scoped(self):
+        for name in ("listAnnouncementInbox", "markAnnouncementRead"):
+            self.assertIn(f"function {name}(", self.source)
+        publish = re.search(r"async function publishAnnouncement\([\s\S]*?\n\}", self.source)
+        self.assertIsNotNone(publish)
+        self.assertIn("announcement_delivery", publish.group(0))
+        self.assertIn("announcement_read_receipt", self.source)
+        self.assertIn("/api/v1/announcements/inbox", self.source)
+        self.assertIn("/read", self.source)
+        self.assertIn("ANNOUNCEMENT_DELIVERY_NOT_AUTHORIZED", self.announcement_receipt_migration)
+        self.assertIn("ANNOUNCEMENT_READ_NOT_AUTHORIZED", self.announcement_receipt_migration)
+        self.assertIn("ANNOUNCEMENT_READ_RECEIPT_IMMUTABLE", self.announcement_receipt_migration)
+
 
 if __name__ == "__main__":
     unittest.main()
