@@ -18,7 +18,9 @@ function text(
   maxLength: number,
   allowEmpty = false,
 ): { ok: true; value: string } | { ok: false; error: string } {
-  if (typeof value !== "string") return { ok: false, error: "Invalid " + field + "." };
+  if (typeof value !== "string") {
+    return { ok: false, error: "Invalid " + field + "." };
+  }
   const normalized = value.trim();
   if (
     normalized.length > maxLength ||
@@ -56,15 +58,27 @@ export interface TeamCreateInput {
 export function parseTeamCreate(
   value: unknown,
 ): { ok: true; value: TeamCreateInput } | { ok: false; error: string } {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["branch_id", "name", "description"])) {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["branch_id", "name", "description"])
+  ) {
     return { ok: false, error: "A team name and valid branch are required." };
   }
-  if (!isUuid(value.branch_id)) return { ok: false, error: "Invalid branch_id." };
+  if (!isUuid(value.branch_id)) {
+    return { ok: false, error: "Invalid branch_id." };
+  }
   const name = text(value.name, "name", 2, 160);
   if (!name.ok) return name;
   const description = optionalText(value.description, "description", 1000);
   if (!description.ok) return description;
-  return { ok: true, value: { branch_id: value.branch_id, name: name.value, description: description.value } };
+  return {
+    ok: true,
+    value: {
+      branch_id: value.branch_id,
+      name: name.value,
+      description: description.value,
+    },
+  };
 }
 
 export interface TeamPatchInput {
@@ -75,8 +89,10 @@ export interface TeamPatchInput {
 export function parseTeamPatch(
   value: unknown,
 ): { ok: true; value: TeamPatchInput } | { ok: false; error: string } {
-  if (!isRecord(value) || Object.keys(value).length === 0 ||
-    !hasOnlyKeys(value, ["name", "description", "is_active"])) {
+  if (
+    !isRecord(value) || Object.keys(value).length === 0 ||
+    !hasOnlyKeys(value, ["name", "description", "is_active"])
+  ) {
     return { ok: false, error: "Provide at least one valid team update." };
   }
   const result: TeamPatchInput = {};
@@ -91,7 +107,9 @@ export function parseTeamPatch(
     result.description = description.value;
   }
   if (Object.hasOwn(value, "is_active")) {
-    if (typeof value.is_active !== "boolean") return { ok: false, error: "is_active must be a boolean." };
+    if (typeof value.is_active !== "boolean") {
+      return { ok: false, error: "is_active must be a boolean." };
+    }
     result.is_active = value.is_active;
   }
   return { ok: true, value: result };
@@ -105,15 +123,26 @@ export interface TeamMemberCreateInput {
 export function parseTeamMemberCreate(
   value: unknown,
 ): { ok: true; value: TeamMemberCreateInput } | { ok: false; error: string } {
-  if (!isRecord(value) || !hasOnlyKeys(value, ["staff_profile_id", "membership_role"])) {
+  if (
+    !isRecord(value) ||
+    !hasOnlyKeys(value, ["staff_profile_id", "membership_role"])
+  ) {
     return { ok: false, error: "Choose a staff member and membership role." };
   }
-  if (!isUuid(value.staff_profile_id)) return { ok: false, error: "Invalid staff profile." };
+  if (!isUuid(value.staff_profile_id)) {
+    return { ok: false, error: "Invalid staff profile." };
+  }
   const membershipRole = value.membership_role ?? "member";
   if (membershipRole !== "member" && membershipRole !== "leader") {
     return { ok: false, error: "Membership role must be member or leader." };
   }
-  return { ok: true, value: { staff_profile_id: value.staff_profile_id, membership_role: membershipRole } };
+  return {
+    ok: true,
+    value: {
+      staff_profile_id: value.staff_profile_id,
+      membership_role: membershipRole,
+    },
+  };
 }
 
 export interface TeamMemberRoleInput {
@@ -122,11 +151,15 @@ export interface TeamMemberRoleInput {
 export function parseTeamMemberRole(
   value: unknown,
 ): { ok: true; value: TeamMemberRoleInput } | { ok: false; error: string } {
-  if (!isRecord(value) || Object.keys(value).length !== 1 ||
-    !hasOnlyKeys(value, ["membership_role"])) {
+  if (
+    !isRecord(value) || Object.keys(value).length !== 1 ||
+    !hasOnlyKeys(value, ["membership_role"])
+  ) {
     return { ok: false, error: "A membership role is required." };
   }
-  if (value.membership_role !== "member" && value.membership_role !== "leader") {
+  if (
+    value.membership_role !== "member" && value.membership_role !== "leader"
+  ) {
     return { ok: false, error: "Membership role must be member or leader." };
   }
   return { ok: true, value: { membership_role: value.membership_role } };
@@ -141,18 +174,34 @@ export function parseServiceAreaCreate(
   value: unknown,
 ): { ok: true; value: ServiceAreaCreateInput } | { ok: false; error: string } {
   if (!isRecord(value) || !hasOnlyKeys(value, ["branch_id", "name", "code"])) {
-    return { ok: false, error: "A service-area name and valid branch are required." };
+    return {
+      ok: false,
+      error: "A service-area name and valid branch are required.",
+    };
   }
-  if (!isUuid(value.branch_id)) return { ok: false, error: "Invalid branch_id." };
+  if (!isUuid(value.branch_id)) {
+    return { ok: false, error: "Invalid branch_id." };
+  }
   const name = text(value.name, "name", 2, 160);
   if (!name.ok) return name;
   const code = optionalText(value.code, "code", 24);
   if (!code.ok) return code;
   const normalizedCode = code.value?.toUpperCase() ?? null;
   if (normalizedCode !== null && !/^[A-Z0-9_-]{2,24}$/.test(normalizedCode)) {
-    return { ok: false, error: "Code must contain 2–24 uppercase letters, numbers, hyphens or underscores." };
+    return {
+      ok: false,
+      error:
+        "Code must contain 2–24 uppercase letters, numbers, hyphens or underscores.",
+    };
   }
-  return { ok: true, value: { branch_id: value.branch_id, name: name.value, code: normalizedCode } };
+  return {
+    ok: true,
+    value: {
+      branch_id: value.branch_id,
+      name: name.value,
+      code: normalizedCode,
+    },
+  };
 }
 
 export interface ServiceAreaPatchInput {
@@ -163,9 +212,14 @@ export interface ServiceAreaPatchInput {
 export function parseServiceAreaPatch(
   value: unknown,
 ): { ok: true; value: ServiceAreaPatchInput } | { ok: false; error: string } {
-  if (!isRecord(value) || Object.keys(value).length === 0 ||
-    !hasOnlyKeys(value, ["name", "code", "is_active"])) {
-    return { ok: false, error: "Provide at least one valid service-area update." };
+  if (
+    !isRecord(value) || Object.keys(value).length === 0 ||
+    !hasOnlyKeys(value, ["name", "code", "is_active"])
+  ) {
+    return {
+      ok: false,
+      error: "Provide at least one valid service-area update.",
+    };
   }
   const result: ServiceAreaPatchInput = {};
   if (Object.hasOwn(value, "name")) {
@@ -178,12 +232,18 @@ export function parseServiceAreaPatch(
     if (!code.ok) return code;
     const normalizedCode = code.value?.toUpperCase() ?? null;
     if (normalizedCode !== null && !/^[A-Z0-9_-]{2,24}$/.test(normalizedCode)) {
-      return { ok: false, error: "Code must contain 2–24 uppercase letters, numbers, hyphens or underscores." };
+      return {
+        ok: false,
+        error:
+          "Code must contain 2–24 uppercase letters, numbers, hyphens or underscores.",
+      };
     }
     result.code = normalizedCode;
   }
   if (Object.hasOwn(value, "is_active")) {
-    if (typeof value.is_active !== "boolean") return { ok: false, error: "is_active must be a boolean." };
+    if (typeof value.is_active !== "boolean") {
+      return { ok: false, error: "is_active must be a boolean." };
+    }
     result.is_active = value.is_active;
   }
   return { ok: true, value: result };
@@ -195,8 +255,10 @@ export interface AreaCoverageCreateInput {
 export function parseAreaCoverageCreate(
   value: unknown,
 ): { ok: true; value: AreaCoverageCreateInput } | { ok: false; error: string } {
-  if (!isRecord(value) || Object.keys(value).length !== 1 ||
-    !hasOnlyKeys(value, ["staff_profile_id"]) || !isUuid(value.staff_profile_id)) {
+  if (
+    !isRecord(value) || Object.keys(value).length !== 1 ||
+    !hasOnlyKeys(value, ["staff_profile_id"]) || !isUuid(value.staff_profile_id)
+  ) {
     return { ok: false, error: "Choose an active staff member." };
   }
   return { ok: true, value: { staff_profile_id: value.staff_profile_id } };
