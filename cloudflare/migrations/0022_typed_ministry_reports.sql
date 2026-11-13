@@ -164,6 +164,10 @@ END;
 CREATE TRIGGER ministry_report_authorize_update
 BEFORE UPDATE ON ministry_report
 BEGIN
+  SELECT CASE WHEN NEW.last_action_decision IN ('approved','returned','comment')
+    AND NEW.last_action_by=(SELECT auth_user_id FROM staff_profile WHERE id=OLD.author_profile_id)
+    THEN RAISE(ABORT,'REPORT_SELF_REVIEW_FORBIDDEN') END;
+
   SELECT CASE WHEN NEW.id<>OLD.id OR NEW.branch_id<>OLD.branch_id
     OR NEW.report_type<>OLD.report_type OR NEW.period_start<>OLD.period_start
     OR NEW.period_end<>OLD.period_end OR NEW.author_profile_id<>OLD.author_profile_id
