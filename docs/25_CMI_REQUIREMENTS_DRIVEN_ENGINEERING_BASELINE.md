@@ -28,7 +28,7 @@ These are the recommended technical options for implementation. Items marked app
 | Password lifecycle | Supabase Auth is the only password store and session authority. Enforce generic forgot-password responses, rate-limited admin-reviewed reset requests, one-time temporary passwords, expiry, forced replacement, session revocation and append-only audit. Never store plaintext credentials or expose service-role keys to the browser. | Staff-auth lifecycle SQL/Edge Function; docs 28 and 31 |
 | Authorization | Database-backed, server-authoritative capabilities. Active staff + capability + branch + applicable team/event/contact/assignment scope + field visibility + valid state transition must all pass. Deny by default. | Security §1–4; RLS plan §2 |
 | Multiple roles | Union only explicitly granted capabilities. Scope predicates, mandatory denies and sensitive-record assignment rules remain conjunctive. | Security §3; Matrix §1 |
-| Role grants | The baseline now contains 65 explicit grants across six roles. Seven additional branch-scoped grants allow Admin/Pastor to manage private event/calendar/announcement/sermon/welcome drafts only. No publication, registration, attendance, check-in, team administration, reports, pastoral mutation, exports, SMS, capability-policy editing or offline grant is seeded. See docs 07 and 31. Never infer grants from role names. | Product-owner amendment 12 Nov 2026 in doc 31; other domains remain gated |
+| Role grants | The source baseline contains 67 explicit grants across six roles. Admin/Pastor has seven branch-scoped private-draft grants and two further branch-scoped team/service-area administration grants. Publishing, public registration, capacity, attendance, check-in, reports, pastoral mutation, exports, SMS, capability-policy editing and offline remain ungranted. The two new grants are pending PR review/migration application; production remains at 65 until release. See docs 07 and 31. Never infer grants from role names. | Product-owner amendments 12–13 Nov 2026 in doc 31; module-specific gates remain |
 | Pastoral data | Separate prayer and care data from ordinary contact notes. Deny direct browser narrative reads. Prayer Intercessor may read only actively assigned prayer text; Admin/Pastor may read prayer/care through explicit oversight capabilities with allowlisted reason codes and transactional append-only audit. No pastoral mutation/list capability is granted. | Functional §5; Security §5; DD-09; D-07 |
 | Contact fields | Enforce field minimization in server DTOs/column privileges or invoker-safe projections; do not assume RLS hides columns. Keep phone/email non-unique as person identifiers. | Security §9; DD-07; D-03/R-05 |
 | Contact duplicates | Suggest possible duplicates; perform only an authorized, audited merge that preserves relevant history. Do not globally equate people by phone/email. | Functional §2; D-03 |
@@ -72,7 +72,7 @@ The selected authentication model is Supabase Auth email/password. The earlier e
 - Role union adds eligible capabilities only; it never bypasses record assignment, field restrictions or pastoral privacy.
 - Keep browser access to identity/authorization tables closed. No direct client mutation of role assignments, grants, audit ledgers or restricted pastoral narratives.
 - Privileged database functions must be narrowly scoped, fixed-search-path, least-privilege, and explicitly granted; test PUBLIC/anon/authenticated execution denial. Prefer invoker rights. Any exception needs a documented security justification and negative tests.
-- Seed only the 58 explicit grants in the current owner-directed baseline. Unsupported modules remain fail-closed; do not infer access from role names. Church stakeholders may amend the baseline through change control.
+- Seed only the 67 explicit grants in the current owner-directed source baseline. Team and service-area administration is Admin/Pastor branch-only; Team Leader membership remains a separate staff role. Unsupported modules remain fail-closed; do not infer access from role names. Church stakeholders may amend the baseline through change control.
 
 ## 5. SMS implementation contract
 
@@ -114,13 +114,13 @@ Do not hard-code a provider or quote price until a provider contract is verified
 
 ### Phase A — source-of-truth and security foundation
 - Reconcile docs, schemas, migrations and API contracts against v2.1 and owner-directed decision record 31.
-- Seed the 58 explicit least-privilege grants and test every role/scope boundary; no wildcard or inferred grants.
+- Seed the 67 explicit least-privilege source grants and test every role/scope boundary; no wildcard or inferred grants.
 - Maintain Supabase email/password lifecycle, temporary-password expiry, forced replacement, reset review, session revocation and delivery-failure recovery.
 - Keep browser table access closed; all business operations remain behind trusted Edge Functions and database checks.
 - Add security regression tests for multi-role scope, stale sessions, field redaction and direct browser access.
 
 ### Phase B — currently enabled, non-sensitive workflows
-- Complete contact capture, scoped reads/updates, duplicate suggestions and audited merge transaction under the 58-grant baseline.
+- Complete contact capture, scoped reads/updates, duplicate suggestions and audited merge transaction under the 67-grant source baseline.
 - Complete follow-up list/task lifecycle and history with exactly one primary assignee (staff OR team).
 - Complete public-content draft/publication and calendar/event draft reads only through explicit staff capabilities; anonymous reads expose published projections only.
 - Keep public event registration, transport reservation, check-in and capacity mutations disabled until their trusted transactions and privacy controls pass tests.
