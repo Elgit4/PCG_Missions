@@ -41,7 +41,7 @@ The prayer/care, events/attendance/transport and calendar/announcement/content s
 - `GET/POST /api/v1/staff/role-revocations` and `POST /api/v1/staff/role-revocations/{id}/approve|reject` — two-person revocation.
 - `GET/POST /api/v1/contacts`, `GET/PATCH /api/v1/contacts/{id}`, `GET/POST /api/v1/contacts/{id}/notes`, `GET/POST /api/v1/contacts/{id}/interactions` and `POST /api/v1/contacts/{id}/assign`.
 - `GET/POST /api/v1/followup/tasks`, `PATCH /api/v1/followup/tasks/{id}` and task assignment routes.
-- `GET/POST /api/v1/events`, `GET/PATCH /api/v1/events/{id}`, `POST /api/v1/events/{id}/publish` and `/cancel` — scoped event listing, draft creation/editing and audited staff-only lifecycle.
+- `GET/POST /api/v1/events`, `GET/PATCH /api/v1/events/{id}`, `GET /api/v1/events/{id}/audit`, `POST /api/v1/events/{id}/publish` and `/cancel` — scoped event listing, draft creation/editing, branch-manager audit and staff-only lifecycle.
 - `GET/POST /api/v1/calendar`, `GET/PATCH /api/v1/calendar/{id}` — branch/team/own/event-scoped calendar entries.
 - `GET/POST /api/v1/announcements`, `GET/PATCH /api/v1/announcements/{id}`, `POST /api/v1/announcements/{id}/publish` and `/archive` — audience-scoped announcement lifecycle.
 - `GET /api/v1/content`, `POST /api/v1/content/{kind}`, `PATCH /api/v1/content/{kind}/{id}`, `POST /api/v1/content/{kind}/{id}/publish|archive` — draft and publication lifecycle for welcome messages, sermons, daily words and digital tracts.
