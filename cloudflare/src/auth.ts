@@ -63,12 +63,23 @@ export function createAuth(env: AuthEnvironment) {
         create: {
           before: async (session) => {
             const staff = await env.DB.prepare(`
-              SELECT account_status
-              FROM staff_profile
-              WHERE auth_user_id = ?
+              SELECT sp.id
+              FROM staff_profile sp
+              WHERE sp.auth_user_id = ?
+                AND sp.account_status = 'active'
+                AND EXISTS (
+                  SELECT 1
+                  FROM staff_role_assignment sra
+                  JOIN role r ON r.id = sra.role_id AND r.is_active = 1
+                  JOIN branch b ON b.id = sra.branch_id AND b.is_active = 1
+                  WHERE sra.staff_profile_id = sp.id
+                    AND sra.revoked_at IS NULL
+                    AND sra.starts_at <= strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                    AND (sra.ends_at IS NULL OR sra.ends_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                )
               LIMIT 1
-            `).bind(session.userId).first<{ account_status: string }>();
-            if (!staff || staff.account_status !== "active") return false;
+            `).bind(session.userId).first<{ id: string }>();
+            if (!staff) return false;
             return { data: session };
           },
         },
