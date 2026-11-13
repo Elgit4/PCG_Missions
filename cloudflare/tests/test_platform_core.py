@@ -368,7 +368,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
@@ -549,6 +549,38 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             self.db.execute("DELETE FROM staff_role_revocation_audit")
 
 
+
+
+    def test_followup_task_idempotency_key_is_unique_per_branch(self):
+        self._lifecycle_fixture()
+        self._lifecycle_staff("task-admin-user", "task-admin", "Task Admin", "task-admin@example.test")
+        self._lifecycle_staff("task-worker-user", "task-worker", "Task Worker", "task-worker@example.test")
+        self._lifecycle_assignment("task-admin-role", "task-admin", "admin_pastor", "lifecycle-branch", "task-admin")
+        self._lifecycle_assignment("task-worker-role", "task-worker", "field_worker", "lifecycle-branch", "task-admin")
+        self.db.execute(
+            """INSERT INTO contact (id, branch_id, first_name, created_by, created_at, updated_at)
+               VALUES ('task-contact', 'lifecycle-branch', 'Task Contact', 'task-admin-user',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO followup_task
+               (id, contact_id, branch_id, assignee_user_id, created_by,
+                client_request_id, digest_key_version, request_digest, created_at, updated_at)
+               VALUES ('task-idem-one', 'task-contact', 'lifecycle-branch', 'task-worker-user',
+                       'task-admin-user', 'task-idem-key', 1, ?, 
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')""",
+            (b"x" * 32,),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO followup_task
+                   (id, contact_id, branch_id, assignee_user_id, created_by,
+                    client_request_id, digest_key_version, request_digest, created_at, updated_at)
+                   VALUES ('task-idem-two', 'task-contact', 'lifecycle-branch', 'task-worker-user',
+                           'task-admin-user', 'task-idem-key', 1, ?,
+                           '2026-01-01T00:00:01.000Z', '2026-01-01T00:00:01.000Z')""",
+                (b"y" * 32,),
+            )
 
     def test_contact_assignment_requires_scope_and_writes_append_only_audit(self):
         self._lifecycle_fixture()
@@ -915,7 +947,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
