@@ -1,6 +1,7 @@
 from pathlib import Path
 import sqlite3
 import unittest
+import re
 
 
 MIGRATION = Path(__file__).resolve().parents[1] / "migrations" / "0001_platform_core.sql"
@@ -516,3 +517,148 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             self.db.execute("UPDATE staff_record_share SET revoked_at = NULL, revoked_by = NULL WHERE id = 'share-1'")
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute("DELETE FROM staff_record_share WHERE id = 'share-1'")
+
+
+class AuthorizationQueryTests(unittest.TestCase):
+    NOW = "2026-01-15T12:00:00.000Z"
+
+    def setUp(self):
+        self.db = sqlite3.connect(":memory:")
+        self.db.execute("PRAGMA foreign_keys = ON")
+        migrations = Path(__file__).resolve().parents[1] / "migrations"
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql"):
+            self.db.executescript((migrations / name).read_text(encoding="utf-8"))
+        self.db.execute(
+            """INSERT INTO church (id, name, created_at, updated_at)
+               VALUES ('authz-church', 'Authorization Church', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO branch (id, church_id, name, created_at, updated_at)
+               VALUES ('authz-branch', 'authz-church', 'Authorization Branch', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.staff = {}
+        identities = (
+            ("admin", "Admin", "admin_pastor"),
+            ("field", "Field Worker", "field_worker"),
+            ("leader", "Team Leader", "team_leader"),
+            ("prayer", "Prayer Intercessor", "prayer_intercessor"),
+            ("followup", "Follow-up Volunteer", "follow_up_volunteer"),
+        )
+        for key, name, role_code in identities:
+            user_id = "authz-user-" + key
+            profile_id = "authz-staff-" + key
+            self.staff[key] = (user_id, profile_id)
+            self.db.execute(
+                """INSERT INTO "user" (id, name, email, createdAt, updatedAt)
+                   VALUES (?, ?, ?, 1, 1)""",
+                (user_id, name, key + "@example.test"),
+            )
+            self.db.execute(
+                """INSERT INTO staff_profile
+                   (id, auth_user_id, full_name, account_status, created_at, updated_at)
+                   VALUES (?, ?, ?, 'active', ?, ?)""",
+                (profile_id, user_id, name, self.NOW, self.NOW),
+            )
+            self.db.execute(
+                """INSERT INTO staff_role_assignment
+                   (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+                   VALUES (?, ?, ?, 'authz-branch', 'authz-staff-admin', ?, ?)""",
+                ("authz-role-" + key, profile_id, "role-" + role_code.replace("_", "-"), self.NOW, self.NOW),
+            ) if key != "admin" else self.db.execute(
+                """INSERT INTO staff_role_assignment
+                   (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+                   VALUES (?, ?, ?, 'authz-branch', ?, ?, ?)""",
+                ("authz-role-admin", profile_id, "role-admin-pastor", profile_id, self.NOW, self.NOW),
+            )
+        self.db.execute(
+            """INSERT INTO team (id, branch_id, name, created_at, updated_at)
+               VALUES ('authz-team', 'authz-branch', 'Field Team', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO staff_team_membership
+               (id, staff_profile_id, team_id, branch_id, membership_role, starts_at, created_by, created_at)
+               VALUES ('authz-team-membership', 'authz-staff-leader', 'authz-team',
+                       'authz-branch', 'leader', ?, 'authz-staff-admin', ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO contact
+               (id, branch_id, first_name, created_by, created_at, updated_at)
+               VALUES ('authz-contact', 'authz-branch', 'Ama', 'authz-user-admin', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO contact_assignment
+               (id, contact_id, branch_id, assignee_user_id, assigned_by, starts_at, created_at)
+               VALUES ('authz-contact-assignment', 'authz-contact', 'authz-branch',
+                       'authz-user-field', 'authz-user-admin', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO followup_task
+               (id, contact_id, branch_id, assignee_user_id, created_by, created_at, updated_at)
+               VALUES ('authz-task', 'authz-contact', 'authz-branch', 'authz-user-followup',
+                       'authz-user-admin', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+
+    def tearDown(self):
+        self.db.close()
+
+    def query_and_bind(self, actor, capability, resource_type=None, record_id=None, team_id=None):
+        source = (Path(__file__).resolve().parents[1] / "src" / "authorization.ts").read_text(encoding="utf-8")
+        match = re.search(r"const AUTHORIZATION_SQL = `([\s\S]*?)`;", source)
+        self.assertIsNotNone(match, "authorization SQL must remain a static, testable query")
+        query = match.group(1)
+        actor_profile = self.staff[actor][1]
+        resource_type = resource_type or ""
+        record_id = record_id or ""
+        team_id = team_id or ""
+        values = (
+            "authz-branch", actor_profile, capability, self.NOW, self.NOW,
+            team_id, team_id, self.NOW, self.NOW,
+            resource_type, record_id, record_id, self.NOW, self.NOW,
+            resource_type, record_id, record_id,
+            resource_type, record_id, resource_type, record_id,
+            self.NOW, self.NOW, actor_profile,
+        )
+        self.assertEqual(query.count("?"), len(values), "SQL placeholders and D1 bind values must match")
+        return self.db.execute(query, values).fetchone()
+
+    def test_branch_grant_requires_active_role_and_branch(self):
+        self.assertIsNotNone(self.query_and_bind("admin", "contacts.read", "contact", "authz-contact"))
+        self.assertIsNone(self.query_and_bind("field", "staff.account.manage"))
+
+    def test_field_worker_reads_only_an_individually_assigned_contact(self):
+        self.assertIsNotNone(self.query_and_bind("field", "contacts.read", "contact", "authz-contact"))
+        self.assertIsNone(self.query_and_bind("field", "contacts.read", "contact", "another-contact"))
+
+    def test_team_leader_requires_active_leader_membership_for_team_scope(self):
+        self.assertIsNotNone(self.query_and_bind("leader", "contacts.read", "contact", "authz-contact", "authz-team"))
+        self.db.execute("UPDATE staff_team_membership SET revoked_at = ? WHERE id = 'authz-team-membership'", (self.NOW,))
+        self.assertIsNone(self.query_and_bind("leader", "contacts.read", "contact", "authz-contact", "authz-team"))
+
+    def test_followup_volunteer_gets_minimal_contact_details_only_via_assigned_task(self):
+        self.assertIsNotNone(self.query_and_bind("followup", "contacts.contact_details.read", "followup_task", "authz-task"))
+        self.assertIsNone(self.query_and_bind("followup", "contacts.read", "contact", "authz-contact"))
+
+    def test_prayer_intercessor_requires_exact_active_explicit_share(self):
+        self.db.execute(
+            """INSERT INTO staff_record_share
+               (id, branch_id, record_type, record_id, staff_profile_id, granted_by,
+                purpose, starts_at, ends_at, created_at)
+               VALUES ('authz-prayer-share', 'authz-branch', 'prayer_request', 'prayer-authz',
+                       'authz-staff-prayer', 'authz-staff-admin', 'Temporary prayer team cover',
+                       ?, '2026-01-16T12:00:00.000Z', ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.assertIsNotNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "prayer-authz"))
+        self.assertIsNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "other-prayer"))
+        self.db.execute(
+            "UPDATE staff_record_share SET revoked_at = ?, revoked_by = 'authz-staff-admin' WHERE id = 'authz-prayer-share'",
+            (self.NOW,),
+        )
+        self.assertIsNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "prayer-authz"))
