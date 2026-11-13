@@ -3043,6 +3043,30 @@ async function publishEvent(
   return json(200, { ok: true, event_id: eventId, status: "published", visibility: "staff" }, requestId, origin);
 }
 
+async function listEventAudit(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const event = await env.DB.prepare(
+    "SELECT id FROM event WHERE id=? AND branch_id=? LIMIT 1",
+  ).bind(eventId, access.activeBranch.branchId).first<{ id: string }>();
+  if (!event) return json(404, { ok: false, error: { code: "EVENT_NOT_FOUND" } }, requestId, origin);
+  const rows = await env.DB.prepare(`
+    SELECT a.id,a.action,a.before_state,a.after_state,a.actor_user_id,
+           sp.full_name AS actor_name,a.created_at
+    FROM event_change_audit a
+    JOIN staff_profile sp ON sp.auth_user_id=a.actor_user_id
+    WHERE a.event_id=? AND a.branch_id=?
+    ORDER BY a.created_at DESC,a.id DESC LIMIT 100
+  `).bind(eventId, access.activeBranch.branchId).all<Record<string, unknown>>();
+  return json(200, { ok: true, audit: rows.results ?? [] }, requestId, origin);
+}
+
 async function cancelEvent(
   request: Request,
   env: Env,
@@ -4837,6 +4861,13 @@ async function updatePrayerRequestStatus(
     }
     if (url.pathname === "/api/v1/events" && request.method === "POST") {
       return createEvent(request, env, requestId, origin);
+    }
+    const eventAuditMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/audit$/);
+    if (eventAuditMatch && request.method === "GET") {
+      let eventId: string;
+      try { eventId = decodeURIComponent(eventAuditMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_EVENT_ID" } }, requestId, origin); }
+      return listEventAudit(request, env, eventId, requestId, origin);
     }
     const eventActionMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/(publish|cancel)$/);
     if (eventActionMatch && request.method === "POST") {
