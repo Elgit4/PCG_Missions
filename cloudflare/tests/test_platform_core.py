@@ -13,7 +13,7 @@ class PlatformCoreMigrationTests(unittest.TestCase):
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
         self.db.executescript((MIGRATION.parent / "0002_contacts_followup.sql").read_text(encoding="utf-8"))
-        self.db.executescript((MIGRATION.parent / "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql").read_text(encoding="utf-8"))
+        self.db.executescript((MIGRATION.parent / "0004_staff_session_revocation.sql").read_text(encoding="utf-8"))
         self.db.executescript((MIGRATION.parent / "0005_better_auth_rate_limit.sql").read_text(encoding="utf-8"))
         self.db.execute(
             'INSERT INTO "user" (id, name, email, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
