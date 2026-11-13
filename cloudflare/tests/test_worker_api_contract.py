@@ -271,3 +271,14 @@ if __name__ == "__main__":
         self.assertIn("calendarCancelMatch", self.source)
         self.assertIn("calendarReadMatch", self.source)
 
+
+    def test_ministry_report_time_series_is_aggregate_and_thresholded(self):
+        handler = re.search(r"async function getReportsOverview\([\s\S]*?\n\}", self.source)
+        self.assertIsNotNone(handler)
+        code = handler.group(0)
+        self.assertIn("FROM ministry_report", code)
+        self.assertIn("COUNT(DISTINCT author_profile_id)>=3", code)
+        self.assertIn("time_series:series.results??[]", code)
+        self.assertIn("personal_identifiers_included:false", code)
+        self.assertNotIn("SELECT author_profile_id", code)
+
