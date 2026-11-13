@@ -117,7 +117,8 @@ try {
   assert(healthBody.schema_version === 24, `expected D1 schema 24, got ${healthBody.schema_version}`);
 
   const authSession = await fetch(`${baseUrl}/api/auth/get-session`);
-  assert(authSession.status === 200, `Better Auth get-session failed: ${authSession.status}`);
+  const authSessionBody = await authSession.text();
+  assert(authSession.status === 200, `Better Auth get-session failed: ${authSession.status}: ${authSessionBody}`);
   assert(authSession.headers.get("cache-control")?.includes("no-store"), "auth response must not be cacheable");
 
   const badSignIn = await fetch(`${baseUrl}/api/auth/sign-in/email`, {
