@@ -167,13 +167,27 @@ Deno.serve(async (request: Request) => {
         return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
       }
       const now = new Date().toISOString();
-      const { data: assignments, error: assignmentError } = await auth.service
+      const { data: staffAssignments, error: staffAssignmentError } = await auth.service
         .from("event_staff_assignment").select("event_id")
         .eq("branch_id", branchId).eq("staff_auth_user_id", auth.actorId)
         .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
         .is("revoked_at", null);
-      if (assignmentError) throw new Error("REPORT_EVENT_ASSIGNMENT_LOOKUP_FAILED");
-      const eventIds = [...new Set((assignments ?? []).map((row: { event_id: string }) => row.event_id))];
+      if (staffAssignmentError) throw new Error("REPORT_EVENT_ASSIGNMENT_LOOKUP_FAILED");
+      const teamIds = await activeTeamIds(auth.service, auth.profileId, branchId);
+      let teamEventIds: string[] = [];
+      if (teamIds.length) {
+        const { data: teamAssignments, error: teamAssignmentError } = await auth.service
+          .from("event_team_assignment").select("event_id")
+          .eq("branch_id", branchId).in("team_id", teamIds)
+          .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
+          .is("revoked_at", null);
+        if (teamAssignmentError) throw new Error("REPORT_TEAM_EVENT_ASSIGNMENT_LOOKUP_FAILED");
+        teamEventIds = (teamAssignments ?? []).map((row: { event_id: string }) => row.event_id);
+      }
+      const eventIds = [...new Set([
+        ...(staffAssignments ?? []).map((row: { event_id: string }) => row.event_id),
+        ...teamEventIds,
+      ])];
       if (!eventIds.length) {
         return response({ data: [], request_id: requestId }, 200, origin, requestId);
       }
@@ -272,14 +286,27 @@ Deno.serve(async (request: Request) => {
       }
       if (value.event_id) {
         const now = new Date().toISOString();
-        const { data: assignments, error: assignmentError } = await auth.service
+        const { data: staffAssignments, error: staffAssignmentError } = await auth.service
           .from("event_staff_assignment").select("id")
           .eq("branch_id", value.branch_id).eq("event_id", value.event_id)
           .eq("staff_auth_user_id", auth.actorId).lte("starts_at", now)
           .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null).limit(1);
-        if (assignmentError) throw new Error("REPORT_EVENT_ASSIGNMENT_LOOKUP_FAILED");
-        if (!assignments?.length) {
-          return fail("EVENT_SCOPE_REQUIRED", "You must be actively assigned to the selected event.", 403, origin, requestId);
+        if (staffAssignmentError) throw new Error("REPORT_EVENT_ASSIGNMENT_LOOKUP_FAILED");
+        let hasTeamAssignment = false;
+        if (!staffAssignments?.length) {
+          const teamIds = await activeTeamIds(auth.service, auth.profileId, value.branch_id);
+          if (teamIds.length) {
+            const { data: teamAssignments, error: teamAssignmentError } = await auth.service
+              .from("event_team_assignment").select("id")
+              .eq("branch_id", value.branch_id).eq("event_id", value.event_id)
+              .in("team_id", teamIds).lte("starts_at", now)
+              .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null).limit(1);
+            if (teamAssignmentError) throw new Error("REPORT_TEAM_EVENT_ASSIGNMENT_LOOKUP_FAILED");
+            hasTeamAssignment = !!teamAssignments?.length;
+          }
+        }
+        if (!staffAssignments?.length && !hasTeamAssignment) {
+          return fail("EVENT_SCOPE_REQUIRED", "You or your active team must be assigned to the selected event.", 403, origin, requestId);
         }
       }
       const now = new Date().toISOString();
