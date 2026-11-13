@@ -1962,7 +1962,7 @@ async function createFollowupTask(
   const assignScope = bestScope(context.activeBranch.capabilities
     .filter((grant) => grant.code === "followup.assign")
     .map((grant) => grant.scopeMode));
-  if (!createScope || !assignScope || createScope === "assigned" || assignScope === "assigned") {
+  if (!createScope || !assignScope || createScope === "assigned" || assignScope === "assigned" || createScope !== assignScope) {
     return json(403, { ok: false, error: { code: "FOLLOWUP_CREATE_NOT_AUTHORIZED" } }, requestId, origin);
   }
 
@@ -2116,15 +2116,26 @@ async function createFollowupTask(
           AND target_assignment.revoked_at IS NULL
           AND target_assignment.starts_at <= ?
           AND (target_assignment.ends_at IS NULL OR target_assignment.ends_at > ?)
+          ${assignScope === "team" ? `AND EXISTS (
+            SELECT 1 FROM staff_team_membership target_member
+            WHERE target_member.staff_profile_id = target.id
+              AND target_member.team_id = ?
+              AND target_member.branch_id = c.branch_id
+              AND target_member.revoked_at IS NULL
+              AND target_member.starts_at <= ?
+              AND (target_member.ends_at IS NULL OR target_member.ends_at > ?)
+          )` : ""}
       )`
     : `EXISTS (
         SELECT 1 FROM team target_team
         WHERE target_team.id = ? AND target_team.branch_id = c.branch_id
           AND target_team.is_active = 1
+          ${assignScope === "team" ? "AND target_team.id = ?" : ""}
       )`;
   const targetValues = assigneeUserId !== null
-    ? [assigneeUserId, now, now]
-    : [teamId];
+    ? assignScope === "team" ? [assigneeUserId, now, now, teamIdForScope, now, now] : [assigneeUserId, now, now]
+    : assignScope === "team" ? [teamId, teamIdForScope] : [teamId];
+  const listScopeTeamId = teamId ?? teamIdForScope;
   const listPredicate = listId === null
     ? "1 = 1"
     : `EXISTS (
@@ -2133,7 +2144,7 @@ async function createFollowupTask(
           AND target_list.status = 'active'
           AND (target_list.team_id IS NULL OR target_list.team_id = ?)
       )`;
-  const listValues = listId === null ? [] : [listId, teamIdForScope];
+  const listValues = listId === null ? [] : [listId, listScopeTeamId];
   const actorCapabilityPredicate = (code: string) => `EXISTS (
     SELECT 1
     FROM staff_profile actor
@@ -2148,6 +2159,7 @@ async function createFollowupTask(
       AND actor_assignment.revoked_at IS NULL
       AND actor_assignment.starts_at <= ?
       AND (actor_assignment.ends_at IS NULL OR actor_assignment.ends_at > ?)
+      AND actor_grant.scope_mode = '${createScope}'
   )`;
   try {
     const results = await env.DB.batch([
