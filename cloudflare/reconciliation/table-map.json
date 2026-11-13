@@ -525,9 +525,9 @@
       "primary_key": [
         "id"
       ],
-      "action": "reconcile",
+      "action": "transform",
       "classification": "highly_restricted",
-      "reason": "compare approved reference data; do not blindly overwrite seeded target policy"
+      "reason": "preserve append-only audit history while treating request_id as an opaque reference because one-time reset requests are excluded"
     },
     {
       "source_table": "private.first_admin_bootstrap_lease",
