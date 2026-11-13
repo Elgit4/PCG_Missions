@@ -2412,3 +2412,5 @@ button, input, select, textarea { font: inherit; }
 
 .ministry-report-pagination{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:8px 0 4px;color:var(--cmi-text-muted,#64748b);font-size:.88rem}
 .ministry-report-pagination button{min-width:160px;justify-content:center}
+
+.ministry-report-review label small{display:block;margin:4px 0 7px;color:var(--muted,#68717f);font-size:.76rem;line-height:1.4}
