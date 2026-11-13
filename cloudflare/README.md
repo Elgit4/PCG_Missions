@@ -26,7 +26,7 @@ The database was created with an EU jurisdiction. This setting is fixed at creat
 - Explicit-share prayer workflows: metadata-only Admin/Pastor queue, assigned intercessor narrative reads, reasoned share revocation and transactionally paired audit records.
 - Append-only access, role, account, contact-assignment and follow-up event ledgers.
 
-The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in D1. Worker source now includes event lifecycle, staff registration/list/cancel, registration open/close, check-in, transport options/reservations, closeout submit/resubmit/review, calendar management, announcement management, public content CRUD and a published-only public projection. Announcement delivery/read receipts and ministry reporting remain incomplete. These routes are not deployed yet.
+The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in D1. Worker source now includes event lifecycle, staff registration/list/cancel, registration open/close, check-in, transport options/reservations, closeout submit/resubmit/review, calendar management, announcement management, public content CRUD and a published-only public projection. In-app announcement delivery fan-out, recipient-scoped inbox and immutable read receipts are now implemented in source and D1. Ministry reporting and scheduled announcement publishing remain outstanding. These routes are not deployed yet.
 
 ## Worker endpoints implemented in source
 
@@ -49,6 +49,8 @@ The prayer/care, events/attendance/transport and calendar/announcement/content s
 - `GET/POST /api/v1/events/{id}/closeout`, `POST /api/v1/events/{id}/closeout/resubmit` and `/review` — closeout submission, resubmission and separate review capability.
 - `GET/POST /api/v1/calendar`, `GET/PATCH /api/v1/calendar/{id}` — branch/team/own/event-scoped calendar entries.
 - `GET/POST /api/v1/announcements`, `GET/PATCH /api/v1/announcements/{id}`, `POST /api/v1/announcements/{id}/publish` and `/archive` — audience-scoped announcement lifecycle.
+- `GET /api/v1/announcements/inbox` — recipient-only in-app inbox with delivery and read status.
+- `POST /api/v1/announcements/{id}/read` — idempotent read receipt for an announcement delivered to the authenticated staff member.
 - `GET /api/v1/content`, `POST /api/v1/content/{kind}`, `PATCH /api/v1/content/{kind}/{id}`, `POST /api/v1/content/{kind}/{id}/publish|archive` — draft and publication lifecycle for welcome messages, sermons, daily words and digital tracts.
 - `GET/PATCH /api/v1/content/profile`, `POST /api/v1/content/links`, `GET /api/v1/content/audit` — church profile management, immutable HTTPS document links and scoped content audit.
 - `GET /api/public/content?branch_id={id}` — anonymous published-only public projection for church profile, welcome messages, sermons, daily words, tracts, public announcements, public events and approved HTTPS links.
@@ -91,7 +93,7 @@ Use a generated secret and never commit `.dev.vars`. For a Cloudflare preview, s
 
 The last recorded GitHub Actions run, [43469371911](https://github.com/Elgit4/PCG_Missions/actions/runs/43469371911), passed 56 Python/SQLite migration and authorization tests and the Worker/Better Auth TypeScript type-check for the earlier schema slice. PR #61 adds API contract and event-audit regression tests; a passing run for those new tests has not yet been observed.
 
-The remote EU D1 database now reports schema version 20, all 20 migration records, 70 application tables (excluding the Wrangler migration ledger), expected event authorization triggers and cancellation-key indexes, and no foreign-key violations. This is not a substitute for deployed Worker request tests or Better Auth runtime compatibility testing.
+The remote EU D1 database now reports schema version 21, all 21 migration records, 71 application tables (excluding the Wrangler migration ledger), expected event authorization triggers, cancellation-key indexes, announcement delivery/read-receipt triggers, and no foreign-key violations. This is not a substitute for deployed Worker request tests or Better Auth runtime compatibility testing.
 
 ## Safety boundary
 
