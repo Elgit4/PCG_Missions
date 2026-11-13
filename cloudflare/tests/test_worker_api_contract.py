@@ -272,6 +272,21 @@ if __name__ == "__main__":
         self.assertIn("calendarReadMatch", self.source)
 
 
+    def test_pastoral_care_routes_are_explicit_share_and_assignment_gated(self):
+        for name in ("listCareRecords", "createCareRecord", "assignCareRecord",
+                     "getCareRecord", "createCareInteraction", "updateCareRecord",
+                     "revokeCareAssignment"):
+            self.assertIn(f"async function {name}(", self.source)
+        self.assertIn('"/api/v1/pastoral/care"', self.source)
+        self.assertIn('"pastoral.case.metadata.read"', self.source)
+        self.assertIn('"pastoral.case.create"', self.source)
+        self.assertIn('"pastoral.case.share"', self.source)
+        self.assertIn('"pastoral.case.read"', self.source)
+        self.assertIn('"pastoral.case.interact"', self.source)
+        self.assertIn("care_access_audit", self.source)
+        self.assertIn("staff_record_share", self.source)
+        self.assertIn("care_assignment", self.source)
+
     def test_ministry_report_time_series_is_aggregate_and_thresholded(self):
         handler = re.search(r"async function getReportsOverview\([\s\S]*?\n\}", self.source)
         self.assertIsNotNone(handler)
