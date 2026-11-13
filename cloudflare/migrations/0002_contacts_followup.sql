@@ -99,6 +99,7 @@ CREATE TABLE contact_assignment (
   starts_at TEXT NOT NULL,
   ends_at TEXT,
   reason TEXT,
+  created_at TEXT NOT NULL,
   CHECK ((assignee_user_id IS NOT NULL) <> (team_id IS NOT NULL)),
   CHECK (ends_at IS NULL OR ends_at > starts_at),
   FOREIGN KEY (contact_id, branch_id) REFERENCES contact(id, branch_id) ON DELETE RESTRICT,
