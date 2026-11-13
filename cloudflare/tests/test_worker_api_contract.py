@@ -71,7 +71,7 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIsNotNone(reader)
         self.assertIn("Content-Length", reader.group(0))
         self.assertIn("getReader()", reader.group(0))
-        self.assertIn("reader.cancel()", reader.group(0))
+        self.assertIn("reader.cancel(", reader.group(0))
         self.assertNotIn("await request.text()", reader.group(0))
 
 
