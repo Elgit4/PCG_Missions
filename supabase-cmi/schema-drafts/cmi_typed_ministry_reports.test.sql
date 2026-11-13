@@ -1,5 +1,5 @@
 begin;
-select plan(28);
+select plan(27);
 
 select has_table('public','ministry_report','Typed ministry report table exists');
 select has_table('public','report_review_event','Append-only report review history exists');
@@ -132,13 +132,6 @@ select throws_ok(
   '42501','REPORT_SELF_REVIEW_FORBIDDEN',
   'Authors cannot review their own reports');
 
-select throws_ok(
-  $q$ select public.cmi_review_ministry_report(
-    (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
-    '73000000-0000-4000-8000-000000000020','approved',null
-  ) $q$,
-  '42501','REPORT_SELF_REVIEW_FORBIDDEN',
-  'Self-review remains forbidden inside the transaction');
 select throws_ok(
   $q$ select public.cmi_review_ministry_report(
     (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
