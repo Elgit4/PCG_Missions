@@ -2,7 +2,7 @@
 
 **Track:** non-production only  
 **Database jurisdiction:** EU (`eu`) — remote non-production database `pcg-missions-dev` created on 2026-11-13 (primary region `EEUR`, replication disabled)  
-**Worker:** not deployed; D1 schema applied directly to the isolated non-production database  
+**Worker:** source type-checks and bundles; deployment is skipped until the repository secret CLOUDFLARE_API_TOKEN is configured; D1 schema applied directly to the isolated non-production database  
 **Production:** unchanged
 
 ## Implemented D1 schema slices
@@ -32,22 +32,23 @@
 | `0021_announcement_delivery_read_receipts.sql` | 1 new table | Adds audience-checked in-app delivery fan-out, recipient indexes and immutable staff read receipts; schema version 21 |
 | `0022_typed_ministry_reports.sql` | 2 new tables | Adds typed daily/event/weekly ministry reports, D-12 report capabilities, branch/team reviewer scopes, self-review protection and atomic append-only review/resubmission history; schema version 22 |
 | `0023_prayer_request_idempotency.sql` | 1 new table | Adds branch-scoped actor-bound idempotency receipts for authenticated prayer intake; schema version 23 |
+| `0024_calendar_audit_cancellation_read_receipts.sql` | 2 new tables | Adds active/cancelled state, actor attribution, immutable calendar change audit and staff-scoped immutable read receipts; schema version 24 |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
 ## Remote non-production D1 verification
 
 - Database UUID: `376a6782-d059-41f9-9e09-f93718fef2bb`.
-- Migrations `0001` through `0022` applied successfully at last remote verification; migration `0023` is committed but not yet applied to remote D1, so remote schema remains version `22` and environment marker is `non-production`.
-- Database contains 73 application tables and all six expected role records.
+- Migrations `0001` through `0024` applied successfully to the EU non-production D1 database; schema version is `24` and environment marker is `non-production`.
+- Database contains 76 application tables and all six expected role records.
 - `PRAGMA foreign_key_check` returned no violations.
-- Wrangler migration ledger `d1_migrations` contains 22 applied migration filenames at last remote verification. Migration `0023` is pending remote application. Migrations `0018`–`0022` were applied to the EU non-production database and verified through the Cloudflare D1 API; expected event actor-authorization triggers, cancellation-key indexes, announcement delivery/read-receipt triggers, typed report tables, D-12 role grants and append-only review triggers are present.
-- This is a direct remote D1 schema test; Better Auth login, Worker request lifecycle and domain endpoints have not yet been exercised against a deployed Worker.
+- Wrangler migration ledger `d1_migrations` contains 24 applied migration filenames. Migrations `0018`–`0024` were applied to the EU non-production database and verified through the Cloudflare D1 API; expected event actor-authorization triggers, cancellation-key indexes, announcement delivery/read-receipt triggers, typed report tables, D-12 role grants, prayer idempotency ledger, calendar cancellation state, append-only calendar audit and immutable calendar read receipts are present.
+- This is a direct remote D1 schema test. The new local Worker/D1 integration suite is now part of CI and exercises Better Auth, protected route gates, security headers and CORS against the built Worker; non-production remote Worker deployment remains blocked by the missing GitHub Actions token.
 
 ## Current test coverage
 
 The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations against an in-memory SQLite database and checks:
-- migration application through schema version 23 and non-production marker;
+- migration application through schema version 24 and non-production marker;
 - identity foreign keys;
 - temporal overlap rejection for staff role assignments, team membership, area coverage and contact assignments;
 - adjacent assignment periods;
@@ -63,7 +64,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability;
 - typed calendar scope integrity, branch-scoped announcement management, content-manager checks on public content creation and update, church-scoped public-profile authorization, external-link immutability and append-only public-content change audit.
 
-Latest CI run: [43502363241](https://github.com/Elgit4/PCG_Missions/actions/runs/43502363241) — 87 Python/SQLite tests passed; Worker/Better Auth TypeScript type-check and Wrangler dry-run bundle passed. Non-production deploy was skipped because `CLOUDFLARE_API_TOKEN` is not configured. The remote migration 0016 was separately syntax-checked in SQLite and applied/verified on EU D1. This does not replace real Worker request testing or Better Auth schema compatibility validation.
+Latest full CI run before Worker integration harness: [43504468309](https://github.com/Elgit4/PCG_Missions/actions/runs/43504468309) — 89 Python/SQLite tests passed; Worker/Better Auth TypeScript type-check and Wrangler dry-run bundle passed. The new local Worker/D1 integration suite is running in the current workflow and must pass before this branch is considered fully validated. Non-production deploy is skipped because `CLOUDFLARE_API_TOKEN` is not configured. The remote migration 0016 was separately syntax-checked in SQLite and applied/verified on EU D1. This does not replace real Worker request testing or Better Auth schema compatibility validation.
 
 ## Authentication and authorization progress
 
