@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(49);
+select plan(54);
 
 select has_column(
   'public', 'staff_profile', 'must_change_password',
@@ -73,6 +73,18 @@ select ok(
   'password-change completion is available only through the authenticated server boundary'
 );
 
+select ok(
+  has_function_privilege('service_role','public.cmi_refresh_staff_password_setup_expiry(uuid,timestamptz)','EXECUTE')
+  and not has_function_privilege('anon','public.cmi_refresh_staff_password_setup_expiry(uuid,timestamptz)','EXECUTE')
+  and not has_function_privilege('authenticated','public.cmi_refresh_staff_password_setup_expiry(uuid,timestamptz)','EXECUTE'),
+  'temporary password expiry refresh is exposed only to the trusted server'
+);
+select ok(
+  not has_table_privilege('service_role','public.staff_profile','UPDATE')
+  and not has_column_privilege('service_role','public.staff_profile','password_setup_expires_at','UPDATE'),
+  'service role cannot directly update staff profiles or password expiry columns'
+);
+
 insert into auth.users(
   instance_id, id, aud, role, email, encrypted_password,
   email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
@@ -102,6 +114,25 @@ select ok(
    from public.staff_profile
    where auth_user_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'),
   'the one-time administrator password expires within 24 hours'
+);
+
+select is(
+  public.cmi_refresh_staff_password_setup_expiry(
+    (select id from public.staff_profile
+     where auth_user_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'),
+    pg_catalog.clock_timestamp() + interval '23 hours'
+  ),
+  true,
+  'trusted server can refresh an active first-login password expiry'
+);
+select is(
+  public.cmi_refresh_staff_password_setup_expiry(
+    (select id from public.staff_profile
+     where auth_user_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa20'),
+    pg_catalog.clock_timestamp() - interval '1 minute'
+  ),
+  false,
+  'expired password setup window cannot be refreshed into the past'
 );
 select is((select count(*)::integer from public.church),1,'bootstrap creates one church');
 select is((select count(*)::integer from public.branch),1,'bootstrap creates one initial branch');
