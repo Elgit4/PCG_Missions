@@ -1,6 +1,7 @@
 import {
   CMI_CORS_ALLOWED_HEADERS,
   createAllowedOrigins,
+  createCorsHeaders,
   createPreflightResponse,
   isAllowedOrigin,
 } from "./cors.ts";
@@ -40,6 +41,20 @@ Deno.test("unknown origins remain denied and are never reflected", () => {
   const response = createPreflightResponse(origin, allowed);
   if (response.headers.has("Access-Control-Allow-Origin")) {
     throw new Error("unapproved origin was reflected");
+  }
+});
+
+Deno.test("allowed-origin error responses retain CORS visibility", () => {
+  const origin = "https://pcg-missions.vercel.app";
+  const headers = createCorsHeaders(origin, createAllowedOrigins(undefined));
+  if (headers.get("Access-Control-Allow-Origin") !== origin) {
+    throw new Error("allowed origin must be present on normal and error responses");
+  }
+  if (!headers.get("Access-Control-Allow-Headers")?.includes("authorization")) {
+    throw new Error("authorization must be allowed on browser responses");
+  }
+  if (!headers.get("Access-Control-Allow-Headers")?.includes("apikey")) {
+    throw new Error("apikey must be allowed on browser responses");
   }
 });
 
