@@ -46,7 +46,7 @@ All other business routes remain unavailable.
 
 - Public sign-up is disabled. There is not yet a staff invitation/create-account endpoint.
 - Password-reset delivery is intentionally not simulated. The callback fails closed until a real email provider is configured and tested.
-- Account deactivation currently blocks staff context resolution, but the complete administrative lifecycle (session revocation, reactivation, invitation expiry and audit-backed workflows) is not yet wired to Worker routes.
+- The Better Auth session-create hook blocks identities without an active staff profile. A D1 trigger deletes all existing sessions immediately when a staff profile changes from active to inactive/suspended. The complete administrative lifecycle (invitation expiry, audited deactivation/reactivation endpoints and session-revocation UX) is not yet wired to Worker routes.
 - The staff-context endpoint reports capabilities for UI composition only. It is not an authorization grant by itself. Every future business handler must call the server-side authorization layer and include the branch/record predicate in the same SQL statement that reads or mutates the record.
 - The manually authored Better Auth core tables still require validation against the exact pinned library using its schema-check tooling and an actual local D1 runtime. CI type-checking alone does not prove schema compatibility.
 - Email delivery, MFA policy, abuse monitoring and account recovery need a separate implementation and test pass.
