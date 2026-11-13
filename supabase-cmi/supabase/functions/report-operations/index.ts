@@ -210,7 +210,7 @@ Deno.serve(async (request: Request) => {
         if (teamReview.includes("team")) {
           const teamIds = await activeTeamIds(auth.service, auth.profileId, branch_id);
           if (teamIds.length) {
-            const { data, error } = await filters(auth.service.from("ministry_report").select(REPORT_COLUMNS))
+            const { data, error } = await buildReportQuery()
               .in("team_id", teamIds).order("period_start", { ascending: false }).limit(250);
             if (error) throw new Error("REPORT_TEAM_LIST_FAILED");
             rows.push(...(data ?? []));
