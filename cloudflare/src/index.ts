@@ -1634,8 +1634,12 @@ async function listContactNotes(
     SELECT n.id, n.author_user_id, author.full_name AS author_name,
            n.body, n.visibility, n.team_id, n.created_at, n.updated_at
     FROM contact_note n
+    JOIN contact c ON c.id = n.contact_id AND c.branch_id = n.branch_id
     JOIN staff_profile author ON author.auth_user_id = n.author_user_id
-    WHERE n.contact_id = ? AND n.branch_id = ?
+    WHERE n.contact_id = ? AND n.branch_id = ? AND (${contactScopePredicate(
+      access.decision.scopeMode as ContactScopeMode, "c", access.staff.userId,
+      access.activeBranch.branchId, now,
+    ).sql})
       AND (
         (n.visibility = 'author_only' AND n.author_user_id = ?)
         OR (n.visibility = 'branch_scope' AND ? = 'branch')
@@ -1655,7 +1659,12 @@ async function listContactNotes(
     ORDER BY n.created_at DESC, n.id DESC
     LIMIT 100
   `).bind(
-    contactId, access.activeBranch.branchId, access.staff.userId, scope,
+    contactId, access.activeBranch.branchId,
+    ...contactScopePredicate(
+      access.decision.scopeMode as ContactScopeMode, "c", access.staff.userId,
+      access.activeBranch.branchId, now,
+    ).values,
+    access.staff.userId, scope,
     access.staff.userId, now, now,
     access.staff.profileId, now, now,
   ).all<{
@@ -1705,16 +1714,18 @@ async function createContactNote(
   }
   const noteId = crypto.randomUUID();
   const now = new Date().toISOString();
+  const predicate = contactScopePredicate(scope as ContactScopeMode, "c", access.staff.userId, access.activeBranch.branchId, now);
   const result = await env.DB.prepare(`
     INSERT INTO contact_note
       (id, contact_id, branch_id, author_user_id, body, visibility, team_id, created_at, updated_at)
     SELECT ?, c.id, c.branch_id, ?, ?, ?, ?, ?, ?
     FROM contact c
     WHERE c.id = ? AND c.branch_id = ? AND c.contact_status <> 'merged'
+      AND (${predicate.sql})
   `).bind(
     noteId, access.staff.userId, noteBody, visibility,
     visibility === "team_scope" ? resource.teamId : null,
-    now, now, contactId, access.activeBranch.branchId,
+    now, now, contactId, access.activeBranch.branchId, ...predicate.values,
   ).run();
   if (!result.success || (result.meta?.changes ?? 0) !== 1) {
     return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND" } }, requestId, origin);
