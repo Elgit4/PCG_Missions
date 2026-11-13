@@ -143,5 +143,22 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("EVENT_CAPACITY_REACHED", self.source)
         self.assertIn('registration_state=\'open\'', self.source)
 
+    def test_event_checkin_and_transport_routes_are_idempotent_and_scoped(self):
+        for name in ("getScopedEventForStaff", "createEventCheckin", "listEventCheckins", "listTransportOptions", "createTransportOption", "updateTransportOption", "listTransportReservations", "createTransportReservation", "cancelTransportReservation"):
+            self.assertIn(f"function {name}(", self.source)
+        self.assertIn('"event_checkin"', self.source)
+        self.assertIn('"transport_reservation"', self.source)
+        self.assertIn("TRANSPORT_CAPACITY_REACHED", self.source)
+        self.assertIn("transport_reservation_capacity_guard", self.source)
+
+    def test_closeout_submission_review_and_resubmission_are_audited(self):
+        for name in ("eventCloseoutCounts", "getEventCloseout", "submitEventCloseout", "resubmitEventCloseout", "reviewEventCloseout"):
+            self.assertIn(f"function {name}(", self.source)
+        self.assertIn('"events.closeout.review"', self.source)
+        self.assertIn("event_closeout_event", self.source)
+        self.assertIn('"closeout_submit"', self.source)
+        self.assertIn('"closeout_review"', self.source)
+
+
 if __name__ == "__main__":
     unittest.main()
