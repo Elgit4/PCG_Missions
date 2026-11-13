@@ -4,6 +4,7 @@ import { CmiApiClient, CmiApiError, type MinistryReportCreateInput, type Ministr
 import { hasCapability } from "../lib/capabilities";
 
 interface Props { branchId: string; branchName: string; api: CmiApiClient; session: StaffSession }
+const REPORT_PAGE_SIZE = 50;
 const COUNT_FIELDS = [
   ["contacts_captured", "Contacts captured"],
   ["gospel_presentations", "Gospel presentations"],
@@ -38,6 +39,8 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
   const canSubmit = hasCapability(session, "report.submit.own", branchId);
   const canReview = hasCapability(session, "report.review.branch", branchId) || hasCapability(session, "report.review.team", branchId);
   const [reports, setReports] = useState<MinistryReportRecord[]>([]);
+  const [totalReports, setTotalReports] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -65,8 +68,12 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
     else setLoading(true);
     setError("");
     try {
-      const result = await api.listMinistryReports(branchId, { limit: 50, offset: 0 });
+      const result = await api.listMinistryReports(branchId, {
+        limit: REPORT_PAGE_SIZE,
+        offset: 0,
+      });
       setReports(result.data);
+      setTotalReports(result.total ?? result.data.length);
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -74,6 +81,28 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
       setRefreshing(false);
     }
   }, [api, branchId]);
+
+  const loadMore = async () => {
+    if (loadingMore || reports.length >= totalReports) return;
+    setLoadingMore(true);
+    setError("");
+    try {
+      const result = await api.listMinistryReports(branchId, {
+        limit: REPORT_PAGE_SIZE,
+        offset: reports.length,
+      });
+      setReports((current) => {
+        const byId = new Map(current.map((report) => [report.id, report]));
+        for (const report of result.data) byId.set(report.id, report);
+        return [...byId.values()];
+      });
+      setTotalReports(result.total ?? totalReports);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -322,6 +351,19 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
             </article>;
           })}
         </div>}
+      {!loading && reports.length > 0 && reports.length < totalReports && (
+        <div className="ministry-report-pagination">
+          <span>Showing {reports.length} of {totalReports} reports</span>
+          <button
+            type="button"
+            className="cmi-button cmi-button-secondary"
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+          >
+            {loadingMore ? "Loading more…" : "Load more reports"}
+          </button>
+        </div>
+      )}
     </section>
   );
 }
