@@ -8,7 +8,7 @@ export type StaffPage =
   | "Calendar"
   | "Announcements"
   | "Content"
-  | "Team"
+  | "Teams & Areas"
   | "Prayer"
   | "Reports";
 
@@ -19,7 +19,7 @@ const PAGE_CAPABILITIES: Partial<Record<StaffPage, readonly string[]>> = {
   Calendar: ["calendar.read.scoped", "calendar.manage.scoped"],
   Announcements: ["announcement.read.scoped", "announcement.create.scoped"],
   Content: ["content.manage.draft"],
-  Team: ["staff.directory.read"],
+  "Teams & Areas": ["team.manage", "area.manage"],
 };
 
 /**
@@ -66,7 +66,7 @@ export function getAvailableStaffPages(session: StaffSession, branchId?: string)
     "Calendar",
     "Announcements",
     "Content",
-    "Team",
+    "Teams & Areas",
   ];
   return candidates.filter((page) => canOpenStaffPage(session, page, branchId));
 }
