@@ -59,7 +59,7 @@ function authCorsHeaders(origin: string): Headers {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Branch-Id",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Branch-Id, Idempotency-Key",
     "Access-Control-Max-Age": "600",
     "Vary": "Origin",
   });
@@ -1231,6 +1231,7 @@ async function listContacts(
            c.contact_status, c.created_at, c.updated_at
     FROM contact c
     WHERE c.branch_id = ?
+      AND c.contact_status <> 'merged'
       AND ${statusPredicate}
       AND (? = '%%' OR c.first_name LIKE ? OR COALESCE(c.last_name, '') LIKE ?)
       AND (${readPredicate.sql})
@@ -1661,6 +1662,59 @@ async function assignContact(
     team_id: selectedTeamId,
     starts_at: transitionAt,
   }, requestId, origin);
+}
+
+async function listContactInteractions(
+  request: Request,
+  env: Env,
+  contactId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const resource = await contactResourceContext(request, env, contactId);
+  if (!resource.ok) return resource.response;
+  const access = await authorizeRequestCapability(request, env, "contacts.read", {
+    type: "contact", recordId: contactId, teamId: resource.teamId,
+  });
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+
+  const now = new Date().toISOString();
+  const predicate = contactScopePredicate(
+    access.decision.scopeMode as ContactScopeMode,
+    "c",
+    access.staff.profileId,
+    access.staff.userId,
+    access.activeBranch.branchId,
+    now,
+  );
+  const rows = await env.DB.prepare(\`
+    SELECT i.id, i.interaction_type, i.occurred_at, i.outcome_code,
+           i.summary, i.next_action_at, i.actor_user_id,
+           actor.full_name AS actor_name, i.created_at
+    FROM contact_interaction i
+    JOIN contact c ON c.id = i.contact_id AND c.branch_id = i.branch_id
+    LEFT JOIN staff_profile actor ON actor.auth_user_id = i.actor_user_id
+    WHERE i.contact_id = ? AND i.branch_id = ?
+      AND c.contact_status <> 'merged'
+      AND (\${predicate.sql})
+    ORDER BY i.occurred_at DESC, i.id DESC
+    LIMIT 100
+  \`).bind(
+    contactId,
+    access.activeBranch.branchId,
+    ...predicate.values,
+  ).all<{
+    id: string;
+    interaction_type: string;
+    occurred_at: string;
+    outcome_code: string | null;
+    summary: string | null;
+    next_action_at: string | null;
+    actor_user_id: string;
+    actor_name: string | null;
+    created_at: string;
+  }>();
+  return json(200, { ok: true, interactions: rows.results ?? [] }, requestId, origin);
 }
 
 async function createContactInteraction(
@@ -3247,11 +3301,12 @@ async function updatePrayerRequestStatus(
     }
 
     const interactionMatch = url.pathname.match(/^\/api\/v1\/contacts\/([^/]+)\/interactions$/);
-    if (interactionMatch && request.method === "POST") {
+    if (interactionMatch) {
       let contactId: string;
       try { contactId = decodeURIComponent(interactionMatch[1]); }
       catch { return json(400, { ok: false, error: { code: "INVALID_CONTACT_ID" } }, requestId, origin); }
-      return createContactInteraction(request, env, contactId, requestId, origin);
+      if (request.method === "GET") return listContactInteractions(request, env, contactId, requestId, origin);
+      if (request.method === "POST") return createContactInteraction(request, env, contactId, requestId, origin);
     }
 
     if (url.pathname === "/api/v1/staff/invitations/accept" && request.method === "POST") {
