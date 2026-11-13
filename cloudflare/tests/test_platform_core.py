@@ -1711,6 +1711,45 @@ class AuthorizationQueryTests(unittest.TestCase):
             1,
         )
 
+
+    def test_team_leader_report_review_requires_active_team_scope_and_completed_password_setup(self):
+        field_user, field_profile = self.staff["field"]
+        leader_user, leader_profile = self.staff["leader"]
+        self.db.execute(
+            """INSERT INTO staff_team_membership
+               (id,staff_profile_id,team_id,branch_id,membership_role,starts_at,created_by,created_at)
+               VALUES ('report-field-team-review','authz-staff-field','authz-team','authz-branch','member',?,?,?)""",
+            (self.NOW,"authz-staff-admin",self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO ministry_report
+               (id,branch_id,report_type,period_start,period_end,author_profile_id,team_id,
+                contacts_captured,gospel_presentations,decisions_for_christ,
+                followup_required,followup_completed,status,submitted_at,created_at,updated_at,created_by,updated_by)
+               VALUES ('report-team-review','authz-branch','daily_evangelism','2026-01-15','2026-01-15',?,'authz-team',
+                       1,1,0,0,0,'submitted',?,?,?,?,?)""",
+            (field_profile,self.NOW,self.NOW,self.NOW,field_user,field_user),
+        )
+        self.db.execute("UPDATE staff_profile SET must_change_password=1 WHERE id='authz-staff-leader'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE ministry_report SET status='approved',updated_at=?,updated_by=?,
+                   last_action_id='report-team-review-blocked',last_action_by=?,last_action_decision='approved',
+                   last_action_at=? WHERE id='report-team-review'""",
+                (self.NOW,leader_user,leader_user,self.NOW),
+            )
+        self.db.execute("UPDATE staff_profile SET must_change_password=0 WHERE id='authz-staff-leader'")
+        self.db.execute(
+            """UPDATE ministry_report SET status='approved',updated_at=?,updated_by=?,
+               last_action_id='report-team-review-approved',last_action_by=?,last_action_decision='approved',
+               last_action_at=? WHERE id='report-team-review'""",
+            (self.NOW,leader_user,leader_user,self.NOW),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT decision FROM report_review_event WHERE report_id='report-team-review'").fetchone()[0],
+            "approved",
+        )
+
     def test_ministry_report_review_resubmission_and_history_are_atomic(self):
         field_user, field_profile = self.staff["field"]
         admin_user, admin_profile = self.staff["admin"]
