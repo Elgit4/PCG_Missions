@@ -14,7 +14,7 @@ The Worker is a single entry point in `src/index.ts`. Protected routes resolve t
 | Authentication | `GET/POST /api/auth/*` | Better Auth session and email/password operations; public signup disabled |
 | Staff context | `GET /api/v1/me` | Verified identity, branches, roles and capability metadata |
 | Staff directory | `GET /api/v1/staff` | Capability-gated, branch-scoped directory |
-| Staff audit | `GET /api/v1/staff/audit` | Cursor-paginated governance audit |
+| Staff audit | `GET /api/v1/staff/audit` | Cursor-paginated governance audit; password-reset history is retained separately in append-only `staff_password_reset_audit` without live reset tokens or request state |
 | Invitations | `GET/POST /api/v1/staff/invitations` | List and create invitation; token currently returned once for manual secure delivery |
 | Invitation lifecycle | `POST /api/v1/staff/invitations/accept`, `POST /api/v1/staff/invitations/{id}/revoke` | One-time invitation acceptance/revocation |
 | Account lifecycle | `POST /api/v1/staff/{id}/deactivate`, `suspend`, `reactivate` | Audited branch-scoped account status changes; database triggers revoke sessions |
@@ -45,7 +45,7 @@ The Worker is a single entry point in `src/index.ts`. Protected routes resolve t
 | Content management | `GET /api/v1/content`, `POST /api/v1/content/{kind}`, `PATCH /api/v1/content/{kind}/{id}`, `POST /api/v1/content/{kind}/{id}/publish|archive` | Branch capability-gated draft and publication lifecycle for welcome messages, sermons, daily words and digital tracts |
 | Church profile and links | `GET/PATCH /api/v1/content/profile`, `POST /api/v1/content/links` | Church-scoped profile upsert and immutable HTTPS links to sermon/tract content |
 | Content audit | `GET /api/v1/content/audit` | Branch/church-visible append-only public-content change history |
-| Reporting | `GET /api/v1/reports/overview`, `GET/POST /api/v1/reports`, `GET /api/v1/reports/{id}`, `GET /api/v1/reports/teams`, `GET /api/v1/reports/events`, `POST /{id}/review`, `POST /{id}/resubmit` | Aggregate-only overview plus typed daily/event/weekly reports; D-12 self/team/branch scopes, author-only resubmission, no self-review, append-only review history |
+| Reporting | `GET /api/v1/reports/overview`, `GET /api/v1/reports/export?from=&to=`, `GET/POST /api/v1/reports`, `GET /api/v1/reports/{id}`, `GET /api/v1/reports/teams`, `GET /api/v1/reports/events`, `POST /{id}/review`, `POST /{id}/resubmit` | Aggregate-only overview with prior-period comparisons; Admin/Pastor-only CSV export with append-only export audit; typed daily/event/weekly reports; D-12 self/team/branch scopes, author-only resubmission, no self-review, append-only review history; report cohorts require three distinct authors |
 | Content management | `GET /api/v1/content`, `POST /api/v1/content/{kind}`, `PATCH /api/v1/content/{kind}/{id}`, `POST /{kind}/{id}/publish`, `POST /{kind}/{id}/archive` | Branch capability-gated draft and publication lifecycle for welcome messages, sermons, daily words and digital tracts |
 | Church profile and links | `GET/PATCH /api/v1/content/profile`, `POST /api/v1/content/links` | Church-scoped profile upsert and immutable HTTPS links to sermon/tract content |
 | Content audit | `GET /api/v1/content/audit` | Branch/church-visible append-only public-content change history |
@@ -67,8 +67,8 @@ All protected business routes require a verified session and an authorized activ
 11. **Announcement delivery and read receipts:** publishing now fans out in-app deliveries to the configured branch/team/event audience; staff receive a recipient-scoped inbox and can mark items read. Migration 0021 adds an audience-checked delivery trigger and immutable read receipts. EU D1 was verified at schema version 21 before typed reports were added.
 12. **Typed ministry reports:** migration 0022 adds typed daily/event/weekly submissions, D-12 scopes, self-review protection and append-only review/resubmission history.
 13. **Prayer intake:** added authenticated `POST /api/v1/pastoral/prayer/requests`. It requires `prayer.request.create` at branch scope, validates bounded narrative/contact/expiry inputs, requires an `Idempotency-Key`, stores a request digest and appends a creation audit. Migration 0023 adds the branch-scoped idempotency ledger; public intake remains disabled.
-14. **Calendar lifecycle:** added cancellation with mandatory reason, immutable change history, recipient-scoped immutable read receipts and active-only list/detail reads. Migration 0024 adds cancellation attribution, actor attribution for edits, audit and receipt tables. Recurrence generation remains outstanding.
-15. **Ministry report analytics:** the aggregate overview now includes typed daily/event/weekly report time-series cohorts. Cohorts require at least three distinct authors and return aggregate metrics only; report exports remain disabled.
+14. **Calendar lifecycle:** added cancellation with mandatory reason, immutable change history, recipient-scoped immutable read receipts and active-only list/detail reads. Migration 0024 adds cancellation attribution, actor attribution for edits, audit and receipt tables. Timezone-aware daily/weekly/monthly recurrence generation and reasoned series cancellation are implemented in source/schema; runtime verification remains.
+15. **Ministry report analytics:** the aggregate overview includes typed daily/event/weekly report time-series cohorts and prior-period comparisons. Cohorts require at least three distinct authors; Admin/Pastor aggregate CSV export is available with an append-only export audit and excludes personal identifiers and prayer narratives.
 
 ## API security review checklist
 
@@ -95,7 +95,7 @@ All protected business routes require a verified session and an authorized activ
 | P1 | Calendar | Recurring-series generation/cancellation, immutable change audit and scoped read receipts are implemented in source/schema; apply migrations 0025–0026 and verify Worker/D1 integration across time zones and DST boundaries |
 | P1 | Announcements | Scheduled publication and five-minute cron are implemented in source; verify due-item publication, revoked scheduler denial, delivery fan-out and inbox isolation in a deployed Worker |
 | P1 | Public content | Add deeper publishing/audience integration tests and public frontend wiring; CRUD, church profile management and published-only projection are in source |
-| P2 | Ministry reports | Typed report submissions, review/resubmit and aggregate time-series comparisons (minimum three distinct authors per cohort) are in source; privacy-controlled exports remain disabled pending approval |
+| P2 | Ministry reports | Typed report submissions, review/resubmit, prior-period comparisons and Admin/Pastor-only aggregate CSV export with immutable audit are in source; verify export privacy and audit-failure denial against deployed Worker/D1 |
 | P2 | Data reconciliation | Supabase export, transformation, D1 import and source-to-target row/count/hash reconciliation; no production data copied yet |
 | P2 | Communications | Verified email provider for invitations/password resets; Hubtel remains disabled until consent, sender and cost controls are approved |
 | P2 | Frontend | Cloudflare Pages preview binding and API client migration, keeping the production Supabase client intact until cutover approval |
