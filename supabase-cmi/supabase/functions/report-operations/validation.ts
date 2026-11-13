@@ -150,3 +150,28 @@ export function parseReview(value: unknown):
   }
   return { ok: true, value: { decision: value.decision as "approved" | "returned" | "comment", comment } };
 }
+
+export function parseReportCorrection(value: unknown):
+  | { ok: true; value: Record<CountField, number> }
+  | { ok: false; error: string } {
+  if (!isRecord(value)) return { ok: false, error: "A JSON object is required." };
+  if (Object.keys(value).length !== COUNT_FIELDS.length ||
+    Object.keys(value).some((key) => !(COUNT_FIELDS as readonly string[]).includes(key))) {
+    return { ok: false, error: "All report count fields are required; other fields are not editable." };
+  }
+  const counts = {} as Record<CountField, number>;
+  for (const field of COUNT_FIELDS) {
+    const count = value[field];
+    if (typeof count !== "number" || !Number.isSafeInteger(count) || count < 0 || count > 100000) {
+      return { ok: false, error: `${field} must be a whole number from 0 to 100000.` };
+    }
+    counts[field] = count;
+  }
+  if (counts.decisions_for_christ > counts.gospel_presentations) {
+    return { ok: false, error: "Decisions for Christ cannot exceed gospel presentations." };
+  }
+  if (counts.followup_completed > counts.followup_required) {
+    return { ok: false, error: "Completed follow-ups cannot exceed follow-ups required." };
+  }
+  return { ok: true, value: counts };
+}
