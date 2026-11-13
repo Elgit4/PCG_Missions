@@ -24,22 +24,23 @@
 | `0013_events_attendance_transport.sql` | 10 operational tables | Events, typed staff/team assignments, staff registrations, transport options/reservations, check-in, closeout, append-only closeout events and idempotency receipts; branch-scoped actor checks; public registration remains disabled; schema version 13 |
 | `0014_calendar_announcements_public_content.sql` | 11 content/workspace tables | Typed calendar scopes; branch/team/event announcement audiences; in-app-only delivery ledger; public profile, welcome messages, sermons, daily word, digital tracts and typed external links; actor-scoped create/update checks; schema version 14 |
 | `0015_prayer_share_revocation_hardening.sql` | 0 new tables | Requires a reason for sensitive-share revocation, ties prayer-assignment revocation to the matching revoked share, records actor/reason, and appends immutable prayer and sensitive-access audit events; schema version 15 |
+| `0016_event_lifecycle_audit.sql` | 1 new table | Adds event actor attribution, database-enforced active Admin/Pastor/Coordinator event-manager checks for updates, and append-only before/after event lifecycle audit; schema version 16 |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
 ## Remote non-production D1 verification
 
 - Database UUID: `376a6782-d059-41f9-9e09-f93718fef2bb`.
-- Migrations `0001` through `0015` applied successfully; schema version reports `15` and environment marker is `non-production`.
+- Migrations `0001` through `0016` applied successfully; schema version reports `16` and environment marker is `non-production`.
 - Database contains 69 application tables and all six expected role records.
 - `PRAGMA foreign_key_check` returned no violations.
-- Wrangler migration ledger `d1_migrations` contains all 15 applied migration filenames. Migration `0015` was applied to the EU non-production database and verified through the Cloudflare D1 API.
+- Wrangler migration ledger `d1_migrations` contains all 16 applied migration filenames. Migration `0016` was applied to the EU non-production database and verified through the Cloudflare D1 API.
 - This is a direct remote D1 schema test; Better Auth login, Worker request lifecycle and domain endpoints have not yet been exercised against a deployed Worker.
 
 ## Current test coverage
 
 The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations against an in-memory SQLite database and checks:
-- migration application through schema version 15 and non-production marker;
+- migration application through schema version 16 and non-production marker;
 - identity foreign keys;
 - temporal overlap rejection for staff role assignments, team membership, area coverage and contact assignments;
 - adjacent assignment periods;
@@ -55,7 +56,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability;
 - typed calendar scope integrity, branch-scoped announcement management, content-manager checks on public content creation and update, and typed external document links.
 
-Latest verified CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actions/runs/43469371911) — **56 Python/SQLite tests passed** and Worker/Better Auth TypeScript type-check passed. This verifies migration replay and tested invariants in CI's SQLite runtime; it does not replace real D1 Worker request testing or Better Auth schema compatibility validation.
+Last recorded CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actions/runs/43469371911) — 56 Python/SQLite tests and Worker/Better Auth TypeScript type-check passed for the earlier schema slice. PR #61 adds API contract and event-audit regression tests, but a passing CI run for the new tests has not yet been observed. The remote migration 0016 was separately syntax-checked in SQLite and applied/verified on EU D1. This does not replace real Worker request testing or Better Auth schema compatibility validation.
 
 ## Authentication and authorization progress
 
@@ -73,7 +74,7 @@ Latest verified CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/act
 - Better Auth schema compatibility validation against the exact pinned package in a real local D1/Worker runtime.
 - Worker-level integration tests for staff invitation, account lifecycle, staff governance and the existing contact/follow-up routes.
 - Pastoral-care narrative read/write routes remain disabled until explicit care-reader capability decisions are approved.
-- Event lifecycle handlers, capacity enforcement, replay-safe request-digest verification, transport reservations, check-in and closeout workflows.
+- Event staff registration, capacity enforcement, replay-safe request-digest verification, transport reservations, check-in and closeout workflows.
 - Calendar and announcement management handlers, content editing/publication handlers, and public content read projections.
 - Reporting, analytics, export/import tooling and source-to-D1 reconciliation.
 - Cloudflare Pages preview binding and frontend API integration.
@@ -81,8 +82,8 @@ Latest verified CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/act
 
 ## Events, registration, transport and attendance
 
-- Event schema and core constraints are now present in D1. Event creation and check-in are protected by database actor/capability triggers. Staff registration requires an authenticated actor and idempotency key. Transport assignment and closeout review have explicit branch/capability boundaries.
-- Public registration is deliberately excluded. Capacity enforcement, request-digest verification, transactional replay handling, event lifecycle routes and reporting are Worker responsibilities and remain disabled until implemented and tested.
+- Event schema and core constraints are present in D1. Staff can list events within branch/team/event assignment scope, create private drafts, update drafts, publish staff-only events and cancel events. The event actor is server-derived; D1 enforces active event-manager capability on updates and records append-only before/after audit events.
+- Staff registration, capacity enforcement, request-digest verification, transport reservations, check-in and closeout routes remain outstanding. Public registration is deliberately excluded. Publishing currently keeps visibility staff-only and registration closed until public projections and registration workflows are implemented and tested.
 - Event walk-in identity is currently represented by a name snapshot; deduplication across walk-in names is not claimed.
 
 ## Restricted prayer and pastoral care
@@ -95,7 +96,7 @@ Latest verified CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/act
 
 ## Required next steps
 
-1. Implement event lifecycle handlers, capacity enforcement, replay-safe request-digest validation, transport reservations, check-in and closeout workflows.
+1. Implement staff registration, capacity enforcement, replay-safe request-digest validation, transport reservations, check-in and closeout workflows.
 2. Implement calendar, announcement and public-content handlers with per-operation capability checks and D1 transactional invariants.
 3. Validate Better Auth's generated schema against the pinned release and exercise the complete auth/session lifecycle on the EU D1 binding.
 4. Add Worker-level integration tests for staff, contacts, follow-up and prayer routes; then implement migration export/import and reconciliation for the remaining live schema.
