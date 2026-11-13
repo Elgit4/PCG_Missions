@@ -22,22 +22,23 @@
 | `0011_followup_task_idempotency.sql` | 0 new tables | Enforces branch-scoped uniqueness for follow-up task idempotency keys; schema version 11 |
 | `0012_prayer_pastoral_care.sql` | 9 restricted domain tables | Prayer requests/assignments, separate prayer and care access ledgers, care groups/memberships, care records/assignments/interactions; creation and assignment triggers enforce capability, branch and intercessor-role boundaries; schema version 12 |
 | `0013_events_attendance_transport.sql` | 10 operational tables | Events, typed staff/team assignments, staff registrations, transport options/reservations, check-in, closeout, append-only closeout events and idempotency receipts; branch-scoped actor checks; public registration remains disabled; schema version 13 |
+| `0014_calendar_announcements_public_content.sql` | 11 content/workspace tables | Typed calendar scopes; branch/team/event announcement audiences; in-app-only delivery ledger; public profile, welcome messages, sermons, daily word, digital tracts and typed external links; actor-scoped create/update checks; schema version 14 |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
 ## Remote non-production D1 verification
 
 - Database UUID: `376a6782-d059-41f9-9e09-f93718fef2bb`.
-- Migrations `0001` through `0013` applied successfully; schema version reports `13` and environment marker is `non-production`.
-- Database contains 58 application tables and all six expected role records.
+- Migrations `0001` through `0014` applied successfully; schema version reports `14` and environment marker is `non-production`.
+- Database contains 69 application tables and all six expected role records.
 - `PRAGMA foreign_key_check` returned no violations.
-- Wrangler migration ledger `d1_migrations` was initialized with the 13 applied migration filenames after applying the SQL through the Cloudflare D1 API.
+- Wrangler migration ledger `d1_migrations` was initialized with the 14 applied migration filenames after applying the SQL through the Cloudflare D1 API.
 - This is a direct remote D1 schema test; Better Auth login, Worker request lifecycle and domain endpoints have not yet been exercised against a deployed Worker.
 
 ## Current test coverage
 
 The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations against an in-memory SQLite database and checks:
-- migration application through schema version 13 and non-production marker;
+- migration application through schema version 14 and non-production marker;
 - identity foreign keys;
 - temporal overlap rejection for staff role assignments, team membership, area coverage and contact assignments;
 - adjacent assignment periods;
@@ -50,7 +51,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - contact normalization, capture idempotency and metadata allowlists;
 - follow-up task completion and target invariants;
 - restricted prayer/care creation authorization, intercessor-only prayer assignment, no prayer-intercessor CRM/pastoral grants, assignment audit writes and append-only sensitive-access ledgers;
-- branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability.
+- branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability;\n- typed calendar scope integrity, branch-scoped announcement management, content-manager checks on public content creation and update, and typed external document links.
 
 Latest verified CI run: [43461336276](https://github.com/Elgit4/PCG_Missions/actions/runs/43461336276) — **46 Python/SQLite tests passed and Worker/Better Auth TypeScript type-check passed.** This proves the SQL is accepted by the CI runner's SQLite engine and the Worker code type-checks against the pinned package. It does not replace a real D1 preview test, runtime Better Auth schema validation, a deployed Worker test or domain authorization tests.
 
@@ -73,7 +74,7 @@ Latest verified CI run: [43461336276](https://github.com/Elgit4/PCG_Missions/act
 - Better Auth schema compatibility validation against the exact pinned package in local D1 and Worker runtime.
 - First contact handlers are implemented for scoped list/create/read/update, interactions, visibility-filtered notes and audited branch-scoped assignment/reassignment. Contact creation is idempotent and auto-assigns the contact to the capturing staff member. Phone/email visibility and private demographic/language field writes are separately gated. Contact note, reassignment and first follow-up task list/create/update/reassignment APIs are implemented with scope predicates, idempotency and append-only events. Follow-up lists, task reassignment, notifications and the remaining ministry handlers remain outstanding.
 - Trusted Worker handlers for prayer/care creation, assignment, update and audited narrative reads. No API route may return prayer/care narrative until each read is authorized and logged in the same D1 batch.
-- Calendar, announcements, public content and reports. Event schema is migrated, but trusted Worker routes for event management, registration, transport, check-in and closeout are not yet implemented.
+- Reports, analytics, and trusted Worker handlers for calendar, announcements and public content. Event schema is migrated, but trusted Worker routes for event management, registration, transport, check-in and closeout are not yet implemented.
 - Data export/import tooling and reconciliation reports.
 - Cloudflare Pages preview binding or frontend API cutover.
 
