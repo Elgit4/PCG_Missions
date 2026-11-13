@@ -1553,6 +1553,115 @@ async function updateContact(
   return json(200, { ok: true, contact_id: contactId, updated_at: now }, requestId, origin);
 }
 
+
+async function assignContact(
+  request: Request,
+  env: Env,
+  contactId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "contacts.assign");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { assignee_profile_id?: unknown; team_id?: unknown; reason?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !["assignee_profile_id","team_id","reason"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_ASSIGNMENT_BODY" } }, requestId, origin);
+  }
+  const assigneeProfileId = typeof payload.assignee_profile_id === "string" ? payload.assignee_profile_id.trim() : "";
+  const teamId = typeof payload.team_id === "string" ? payload.team_id.trim() : "";
+  const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+  if (!!assigneeProfileId === !!teamId || reason.length < 10 || reason.length > 500) {
+    return json(400, { ok: false, error: { code: "INVALID_ASSIGNMENT_TARGET" } }, requestId, origin);
+  }
+
+  const now = new Date().toISOString();
+  const contact = await env.DB.prepare(
+    "SELECT id FROM contact WHERE id = ? AND branch_id = ? AND contact_status = 'active' LIMIT 1",
+  ).bind(contactId, access.activeBranch.branchId).first<{ id: string }>();
+  if (!contact) return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND" } }, requestId, origin);
+
+  let assigneeUserId: string | null = null;
+  let selectedTeamId: string | null = null;
+  if (assigneeProfileId) {
+    const target = await env.DB.prepare(`
+      SELECT sp.auth_user_id
+      FROM staff_profile sp
+      WHERE sp.id = ? AND sp.account_status = 'active'
+        AND EXISTS (
+          SELECT 1 FROM staff_role_assignment ra
+          JOIN role r ON r.id = ra.role_id AND r.is_active = 1
+          WHERE ra.staff_profile_id = sp.id
+            AND ra.branch_id = ?
+            AND ra.revoked_at IS NULL
+            AND ra.starts_at <= ?
+            AND (ra.ends_at IS NULL OR ra.ends_at > ?)
+        )
+      LIMIT 1
+    `).bind(assigneeProfileId, access.activeBranch.branchId, now, now).first<{ auth_user_id: string }>();
+    if (!target) return json(400, { ok: false, error: { code: "ASSIGNEE_NOT_ACTIVE_IN_BRANCH" } }, requestId, origin);
+    assigneeUserId = target.auth_user_id;
+  } else {
+    const targetTeam = await env.DB.prepare(
+      "SELECT id FROM team WHERE id = ? AND branch_id = ? AND is_active = 1 LIMIT 1",
+    ).bind(teamId, access.activeBranch.branchId).first<{ id: string }>();
+    if (!targetTeam) return json(400, { ok: false, error: { code: "TEAM_NOT_ACTIVE_IN_BRANCH" } }, requestId, origin);
+    selectedTeamId = targetTeam.id;
+  }
+
+  const future = await env.DB.prepare(`
+    SELECT id FROM contact_assignment
+    WHERE contact_id = ? AND branch_id = ?
+      AND starts_at > ?
+      AND (ends_at IS NULL OR ends_at > ?)
+    LIMIT 1
+  `).bind(contactId, access.activeBranch.branchId, now, now).first<{ id: string }>();
+  if (future) {
+    return json(409, { ok: false, error: { code: "FUTURE_ASSIGNMENT_EXISTS" } }, requestId, origin);
+  }
+
+  const transitionAt = new Date(Date.now() + 1000).toISOString();
+  const assignmentId = crypto.randomUUID();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE contact_assignment
+        SET ends_at = ?, ended_by = ?, reason = ?
+        WHERE contact_id = ? AND branch_id = ?
+          AND starts_at <= ?
+          AND (ends_at IS NULL OR ends_at > ?)
+      `).bind(
+        transitionAt, access.staff.userId, `Reassigned: ${reason}`,
+        contactId, access.activeBranch.branchId, now, transitionAt,
+      ),
+      env.DB.prepare(`
+        INSERT INTO contact_assignment
+          (id, contact_id, branch_id, assignee_user_id, team_id, assigned_by, starts_at, reason, created_at)
+        SELECT ?, c.id, c.branch_id, ?, ?, ?, ?, ?, ?
+        FROM contact c
+        WHERE c.id = ? AND c.branch_id = ? AND c.contact_status = 'active'
+      `).bind(
+        assignmentId, assigneeUserId, selectedTeamId, access.staff.userId,
+        transitionAt, reason, transitionAt, contactId, access.activeBranch.branchId,
+      ),
+    ]);
+    if (results.some((result) => !result.success) || (results[1]?.meta?.changes ?? 0) !== 1) {
+      throw new Error("CONTACT_ASSIGNMENT_BATCH_FAILED");
+    }
+  } catch {
+    return json(409, { ok: false, error: { code: "CONTACT_ASSIGNMENT_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, {
+    ok: true,
+    assignment_id: assignmentId,
+    assignee_profile_id: assigneeProfileId || null,
+    team_id: selectedTeamId,
+    starts_at: transitionAt,
+  }, requestId, origin);
+}
+
 async function createContactInteraction(
   request: Request,
   env: Env,
@@ -1879,6 +1988,14 @@ export default {
       if (request.method === "GET") return getContact(request, env, contactId, requestId, origin);
       if (request.method === "PATCH") return updateContact(request, env, contactId, requestId, origin);
     }
+    const contactAssignMatch = url.pathname.match(/^\/api\/v1\/contacts\/([^/]+)\/assign$/);
+    if (contactAssignMatch && request.method === "POST") {
+      let contactId: string;
+      try { contactId = decodeURIComponent(contactAssignMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CONTACT_ID" } }, requestId, origin); }
+      return assignContact(request, env, contactId, requestId, origin);
+    }
+
     const interactionMatch = url.pathname.match(/^\/api\/v1\/contacts\/([^/]+)\/interactions$/);
     if (interactionMatch && request.method === "POST") {
       let contactId: string;
