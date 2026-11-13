@@ -337,7 +337,12 @@ describe("CmiApiClient", () => {
       { status: 200 },
     ));
     const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.reviewMinistryReport("report/1", { decision: "returned", comment: "Please verify the totals." });
+    const result = await client.reviewMinistryReport("report/1", {
+      decision: "returned",
+      comment: "Please verify the totals.",
+    });
+    expect(result.data.report.id).toBe("report-1");
+    expect(result.data.review_history).toEqual([]);
     const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
     expect(url.pathname).toBe("/functions/v1/report-operations/reports/report%2F1/review");
     expect(init.method).toBe("POST");
@@ -375,11 +380,14 @@ describe("CmiApiClient", () => {
       { status: 200 },
     ));
     const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.resubmitMinistryReport("report-1", {
+    const result = await client.resubmitMinistryReport("report-1", {
       contacts_captured: 4, gospel_presentations: 3, decisions_for_christ: 1,
       followup_required: 2, followup_completed: 1, visits_completed: 1,
       calls_completed: 0, events_supported: 0, attendance_count: 0,
     });
+    expect(result.data.report.id).toBe("report-1");
+    expect(result.data.review_history[0]?.actor_profile_id).toBe("author-1");
+    expect(result.data.review_history[0]?.decision).toBe("resubmitted");
     const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
     expect(url.pathname).toBe("/functions/v1/report-operations/reports/report-1/resubmit");
     expect(init.method).toBe("POST");
