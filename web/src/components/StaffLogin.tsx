@@ -121,11 +121,11 @@ export function StaffLogin({
           <p className="staff-login-overline"><span aria-hidden="true" /> PEOPLE · CARE · COMMUNITY</p>
           <h1>Good ministry work starts with <em>connection.</em></h1>
           <p className="staff-login-aside-description">
-            Keep the people, care and gatherings behind every ministry moment in one considered workspace.
+            Keep people, follow-up and ministry coordination in one considered workspace.
           </p>
           <div className="staff-login-service-list" aria-label="Workspace areas">
             <div><Users size={18} strokeWidth={1.8} /><span>People &amp; follow-up</span><small>01</small></div>
-            <div><HeartHandshake size={18} strokeWidth={1.8} /><span>Pastoral care</span><small>02</small></div>
+            <div><HeartHandshake size={18} strokeWidth={1.8} /><span>Team coordination</span><small>02</small></div>
             <div><CalendarDays size={18} strokeWidth={1.8} /><span>Events &amp; gatherings</span><small>03</small></div>
           </div>
         </div>
