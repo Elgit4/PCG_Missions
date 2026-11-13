@@ -23,7 +23,12 @@ CREATE TABLE contact (
       email_normalized = lower(trim(email_normalized))
       AND instr(email_normalized, '@') > 1
       AND instr(substr(email_normalized, instr(email_normalized, '@') + 1), '.') > 1
-      AND email_normalized NOT GLOB '*[[:space:]]*'
+      AND instr(email_normalized, ' ') = 0
+      AND instr(email_normalized, char(9)) = 0
+      AND instr(email_normalized, char(10)) = 0
+      AND instr(email_normalized, char(13)) = 0
+      AND instr(substr(email_normalized, instr(email_normalized, '@') + 1), '@') = 0
+      AND substr(email_normalized, -1, 1) <> '.'
     )
   ),
   age_range TEXT,
@@ -186,6 +191,7 @@ CREATE TABLE contact_interaction (
   )),
   summary TEXT,
   next_action_at TEXT,
+  created_at TEXT NOT NULL,
   FOREIGN KEY (contact_id, branch_id) REFERENCES contact(id, branch_id) ON DELETE RESTRICT
 );
 CREATE INDEX contact_interaction_contact_time_idx ON contact_interaction(contact_id, occurred_at DESC);
