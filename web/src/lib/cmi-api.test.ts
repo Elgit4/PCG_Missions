@@ -20,7 +20,7 @@ const mePayload = {
 
 describe("CmiApiClient — Cloudflare Worker", () => {
   it("loads the authenticated staff context using same-origin cookie credentials", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify(mePayload), { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify(mePayload), { status: 200 }));
     const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
     const result = await client.getStaffSession();
     const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
@@ -32,7 +32,7 @@ describe("CmiApiClient — Cloudflare Worker", () => {
   });
 
   it("uses the selected branch as a server-validated header", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ data: [], request_id: "contacts" }), { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ data: [], request_id: "contacts" }), { status: 200 }));
     const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
     await client.listContacts("branch-1", { limit: 10 });
     const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
@@ -43,7 +43,7 @@ describe("CmiApiClient — Cloudflare Worker", () => {
   });
 
   it("maps legacy calendar operations to the Worker calendar resource", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ data: [], request_id: "calendar" }), { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ data: [], request_id: "calendar" }), { status: 200 }));
     const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
     await client.listCalendarEntries("branch-1");
     const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
@@ -51,7 +51,7 @@ describe("CmiApiClient — Cloudflare Worker", () => {
   });
 
   it("preserves Worker authorization errors and request IDs", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
       ok: false,
       error: { code: "CAPABILITY_DENIED", message: "Not permitted" },
       request_id: "request-denied",
@@ -63,7 +63,7 @@ describe("CmiApiClient — Cloudflare Worker", () => {
   });
 
   it("rejects malformed successful responses", async () => {
-    const client = new CmiApiClient({}, async () => null, vi.fn(async () => new Response("not-json", { status: 200 })) as typeof fetch);
+    const client = new CmiApiClient({}, async () => null, vi.fn(async (..._args: Parameters<typeof fetch>) => new Response("not-json", { status: 200 })) as typeof fetch);
     await expect(client.listContacts("branch-1")).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
   });
 });
