@@ -4273,6 +4273,69 @@ function announcementScopePredicate(
   };
 }
 
+async function listAnnouncementInbox(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const rows=await env.DB.prepare(`
+    SELECT d.id AS delivery_id,a.id AS announcement_id,a.branch_id,a.title,a.body,
+           a.audience_type,a.published_at,d.attempted_at AS delivered_at,
+           rr.read_at,CASE WHEN rr.id IS NULL THEN 0 ELSE 1 END AS is_read
+    FROM announcement_delivery d
+    JOIN announcement a ON a.id=d.announcement_id
+    LEFT JOIN announcement_read_receipt rr
+      ON rr.announcement_id=a.id AND rr.staff_profile_id=d.recipient_ref
+    WHERE d.channel='in_app' AND d.status='delivered'
+      AND d.recipient_ref=? AND a.branch_id=? AND a.status='published'
+    ORDER BY COALESCE(a.published_at,d.created_at) DESC,a.id DESC
+    LIMIT 100
+  `).bind(context.staff.profileId,context.activeBranch.branchId).all<Record<string,unknown>>();
+  return json(200,{ok:true,announcements:rows.results??[]},requestId,origin);
+}
+
+async function markAnnouncementRead(
+  request: Request,
+  env: Env,
+  announcementId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const delivery=await env.DB.prepare(`
+    SELECT d.id FROM announcement_delivery d
+    JOIN announcement a ON a.id=d.announcement_id
+    WHERE d.announcement_id=? AND d.recipient_ref=? AND d.channel='in_app'
+      AND d.status='delivered' AND a.status='published' AND a.branch_id=?
+    LIMIT 1
+  `).bind(announcementId,context.staff.profileId,context.activeBranch.branchId).first<{id:string}>();
+  if (!delivery) return json(404,{ok:false,error:{code:"ANNOUNCEMENT_NOT_IN_INBOX"}},requestId,origin);
+  const now=new Date().toISOString();
+  try {
+    const result=await env.DB.prepare(`
+      INSERT OR IGNORE INTO announcement_read_receipt
+        (id,announcement_id,branch_id,staff_profile_id,read_by,read_at)
+      VALUES (?,?,?,?,?,?)
+    `).bind(
+      crypto.randomUUID(),announcementId,context.activeBranch.branchId,
+      context.staff.profileId,context.staff.userId,now,
+    ).run();
+    if (!result.success) throw new Error("ANNOUNCEMENT_READ_RECEIPT_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"ANNOUNCEMENT_READ_CONFLICT"}},requestId,origin);
+  }
+  const receipt=await env.DB.prepare(
+    "SELECT read_at FROM announcement_read_receipt WHERE announcement_id=? AND staff_profile_id=? LIMIT 1",
+  ).bind(announcementId,context.staff.profileId).first<{read_at:string}>();
+  return json(200,{ok:true,announcement_id:announcementId,read:true,read_at:receipt?.read_at??now},requestId,origin);
+}
+
 async function listAnnouncements(
   request: Request,
   env: Env,
