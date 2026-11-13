@@ -95,5 +95,28 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertNotIn("payload.registration_state", code)
 
 
+    def test_calendar_routes_use_branch_team_and_assigned_scope_predicates(self):
+        for name in ("calendarScopePredicate", "listCalendarEntries", "createCalendarEntry", "updateCalendarEntry"):
+            self.assertIn(f"function {name}(", self.source)
+        self.assertIn('url.pathname === "/api/v1/calendar"', self.source)
+        self.assertIn("calendar_entry_authorize_insert", self.source)
+        self.assertIn("calendar_entry_authorize_update", self.source)
+
+    def test_announcement_routes_are_capability_gated_and_audience_scoped(self):
+        for name in ("announcementScopePredicate", "listAnnouncements", "createAnnouncement", "updateAnnouncement", "publishAnnouncement", "archiveAnnouncement"):
+            self.assertIn(f"function {name}(", self.source)
+        self.assertIn('url.pathname === "/api/v1/announcements"', self.source)
+        self.assertIn("announcement_team_audience", self.source)
+        self.assertIn("announcement_event_audience", self.source)
+
+    def test_public_content_projection_only_selects_published_records(self):
+        handler = re.search(r"async function getPublicContent\\([\\s\\S]*?\\n\\}", self.source)
+        self.assertIsNotNone(handler)
+        code = handler.group(0)
+        self.assertIn("status = 'published'", code)
+        self.assertIn("is_public = 1", code)
+        self.assertIn("branch_id", code)
+
+
 if __name__ == "__main__":
     unittest.main()
