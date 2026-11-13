@@ -106,8 +106,8 @@ for each row execute function private.cmi_validate_ministry_report_scope();
 create table if not exists public.report_review_event (
   id uuid primary key default gen_random_uuid(),
   report_id uuid not null references public.ministry_report(id) on delete restrict,
-  reviewer_profile_id uuid not null references public.staff_profile(id) on delete restrict,
-  decision text not null check (decision in ('approved','returned','comment')),
+  actor_profile_id uuid not null references public.staff_profile(id) on delete restrict,
+  decision text not null check (decision in ('approved','returned','comment','resubmitted')),
   comment text null check (comment is null or length(comment) <= 2000),
   created_at timestamptz not null default now()
 );
