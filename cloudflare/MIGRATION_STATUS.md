@@ -22,7 +22,10 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - identity foreign keys;
 - temporal overlap rejection for staff role assignments, team membership, area coverage and contact assignments;
 - adjacent assignment periods;
-- append-only staff-access and follow-up-task event records;\n- exact six-role privilege matrix, field-level contact detail separation and prohibited capability grants;\n- time-bounded explicit-share grant/revoke authorization and automatic audit attribution;\n- explicit-share overlap, expiry/revocation history and automatic share grant/revoke audit events;
+- append-only staff-access and follow-up-task event records;
+- exact six-role privilege matrix, field-level contact detail separation and prohibited capability grants;
+- time-bounded explicit-share grant/revoke authorization and automatic audit attribution;
+- explicit-share overlap, expiry/revocation history and automatic share grant/revoke audit events;
 - contact normalization, capture idempotency and metadata allowlists;
 - follow-up task completion and target invariants.
 
