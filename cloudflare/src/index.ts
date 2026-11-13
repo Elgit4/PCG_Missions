@@ -3239,7 +3239,7 @@ async function getReportsOverview(
        WHERE ce.branch_id=p.branch_id AND ce.starts_at>=p.from_at
          AND ce.starts_at<p.to_at) AS calendar_entries
   `).bind(branchId,fromAt,toExclusive,now.toISOString()).first<Record<string,number>>();
-  const series = await env.DB.prepare(`
+  const seriesSql=`
     SELECT period_start AS period, report_type,
            COUNT(*) AS report_count,
            SUM(contacts_captured) AS contacts_captured,
@@ -3257,12 +3257,24 @@ async function getReportsOverview(
     HAVING COUNT(DISTINCT author_profile_id)>=3
     ORDER BY period_start ASC,report_type ASC
     LIMIT 1100
-  `).bind(branchId,from,to).all<Record<string,unknown>>();
+  `;
+  const periodDays=Math.floor((toMs-fromMs)/(24*60*60*1000))+1;
+  const previousTo=new Date(fromMs-24*60*60*1000).toISOString().slice(0,10);
+  const previousFrom=new Date(fromMs-periodDays*24*60*60*1000).toISOString().slice(0,10);
+  const [series,previousSeries]=await Promise.all([
+    env.DB.prepare(seriesSql).bind(branchId,from,to).all<Record<string,unknown>>(),
+    env.DB.prepare(seriesSql).bind(branchId,previousFrom,previousTo).all<Record<string,unknown>>(),
+  ]);
   return json(200,{
     ok:true,
     period:{from,to,timezone:"UTC"},
     metrics:row??{},
     time_series:series.results??[],
+    comparison:{
+      period:{from:previousFrom,to:previousTo},
+      time_series:previousSeries.results??[],
+      privacy_threshold_distinct_authors:3,
+    },
     privacy:{aggregate_only:true,prayer_request_content_included:false,personal_identifiers_included:false},
   },requestId,origin);
 }
