@@ -7,6 +7,7 @@ import { ContactDetailDialog } from "./ContactDetailDialog";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
 import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
+import { ThemeToggle } from "../lib/theme";
 
 type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Reports" | "Staff" | "Access requests";
 type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue";
@@ -590,6 +591,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             <h1>{page === "Follow-up" ? "Follow-up tasks" : page}</h1>
           </div>
           <div className="cmi-topbar-actions">
+            <ThemeToggle />
             <label className="cmi-branch-picker"><span>BRANCH</span><select aria-label="Active branch" value={branchId} onChange={(event) => {
                 setContacts([]);
                 setSelectedContact(null);
