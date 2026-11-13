@@ -420,7 +420,7 @@ export function TeamAdministrationWorkspace({
                   {!canReadStaff && <p className="cmi-scope-note">Staff membership details are hidden because this account does not have the separate staff-directory permission.</p>}
                   <div className="cmi-structure-members">
                     <div className="cmi-structure-section-heading"><div><strong>Team membership</strong><small>Membership history is retained when a person leaves.</small></div></div>
-                    {selectedTeam.members.map((member) => {
+                    {canReadStaff && selectedTeam.members.map((member) => {
                       const directoryEntry = staffById.get(member.staff_profile_id);
                       const canPromote = member.membership_role === "leader" || isLeader(directoryEntry);
                       return (
@@ -517,7 +517,7 @@ export function TeamAdministrationWorkspace({
                   {!canReadStaff && <p className="cmi-scope-note">Staff coverage details are hidden because this account does not have the separate staff-directory permission.</p>}
                   <div className="cmi-structure-members">
                     <div className="cmi-structure-section-heading"><div><strong>Staff coverage</strong><small>Coverage assignments are ended, not deleted.</small></div></div>
-                    {selectedArea.coverage.map((coverage) => (
+                    {canReadStaff && selectedArea.coverage.map((coverage) => (
                       <article className="cmi-structure-person" key={coverage.id}>
                         <span className="cmi-structure-avatar"><MapPin size={16} /></span>
                         <div className="cmi-structure-person-copy"><strong>{displayName(coverage.staff)}</strong><small>Assigned {new Intl.DateTimeFormat("en-GH", { dateStyle: "medium" }).format(new Date(coverage.starts_at))}</small></div>
