@@ -4548,7 +4548,7 @@ async function getCalendarEntry(
            ce.timezone, ce.scope_type, ce.team_id, ce.event_id, ce.owner_user_id,
            ce.created_by, ce.created_at, ce.updated_at
     FROM calendar_entry ce
-    WHERE ce.id=? AND ce.branch_id=? AND (${predicate.sql})
+    WHERE ce.id=? AND ce.branch_id=? AND ce.status='active' AND (${predicate.sql})
     LIMIT 1
   `).bind(entryId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
   if (!row) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
