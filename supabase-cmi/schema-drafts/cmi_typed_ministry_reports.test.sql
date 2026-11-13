@@ -206,8 +206,14 @@ select is(
 select is(
   (select count(*)::integer from public.report_review_event where report_id in
     (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020')),
-  2,
-  'Resubmission preserves append-only review history');
+  3,
+  'Resubmission appends to immutable report history');
+select is(
+  (select decision from public.report_review_event where report_id in
+    (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020')
+   order by created_at desc limit 1),
+  'resubmitted',
+  'History identifies the author resubmission event');
 
 select * from finish();
 rollback;
