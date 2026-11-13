@@ -6343,6 +6343,39 @@ async function updatePrayerRequestStatus(
       if (request.method === "PATCH") return updateAnnouncement(request, env, announcementId, requestId, origin);
     }
 
+    if (url.pathname === "/api/v1/reports/teams" && request.method === "GET") {
+      return listReportTeams(request,env,requestId,origin);
+    }
+    if (url.pathname === "/api/v1/reports/events" && request.method === "GET") {
+      return listReportEvents(request,env,requestId,origin);
+    }
+    if (url.pathname === "/api/v1/reports" && request.method === "GET") {
+      return listMinistryReports(request,env,requestId,origin);
+    }
+    if (url.pathname === "/api/v1/reports" && request.method === "POST") {
+      return createMinistryReport(request,env,requestId,origin);
+    }
+    const reportReviewMatch=url.pathname.match(/^\/api\/v1\/reports\/([^/]+)\/review$/);
+    if (reportReviewMatch && request.method==="POST") {
+      let reportId:string;
+      try { reportId=decodeURIComponent(reportReviewMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_REPORT_ID"}},requestId,origin); }
+      return reviewMinistryReport(request,env,reportId,requestId,origin);
+    }
+    const reportResubmitMatch=url.pathname.match(/^\/api\/v1\/reports\/([^/]+)\/resubmit$/);
+    if (reportResubmitMatch && request.method==="POST") {
+      let reportId:string;
+      try { reportId=decodeURIComponent(reportResubmitMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_REPORT_ID"}},requestId,origin); }
+      return resubmitMinistryReport(request,env,reportId,requestId,origin);
+    }
+    const reportMatch=url.pathname.match(/^\/api\/v1\/reports\/([^/]+)$/);
+    if (reportMatch && request.method==="GET") {
+      let reportId:string;
+      try { reportId=decodeURIComponent(reportMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_REPORT_ID"}},requestId,origin); }
+      return getMinistryReport(request,env,reportId,requestId,origin);
+    }
     if (url.pathname === "/api/v1/reports/overview" && request.method === "GET") {
       return getReportsOverview(request,env,requestId,origin);
     }
