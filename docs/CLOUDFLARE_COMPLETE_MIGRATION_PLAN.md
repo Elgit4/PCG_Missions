@@ -85,6 +85,12 @@ The existing `.github/workflows/cmi-edge-functions.yml` checks `supabase/functio
 
 ---
 
+
+
+### Data location decision
+
+The existing Supabase project is hosted in `eu-west-1`. The initial Cloudflare D1 candidate should therefore be created with the EU jurisdiction (`eu`) and Western Europe location hint (`weur`) if that satisfies the church's data-protection, contractual and operational requirements. Cloudflare documents that a D1 jurisdiction restricts where the database runs and stores data, and that jurisdiction is selected at database creation; it cannot be added or changed later. When a jurisdiction is set, the location hint is ignored. Confirm this decision before creating the D1 database. This database jurisdiction decision does not automatically establish the residency of every other Cloudflare product or external provider, so separately review Worker processing, logs, backups, email and SMS provider data handling.
+
 ## 3. Target architecture and security boundaries
 
 ### Request path
