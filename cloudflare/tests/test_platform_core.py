@@ -469,6 +469,18 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
                 (staff_id, user_id, name),
             )
         self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+               VALUES ('share-admin-role', 'share-staff-a', 'role-admin-pastor', 'share-branch',
+                       'share-staff-a', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+               VALUES ('share-intercessor-role', 'share-staff-b', 'role-prayer-intercessor', 'share-branch',
+                       'share-staff-a', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
             """INSERT INTO staff_record_share
                (id, branch_id, record_type, record_id, staff_profile_id, granted_by,
                 purpose, starts_at, ends_at, created_at)
