@@ -105,7 +105,7 @@ const pythonSeed = [
 ].join("\n");
 
 await rm(stateDir, { recursive: true, force: true });
-await writeFile(".dev.vars", "BETTER_AUTH_SECRET=" + secret + "\n", { mode: 0o600 });
+await writeFile(".dev.vars", "BETTER_AUTH_SECRET=" + secret + "\nBETTER_AUTH_TRUSTED_ORIGINS=http://127.0.0.1:8787," + allowedOrigin + "\n", { mode: 0o600 });
 let worker = startWorker();
 try {
   await waitForListener(worker);
@@ -134,7 +134,7 @@ try {
 
   const signIn = await fetch(baseUrl + "/api/auth/sign-in/email", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: baseUrl },
     body: JSON.stringify({ email: testEmail, password: testPassword }),
   });
   const signInBody = await signIn.text();
@@ -152,7 +152,7 @@ try {
 
   const signOut = await fetch(baseUrl + "/api/auth/sign-out", {
     method: "POST",
-    headers: { Cookie: cookie },
+    headers: { Cookie: cookie, Origin: baseUrl },
   });
   assert(signOut.status === 200, "Better Auth sign-out failed: " + signOut.status);
   const signedOutSession = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: cookie } });
