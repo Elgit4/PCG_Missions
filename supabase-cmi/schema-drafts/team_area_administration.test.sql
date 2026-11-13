@@ -1,5 +1,5 @@
 begin;
-select plan(30);
+select plan(31);
 
 select has_table('public','team_management_audit','Team administration audit ledger exists');
 select ok(
@@ -99,7 +99,9 @@ select throws_ok(
 insert into public.church(id,name,timezone)
 values('70000000-0000-4000-8000-000000000010','Team Test Church','Africa/Accra');
 insert into public.branch(id,church_id,name,code,timezone)
-values('71000000-0000-4000-8000-000000000010','70000000-0000-4000-8000-000000000010','Team Test Branch','TEAM-TEST','Africa/Accra');
+values
+('71000000-0000-4000-8000-000000000010','70000000-0000-4000-8000-000000000010','Team Test Branch','TEAM-TEST','Africa/Accra'),
+('71000000-0000-4000-8000-000000000011','70000000-0000-4000-8000-000000000010','Unassigned Test Branch','TEAM-OTHER','Africa/Accra');
 
 insert into auth.users(
   instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,
@@ -121,6 +123,20 @@ select '73000000-0000-4000-8000-000000000011',r.id,'71000000-0000-4000-8000-0000
 from public.role r where r.code='team_leader';
 
 select set_config('request.jwt.claim.sub','72000000-0000-4000-8000-000000000010',true);
+
+select throws_ok(
+  $q$ select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
+    'team.create',
+    jsonb_build_object(
+      'branch_id','71000000-0000-4000-8000-000000000011',
+      'name','Cross-Branch Team',
+      'description','Must not be created outside the assigned branch.'
+    )
+  ) $q$,
+  '42501',
+  'BRANCH_CAPABILITY_REQUIRED',
+  'Branch administrator cannot manage teams outside the assigned branch'
+);
 
 select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
   'team.create',
