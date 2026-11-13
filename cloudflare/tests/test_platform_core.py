@@ -351,6 +351,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.assertNotIn("staff.account.manage", grants)
         self.assertNotIn("staff.role.assign", grants)
         self.assertNotIn("staff.audit.read", grants)
+        self.assertNotIn("contacts.private_fields.read", grants)
 
     def test_team_leader_is_team_scoped_and_not_branch_admin(self):
         grants = self.grants("team_leader")
@@ -374,6 +375,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         grants = self.grants("follow_up_volunteer")
         self.assertIn("followup.read", grants)
         self.assertIn("followup.update", grants)
+        self.assertIn("contacts.contact_details.read", grants)
         self.assertIn("contacts.interaction.create", grants)
         self.assertNotIn("contacts.read", grants)
         self.assertNotIn("contacts.private_fields.read", grants)
