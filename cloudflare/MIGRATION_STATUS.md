@@ -55,7 +55,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - follow-up task completion and target invariants;
 - restricted prayer/care creation authorization, intercessor-only prayer assignment, no prayer-intercessor CRM/pastoral grants, assignment audit writes and append-only sensitive-access ledgers;
 - branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability;
-- typed calendar scope integrity, branch-scoped announcement management, content-manager checks on public content creation and update, and typed external document links.
+- typed calendar scope integrity, branch-scoped announcement management, content-manager checks on public content creation and update, church-scoped public-profile authorization, external-link immutability and append-only public-content change audit.
 
 Last recorded CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actions/runs/43469371911) — 56 Python/SQLite tests and Worker/Better Auth TypeScript type-check passed for the earlier schema slice. PR #61 adds API contract and event-audit regression tests, but a passing CI run for the new tests has not yet been observed. The remote migration 0016 was separately syntax-checked in SQLite and applied/verified on EU D1. This does not replace real Worker request testing or Better Auth schema compatibility validation.
 
