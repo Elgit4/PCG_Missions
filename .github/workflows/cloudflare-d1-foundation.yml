@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pcg-missions-cloudflare-nonprod
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
