@@ -3256,6 +3256,339 @@ async function cancelEventRegistration(
   return json(200,{ok:true,registration_id:registrationId,status:"cancelled"},requestId,origin);
 }
 
+async function getScopedEventForStaff(
+  context: AuthenticatedStaffContext,
+  env: Env,
+  eventId: string,
+): Promise<Record<string,unknown> | null> {
+  if (!context.activeBranch) return null;
+  const scope=bestEventScope(context.activeBranch.capabilities.filter((grant)=>grant.code==="events.read").map((grant)=>grant.scopeMode));
+  if (!scope) return null;
+  const now=new Date().toISOString();
+  const predicate=eventScopePredicate(scope,"e",context.staff.profileId,context.staff.userId,now);
+  return env.DB.prepare(`
+    SELECT e.id,e.branch_id,e.status,e.registration_state,e.capacity,e.transport_enabled
+    FROM event e WHERE e.id=? AND e.branch_id=? AND (${predicate.sql}) LIMIT 1
+  `).bind(eventId,context.activeBranch.branchId,...predicate.values).first<Record<string,unknown>>();
+}
+
+async function createEventCheckin(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if (!context.activeBranch.capabilities.some((grant)=>grant.code==="events.checkin"||grant.code==="events.manage")) {
+    return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  }
+  const idempotencyKey=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (idempotencyKey.length<8||idempotencyKey.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["registration_id","attendee_name_snapshot"]);
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some((key)=>!allowed.has(key))) {
+    return json(400,{ok:false,error:{code:"INVALID_CHECKIN_BODY"}},requestId,origin);
+  }
+  const registrationId=typeof payload.registration_id==="string"?payload.registration_id:null;
+  const attendeeName=typeof payload.attendee_name_snapshot==="string"?payload.attendee_name_snapshot.trim():null;
+  if ((registrationId!==null)===(attendeeName!==null) || (attendeeName!==null&&(attendeeName.length<2||attendeeName.length>180))) {
+    return json(400,{ok:false,error:{code:"CHECKIN_REQUIRES_REGISTRATION_OR_NAME"}},requestId,origin);
+  }
+  const event=await getScopedEventForStaff(context,env,eventId);
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  if (event.status!=="published") return json(409,{ok:false,error:{code:"EVENT_NOT_CHECKIN_READY"}},requestId,origin);
+  if (registrationId) {
+    const registration=await env.DB.prepare(
+      "SELECT id FROM event_registration WHERE id=? AND event_id=? AND branch_id=? AND status='registered' LIMIT 1",
+    ).bind(registrationId,eventId,context.activeBranch.branchId).first<{id:string}>();
+    if (!registration) return json(404,{ok:false,error:{code:"ACTIVE_REGISTRATION_NOT_FOUND"}},requestId,origin);
+  }
+  const digest=await eventRequestDigest({registration_id:registrationId,attendee_name_snapshot:attendeeName});
+  const replay=await findEventReceipt(env,eventId,"event_checkin",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  const checkinId=crypto.randomUUID(),receiptId=crypto.randomUUID(),now=new Date().toISOString();
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO event_checkin
+          (id,event_id,branch_id,registration_id,attendee_name_snapshot,checked_in_at,
+           recorded_by,source,client_request_id)
+        VALUES (?,?,?,?,?,? ,?,'staff',?)
+      `).bind(checkinId,eventId,context.activeBranch.branchId,registrationId,attendeeName,now,context.staff.userId,idempotencyKey),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES (?,?,?,'event_checkin','staff',?,?,1,?,'event_checkin',?,201,?)
+      `).bind(receiptId,eventId,context.activeBranch.branchId,context.staff.userId,idempotencyKey,digest.bytes,checkinId,now),
+    ]);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) throw new Error("EVENT_CHECKIN_BATCH_FAILED");
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"event_checkin",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    return json(409,{ok:false,error:{code:"EVENT_CHECKIN_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,checkin_id:checkinId},requestId,origin);
+}
+
+async function listEventCheckins(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"events.manage");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const event=await env.DB.prepare("SELECT id FROM event WHERE id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,access.activeBranch.branchId).first<{id:string}>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  const rows=await env.DB.prepare(`
+    SELECT id,event_id,registration_id,contact_id,attendee_name_snapshot,checked_in_at,recorded_by,source
+    FROM event_checkin WHERE event_id=? AND branch_id=?
+    ORDER BY checked_in_at DESC,id DESC LIMIT 300
+  `).bind(eventId,access.activeBranch.branchId).all<Record<string,unknown>>();
+  return json(200,{ok:true,checkins:rows.results??[]},requestId,origin);
+}
+
+async function listTransportOptions(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"events.manage");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const rows=await env.DB.prepare(`
+    SELECT id,event_id,branch_id,label,capacity,is_enabled,created_at,created_by,updated_by,updated_at
+    FROM transport_option WHERE event_id=? AND branch_id=? ORDER BY label,id
+  `).bind(eventId,access.activeBranch.branchId).all<Record<string,unknown>>();
+  return json(200,{ok:true,transport_options:rows.results??[]},requestId,origin);
+}
+
+async function createTransportOption(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"events.manage");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["label","capacity"]);
+  const label=typeof payload?.label==="string"?payload.label.trim():"";
+  const capacity=payload?.capacity===undefined||payload.capacity===null?null:payload.capacity;
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some((key)=>!allowed.has(key))||
+      label.length<2||label.length>160||(capacity!==null&&(typeof capacity!=="number"||!Number.isInteger(capacity)||capacity<1||capacity>10000))) {
+    return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_OPTION"}},requestId,origin);
+  }
+  const event=await env.DB.prepare("SELECT id,transport_enabled FROM event WHERE id=? AND branch_id=? AND status='published' LIMIT 1")
+    .bind(eventId,access.activeBranch.branchId).first<{id:string;transport_enabled:number}>();
+  if (!event||event.transport_enabled!==1) return json(409,{ok:false,error:{code:"EVENT_TRANSPORT_DISABLED"}},requestId,origin);
+  const id=crypto.randomUUID(),now=new Date().toISOString();
+  try {
+    const result=await env.DB.prepare(`
+      INSERT INTO transport_option
+        (id,event_id,branch_id,label,capacity,is_enabled,created_at,created_by,updated_by,updated_at)
+      VALUES (?,?,?,?,?,1,?,?,?,?)
+    `).bind(id,eventId,access.activeBranch.branchId,label,capacity,now,access.staff.userId,access.staff.userId,now).run();
+    if (!result.success||(result.meta?.changes??0)!==1) throw new Error("TRANSPORT_OPTION_CREATE_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"TRANSPORT_OPTION_CREATE_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,transport_option_id:id},requestId,origin);
+}
+
+async function updateTransportOption(
+  request: Request,
+  env: Env,
+  eventId: string,
+  optionId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"events.manage");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["label","capacity","is_enabled"]);
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).length===0||Object.keys(payload).some((key)=>!allowed.has(key))) {
+    return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_OPTION_UPDATE"}},requestId,origin);
+  }
+  const assignments:string[]=[],values:unknown[]=[];
+  if (payload.label!==undefined) {
+    if (typeof payload.label!=="string"||payload.label.trim().length<2||payload.label.trim().length>160) return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_LABEL"}},requestId,origin);
+    assignments.push("label=?");values.push(payload.label.trim());
+  }
+  if (payload.capacity!==undefined) {
+    if (payload.capacity!==null&&(typeof payload.capacity!=="number"||!Number.isInteger(payload.capacity)||payload.capacity<1||payload.capacity>10000)) return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_CAPACITY"}},requestId,origin);
+    assignments.push("capacity=?");values.push(payload.capacity);
+  }
+  if (payload.is_enabled!==undefined) {
+    if (typeof payload.is_enabled!=="boolean") return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_ENABLED_STATE"}},requestId,origin);
+    assignments.push("is_enabled=?");values.push(payload.is_enabled?1:0);
+  }
+  const now=new Date().toISOString();
+  assignments.push("updated_by=?");values.push(access.staff.userId);
+  assignments.push("updated_at=?");values.push(now);
+  try {
+    const result=await env.DB.prepare(`
+      UPDATE transport_option SET ${assignments.join(",")}
+      WHERE id=? AND event_id=? AND branch_id=?
+    `).bind(...values,optionId,eventId,access.activeBranch.branchId).run();
+    if (!result.success||(result.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"TRANSPORT_OPTION_NOT_FOUND"}},requestId,origin);
+  } catch {
+    return json(409,{ok:false,error:{code:"TRANSPORT_OPTION_UPDATE_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,transport_option_id:optionId},requestId,origin);
+}
+
+async function listTransportReservations(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"events.manage");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const rows=await env.DB.prepare(`
+    SELECT tr.id,tr.event_id,tr.registration_id,tr.transport_option_id,tr.pickup_area,
+           tr.seat_count,tr.status,tr.notes,tr.created_at,tr.updated_at,
+           er.attendee_name_snapshot,er.attendee_phone_snapshot
+    FROM transport_reservation tr
+    JOIN event_registration er ON er.id=tr.registration_id AND er.event_id=tr.event_id AND er.branch_id=tr.branch_id
+    WHERE tr.event_id=? AND tr.branch_id=?
+    ORDER BY tr.created_at DESC,tr.id DESC LIMIT 200
+  `).bind(eventId,access.activeBranch.branchId).all<Record<string,unknown>>();
+  return json(200,{ok:true,reservations:rows.results??[]},requestId,origin);
+}
+
+async function createTransportReservation(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const key=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (key.length<8||key.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["registration_id","transport_option_id","seat_count","pickup_area","notes"]);
+  const registrationId=typeof payload?.registration_id==="string"?payload.registration_id:"";
+  const optionId=typeof payload?.transport_option_id==="string"?payload.transport_option_id:"";
+  const seatCount=payload?.seat_count===undefined?1:payload.seat_count;
+  const pickupArea=payload?.pickup_area===undefined||payload.pickup_area===null?null:typeof payload.pickup_area==="string"?payload.pickup_area.trim():"";
+  const notes=payload?.notes===undefined||payload.notes===null?null:typeof payload.notes==="string"?payload.notes.trim():"";
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some((key)=>!allowed.has(key))||
+      !registrationId||!optionId||typeof seatCount!=="number"||!Number.isInteger(seatCount)||seatCount<1||seatCount>20||
+      (pickupArea!==null&&(typeof pickupArea!=="string"||pickupArea.length>180))||
+      (notes!==null&&(typeof notes!=="string"||notes.length>1000))) {
+    return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_RESERVATION"}},requestId,origin);
+  }
+  const event=await getScopedEventForStaff(context,env,eventId);
+  if (!event||event.status!=="published"||event.transport_enabled!==1) return json(404,{ok:false,error:{code:"EVENT_TRANSPORT_NOT_AVAILABLE"}},requestId,origin);
+  const registration=await env.DB.prepare(
+    "SELECT id FROM event_registration WHERE id=? AND event_id=? AND branch_id=? AND status='registered' LIMIT 1",
+  ).bind(registrationId,eventId,context.activeBranch.branchId).first<{id:string}>();
+  const option=await env.DB.prepare(
+    "SELECT id FROM transport_option WHERE id=? AND event_id=? AND branch_id=? AND is_enabled=1 LIMIT 1",
+  ).bind(optionId,eventId,context.activeBranch.branchId).first<{id:string}>();
+  if (!registration||!option) return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_TARGET"}},requestId,origin);
+  const digest=await eventRequestDigest({registration_id:registrationId,transport_option_id:optionId,seat_count:seatCount,pickup_area:pickupArea,notes});
+  const replay=await findEventReceipt(env,eventId,"transport_reservation",key,context.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  const reservationId=crypto.randomUUID(),receiptId=crypto.randomUUID(),now=new Date().toISOString();
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO transport_reservation
+          (id,registration_id,event_id,transport_option_id,branch_id,pickup_area,seat_count,status,
+           notes,created_at,updated_at,created_by,updated_by)
+        VALUES (?,?,?,?,?,?,?,'reserved',?,?,?,?,?)
+      `).bind(reservationId,registrationId,eventId,optionId,context.activeBranch.branchId,pickupArea,seatCount,notes,now,now,context.staff.userId,context.staff.userId),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES (?,?,?,'transport_reservation','staff',?,?,1,?,'transport_reservation',?,201,?)
+      `).bind(receiptId,eventId,context.activeBranch.branchId,context.staff.userId,key,digest.bytes,reservationId,now),
+    ]);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) throw new Error("TRANSPORT_RESERVATION_BATCH_FAILED");
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"transport_reservation",key,context.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    const capacity=await env.DB.prepare(
+      "SELECT capacity,(SELECT COALESCE(SUM(seat_count),0) FROM transport_reservation WHERE transport_option_id=? AND status IN ('reserved','boarded')) AS reserved FROM transport_option WHERE id=?",
+    ).bind(optionId,optionId).first<{capacity:number|null;reserved:number}>();
+    if (capacity?.capacity!==null&&capacity&&capacity.reserved+seatCount>capacity.capacity) return json(409,{ok:false,error:{code:"TRANSPORT_CAPACITY_REACHED"}},requestId,origin);
+    return json(409,{ok:false,error:{code:"TRANSPORT_RESERVATION_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,reservation_id:reservationId},requestId,origin);
+}
+
+async function cancelTransportReservation(
+  request: Request,
+  env: Env,
+  eventId: string,
+  reservationId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const key=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (key.length<8||key.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const digest=await eventRequestDigest({reservation_id:reservationId,action:"cancel"});
+  const replay=await findEventReceipt(env,eventId,"transport_cancel",key,context.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  const now=new Date().toISOString();
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE transport_reservation
+        SET status='cancelled',updated_by=?,cancelled_by=?,cancelled_at=?,updated_at=?
+        WHERE id=? AND event_id=? AND branch_id=? AND status='reserved'
+      `).bind(context.staff.userId,context.staff.userId,now,now,reservationId,eventId,context.activeBranch.branchId),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        SELECT ?,?,?, 'transport_cancel','staff',?,?,1,?,'transport_reservation',?,200,?
+        WHERE EXISTS (
+          SELECT 1 FROM transport_reservation
+          WHERE id=? AND event_id=? AND status='cancelled' AND cancelled_by=? AND cancelled_at=?
+        )
+      `).bind(
+        crypto.randomUUID(),eventId,context.activeBranch.branchId,context.staff.userId,
+        key,digest.bytes,reservationId,now,reservationId,eventId,context.staff.userId,now,
+      ),
+    ]);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) return json(409,{ok:false,error:{code:"TRANSPORT_RESERVATION_NOT_CANCELLABLE"}},requestId,origin);
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"transport_cancel",key,context.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    return json(409,{ok:false,error:{code:"TRANSPORT_CANCEL_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,reservation_id:reservationId,status:"cancelled"},requestId,origin);
+}
+
 async function listEventAudit(
   request: Request,
   env: Env,
@@ -5096,6 +5429,45 @@ async function updatePrayerRequestStatus(
       catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
       if (request.method==="GET") return listEventRegistrations(request,env,eventId,requestId,origin);
       if (request.method==="POST") return createEventRegistration(request,env,eventId,requestId,origin);
+    }
+
+    const eventCheckinMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/checkins$/);
+    if (eventCheckinMatch) {
+      let eventId:string;
+      try { eventId=decodeURIComponent(eventCheckinMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      if (request.method==="POST") return createEventCheckin(request,env,eventId,requestId,origin);
+      if (request.method==="GET") return listEventCheckins(request,env,eventId,requestId,origin);
+    }
+    const transportOptionItemMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/transport-options\/([^/]+)$/);
+    if (transportOptionItemMatch && request.method==="PATCH") {
+      let eventId:string,optionId:string;
+      try { eventId=decodeURIComponent(transportOptionItemMatch[1]); optionId=decodeURIComponent(transportOptionItemMatch[2]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_OPTION_ID"}},requestId,origin); }
+      return updateTransportOption(request,env,eventId,optionId,requestId,origin);
+    }
+    const transportReservationCancelMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/transport-reservations\/([^/]+)\/cancel$/);
+    if (transportReservationCancelMatch && request.method==="POST") {
+      let eventId:string,reservationId:string;
+      try { eventId=decodeURIComponent(transportReservationCancelMatch[1]); reservationId=decodeURIComponent(transportReservationCancelMatch[2]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_RESERVATION_ID"}},requestId,origin); }
+      return cancelTransportReservation(request,env,eventId,reservationId,requestId,origin);
+    }
+    const transportReservationMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/transport-reservations$/);
+    if (transportReservationMatch) {
+      let eventId:string;
+      try { eventId=decodeURIComponent(transportReservationMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      if (request.method==="GET") return listTransportReservations(request,env,eventId,requestId,origin);
+      if (request.method==="POST") return createTransportReservation(request,env,eventId,requestId,origin);
+    }
+    const transportOptionsMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/transport-options$/);
+    if (transportOptionsMatch) {
+      let eventId:string;
+      try { eventId=decodeURIComponent(transportOptionsMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      if (request.method==="GET") return listTransportOptions(request,env,eventId,requestId,origin);
+      if (request.method==="POST") return createTransportOption(request,env,eventId,requestId,origin);
     }
 
     const eventAuditMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/audit$/);
