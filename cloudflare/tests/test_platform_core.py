@@ -370,7 +370,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
@@ -1025,7 +1025,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
@@ -1542,3 +1542,51 @@ class AuthorizationQueryTests(unittest.TestCase):
                    VALUES ('link-invalid','Invalid link','https://example.test/doc',?,?)""",
                 (admin_user,self.NOW),
             )
+
+
+    def test_event_lifecycle_mutations_are_actor_authorized_and_audited(self):
+        self._lifecycle_fixture("event-branch")
+        self._lifecycle_staff("event-admin-user", "event-admin", "Event Admin", "event-admin@example.test")
+        self._lifecycle_assignment("event-admin-role", "event-admin", "admin_pastor", "event-branch", "event-admin")
+
+        self.db.execute(
+            """INSERT INTO event
+               (id, branch_id, title, starts_at, ends_at, timezone, registration_state,
+                visibility, status, transport_enabled, created_by, last_modified_by,
+                created_at, updated_at)
+               VALUES ('event-audit-1', 'event-branch', 'Sunday Service',
+                       '2026-02-01T08:00:00.000Z', '2026-02-01T11:00:00.000Z',
+                       'Africa/Accra', 'closed', 'private', 'draft', 0,
+                       'event-admin-user', 'event-admin-user',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        created = self.db.execute(
+            "SELECT actor_profile_id, action FROM event_change_audit WHERE event_id='event-audit-1'"
+        ).fetchone()
+        self.assertEqual(created, ("event-admin", "created"))
+
+        self.db.execute(
+            """UPDATE event
+               SET status='published', visibility='staff', last_modified_by='event-admin-user',
+                   updated_at='2026-01-02T00:00:00.000Z'
+               WHERE id='event-audit-1' AND branch_id='event-branch'"""
+        )
+        actions = self.db.execute(
+            "SELECT action FROM event_change_audit WHERE event_id='event-audit-1' ORDER BY created_at,id"
+        ).fetchall()
+        self.assertEqual(actions, [("created",), ("published",)])
+
+        self._lifecycle_staff("event-other-user", "event-other", "Other Staff", "event-other@example.test")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE event
+                   SET title='Unauthorized change', last_modified_by='event-other-user',
+                       updated_at='2026-01-03T00:00:00.000Z'
+                   WHERE id='event-audit-1' AND branch_id='event-branch'"""
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE event_change_audit SET action='updated' WHERE event_id='event-audit-1'"
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM event_change_audit WHERE event_id='event-audit-1'")
