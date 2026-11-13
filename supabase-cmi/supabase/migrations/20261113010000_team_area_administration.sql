@@ -415,10 +415,60 @@ begin
       raise exception using errcode = '22023', message = 'INVALID_AREA_UPDATE_FIELDS';
     end if;
     if coalesce(p_payload->>'area_id','') !~
-      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
-      or coalesce(p_payload->>'staff_profile_id','') !~
-      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$' then
-      raise exception using errcode = '22023', message = 'INVALID_AREA_COVERAGE_REFERENCE';
+      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}
+    if p_payload ? 'name' then
+      if pg_catalog.jsonb_typeof(p_payload->'name') is distinct from 'string' then
+        raise exception using errcode = '22023', message = 'INVALID_SERVICE_AREA_NAME';
+      end if;
+      v_name := pg_catalog.btrim(coalesce(p_payload->>'name',''));
+      if pg_catalog.length(v_name) not between 2 and 160 then
+        raise exception using errcode = '22023', message = 'INVALID_SERVICE_AREA_NAME';
+      end if;
+    end if;
+    if p_payload ? 'code' then
+      if pg_catalog.jsonb_typeof(p_payload->'code') not in ('string','null') then
+        raise exception using errcode = '22023', message = 'INVALID_SERVICE_AREA_CODE';
+      end if;
+      v_code := nullif(pg_catalog.upper(pg_catalog.btrim(coalesce(p_payload->>'code',''))),'');
+      if v_code is not null and v_code !~ '^[A-Z0-9_-]{2,24}$' then
+        raise exception using errcode = '22023', message = 'INVALID_SERVICE_AREA_CODE';
+      end if;
+    end if;
+    if p_payload ? 'is_active' then
+      if pg_catalog.jsonb_typeof(p_payload->'is_active') <> 'boolean' then
+        raise exception using errcode = '22023', message = 'INVALID_SERVICE_AREA_STATUS';
+      end if;
+      v_is_active := (p_payload->>'is_active')::boolean;
+      if not v_is_active and exists (
+        select 1 from public.staff_area_coverage sac
+        where sac.service_area_id = v_area_id and sac.branch_id = v_branch_id
+          and (sac.ends_at is null or sac.ends_at > v_now)
+      ) then
+        raise exception using errcode = '23514', message = 'AREA_HAS_ACTIVE_COVERAGE';
+      end if;
+    end if;
+    update public.service_area sa
+    set name = case when p_payload ? 'name' then v_name else sa.name end,
+        code = case when p_payload ? 'code' then v_code else sa.code end,
+        is_active = case when p_payload ? 'is_active' then v_is_active else sa.is_active end
+    where sa.id = v_area_id and sa.branch_id = v_branch_id
+    returning to_jsonb(sa.*) into v_result;
+    if v_result is null then
+      raise exception using errcode = 'P0002', message = 'SERVICE_AREA_NOT_FOUND';
+    end if;
+    insert into public.team_management_audit(
+      branch_id,actor_profile_id,target_type,target_id,action,metadata
+    ) values (
+      v_branch_id,v_actor_profile_id,'service_area',v_area_id,'service_area.updated',
+      jsonb_build_object('changed_fields',
+        (select coalesce(jsonb_agg(key),'[]'::jsonb)
+         from pg_catalog.jsonb_object_keys(p_payload - array['branch_id','area_id']) as fields(key)))
+    );
+    return v_result;
+  end if;
+
+   then
+      raise exception using errcode = '22023', message = 'INVALID_SERVICE_AREA_ID';
     end if;
     v_area_id := (p_payload->>'area_id')::uuid;
     if p_payload ? 'name' then
