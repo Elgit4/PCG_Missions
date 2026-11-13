@@ -11,7 +11,7 @@
 | --- | --- | --- |
 | `0001_platform_core.sql` | 17 | Better Auth core identity table shape, church/branch tenancy, roles/capabilities, staff profiles and scoped assignments, append-only access audit, teams and service areas |
 | `0002_contacts_followup.sql` | 9 | Contacts, capture provenance/idempotency, assignment history, visibility-scoped notes, interactions, merge history, follow-up lists/tasks and append-only task events |
-| `0003_staff_authorization_policy.sql` | 2 security tables | Seeds six fixed roles and scoped capability grants; adds time-bounded explicit record sharing and append-only sensitive-access auditing |
+| `0003_staff_authorization_policy.sql` | 5 security tables | Seeds six fixed roles and scoped grants; adds explicit shares, sensitive-access audit, two-person Admin/Pastor elevation requests, elevation audit and two-slot owner bootstrap state |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
@@ -24,7 +24,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - adjacent assignment periods;
 - append-only staff-access and follow-up-task event records;
 - exact six-role privilege matrix, field-level contact detail separation and prohibited capability grants;
-- time-bounded explicit-share grant/revoke authorization and automatic audit attribution;
+- time-bounded explicit-share grant/revoke authorization and automatic audit attribution;\n- dual-control Admin/Pastor elevation, two bootstrap slots, request/review/application audit and last-admin protection;
 - explicit-share overlap, expiry/revocation history and automatic share grant/revoke audit events;
 - contact normalization, capture idempotency and metadata allowlists;
 - follow-up task completion and target invariants.
