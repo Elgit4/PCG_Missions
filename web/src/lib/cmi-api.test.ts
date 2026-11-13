@@ -341,4 +341,21 @@ describe("CmiApiClient", () => {
     expect(team[0].pathname).toBe("/functions/v1/report-operations/teams");
     expect(events[0].pathname).toBe("/functions/v1/report-operations/events");
   });
+
+  it("resubmits a corrected returned report through the protected endpoint", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "report-1", status: "submitted" }, request_id: "report-resubmit" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.resubmitMinistryReport("report-1", {
+      contacts_captured: 4, gospel_presentations: 3, decisions_for_christ: 1,
+      followup_required: 2, followup_completed: 1, visits_completed: 1,
+      calls_completed: 0, events_supported: 0, attendance_count: 0,
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/report-operations/reports/report-1/resubmit");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toHaveProperty("contacts_captured", 4);
+  });
 });
