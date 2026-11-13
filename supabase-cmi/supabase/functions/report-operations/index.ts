@@ -141,15 +141,16 @@ Deno.serve(async (request: Request) => {
       const branchReview = await scopes(auth.service, auth.profileId, branch_id, "report.review.branch");
       const teamReview = await scopes(auth.service, auth.profileId, branch_id, "report.review.team");
       const ids = new Set<string>();
-      const filters = (query: any) => {
-        let result = query.eq("branch_id", branch_id);
-        if (report_type) result = result.eq("report_type", report_type);
-        if (status) result = result.eq("status", status);
-        return result;
+      const buildReportQuery = () => {
+        let query = auth.service.from("ministry_report").select(REPORT_COLUMNS)
+          .eq("branch_id", branch_id);
+        if (report_type) query = query.eq("report_type", report_type);
+        if (status) query = query.eq("status", status);
+        return query;
       };
       let rows: Record<string, unknown>[] = [];
       if (branchReview.includes("branch")) {
-        const { data, error } = await filters(auth.service.from("ministry_report").select(REPORT_COLUMNS))
+        const { data, error } = await buildReportQuery()
           .order("period_start", { ascending: false }).limit(250);
         if (error) throw new Error("REPORT_BRANCH_LIST_FAILED");
         rows = data ?? [];
