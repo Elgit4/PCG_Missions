@@ -1223,8 +1223,10 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.assertIsNotNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "prayer-authz"))
         self.assertIsNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "other-prayer"))
         self.db.execute(
-            "UPDATE staff_record_share SET revoked_at = ?, revoked_by = 'authz-staff-admin',
-               revocation_reason = 'Prayer support assignment is no longer required' WHERE id = 'authz-prayer-share'",
+            """UPDATE staff_record_share
+               SET revoked_at = ?, revoked_by = 'authz-staff-admin',
+                   revocation_reason = 'Prayer support assignment is no longer required'
+               WHERE id = 'authz-prayer-share'""",
             (self.NOW,),
         )
         self.assertIsNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "prayer-authz"))
