@@ -96,6 +96,8 @@ The last recorded GitHub Actions run, [43469371911](https://github.com/Elgit4/PC
 
 The remote EU D1 database now reports schema version 21, all 21 migration records, 71 application tables (excluding the Wrangler migration ledger), expected event authorization triggers, cancellation-key indexes, announcement delivery/read-receipt triggers, and no foreign-key violations. This is not a substitute for deployed Worker request tests or Better Auth runtime compatibility testing.
 
+The Worker passes TypeScript checking and `wrangler deploy --dry-run` bundling. GitHub Actions is configured to deploy only `pcg-missions-api-nonprod` from `migration/cloudflare-nonprod-completion`; the deploy step currently skips because the repository secret `CLOUDFLARE_API_TOKEN` is not configured. Add it under **Settings → Secrets and variables → Actions** with scoped Workers Scripts edit permission. Do not paste the token into source control or chat. After deployment, set the persistent `BETTER_AUTH_SECRET` Worker secret and add the actual frontend origin to `BETTER_AUTH_TRUSTED_ORIGINS` before browser sign-in testing.
+
 ## Safety boundary
 
 - No production D1 database is configured.
