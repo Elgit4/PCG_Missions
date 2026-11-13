@@ -48,7 +48,9 @@ Deno.test("allowed-origin error responses retain CORS visibility", () => {
   const origin = "https://pcg-missions.vercel.app";
   const headers = createCorsHeaders(origin, createAllowedOrigins(undefined));
   if (headers.get("Access-Control-Allow-Origin") !== origin) {
-    throw new Error("allowed origin must be present on normal and error responses");
+    throw new Error(
+      "allowed origin must be present on normal and error responses",
+    );
   }
   if (!headers.get("Access-Control-Allow-Headers")?.includes("authorization")) {
     throw new Error("authorization must be allowed on browser responses");
