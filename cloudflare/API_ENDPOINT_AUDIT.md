@@ -88,19 +88,19 @@ All protected business routes require a verified session and an authorized activ
 | P1 | Pastoral care | Implement case metadata and narrative handlers only after a distinct care-reader capability, explicit-share policy and audit tests are approved |
 | P1 | Events | Add real Worker/D1 integration tests for all new staff-only operations and verify the UI workflow; public registration remains deliberately disabled |
 | P1 | Calendar | Add cancellation/recurrence rules, scoped event integration tests and calendar audit/read-receipt behavior; core list/create/update routes are now in source |
-| P1 | Announcements | Add in-app delivery/read receipts and integration tests; draft, audience assignment, publish/archive handlers are now in source |
+| P1 | Announcements | Add deployed Worker integration tests for audience fan-out, inbox isolation and immutable read receipts; publishing and recipient-scoped inbox are in source |
 | P1 | Public content | Add deeper publishing/audience integration tests and public frontend wiring; CRUD, church profile management and published-only projection are in source |
-| P2 | Ministry reports | Typed report submissions, review/resubmit, aggregation and privacy-controlled exports |
+| P2 | Ministry reports | Typed report submissions, review/resubmit, ministry time-series comparisons and privacy-controlled exports; aggregate-only overview is in source |
 | P2 | Data reconciliation | Supabase export, transformation, D1 import and source-to-target row/count/hash reconciliation; no production data copied yet |
 | P2 | Communications | Verified email provider for invitations/password resets; Hubtel remains disabled until consent, sender and cost controls are approved |
 | P2 | Frontend | Cloudflare Pages preview binding and API client migration, keeping the production Supabase client intact until cutover approval |
 
 ## Known release blockers
 
-- The full Worker is not yet deployed. The only deployed script is the isolated D1 smoke-check Worker.
+- The full Worker is not yet deployed. The only deployed script is the isolated D1 smoke-check Worker. Wrangler typecheck and dry-run bundling pass; GitHub Actions skips deployment until the repository secret `CLOUDFLARE_API_TOKEN` is configured.
 - No deployed Worker request has exercised Better Auth against the EU D1 binding.
 - Invitation email and password-reset delivery are not configured; invitation token delivery remains a manual one-time handoff.
 - Pastoral-care narrative routes remain disabled.
-- Event registration/transport/check-in/closeout, calendar, announcement inbox/read receipts and public-content routes are implemented in source and D1 schema, but remain undeployed and require Worker-level integration tests. Advanced reporting and privacy-controlled exports remain incomplete.
+- Event registration/transport/check-in/closeout, calendar, announcement inbox/read receipts, aggregate reporting and public-content routes are implemented in source and D1 schema, but remain undeployed and require Worker-level integration tests. Advanced reporting and privacy-controlled exports remain incomplete.
 - The D1 schema is a first porting slice, not a complete replacement for the full live Supabase schema.
 - No production data migration, frontend cutover, production DNS change or Supabase shutdown is authorized or performed.
