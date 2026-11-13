@@ -1,5 +1,5 @@
 import { spawn, execFileSync } from "node:child_process";
-import { readdir, rm } from "node:fs/promises";
+import { readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
@@ -95,6 +95,7 @@ print("Seeded local D1 schema version 24")
 `;
 
 await rm(stateDir, { recursive: true, force: true });
+await writeFile(".dev.vars", `BETTER_AUTH_SECRET=${secret}\n`, { mode: 0o600 });
 let worker = startWorker();
 try {
   await waitForListener(worker);
@@ -168,4 +169,5 @@ try {
   process.exitCode = 1;
 } finally {
   if (worker) await stopWorker(worker);
+  await rm(".dev.vars", { force: true });
 }
