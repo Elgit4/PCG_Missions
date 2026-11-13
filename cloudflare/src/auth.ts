@@ -29,7 +29,7 @@ export async function sendResendEmail(
   message: TransactionalEmailMessage,
 ): Promise<void> {
   if(!env.RESEND_API_KEY||!env.EMAIL_FROM) throw new Error("PASSWORD_RESET_DELIVERY_NOT_CONFIGURED");
-  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(message.to)||message.subject.length>180||
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(message.to)||message.subject.length>180||
      message.text.length>12000||message.html.length>24000) throw new Error("TRANSACTIONAL_EMAIL_INVALID");
   const response=await fetch("https://api.resend.com/emails",{
     method:"POST",
