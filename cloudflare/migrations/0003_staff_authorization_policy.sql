@@ -123,13 +123,15 @@ CREATE TABLE IF NOT EXISTS staff_record_share (
   record_id TEXT NOT NULL,
   staff_profile_id TEXT NOT NULL REFERENCES staff_profile(id) ON DELETE RESTRICT,
   granted_by TEXT NOT NULL REFERENCES staff_profile(id) ON DELETE RESTRICT,
+  revoked_by TEXT REFERENCES staff_profile(id) ON DELETE RESTRICT,
   purpose TEXT NOT NULL CHECK (length(trim(purpose)) BETWEEN 10 AND 300),
   starts_at TEXT NOT NULL,
   ends_at TEXT,
   revoked_at TEXT,
   created_at TEXT NOT NULL,
   CHECK (ends_at IS NULL OR ends_at > starts_at),
-  CHECK (revoked_at IS NULL OR revoked_at >= starts_at)
+  CHECK (revoked_at IS NULL OR revoked_at >= starts_at),
+  CHECK ((revoked_at IS NULL AND revoked_by IS NULL) OR (revoked_at IS NOT NULL AND revoked_by IS NOT NULL))
 );
 CREATE INDEX IF NOT EXISTS staff_record_share_active_lookup_idx
   ON staff_record_share(staff_profile_id, branch_id, record_type, record_id, starts_at, ends_at)
@@ -182,11 +184,24 @@ BEGIN
   INSERT INTO sensitive_record_access_audit
     (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, share_reference, created_at)
   VALUES
-    ('share-revoke-' || NEW.id, NEW.branch_id, NEW.granted_by, NEW.record_type, NEW.record_id,
+    ('share-revoke-' || NEW.id, NEW.branch_id, NEW.revoked_by, NEW.record_type, NEW.record_id,
      'share_revoked', NEW.purpose, NEW.id, NEW.revoked_at);
 END;
 CREATE TRIGGER IF NOT EXISTS staff_record_share_no_delete
 BEFORE DELETE ON staff_record_share
 BEGIN
   SELECT RAISE(ABORT, 'STAFF_RECORD_SHARE_NO_DELETE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS staff_record_share_immutable_fields
+BEFORE UPDATE OF branch_id, record_type, record_id, staff_profile_id, granted_by, purpose, starts_at, ends_at, created_at
+ON staff_record_share
+BEGIN
+  SELECT RAISE(ABORT, 'STAFF_RECORD_SHARE_IMMUTABLE_FIELDS');
+END;
+CREATE TRIGGER IF NOT EXISTS staff_record_share_no_unrevoke
+BEFORE UPDATE OF revoked_at, revoked_by ON staff_record_share
+WHEN OLD.revoked_at IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'STAFF_RECORD_SHARE_ALREADY_REVOKED');
 END;
