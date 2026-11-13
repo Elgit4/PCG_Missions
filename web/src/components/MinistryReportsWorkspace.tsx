@@ -273,7 +273,7 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
                   <h5>Review history</h5>
                   {detailReport.review_history?.length ? detailReport.review_history.map((entry) => (
                     <div className="ministry-report-history-entry" key={entry.id}>
-                      <div><strong>{entry.decision === "approved" ? "Approved" : entry.decision === "returned" ? "Returned for correction" : "Reviewer comment"}</strong>
+                      <div><strong>{entry.decision === "approved" ? "Approved" : entry.decision === "returned" ? "Returned for correction" : entry.decision === "resubmitted" ? "Resubmitted by author" : "Reviewer comment"}</strong>
                         <time dateTime={entry.created_at}>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(entry.created_at))}</time>
                       </div>
                       {entry.comment && <p>{entry.comment}</p>}
