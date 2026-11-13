@@ -14,6 +14,7 @@ class WorkerApiContractTests(unittest.TestCase):
         cls.event_operations_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0018_event_operations_guards.sql").read_text(encoding="utf-8")
         cls.announcement_receipt_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0021_announcement_delivery_read_receipts.sql").read_text(encoding="utf-8")
         cls.event_report_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0022_typed_ministry_reports.sql").read_text(encoding="utf-8")
+        cls.prayer_idempotency_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0023_prayer_request_idempotency.sql").read_text(encoding="utf-8")
 
     def test_contact_team_scope_uses_profile_id_and_assigned_scope_uses_auth_user_id(self):
         match = re.search(
@@ -239,7 +240,7 @@ if __name__ == "__main__":
     unittest.main()
 
     def test_prayer_intake_requires_branch_capability_and_idempotency(self):
-        handler = re.search(r"async function createPrayerRequest\\([\\s\\S]*?\\n\\}", self.source)
+        handler = re.search(r"async function createPrayerRequest\([\s\S]*?\n\}", self.source)
         self.assertIsNotNone(handler)
         code = handler.group(0)
         self.assertIn('"prayer.request.create"', code)
@@ -247,6 +248,8 @@ if __name__ == "__main__":
         self.assertIn('request.headers.get("Idempotency-Key")', code)
         self.assertIn("prayer_request_idempotency", code)
         self.assertIn("prayer_access_audit", code)
+        self.assertIn("prayer_request_idempotency", self.prayer_idempotency_migration)
+        self.assertIn("schema_version=23", self.prayer_idempotency_migration)
         self.assertIn("request_text.length > 10000", code)
         self.assertIn('url.pathname === "/api/v1/pastoral/prayer/requests"', self.source)
 
