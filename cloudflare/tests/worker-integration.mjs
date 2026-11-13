@@ -30,7 +30,7 @@ function assert(condition, message) {
 function startWorker() {
   const child = spawn("npx", [
     "wrangler", "dev", "--local", "--ip", "127.0.0.1",
-    "--port", String(port), "--persist-to", stateDir, "--log-level", "error",
+    "--port", String(port), "--persist-to", stateDir, "--log-level", "info",
   ], { cwd: process.cwd(), env, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
   let logs = "";
   child.stdout.on("data", (chunk) => { logs += chunk.toString(); });
