@@ -1,5 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
-import { createAllowedOrigins, isAllowedOrigin } from "../_shared/cors.ts";
+import {
+  CMI_CORS_ALLOWED_HEADERS,
+  createAllowedOrigins,
+  isAllowedOrigin,
+} from "../_shared/cors.ts";
 
 import {
   getScheduledPublicationFilter,
@@ -44,7 +48,7 @@ function response(
   if (origin && allowedOrigins.has(origin)) {
     headers.set("Access-Control-Allow-Origin", origin);
     headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Content-Type");
+    headers.set("Access-Control-Allow-Headers", CMI_CORS_ALLOWED_HEADERS);
   }
   return new Response(JSON.stringify(body), { status, headers });
 }
@@ -65,7 +69,7 @@ Deno.serve(async (request: Request) => {
       headers: {
         ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
         "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Headers": CMI_CORS_ALLOWED_HEADERS,
         "Access-Control-Max-Age": "600",
         "Vary": "Origin",
       },
