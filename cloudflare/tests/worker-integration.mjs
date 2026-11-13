@@ -95,7 +95,7 @@ print("Seeded local D1 schema version 24")
 `;
 
 await rm(stateDir, { recursive: true, force: true });
-await writeFile(".dev.vars", `BETTER_AUTH_SECRET=${secret}\n`, { mode: 0o600 });
+await writeFile(".dev.vars", `BETTER_AUTH_SECRET=${secret}\nBETTER_AUTH_URL=${baseUrl}\nBETTER_AUTH_TRUSTED_ORIGINS=${allowedOrigin}\n`, { mode: 0o600 });
 let worker = startWorker();
 try {
   await waitForListener(worker);
