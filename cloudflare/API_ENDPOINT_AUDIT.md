@@ -38,7 +38,7 @@ The Worker is a single entry point in `src/index.ts`. Protected routes resolve t
 | Event check-in | `GET/POST /api/v1/events/{id}/checkins` | Check-in capability plus branch/event assignment scope; one check-in per registration and immutable idempotency receipt |
 | Transport | `GET/POST /api/v1/events/{id}/transport-options`, `PATCH /transport-options/{optionId}`, `GET/POST /transport-reservations`, `POST /transport-reservations/{reservationId}/cancel` | Event transport enabled, active registration required, capacity and actor checks enforced by D1 |
 | Event closeout | `GET/POST /api/v1/events/{id}/closeout`, `POST /closeout/resubmit`, `POST /closeout/review` | Counted closeout submission, idempotency receipts, separate review capability and append-only event ledger |
-| Calendar | `GET/POST /api/v1/calendar`, `GET/PATCH /api/v1/calendar/{id}` | Branch/team/own/event-scoped reads; branch manager creates and updates entries with database actor checks |
+| Calendar | `GET/POST /api/v1/calendar`, `GET/PATCH /api/v1/calendar/{id}`, `POST /{id}/cancel`, `POST /{id}/read` | Branch/team/own/event-scoped reads; branch manager creates/updates/cancels active entries; cancellation reason required; append-only change audit and recipient read receipts; cancelled entries excluded from reads |
 | Announcements | `GET/POST /api/v1/announcements`, `GET/PATCH /api/v1/announcements/{id}`, `POST /{id}/publish`, `POST /{id}/archive`, `GET /api/v1/announcements/inbox`, `POST /{id}/read` | Branch-managed audience targets; publishing fans out only to eligible active staff; recipient-only inbox and append-only read receipts |
 | Public content | `GET /api/public/content?branch_id={id}` | Anonymous published-only projection for church profile, welcome messages, sermons, daily word, tracts, public announcements, public events and HTTPS links |
 | Content management | `GET /api/v1/content`, `POST /api/v1/content/{kind}`, `PATCH /api/v1/content/{kind}/{id}`, `POST /api/v1/content/{kind}/{id}/publish|archive` | Branch capability-gated draft and publication lifecycle for welcome messages, sermons, daily words and digital tracts |
@@ -66,6 +66,7 @@ All protected business routes require a verified session and an authorized activ
 11. **Announcement delivery and read receipts:** publishing now fans out in-app deliveries to the configured branch/team/event audience; staff receive a recipient-scoped inbox and can mark items read. Migration 0021 adds an audience-checked delivery trigger and immutable read receipts. EU D1 was verified at schema version 21 before typed reports were added.
 12. **Typed ministry reports:** migration 0022 adds typed daily/event/weekly submissions, D-12 scopes, self-review protection and append-only review/resubmission history.
 13. **Prayer intake:** added authenticated `POST /api/v1/pastoral/prayer/requests`. It requires `prayer.request.create` at branch scope, validates bounded narrative/contact/expiry inputs, requires an `Idempotency-Key`, stores a request digest and appends a creation audit. Migration 0023 adds the branch-scoped idempotency ledger; public intake remains disabled.
+14. **Calendar lifecycle:** added cancellation with mandatory reason, immutable change history, recipient-scoped immutable read receipts and active-only list/detail reads. Migration 0024 adds cancellation attribution, actor attribution for edits, audit and receipt tables. Recurrence generation remains outstanding.
 
 ## API security review checklist
 
@@ -89,7 +90,7 @@ All protected business routes require a verified session and an authorized activ
 | P1 | Prayer intake | Authenticated creation is now implemented with branch capability, idempotency and audit; add real Worker/D1 integration tests and remaining lifecycle controls. Keep public intake disabled until separately approved |
 | P1 | Pastoral care | Implement case metadata and narrative handlers only after a distinct care-reader capability, explicit-share policy and audit tests are approved |
 | P1 | Events | Add real Worker/D1 integration tests for all new staff-only operations and verify the UI workflow; public registration remains deliberately disabled |
-| P1 | Calendar | Add cancellation/recurrence rules, scoped event integration tests and calendar audit/read-receipt behavior; core list/create/update routes are now in source |
+| P1 | Calendar | Cancellation, immutable change audit and scoped read receipts are now in source and schema; recurring-series generation and real Worker/D1 integration tests remain |
 | P1 | Announcements | Add deployed Worker integration tests for audience fan-out, inbox isolation and immutable read receipts; publishing and recipient-scoped inbox are in source |
 | P1 | Public content | Add deeper publishing/audience integration tests and public frontend wiring; CRUD, church profile management and published-only projection are in source |
 | P2 | Ministry reports | Typed report submissions, review/resubmit, ministry time-series comparisons and privacy-controlled exports; aggregate-only overview is in source |
