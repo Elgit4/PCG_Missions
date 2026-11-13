@@ -109,7 +109,7 @@ create table if not exists public.report_review_event (
   actor_profile_id uuid not null references public.staff_profile(id) on delete restrict,
   decision text not null check (decision in ('approved','returned','comment','resubmitted')),
   comment text null check (comment is null or length(comment) <= 2000),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default pg_catalog.clock_timestamp()
 );
 
 create index if not exists report_review_event_report_created_idx
