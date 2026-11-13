@@ -66,4 +66,21 @@ describe("CmiApiClient — Cloudflare Worker", () => {
     const client = new CmiApiClient({}, async () => null, vi.fn(async (..._args: Parameters<typeof fetch>) => new Response("not-json", { status: 200 })) as typeof fetch);
     await expect(client.listContacts("branch-1")).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
   });
+  it("maps staff account lifecycle actions to the Worker governance routes", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ data: { account_status: "inactive" }, request_id: "staff-status" }), { status: 200 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.setStaffAccountStatus("staff-2", "branch-1", "inactive", "No longer serving");
+    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/staff/staff-2/deactivate");
+  });
+
+  it("fails explicitly for team administration until its Worker handlers are implemented", async () => {
+    const fetcher = vi.fn();
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await expect(client.listTeams("branch-1")).rejects.toMatchObject({
+      status: 501, code: "TEAM_ADMINISTRATION_NOT_MIGRATED",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
 });
