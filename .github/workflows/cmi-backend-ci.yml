@@ -143,6 +143,12 @@ jobs:
       - name: Test team operations request validation
         run: deno test supabase-cmi/supabase/functions/team-operations/validation_test.ts
 
+      - name: Type-check report operations Edge Function
+        run: deno check supabase-cmi/supabase/functions/report-operations/index.ts
+
+      - name: Test report operations request validation
+        run: deno test supabase-cmi/supabase/functions/report-operations/validation_test.ts
+
       - name: Type-check pastoral operations Edge Function
         run: deno check supabase-cmi/supabase/functions/pastoral-operations/index.ts
 
