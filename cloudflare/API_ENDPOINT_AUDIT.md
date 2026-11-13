@@ -69,6 +69,7 @@ All protected business routes require a verified session and an authorized activ
 13. **Prayer intake:** added authenticated `POST /api/v1/pastoral/prayer/requests`. It requires `prayer.request.create` at branch scope, validates bounded narrative/contact/expiry inputs, requires an `Idempotency-Key`, stores a request digest and appends a creation audit. Migration 0023 adds the branch-scoped idempotency ledger; public intake remains disabled.
 14. **Calendar lifecycle:** added cancellation with mandatory reason, immutable change history, recipient-scoped immutable read receipts and active-only list/detail reads. Migration 0024 adds cancellation attribution, actor attribution for edits, audit and receipt tables. Timezone-aware daily/weekly/monthly recurrence generation and reasoned series cancellation are implemented in source/schema; runtime verification remains.
 15. **Ministry report analytics:** the aggregate overview includes typed daily/event/weekly report time-series cohorts and prior-period comparisons. Cohorts require at least three distinct authors; Admin/Pastor aggregate CSV export is available with an append-only export audit and excludes personal identifiers and prayer narratives.
+16. **Password-reset history:** migration 0028 preserves approved historical reset events in an append-only audit table without copying live reset requests or tokens. Resend delivery is implemented for password-reset links and remains disabled until a verified sender and API key are configured.
 
 ## API security review checklist
 
@@ -87,25 +88,25 @@ All protected business routes require a verified session and an authorized activ
 
 | Priority | Domain | Remaining work |
 |---|---|---|
-| P0 | Runtime deployment and auth | Deploy full Worker to non-production; validate Better Auth D1 schema compatibility; test sign-in, session refresh, sign-out, invitation acceptance and revocation |
-| P0 | API integration tests | Add real Worker/D1 tests for staff, contacts, follow-up, prayer, event, calendar, announcement and content endpoints, including negative cross-branch/team/assignment cases |
+| P0 | Runtime deployment and auth | Configure `CLOUDFLARE_API_TOKEN` and `BETTER_AUTH_SECRET`, deploy full Worker to non-production, validate Better Auth against remote EU D1, and test session refresh plus invitation acceptance/revocation |
+| P0 | API integration tests | Local Worker/D1 tests cover Better Auth, cron invocation and unauthenticated route gates; add authenticated remote D1 tests for cross-branch/team/assignment, expiry/revocation, duplicate-key, capacity-race and audit-failure cases |
 | P1 | Prayer intake | Authenticated creation is now implemented with branch capability, idempotency and audit; add real Worker/D1 integration tests and remaining lifecycle controls. Keep public intake disabled until separately approved |
 | P1 | Pastoral care | Case metadata and explicit-share narrative handlers are implemented in source; apply migration 0025 and add real Worker/D1 integration tests for cross-branch, expired-share, revoked-assignment and audit failure cases |
 | P1 | Events | Add real Worker/D1 integration tests for all new staff-only operations and verify the UI workflow; public registration remains deliberately disabled |
-| P1 | Calendar | Recurring-series generation/cancellation, immutable change audit and scoped read receipts are implemented in source/schema; apply migrations 0025–0026 and verify Worker/D1 integration across time zones and DST boundaries |
+| P1 | Calendar | Recurring-series generation/cancellation, immutable change audit and scoped read receipts are implemented in source/schema; apply migrations 0025–0028 and verify Worker/D1 integration across time zones and DST boundaries |
 | P1 | Announcements | Scheduled publication and five-minute cron are implemented in source; verify due-item publication, revoked scheduler denial, delivery fan-out and inbox isolation in a deployed Worker |
 | P1 | Public content | Add deeper publishing/audience integration tests and public frontend wiring; CRUD, church profile management and published-only projection are in source |
 | P2 | Ministry reports | Typed report submissions, review/resubmit, prior-period comparisons and Admin/Pastor-only aggregate CSV export with immutable audit are in source; verify export privacy and audit-failure denial against deployed Worker/D1 |
 | P2 | Data reconciliation | Supabase export, transformation, D1 import and source-to-target row/count/hash reconciliation; no production data copied yet |
-| P2 | Communications | Verified email provider for invitations/password resets; Hubtel remains disabled until consent, sender and cost controls are approved |
+| P2 | Communications | Resend password-reset adapter and append-only reset audit are implemented; configure `RESEND_API_KEY` and verified `EMAIL_FROM`, then add invitation acceptance UI/email. Hubtel remains disabled until consent, sender and cost controls are approved |
 | P2 | Frontend | Cloudflare Pages preview binding and API client migration, keeping the production Supabase client intact until cutover approval |
 
 ## Known release blockers
 
 - The full Worker is not yet deployed. The only deployed script is the isolated D1 smoke-check Worker. Wrangler typecheck and dry-run bundling pass; GitHub Actions skips deployment until the repository secret `CLOUDFLARE_API_TOKEN` is configured.
 - No deployed Worker request has exercised Better Auth against the EU D1 binding.
-- Invitation email and password-reset delivery are not configured; invitation token delivery remains a manual one-time handoff.
-- Pastoral-care routes are implemented in source but are not deployed or runtime-tested; migration 0025 remains unapplied to remote EU D1.
-- Event registration/transport/check-in/closeout, calendar, announcement inbox/read receipts, aggregate reporting and public-content routes are implemented in source and D1 schema, but remain undeployed and require Worker-level integration tests. Advanced reporting and privacy-controlled exports remain incomplete.
+- Password-reset email delivery uses the Resend adapter but is disabled until `RESEND_API_KEY` and verified `EMAIL_FROM` are configured; invitation token delivery remains a manual one-time handoff until its acceptance UI is integrated.
+- Pastoral-care routes, recurring calendar series, scheduled announcements and aggregate CSV exports are implemented in source and pass local Worker/D1 contract tests, but the full Worker is not deployed; migrations 0025–0028 remain unapplied to remote EU D1.
+- Event registration/transport/check-in/closeout, calendar, announcement inbox/read receipts, aggregate reporting and public-content routes are implemented in source and local D1 schema, but remain undeployed and require authenticated remote Worker/D1 integration tests. Aggregate CSV export is restricted and audited; source-to-target data reconciliation remains incomplete.
 - The D1 schema is a first porting slice, not a complete replacement for the full live Supabase schema.
 - No production data migration, frontend cutover, production DNS change or Supabase shutdown is authorized or performed.
