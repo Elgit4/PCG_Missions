@@ -135,5 +135,13 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn('url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/audit$/)', self.source)
 
 
+    def test_event_registration_routes_require_idempotency_and_capacity(self):
+        for name in ("eventRequestDigest", "findEventReceipt", "setEventRegistrationState", "listEventRegistrations", "createEventRegistration", "cancelEventRegistration"):
+            self.assertIn(f"function {name}(", self.source)
+        self.assertIn('request.headers.get("Idempotency-Key")', self.source)
+        self.assertIn("event_idempotency_receipt", self.source)
+        self.assertIn("EVENT_CAPACITY_REACHED", self.source)
+        self.assertIn('registration_state=\'open\'', self.source)
+
 if __name__ == "__main__":
     unittest.main()
