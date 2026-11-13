@@ -3395,7 +3395,7 @@ async function listAnnouncements(
   const status = url.searchParams.get("status") ?? "published";
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
-  if (!["draft", "published", "archived", "all"].includes(status) ||
+  if (!["draft", "scheduled", "published", "archived", "all"].includes(status) ||
       (status !== "published" && !canManage) ||
       !Number.isInteger(limit) || limit < 1 || limit > 100 ||
       [...url.searchParams.keys()].some((key) => !["status", "limit"].includes(key))) {
@@ -3499,7 +3499,7 @@ async function createAnnouncement(
       INSERT INTO announcement
         (id,branch_id,title,body,audience_type,is_public,status,publish_at,published_at,
          created_by,updated_by,created_at,updated_at)
-      VALUES (?,?,?,?,?,?, 'draft',NULL,NULL,?,?,?,?,?)
+      VALUES (?,?,?,?,?,?, 'draft',NULL,NULL,?,?,?,?)
     \`).bind(
       id, branchId, title, message, audience, audience === "public" ? 1 : 0,
       access.staff.userId, access.staff.userId, now, now,
@@ -3537,7 +3537,7 @@ async function updateAnnouncement(
   if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
   const payload = body.value as Record<string, unknown>;
   const allowed = new Set(["title", "body"]);
-  if (!payload || typeof payload !== "object' || Array.isArray(payload) ||
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
       Object.keys(payload).length === 0 || Object.keys(payload).some((key) => !allowed.has(key))) {
     return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_UPDATE" } }, requestId, origin);
   }
