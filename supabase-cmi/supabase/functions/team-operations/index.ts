@@ -177,7 +177,7 @@ async function hasBranchCapability(
   service: ServiceClient,
   profileId: string,
   branchId: string,
-  capabilityCode: "team.manage" | "area.manage",
+  capabilityCode: string,
 ): Promise<boolean> {
   const now = new Date().toISOString();
   const { data: branch, error: branchError } = await service
@@ -302,6 +302,7 @@ function rpcError(error: { code?: string; message?: string }): {
 async function listTeams(
   service: ServiceClient,
   branchId: string,
+  includeStaffNames: boolean,
 ): Promise<{ teams: Array<Record<string, unknown>> }> {
   const { data: teams, error: teamError } = await service
     .from("team")
@@ -323,7 +324,7 @@ async function listTeams(
 
   const profileIds = [...new Set((memberships ?? []).map((item) => item.staff_profile_id))];
   let profiles: Array<{ id: string; full_name: string; account_status: string }> = [];
-  if (profileIds.length) {
+  if (includeStaffNames && profileIds.length) {
     const result = await service
       .from("staff_profile")
       .select("id,full_name,account_status")
@@ -348,6 +349,7 @@ async function listTeams(
 async function listAreas(
   service: ServiceClient,
   branchId: string,
+  includeStaffNames: boolean,
 ): Promise<{ areas: Array<Record<string, unknown>> }> {
   const { data: areas, error: areaError } = await service
     .from("service_area")
@@ -368,7 +370,7 @@ async function listAreas(
 
   const profileIds = [...new Set((coverage ?? []).map((item) => item.staff_profile_id))];
   let profiles: Array<{ id: string; full_name: string; account_status: string }> = [];
-  if (profileIds.length) {
+  if (includeStaffNames && profileIds.length) {
     const result = await service
       .from("staff_profile")
       .select("id,full_name,account_status")
@@ -457,9 +459,15 @@ Deno.serve(async (request: Request) => {
       if (!(await hasBranchCapability(auth.service, auth.profileId, branchFromQuery, capability))) {
         return fail("FORBIDDEN", "Your account does not have management access to this branch.", 403, origin, id);
       }
+      const canReadStaffDirectory = await hasBranchCapability(
+        auth.service,
+        auth.profileId,
+        branchFromQuery,
+        "staff.directory.read",
+      );
       const data = resource === "teams"
-        ? await listTeams(auth.service, branchFromQuery)
-        : await listAreas(auth.service, branchFromQuery);
+        ? await listTeams(auth.service, branchFromQuery, canReadStaffDirectory)
+        : await listAreas(auth.service, branchFromQuery, canReadStaffDirectory);
       return response({ data, request_id: id }, 200, origin, id);
     }
 
