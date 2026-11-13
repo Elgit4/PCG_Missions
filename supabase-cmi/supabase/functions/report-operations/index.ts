@@ -215,42 +215,46 @@ Deno.serve(async (request: Request) => {
       const ownScopes = await scopes(auth.service, auth.profileId, branch_id, "report.read.own");
       const branchReview = await scopes(auth.service, auth.profileId, branch_id, "report.review.branch");
       const teamReview = await scopes(auth.service, auth.profileId, branch_id, "report.review.team");
-      const buildReportQuery = () => {
-        let query = auth.service.from("ministry_report").select(REPORT_COLUMNS)
-          .eq("branch_id", branch_id);
-        if (report_type) query = query.eq("report_type", report_type);
-        if (status) query = query.eq("status", status);
-        return query;
-      };
-      let rows: Record<string, unknown>[] = [];
-      if (branchReview.includes("branch")) {
-        const { data, error } = await buildReportQuery()
-          .order("period_start", { ascending: false }).limit(250);
-        if (error) throw new Error("REPORT_BRANCH_LIST_FAILED");
-        rows = data ?? [];
-      } else {
-        if (ownScopes.includes("self")) {
-          const { data, error } = await buildReportQuery()
-            .eq("author_profile_id", auth.profileId).order("period_start", { ascending: false }).limit(250);
-          if (error) throw new Error("REPORT_OWN_LIST_FAILED");
-          rows.push(...(data ?? []));
-        }
-        if (teamReview.includes("team")) {
-          const teamIds = await activeTeamIds(auth.service, auth.profileId, branch_id);
-          if (teamIds.length) {
-            const { data, error } = await buildReportQuery()
-              .in("team_id", teamIds).order("period_start", { ascending: false }).limit(250);
-            if (error) throw new Error("REPORT_TEAM_LIST_FAILED");
-            rows.push(...(data ?? []));
-          }
-        }
-      }
-      const unique = [...new Map(rows.map((row) => [String(row.id), row])).values()]
-        .sort((a, b) => String(b.period_start).localeCompare(String(a.period_start)));
-      if (!unique.length && !ownScopes.includes("self") && !branchReview.includes("branch") && !teamReview.includes("team")) {
+      const canReadOwn = ownScopes.includes("self");
+      const canReviewOwnTeam = teamReview.includes("team");
+      const canReadBranch = branchReview.includes("branch");
+      const teamIds = canReviewOwnTeam
+        ? await activeTeamIds(auth.service, auth.profileId, branch_id)
+        : [];
+      if (!canReadOwn && !canReviewOwnTeam && !canReadBranch) {
         return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
       }
-      return response({ data: unique.slice(offset, offset + limit), total: unique.length, request_id: requestId }, 200, origin, requestId);
+
+      let query = auth.service.from("ministry_report")
+        .select(REPORT_COLUMNS, { count: "exact" })
+        .eq("branch_id", branch_id);
+      if (report_type) query = query.eq("report_type", report_type);
+      if (status) query = query.eq("status", status);
+
+      if (!canReadBranch) {
+        if (canReadOwn && teamIds.length) {
+          query = query.or(
+            `author_profile_id.eq.${auth.profileId},team_id.in.(${teamIds.join(",")})`,
+          );
+        } else if (canReadOwn) {
+          query = query.eq("author_profile_id", auth.profileId);
+        } else if (teamIds.length) {
+          query = query.in("team_id", teamIds);
+        } else {
+          return response({ data: [], total: 0, request_id: requestId }, 200, origin, requestId);
+        }
+      }
+
+      const { data, error, count } = await query
+        .order("period_start", { ascending: false })
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (error) throw new Error("REPORT_LIST_FAILED");
+      return response({
+        data: data ?? [],
+        total: count ?? 0,
+        request_id: requestId,
+      }, 200, origin, requestId);
     }
 
     if (request.method === "GET" && item) {
