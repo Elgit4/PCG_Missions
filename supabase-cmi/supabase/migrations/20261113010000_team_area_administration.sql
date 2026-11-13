@@ -54,6 +54,7 @@ before truncate on public.team_management_audit
 for each statement execute function private.reject_team_management_audit_mutation();
 
 create or replace function private.cmi_manage_team_operations(
+  p_actor_auth_user_id uuid,
   p_action text,
   p_payload jsonb
 )
@@ -63,7 +64,7 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_auth_user_id uuid := auth.uid();
+  v_auth_user_id uuid := p_actor_auth_user_id;
   v_actor_profile_id uuid;
   v_branch_id uuid;
   v_capability_code text;
@@ -552,13 +553,14 @@ begin
 end;
 $$;
 
-revoke all on function private.cmi_manage_team_operations(text,jsonb)
+revoke all on function private.cmi_manage_team_operations(uuid,text,jsonb)
   from public, anon, authenticated, service_role;
-grant usage on schema private to authenticated;
-grant execute on function private.cmi_manage_team_operations(text,jsonb)
-  to authenticated;
+grant usage on schema private to service_role;
+grant execute on function private.cmi_manage_team_operations(uuid,text,jsonb)
+  to service_role;
 
 create or replace function public.cmi_manage_team_operations(
+  p_actor_auth_user_id uuid,
   p_action text,
   p_payload jsonb
 )
@@ -567,17 +569,17 @@ language sql
 security invoker
 set search_path = ''
 as $$
-  select private.cmi_manage_team_operations(p_action,p_payload);
-$$;
+  select private.cmi_manage_team_operations(p_actor_auth_user_id,p_action,p_payload);
+$;
 
-revoke all on function public.cmi_manage_team_operations(text,jsonb)
+revoke all on function public.cmi_manage_team_operations(uuid,text,jsonb)
   from public, anon, authenticated, service_role;
--- Authenticated users need public-schema namespace access to call this
--- single reviewed RPC through PostgREST. No business-table privileges are
--- granted; all table reads/writes remain inside the trusted operations API.
-grant usage on schema public to authenticated;
-grant execute on function public.cmi_manage_team_operations(text,jsonb)
-  to authenticated;
+-- Only the authenticated Edge Function's server-side service client may call
+-- this wrapper. The function revalidates the supplied Auth user against the
+-- active staff profile, role, branch and capability before every mutation.
+-- Browser roles retain their existing no-USAGE-on-public/no-direct-table model.
+grant execute on function public.cmi_manage_team_operations(uuid,text,jsonb)
+  to service_role;
 
 -- Admin/Pastor receives management of teams and service areas only at the
 -- selected active branch. Team Leader membership is not inferred from this.
