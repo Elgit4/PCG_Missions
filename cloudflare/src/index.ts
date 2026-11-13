@@ -16,6 +16,8 @@ interface D1Database {
 interface Env extends Omit<StaffEnvironment, "DB"> {
   DB: D1Database;
   APP_ENV?: string;
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
 }
 
 function json(status: number, body: Record<string, unknown>, requestId: string, origin?: string): Response {
