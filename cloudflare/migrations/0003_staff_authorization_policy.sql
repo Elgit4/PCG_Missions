@@ -112,3 +112,81 @@ BEFORE DELETE ON sensitive_record_access_audit
 BEGIN
   SELECT RAISE(ABORT, 'SENSITIVE_ACCESS_AUDIT_APPEND_ONLY');
 END;
+
+
+-- Explicit record-level sharing is the only baseline route to highly sensitive
+-- prayer/pastoral records. Shares are branch-bound, time-bounded and revocable.
+CREATE TABLE IF NOT EXISTS staff_record_share (
+  id TEXT PRIMARY KEY,
+  branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE RESTRICT,
+  record_type TEXT NOT NULL CHECK (record_type IN ('prayer_request', 'pastoral_case')),
+  record_id TEXT NOT NULL,
+  staff_profile_id TEXT NOT NULL REFERENCES staff_profile(id) ON DELETE RESTRICT,
+  granted_by TEXT NOT NULL REFERENCES staff_profile(id) ON DELETE RESTRICT,
+  purpose TEXT NOT NULL CHECK (length(trim(purpose)) BETWEEN 10 AND 300),
+  starts_at TEXT NOT NULL,
+  ends_at TEXT,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL,
+  CHECK (ends_at IS NULL OR ends_at > starts_at),
+  CHECK (revoked_at IS NULL OR revoked_at >= starts_at)
+);
+CREATE INDEX IF NOT EXISTS staff_record_share_active_lookup_idx
+  ON staff_record_share(staff_profile_id, branch_id, record_type, record_id, starts_at, ends_at)
+  WHERE revoked_at IS NULL;
+CREATE TRIGGER IF NOT EXISTS staff_record_share_no_overlap_insert
+BEFORE INSERT ON staff_record_share
+WHEN NEW.revoked_at IS NULL
+BEGIN
+  SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM staff_record_share existing
+    WHERE existing.staff_profile_id = NEW.staff_profile_id
+      AND existing.branch_id = NEW.branch_id
+      AND existing.record_type = NEW.record_type
+      AND existing.record_id = NEW.record_id
+      AND existing.revoked_at IS NULL
+      AND COALESCE(existing.ends_at, '9999-12-31T23:59:59.999Z') > NEW.starts_at
+      AND COALESCE(NEW.ends_at, '9999-12-31T23:59:59.999Z') > existing.starts_at
+  ) THEN RAISE(ABORT, 'STAFF_RECORD_SHARE_OVERLAP') END;
+END;
+CREATE TRIGGER IF NOT EXISTS staff_record_share_no_overlap_update
+BEFORE UPDATE OF staff_profile_id, branch_id, record_type, record_id, starts_at, ends_at, revoked_at
+ON staff_record_share
+WHEN NEW.revoked_at IS NULL
+BEGIN
+  SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM staff_record_share existing
+    WHERE existing.id <> NEW.id
+      AND existing.staff_profile_id = NEW.staff_profile_id
+      AND existing.branch_id = NEW.branch_id
+      AND existing.record_type = NEW.record_type
+      AND existing.record_id = NEW.record_id
+      AND existing.revoked_at IS NULL
+      AND COALESCE(existing.ends_at, '9999-12-31T23:59:59.999Z') > NEW.starts_at
+      AND COALESCE(NEW.ends_at, '9999-12-31T23:59:59.999Z') > existing.starts_at
+  ) THEN RAISE(ABORT, 'STAFF_RECORD_SHARE_OVERLAP') END;
+END;
+CREATE TRIGGER IF NOT EXISTS staff_record_share_audit_insert
+AFTER INSERT ON staff_record_share
+BEGIN
+  INSERT INTO sensitive_record_access_audit
+    (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, share_reference, created_at)
+  VALUES
+    ('share-grant-' || NEW.id, NEW.branch_id, NEW.granted_by, NEW.record_type, NEW.record_id,
+     'share_granted', NEW.purpose, NEW.id, NEW.created_at);
+END;
+CREATE TRIGGER IF NOT EXISTS staff_record_share_audit_revoke
+AFTER UPDATE OF revoked_at ON staff_record_share
+WHEN OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL
+BEGIN
+  INSERT INTO sensitive_record_access_audit
+    (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, share_reference, created_at)
+  VALUES
+    ('share-revoke-' || NEW.id, NEW.branch_id, NEW.granted_by, NEW.record_type, NEW.record_id,
+     'share_revoked', NEW.purpose, NEW.id, NEW.revoked_at);
+END;
+CREATE TRIGGER IF NOT EXISTS staff_record_share_no_delete
+BEFORE DELETE ON staff_record_share
+BEGIN
+  SELECT RAISE(ABORT, 'STAFF_RECORD_SHARE_NO_DELETE');
+END;
