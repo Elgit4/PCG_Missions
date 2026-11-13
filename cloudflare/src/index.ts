@@ -3227,9 +3227,9 @@ async function cancelEventRegistration(
   try {
     const results=await env.DB.batch([
       env.DB.prepare(`
-        UPDATE event_registration SET status='cancelled',cancelled_by=?,cancelled_at=?
-        WHERE id=? AND event_id=? AND branch_id=? AND status='registered'
-      `).bind(context.staff.userId,now,registrationId,eventId,context.activeBranch.branchId),
+        UPDATE event_registration SET status='cancelled',cancelled_by=?,cancelled_at=?,cancellation_request_key=?
+        WHERE id=? AND event_id=? AND branch_id=? AND status='registered' AND cancellation_request_key IS NULL
+      `).bind(context.staff.userId,now,idempotencyKey,registrationId,eventId,context.activeBranch.branchId),
       env.DB.prepare(`
         INSERT INTO event_idempotency_receipt
           (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
@@ -3237,16 +3237,18 @@ async function cancelEventRegistration(
         SELECT ?,?,?, 'registration_cancel','staff',?,?,1,?,'event_registration',?,200,?
         WHERE EXISTS (
           SELECT 1 FROM event_registration
-          WHERE id=? AND event_id=? AND status='cancelled' AND cancelled_by=? AND cancelled_at=?
+          WHERE id=? AND event_id=? AND status='cancelled' AND cancelled_by=? AND cancelled_at=? AND cancellation_request_key=?
         )
       `).bind(
         crypto.randomUUID(),eventId,context.activeBranch.branchId,context.staff.userId,
         idempotencyKey,digest.bytes,registrationId,now,
-        registrationId,eventId,context.staff.userId,now,
+        registrationId,eventId,context.staff.userId,now,idempotencyKey,
       ),
     ]);
     if (results.some((result)=>!result.success || (result.meta?.changes??0)!==1)) {
-      return json(409,{ok:false,error:{code:"REGISTRATION_NOT_CANCELLABLE"}},requestId,origin);
+      const raced=await findEventReceipt(env,eventId,"registration_cancel",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+      if (raced) return raced;
+      return json(409,{ok:false,error:{code:"EVENT_CANCELLATION_IDEMPOTENCY_CONFLICT"}},requestId,origin);
     }
   } catch {
     const raced=await findEventReceipt(env,eventId,"registration_cancel",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
@@ -3565,9 +3567,9 @@ async function cancelTransportReservation(
     const results=await env.DB.batch([
       env.DB.prepare(`
         UPDATE transport_reservation
-        SET status='cancelled',updated_by=?,cancelled_by=?,cancelled_at=?,updated_at=?
-        WHERE id=? AND event_id=? AND branch_id=? AND status='reserved'
-      `).bind(context.staff.userId,context.staff.userId,now,now,reservationId,eventId,context.activeBranch.branchId),
+        SET status='cancelled',updated_by=?,cancelled_by=?,cancelled_at=?,updated_at=?,cancellation_request_key=?
+        WHERE id=? AND event_id=? AND branch_id=? AND status='reserved' AND cancellation_request_key IS NULL
+      `).bind(context.staff.userId,context.staff.userId,now,now,key,reservationId,eventId,context.activeBranch.branchId),
       env.DB.prepare(`
         INSERT INTO event_idempotency_receipt
           (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
@@ -3575,14 +3577,16 @@ async function cancelTransportReservation(
         SELECT ?,?,?, 'transport_cancel','staff',?,?,1,?,'transport_reservation',?,200,?
         WHERE EXISTS (
           SELECT 1 FROM transport_reservation
-          WHERE id=? AND event_id=? AND status='cancelled' AND cancelled_by=? AND cancelled_at=?
+          WHERE id=? AND event_id=? AND status='cancelled' AND cancelled_by=? AND cancelled_at=? AND cancellation_request_key=?
         )
       `).bind(
         crypto.randomUUID(),eventId,context.activeBranch.branchId,context.staff.userId,
-        key,digest.bytes,reservationId,now,reservationId,eventId,context.staff.userId,now,
+        key,digest.bytes,reservationId,now,reservationId,eventId,context.staff.userId,now,key,
       ),
     ]);
-    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) return json(409,{ok:false,error:{code:"TRANSPORT_RESERVATION_NOT_CANCELLABLE"}},requestId,origin);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) const raced=await findEventReceipt(env,eventId,"transport_cancel",key,context.staff.userId,digest.hex,requestId,origin);
+      if (raced) return raced;
+      return json(409,{ok:false,error:{code:"EVENT_CANCELLATION_IDEMPOTENCY_CONFLICT"}},requestId,origin);
   } catch {
     const raced=await findEventReceipt(env,eventId,"transport_cancel",key,context.staff.userId,digest.hex,requestId,origin);
     if (raced) return raced;
