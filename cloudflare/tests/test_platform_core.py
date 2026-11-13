@@ -1671,8 +1671,14 @@ class AuthorizationQueryTests(unittest.TestCase):
                     created_by,last_modified_by,created_at,updated_at)
                    VALUES (?, 'authz-branch', 'Community Gathering',
                            '2026-02-01T08:00:00.000Z','2026-02-01T11:00:00.000Z',
-                           'Africa/Accra',?,'open','staff','published',1,?,?,?,?)""",
+                           'Africa/Accra',?,'closed','private','draft',1,?,?,?,?)""",
                 (event_id,capacity,admin_user,admin_user,self.NOW,self.NOW),
+            )
+            self.db.execute(
+                """UPDATE event SET status='published',visibility='staff',registration_state='open',
+                   last_modified_by=?,updated_at='2026-01-15T12:01:00.000Z'
+                   WHERE id=? AND branch_id='authz-branch'""",
+                (admin_user,event_id),
             )
 
         def insert_registration(registration_id,event_id,request_id):
