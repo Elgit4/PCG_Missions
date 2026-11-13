@@ -74,6 +74,35 @@ function isOverdue(task: FollowUpTask): boolean {
     !!task.due_at && new Date(task.due_at).getTime() < Date.now();
 }
 
+function WorkspaceSkeleton({ page }: { page: Page }) {
+  const isOverview = page === "Overview";
+  const isTable = page === "Contacts" || page === "Staff" || page === "Follow-up" || page === "Access requests";
+  return (
+    <div className="cmi-loading-skeleton" role="status" aria-label={`Loading ${page.toLowerCase()} workspace`}>
+      <span className="cmi-skeleton-sr">Loading workspace content</span>
+      {isOverview ? (
+        <>
+          <div className="cmi-skeleton-welcome">
+            <div className="cmi-skeleton-copy"><i className="cmi-skeleton-line short" /><i className="cmi-skeleton-line title" /><i className="cmi-skeleton-line medium" /></div>
+            <i className="cmi-skeleton-mark" />
+          </div>
+          <div className="cmi-skeleton-stats">{[1, 2, 3, 4].map((item) => <div className="cmi-skeleton-stat" key={item}><i className="cmi-skeleton-line short" /><i className="cmi-skeleton-line number" /><i className="cmi-skeleton-line medium" /></div>)}</div>
+          <div className="cmi-skeleton-grid">
+            <div className="cmi-skeleton-panel"><i className="cmi-skeleton-line medium" /><i className="cmi-skeleton-line title" /><i className="cmi-skeleton-line long" /><i className="cmi-skeleton-line long" /><i className="cmi-skeleton-line medium" /></div>
+            <div className="cmi-skeleton-panel"><i className="cmi-skeleton-line medium" /><i className="cmi-skeleton-line title" />{[1, 2, 3].map((item) => <i className="cmi-skeleton-row" key={item}><b /><span><i /><i /></span></i>)}</div>
+          </div>
+        </>
+      ) : (
+        <div className="cmi-skeleton-panel cmi-skeleton-page">
+          <div className="cmi-skeleton-heading"><span><i className="cmi-skeleton-line short" /><i className="cmi-skeleton-line title" /><i className="cmi-skeleton-line medium" /></span><i className="cmi-skeleton-action" /></div>
+          {isTable && <i className="cmi-skeleton-search" />}
+          {Array.from({ length: isTable ? 5 : 3 }, (_, index) => <i className="cmi-skeleton-row" key={index}><b /><span><i /><i /></span><em /></i>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps) {
   const branchId = session.branches[0]?.id ?? "";
   const [page, setPage] = useState<Page>(() => {
@@ -601,7 +630,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           {loadError && <div className="cmi-alert" role="alert">{loadError}</div>}
           {actionError && <div className="cmi-alert" role="alert">{actionError}<button onClick={() => setActionError("")} aria-label="Dismiss message">×</button></div>}
           {actionNotice && <div className="cmi-success-note" role="status">{actionNotice}<button onClick={() => setActionNotice("")} aria-label="Dismiss message">×</button></div>}
-          {loading && <div className="cmi-loading" role="status">Loading authorised branch data…</div>}
+          {loading && <WorkspaceSkeleton page={page} /> }
 
           {page === "Overview" && (
             <>
