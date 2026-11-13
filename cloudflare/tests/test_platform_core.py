@@ -13,6 +13,7 @@ class PlatformCoreMigrationTests(unittest.TestCase):
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
         self.db.executescript((MIGRATION.parent / "0002_contacts_followup.sql").read_text(encoding="utf-8"))
+        self.db.executescript((MIGRATION.parent / "0004_staff_session_revocation.sql").read_text(encoding="utf-8"))
         self.db.execute(
             'INSERT INTO "user" (id, name, email, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
             ("user-1", "Admin Pastor", "admin@example.test", 1, 1),
@@ -55,11 +56,32 @@ class PlatformCoreMigrationTests(unittest.TestCase):
             (assignment_id, start, end, start),
         )
 
+
+    def test_staff_deactivation_revokes_all_existing_auth_sessions(self):
+        self.db.execute(
+            """INSERT INTO session
+               (id, expiresAt, token, createdAt, updatedAt, userId)
+               VALUES ('session-1', 9999999999, 'opaque-session-token', 1, 1, 'user-1')"""
+        )
+        self.db.execute(
+            """INSERT INTO session
+               (id, expiresAt, token, createdAt, updatedAt, userId)
+               VALUES ('session-2', 9999999999, 'another-opaque-session-token', 1, 1, 'user-1')"""
+        )
+        self.db.execute(
+            "UPDATE staff_profile SET account_status = 'inactive', deactivated_at = ? WHERE id = 'staff-1'",
+            ("2026-01-02T00:00:00.000Z",),
+        )
+        remaining = self.db.execute(
+            "SELECT COUNT(*) FROM session WHERE userId = 'user-1'"
+        ).fetchone()[0]
+        self.assertEqual(remaining, 0)
+
     def test_schema_is_non_production_and_expected_tables_exist(self):
         meta = self.db.execute(
             "SELECT schema_version, environment FROM app_meta WHERE id = 1"
         ).fetchone()
-        self.assertEqual(meta, (1, "non-production"))
+        self.assertEqual(meta, (4, "non-production"))
         names = {
             row[0] for row in self.db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table'"
@@ -315,7 +337,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
