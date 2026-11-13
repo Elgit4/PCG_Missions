@@ -15,6 +15,11 @@
 | `0004_staff_session_revocation.sql` | 0 new tables | Revokes all Better Auth sessions immediately when a staff account is deactivated or suspended |
 | `0005_better_auth_rate_limit.sql` | 1 | Adds the Better Auth rate-limit table; counters persist in D1 across Worker isolates |
 | `0006_last_role_session_revocation.sql` | 0 new tables | Revokes sessions when a staff member loses their final active role across active branches; schema version 6 |
+| `0007_staff_lifecycle_and_admin_revocation.sql` | 3 new audit/workflow tables | Audited deactivate/suspend/reactivate, branch-aware last-Admin protection and two-person Admin/Pastor revocation; schema version 7 |
+| `0008_staff_invitation_onboarding.sql` | 2 new tables | One-time, expiring, hashed staff invitations; Admin/Pastor-only issuance/revocation; invitation acceptance audit; schema version 8 |
+| `0009_contacts_private_field_write.sql` | 0 new tables | Separates highly restricted contact demographic/language writes from ordinary contact updates; schema version 9 |
+| `0010_contact_assignment_audit.sql` | 1 new table | Enforces active branch actor/target checks, preserves assignment history, and records immutable assignment/reassignment audit; schema version 10 |
+| `0011_followup_task_idempotency.sql` | 0 new tables | Enforces branch-scoped uniqueness for follow-up task idempotency keys; schema version 11 |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
@@ -34,7 +39,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - contact normalization, capture idempotency and metadata allowlists;
 - follow-up task completion and target invariants.
 
-Latest verified CI run: [43455567525](https://github.com/Elgit4/PCG_Missions/actions/runs/43455567525) — **37 Python/SQLite tests passed and Worker/Better Auth TypeScript type-check passed**. This proves the SQL is accepted by the CI runner's SQLite engine and the Worker code type-checks against the pinned package. It does not replace a real D1 preview test, runtime Better Auth schema validation, a deployed Worker test or domain authorization tests.
+Latest verified CI run: [43461336276](https://github.com/Elgit4/PCG_Missions/actions/runs/43461336276) — **46 Python/SQLite tests passed and Worker/Better Auth TypeScript type-check passed.** This proves the SQL is accepted by the CI runner's SQLite engine and the Worker code type-checks against the pinned package. It does not replace a real D1 preview test, runtime Better Auth schema validation, a deployed Worker test or domain authorization tests.
 
 ## Authentication and authorization progress
 
@@ -43,15 +48,17 @@ Latest verified CI run: [43455567525](https://github.com/Elgit4/PCG_Missions/act
 - Exact-origin checks, secure HttpOnly session cookies, no cookie cache, seven-day server-side sessions, Cloudflare client-IP detection and D1-persistent rate-limit counters are configured.
 - `GET /api/v1/me` resolves the session to an active staff profile and branch-valid roles/capability metadata; caller-supplied branch IDs are validated against active assignments.
 - The endpoint is context discovery, not a substitute for server-side authorization.
-- Admin/Pastor-only standard-role assignment/revocation routes are implemented with branch checks, validation and D1-batched audit writes. Separate Admin/Pastor elevation request/list/approve/reject routes enforce distinct requesters and reviewers through both Worker checks and database triggers. Admin/Pastor revocation remains disabled pending a dual-control revocation workflow. No ministry contact/follow-up business routes are enabled yet.
+- Branch-scoped staff directory, paginated governance audit, deactivate/suspend/reactivate routes and account audit are implemented.
+- Invitation issuance/list/revocation/acceptance routes are implemented. A 256-bit one-time token is hashed before storage, expires after 72 hours, and is consumed during account provisioning. The invitee sets their own password; public Better Auth sign-up remains disabled outside the private acceptance path. D1 enforces actor capability, branch membership, self-change denial and last-Admin/Pastor protection; deactivation/suspension immediately revoke sessions.
+- Admin/Pastor revocation now has its own request/list/approve/reject workflow. The requester and reviewer must be distinct; the assignment update must reference the approved request, and the existing last-Admin/Pastor guard remains in force. No ministry contact/follow-up business routes are enabled yet.
 
 ## Not implemented yet
 
 - Staff invitation/create-account workflow and real email delivery for invitation/password reset.
-- Session revocation is enforced by D1 triggers on deactivation/suspension and loss of the final active branch role; administrative deactivation/reactivation endpoints and their audit-backed workflow remain to be implemented.
-- Staff role and Admin/Pastor elevation routes still need route-level integration tests against local D1 and a Worker preview.
+- Session revocation is enforced by D1 triggers on deactivation/suspension and loss of the final active branch role. The staff account lifecycle endpoints are implemented, but invitation issuance/acceptance and real email delivery remain outstanding.
+- Staff directory/account lifecycle, audit-read and dual-control role revocation routes still need Worker-level integration tests against local D1.
 - Better Auth schema compatibility validation against the exact pinned package in local D1 and Worker runtime.
-- Capability/record authorization integration into domain handlers; verified session resolution is now available, but protected business routes remain disabled.
+- First contact handlers are implemented for scoped list/create/read/update, interactions, visibility-filtered notes and audited branch-scoped assignment/reassignment. Contact creation is idempotent and auto-assigns the contact to the capturing staff member. Phone/email visibility and private demographic/language field writes are separately gated. Contact note, reassignment and first follow-up task list/create/update/reassignment APIs are implemented with scope predicates, idempotency and append-only events. Follow-up lists, task reassignment, notifications and the remaining ministry handlers remain outstanding.
 - Ministry-sensitive prayer/care domain tables and runtime access-audit enforcement (the immutable audit ledger is now defined).
 - Events, registrations, check-in, transport, calendar, announcements, public content and reports.
 - Data export/import tooling and reconciliation reports.

@@ -38,6 +38,11 @@ Never set production secrets or bind this Worker to production DNS during this p
 | `/api/auth/sign-out` | Ends the current Better Auth session |
 | `/api/auth/get-session` | Returns the current Better Auth session |
 | `/api/v1/me` | Returns verified staff context and branch-scoped role/capability metadata |
+| `GET /api/v1/staff` | Returns a limited branch-scoped staff directory to authorized roles |
+| `GET /api/v1/staff/audit` | Reads a branch-scoped, paginated governance audit across role, account and high-privilege change events |
+| `POST /api/v1/staff/{profileId}/deactivate|suspend|reactivate` | Changes staff account status with reason, branch authorization, audit event and immediate session revocation |
+| `GET/POST /api/v1/staff/role-revocations` | Lists pending dual-control Admin/Pastor revocations or requests one |
+| `POST /api/v1/staff/role-revocations/{id}/approve|reject` | Applies/rejects a high-privilege revocation through a distinct Admin/Pastor reviewer |
 | `/health` | Read-only non-production D1 readiness |
 
 All other business routes remain unavailable.
@@ -70,16 +75,17 @@ The separate dual-control workflow is now exposed:
 
 Request creation requires `staff.role.assign`; listing and review require `staff.role.approve`. The database triggers independently verify the actor's active branch assignment, capability, target status, distinct requester/reviewer, pending request state and approved assignment. Approval and role creation execute in one D1 batch; the database audit triggers record request, review, assignment and application events. A requestor cannot approve their own request. The initial two owner-controlled bootstrap slots remain a separate bootstrap-only operation, not an ordinary API grant.
 
-Admin/Pastor revocation remains blocked in the standard-role endpoint and has no public Worker route yet. That needs its own two-person revocation workflow before it can be enabled.
+Admin/Pastor revocation is blocked in the standard-role endpoint and is available only through the distinct-requester/reviewer workflow. The database requires the approved request reference on the assignment update and preserves the last-Admin/Pastor safeguard.
 
 ## Deliberately incomplete
 
-- Public sign-up is disabled. There is not yet a staff invitation/create-account endpoint.
+- Public Better Auth sign-up remains disabled. The only creation path is the server-validated invitation acceptance route; its request-local Better Auth instance permits sign-up only after a 256-bit invitation token is verified.
 - Password-reset delivery is intentionally not simulated. The callback fails closed until a real email provider is configured and tested.
 - The Better Auth session-create hook blocks identities without an active staff profile. A D1 trigger deletes all existing sessions immediately when a staff profile changes from active to inactive/suspended. The complete administrative lifecycle (invitation expiry, audited deactivation/reactivation endpoints and session-revocation UX) is not yet wired to Worker routes.
+- Contact routes use the same server-side capability and record-scope checks; their final SELECT/UPDATE/INSERT statements repeat branch and assignment/team predicates. Contact creation requires an `Idempotency-Key`, stores a SHA-256 request digest, records capture provenance and initially assigns the contact to the capturing staff member. Phone/email visibility is separate from highly restricted age-range/language fields.
 - The staff-context endpoint reports capabilities for UI composition only. It is not an authorization grant by itself. Every future business handler must call the server-side authorization layer and include the branch/record predicate in the same SQL statement that reads or mutates the record.
 - The manually authored Better Auth core tables still require validation against the exact pinned library using its schema-check tooling and an actual local D1 runtime. CI type-checking alone does not prove schema compatibility.
-- Email delivery, MFA policy, abuse monitoring and account recovery need a separate implementation and test pass.
+- Invitation delivery is not connected to an email provider: the invitation token is returned once to the authorized administrator for manual secure delivery. Email delivery, password-reset delivery, MFA policy, abuse monitoring and account recovery need a separate implementation and test pass.
 
 ## Security constraints
 
