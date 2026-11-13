@@ -56,6 +56,9 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
   const [editingReportId, setEditingReportId] = useState<string | null>(null);
   const [correctionCounts, setCorrectionCounts] = useState<Record<CountKey, string>>(emptyCounts);
   const [reviewComment, setReviewComment] = useState("");
+  const [detailReport, setDetailReport] = useState<MinistryReportRecord | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
 
   const load = useCallback(async (quiet = false) => {
     if (quiet) setRefreshing(true);
@@ -151,6 +154,25 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
     }
   };
 
+  const toggleDetails = async (report: MinistryReportRecord) => {
+    if (detailReport?.id === report.id) {
+      setDetailReport(null);
+      setDetailError("");
+      return;
+    }
+    setDetailLoading(true);
+    setDetailError("");
+    try {
+      const result = await api.getMinistryReport(branchId, report.id);
+      setDetailReport(result.data);
+    } catch (cause) {
+      setDetailError(errorMessage(cause));
+      setDetailReport(null);
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
   const review = async (report: MinistryReportRecord, decision: "approved" | "returned") => {
     if (!canReview || reviewingId !== report.id) return;
     setSaving(true);
@@ -240,6 +262,25 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
                 <div><strong>{report.visits_completed}</strong><span>Visits</span></div>
                 <div><strong>{report.attendance_count}</strong><span>Attendance</span></div>
               </div>
+              <div className="ministry-report-detail-toggle">
+                <button type="button" className="cmi-button cmi-button-secondary" onClick={() => void toggleDetails(report)} disabled={detailLoading}>
+                  {detailLoading && detailReport?.id !== report.id ? "Loading…" : detailReport?.id === report.id ? "Hide review history" : "View review history"}
+                </button>
+              </div>
+              {detailError && detailReport?.id !== report.id && <p className="ministry-report-inline-error" role="alert">{detailError}</p>}
+              {detailReport?.id === report.id && (
+                <div className="ministry-report-history" aria-label="Report review history">
+                  <h5>Review history</h5>
+                  {detailReport.review_history?.length ? detailReport.review_history.map((entry) => (
+                    <div className="ministry-report-history-entry" key={entry.id}>
+                      <div><strong>{entry.decision === "approved" ? "Approved" : entry.decision === "returned" ? "Returned for correction" : "Reviewer comment"}</strong>
+                        <time dateTime={entry.created_at}>{new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(entry.created_at))}</time>
+                      </div>
+                      {entry.comment && <p>{entry.comment}</p>}
+                    </div>
+                  )) : <p>No review activity has been recorded yet.</p>}
+                </div>
+              )}
               {own && canSubmit && report.status === "returned" && (
                 <div className="ministry-report-review">
                   {editingReportId === report.id ? (
