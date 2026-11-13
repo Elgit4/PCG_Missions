@@ -61,7 +61,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability;
 - typed calendar scope integrity, branch-scoped announcement management, content-manager checks on public content creation and update, church-scoped public-profile authorization, external-link immutability and append-only public-content change audit.
 
-Last recorded CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actions/runs/43469371911) — 56 Python/SQLite tests and Worker/Better Auth TypeScript type-check passed for an earlier schema slice. PR #61 now includes event API contract tests and database authorization regression tests for migrations 0018–0020. A passing CI run for the current head has not yet been observed. The remote migration 0016 was separately syntax-checked in SQLite and applied/verified on EU D1. This does not replace real Worker request testing or Better Auth schema compatibility validation.
+Latest CI run: [43501011801](https://github.com/Elgit4/PCG_Missions/actions/runs/43501011801) — 83 Python/SQLite tests passed; Worker/Better Auth TypeScript type-check and Wrangler dry-run bundle passed. Non-production deploy was skipped because `CLOUDFLARE_API_TOKEN` is not configured. The remote migration 0016 was separately syntax-checked in SQLite and applied/verified on EU D1. This does not replace real Worker request testing or Better Auth schema compatibility validation.
 
 ## Authentication and authorization progress
 
@@ -102,8 +102,9 @@ Last recorded CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actio
 
 ## Required next steps
 
-1. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content, including cross-branch, wrong-team, wrong-assignment, duplicate-key and capacity-race cases.
-2. Deploy the full Worker to a non-production Workers preview and exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
-3. Extend the aggregate reports overview with ministry-specific time series and comparison periods; implement privacy-controlled exports and scheduled announcement publishing.
-4. Validate Better Auth's generated schema against the pinned release and complete source-to-D1 migration export/import and row/count/hash reconciliation for the remaining live schema.
-5. Integrate the frontend with the non-production API and verify end-to-end user workflows. Production cutover remains a separate approval gate.
+1. Add the repository secret `CLOUDFLARE_API_TOKEN` with scoped Workers Scripts edit permission, deploy the full Worker to non-production and set the persistent `BETTER_AUTH_SECRET` Worker secret.
+2. Add the real frontend origin to `BETTER_AUTH_TRUSTED_ORIGINS`, then exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
+3. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content, including cross-branch, wrong-team, wrong-assignment, duplicate-key and capacity-race cases.
+4. Extend the aggregate reports overview with ministry-specific time series and comparison periods; implement privacy-controlled exports and scheduled announcement publishing.
+5. Validate Better Auth's generated schema against the pinned release and complete source-to-D1 migration export/import and row/count/hash reconciliation for the remaining live schema.
+6. Integrate the frontend with the non-production API and verify end-to-end user workflows. Production cutover remains a separate approval gate.
