@@ -76,3 +76,32 @@ SELECT 'role-prayer-intercessor',id,'explicit_share',strftime('%Y-%m-%dT%H:%M:%f
 WHERE code IN ('prayer.request.read','prayer.request.respond');
 
 -- No baseline role is granted pastoral.case.*, export, bulk-send or SMS dispatch.
+
+
+-- Separate immutable ledger for high-sensitivity prayer and pastoral record access.
+-- Narrative text and personal details are intentionally not stored in this ledger.
+CREATE TABLE IF NOT EXISTS sensitive_record_access_audit (
+  id TEXT PRIMARY KEY,
+  branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE RESTRICT,
+  actor_profile_id TEXT NOT NULL REFERENCES staff_profile(id) ON DELETE RESTRICT,
+  record_type TEXT NOT NULL CHECK (record_type IN ('prayer_request', 'pastoral_case')),
+  record_id TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('read', 'created', 'updated', 'share_granted', 'share_revoked')),
+  purpose TEXT NOT NULL CHECK (length(trim(purpose)) BETWEEN 10 AND 300),
+  share_reference TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS sensitive_access_audit_branch_created_idx
+  ON sensitive_record_access_audit(branch_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS sensitive_access_audit_record_idx
+  ON sensitive_record_access_audit(record_type, record_id, created_at DESC);
+CREATE TRIGGER IF NOT EXISTS sensitive_record_access_audit_no_update
+BEFORE UPDATE ON sensitive_record_access_audit
+BEGIN
+  SELECT RAISE(ABORT, 'SENSITIVE_ACCESS_AUDIT_APPEND_ONLY');
+END;
+CREATE TRIGGER IF NOT EXISTS sensitive_record_access_audit_no_delete
+BEFORE DELETE ON sensitive_record_access_audit
+BEGIN
+  SELECT RAISE(ABORT, 'SENSITIVE_ACCESS_AUDIT_APPEND_ONLY');
+END;
