@@ -4,8 +4,6 @@
 -- This migration intentionally establishes identity/access and team/area foundations only.
 -- Ministry domain tables are ported in later, separately reviewed migrations.
 
-PRAGMA foreign_keys = ON;
-
 CREATE TABLE app_meta (
   id INTEGER PRIMARY KEY CHECK (id = 1),
   schema_version INTEGER NOT NULL CHECK (schema_version >= 1),
