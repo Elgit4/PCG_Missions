@@ -36,7 +36,7 @@ function trustedOrigins(env: AuthEnvironment, baseUrl: URL): string[] {
  * Create the auth instance inside the request lifecycle so the D1 binding is
  * obtained from the current Worker environment, never from process.env.
  */
-export function createAuth(env: AuthEnvironment) {
+export function createAuth(env: AuthEnvironment, allowInvitationSignUp = false) {
   if (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32) {
     throw new Error("BETTER_AUTH_SECRET_MISSING_OR_TOO_SHORT");
   }
@@ -87,7 +87,8 @@ export function createAuth(env: AuthEnvironment) {
     },
     emailAndPassword: {
       enabled: true,
-      disableSignUp: true,
+      disableSignUp: !allowInvitationSignUp,
+      autoSignIn: false,
       requireEmailVerification: false,
       // Email delivery is intentionally not faked. Password reset remains
       // unavailable until a real provider is configured and tested.
