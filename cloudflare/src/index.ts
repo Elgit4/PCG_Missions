@@ -3503,7 +3503,11 @@ async function createTransportReservation(
     return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_RESERVATION"}},requestId,origin);
   }
   const event=await getScopedEventForStaff(context,env,eventId);
-  if (!event||event.status!=="published"||event.transport_enabled!==1) return json(404,{ok:false,error:{code:"EVENT_TRANSPORT_NOT_AVAILABLE"}},requestId,origin);
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  const digest=await eventRequestDigest({registration_id:registrationId,transport_option_id:optionId,seat_count:seatCount,pickup_area:pickupArea,notes});
+  const replay=await findEventReceipt(env,eventId,"transport_reservation",key,context.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  if (event.status!=="published"||event.transport_enabled!==1) return json(409,{ok:false,error:{code:"EVENT_TRANSPORT_NOT_AVAILABLE"}},requestId,origin);
   const registration=await env.DB.prepare(
     "SELECT id FROM event_registration WHERE id=? AND event_id=? AND branch_id=? AND status='registered' LIMIT 1",
   ).bind(registrationId,eventId,context.activeBranch.branchId).first<{id:string}>();
@@ -3511,9 +3515,6 @@ async function createTransportReservation(
     "SELECT id FROM transport_option WHERE id=? AND event_id=? AND branch_id=? AND is_enabled=1 LIMIT 1",
   ).bind(optionId,eventId,context.activeBranch.branchId).first<{id:string}>();
   if (!registration||!option) return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_TARGET"}},requestId,origin);
-  const digest=await eventRequestDigest({registration_id:registrationId,transport_option_id:optionId,seat_count:seatCount,pickup_area:pickupArea,notes});
-  const replay=await findEventReceipt(env,eventId,"transport_reservation",key,context.staff.userId,digest.hex,requestId,origin);
-  if (replay) return replay;
   const reservationId=crypto.randomUUID(),receiptId=crypto.randomUUID(),now=new Date().toISOString();
   try {
     const results=await env.DB.batch([
