@@ -58,6 +58,34 @@ These are table metadata row counts, not a verified backup or row-by-row reconci
 
 - Schema inventory and high-level mapping: completed.
 - Source/target drift identified: completed.
-- Automated secure export/import and canonical row-hash reconciliation utility: not yet implemented.
+- Metadata-only manifest generation and canonical row-hash comparison utility: implemented in cloudflare/scripts/reconcile_snapshot.py with table policy in cloudflare/reconciliation/table-map.json.
+- Secure source export and D1 import execution: not yet implemented; the utility verifies normalized JSONL snapshots but intentionally does not export, load or move live records.
 - Production data export/import: not started and not authorized by this checkpoint.
 - Production frontend/DNS cutover and Supabase shutdown: not started.
+
+## Snapshot manifest utility
+
+The manifest tool accepts normalized JSON Lines snapshots. It records table counts, sorted column names, primary-key uniqueness and canonical SHA-256 hashes; it never emits row values.
+
+Example operator workflow (run only in a secured, access-controlled environment):
+
+```bash
+python cloudflare/scripts/reconcile_snapshot.py manifest \
+  --snapshot-dir /secure/pcg-source-snapshot \
+  --config cloudflare/reconciliation/table-map.json \
+  --side source \
+  --output /secure/pcg-source-manifest.json
+
+python cloudflare/scripts/reconcile_snapshot.py manifest \
+  --snapshot-dir /secure/pcg-target-snapshot \
+  --config cloudflare/reconciliation/table-map.json \
+  --side target \
+  --output /secure/pcg-target-manifest.json
+
+python cloudflare/scripts/reconcile_snapshot.py compare \
+  --source-manifest /secure/pcg-source-manifest.json \
+  --target-manifest /secure/pcg-target-manifest.json \
+  --output /secure/pcg-reconciliation-result.json
+```
+
+Source JSONL paths follow schema/table names, for example public/branch.jsonl. Target files are written under target/ using the target table name. Export rows must be ordered by the configured primary key. For tables marked transform, the target snapshot must first be normalized to the source column contract; for tables marked reconcile, hash differences are review signals rather than instructions to overwrite seeded policy. Tables marked exclude are omitted by policy. Keep all snapshot files and manifests outside the repository.
