@@ -662,3 +662,91 @@ class AuthorizationQueryTests(unittest.TestCase):
             (self.NOW,),
         )
         self.assertIsNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "prayer-authz"))
+
+
+    def test_admin_pastor_elevation_requires_distinct_approval_and_preserves_last_admin(self):
+        second_user = "authz-user-admin-two"
+        second_profile = "authz-staff-admin-two"
+        self.db.execute(
+            """INSERT INTO "user" (id, name, email, createdAt, updatedAt)
+               VALUES (?, 'Second Admin', 'admin-two@example.test', 1, 1)""",
+            (second_user,),
+        )
+        self.db.execute(
+            """INSERT INTO staff_profile
+               (id, auth_user_id, full_name, account_status, created_at, updated_at)
+               VALUES (?, ?, 'Second Admin', 'active', ?, ?)""",
+            (second_profile, second_user, self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+               VALUES ('authz-role-admin-two', ?, 'role-admin-pastor', 'authz-branch',
+                       'authz-staff-admin', ?, ?)""",
+            (second_profile, self.NOW, self.NOW),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT remaining_slots FROM staff_admin_bootstrap_state WHERE id = 1").fetchone()[0],
+            0,
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_elevation_request
+               (id, branch_id, target_profile_id, role_id, requested_by, reason, requested_at)
+               VALUES ('elevation-1', 'authz-branch', 'authz-staff-field', 'role-admin-pastor',
+                       'authz-staff-admin', 'Promote experienced branch field lead', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE staff_role_elevation_request
+                   SET status = 'approved', reviewed_by = 'authz-staff-admin',
+                       reviewed_at = ?, review_reason = 'Self approval is not permitted'
+                   WHERE id = 'elevation-1'""",
+                (self.NOW,),
+            )
+        self.db.execute(
+            """UPDATE staff_role_elevation_request
+               SET status = 'approved', reviewed_by = ?, reviewed_at = ?,
+                   review_reason = 'Independent second administrator approval'
+               WHERE id = 'elevation-1'""",
+            (second_profile, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+               VALUES ('authz-role-field-promoted', 'authz-staff-field', 'role-admin-pastor',
+                       'authz-branch', ?, ?, ?)""",
+            (second_profile, self.NOW, self.NOW),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT status FROM staff_role_elevation_request WHERE id = 'elevation-1'").fetchone()[0],
+            "applied",
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM staff_role_elevation_audit WHERE request_id = 'elevation-1'").fetchone()[0],
+            3,
+        )
+        self.assertIsNotNone(
+            self.db.execute("SELECT 1 FROM staff_access_audit WHERE id = 'admin-elevation-authz-role-field-promoted'").fetchone()
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO staff_role_assignment
+                   (id, staff_profile_id, role_id, branch_id, assigned_by, starts_at, created_at)
+                   VALUES ('unauthorized-admin-grant', 'authz-staff-followup', 'role-admin-pastor',
+                           'authz-branch', 'authz-staff-admin', ?, ?)""",
+                (self.NOW, self.NOW),
+            )
+        self.db.execute(
+            "UPDATE staff_role_assignment SET revoked_at = ? WHERE id = 'authz-role-admin'",
+            (self.NOW,),
+        )
+        self.db.execute(
+            "UPDATE staff_role_assignment SET revoked_at = ? WHERE id = 'authz-role-admin-two'",
+            (self.NOW,),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE staff_role_assignment SET revoked_at = ? WHERE id = 'authz-role-field-promoted'",
+                (self.NOW,),
+            )
