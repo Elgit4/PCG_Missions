@@ -69,7 +69,7 @@ These are source-code routes, not a live service yet: the Cloudflare Worker has 
 - Public event registration remains disabled. Staff registration, capacity enforcement, transport reservations, check-in and closeout handlers are implemented in source but not deployed or runtime-tested; event visibility remains staff-only by default.
 - Secure Supabase export/import reconciliation and Worker runtime verification of the aggregate CSV export.
 - Public registration, public prayer intake, offline access, SMS and email notifications.
-- Invitation/password-reset email delivery. Invitation tokens are currently returned once for authorized manual delivery; password reset fails closed until a provider is configured.
+- Invitation email delivery and invitation acceptance UI. Password-reset email delivery is implemented through the Resend adapter but requires `RESEND_API_KEY` and a verified `EMAIL_FROM` sender.
 
 ## Local development
 
