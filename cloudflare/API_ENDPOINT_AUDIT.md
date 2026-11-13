@@ -31,6 +31,8 @@ The Worker is a single entry point in `src/index.ts`. Protected routes resolve t
 | Assigned prayer | `GET /api/v1/pastoral/prayer/assigned` | Narrative projection only for active intercessor assignment and explicit share |
 | Prayer shares | `POST /api/v1/pastoral/prayer/requests/{id}/shares`, `POST /.../{shareId}/revoke` | Explicit share grant and reasoned revocation |
 | Prayer response | `PATCH /api/v1/pastoral/prayer/requests/{id}` | Assigned intercessor can move request into progress or answered |
+| Events | `GET/POST /api/v1/events`, `GET/PATCH /api/v1/events/{id}` | Branch/team/assigned-scope list/detail; Admin/Pastor and Coordinator can create/edit drafts |
+| Event lifecycle | `POST /api/v1/events/{id}/publish`, `POST /api/v1/events/{id}/cancel` | Staff-only publish (visibility remains staff and registration closed) and cancellation; D1 records actor and before/after audit |
 
 All protected business routes require a verified session and an authorized active branch. Caller-supplied profile, role, capability, assignee and branch values are not accepted as authorization authority.
 
@@ -42,6 +44,7 @@ All protected business routes require a verified session and an authorized activ
 4. **Merged contact exclusion:** the contact list always excludes merged records, including when `status=all`.
 5. **Bounded JSON parsing:** request bodies are now rejected using declared Content-Length where available and streamed with a strict byte ceiling. Oversized streams are cancelled instead of being fully buffered before checking the limit.
 6. **Regression contracts:** added Python unit tests for contact identity mapping, CORS headers, interaction history route, merged-record exclusion and bounded request parsing.
+7. **Event lifecycle foundation:** added scoped event list/detail and draft create/update/publish/cancel routes. Publishing remains staff-only with registration closed. Migration 0016 adds a database-enforced event manager actor and append-only before/after event audit.
 
 ## API security review checklist
 
@@ -64,7 +67,7 @@ All protected business routes require a verified session and an authorized activ
 | P0 | API integration tests | Add real Worker/D1 tests for staff, contacts, follow-up and prayer endpoints, including negative cross-branch/team/assignment cases |
 | P1 | Prayer intake | Add authenticated prayer-request creation and lifecycle controls; keep public intake disabled until separately approved |
 | P1 | Pastoral care | Implement case metadata and narrative handlers only after a distinct care-reader capability, explicit-share policy and audit tests are approved |
-| P1 | Events | Draft/publish/cancel lifecycle, staff registration, capacity-safe public registration, idempotency digest verification, transport reservation, check-in and closeout |
+| P1 | Events | Staff registration, capacity-safe public registration, idempotency digest verification, transport reservation, check-in and closeout; current lifecycle routes are staff-only and registration remains closed |
 | P1 | Calendar | Branch/team/event-scoped list, create, update and cancellation handlers |
 | P1 | Announcements | Draft, audience assignment, publish/archive and in-app delivery ledger handlers |
 | P1 | Public content | Published-only public read projections and capability-gated content editing/publishing |
@@ -79,6 +82,6 @@ All protected business routes require a verified session and an authorized activ
 - No deployed Worker request has exercised Better Auth against the EU D1 binding.
 - Invitation email and password-reset delivery are not configured; invitation token delivery remains a manual one-time handoff.
 - Pastoral-care narrative routes remain disabled.
-- Events, calendar, announcements, public-content and reporting handlers remain incomplete.
+- Event registration/transport/check-in/closeout, calendar, announcements, public-content and reporting handlers remain incomplete.
 - The D1 schema is a first porting slice, not a complete replacement for the full live Supabase schema.
 - No production data migration, frontend cutover, production DNS change or Supabase shutdown is authorized or performed.
