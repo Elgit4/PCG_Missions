@@ -295,6 +295,8 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
                 <div><strong>{report.decisions_for_christ}</strong><span>Decisions</span></div>
                 <div><strong>{report.followup_completed}/{report.followup_required}</strong><span>Follow-ups</span></div>
                 <div><strong>{report.visits_completed}</strong><span>Visits</span></div>
+                <div><strong>{report.calls_completed}</strong><span>Calls</span></div>
+                <div><strong>{report.events_supported}</strong><span>Events supported</span></div>
                 <div><strong>{report.attendance_count}</strong><span>Attendance</span></div>
               </div>
               <div className="ministry-report-detail-toggle">
