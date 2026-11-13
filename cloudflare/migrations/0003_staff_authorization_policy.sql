@@ -43,6 +43,8 @@ INSERT INTO capability (id,code,description,sensitivity,created_at) VALUES
 ('content.read','content.read','Read branch content library entries.','ordinary',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('content.manage','content.manage','Create and manage branch content library entries.','restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('reports.read','reports.read','Read aggregate branch reports without unrestricted record exports.','restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+('prayer.request.share','prayer.request.share','Grant or revoke time-bounded prayer-request shares to active prayer intercessors in the same branch.','highly_restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+('pastoral.case.share','pastoral.case.share','Grant or revoke time-bounded pastoral-case shares to separately authorized staff.','highly_restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('prayer.request.read','prayer.request.read','Read prayer requests explicitly assigned or shared with the intercessor.','highly_restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('prayer.request.respond','prayer.request.respond','Record prayer handling status for explicitly assigned requests.','highly_restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('pastoral.case.read','pastoral.case.read','Read a pastoral-care case only when explicitly shared.','highly_restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -55,7 +57,7 @@ DELETE FROM role_capability WHERE role_id IN (
 
 INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
 SELECT 'role-admin-pastor',id,'branch',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM capability
-WHERE code IN ('contacts.read','contacts.create','contacts.update','contacts.assign','contacts.private_fields.read','contacts.interaction.create','contacts.note.create','followup.read','followup.create','followup.update','followup.assign','team.read','team.manage','area.read','area.manage','staff.directory.read','staff.account.manage','staff.role.assign','staff.role.approve','staff.audit.read','events.read','events.manage','events.checkin','calendar.read','calendar.manage','announcements.read','announcements.manage','content.read','content.manage','reports.read');
+WHERE code IN ('contacts.read','contacts.create','contacts.update','contacts.assign','contacts.private_fields.read','contacts.interaction.create','contacts.note.create','followup.read','followup.create','followup.update','followup.assign','team.read','team.manage','area.read','area.manage','staff.directory.read','staff.account.manage','staff.role.assign','staff.role.approve','staff.audit.read','events.read','events.manage','events.checkin','calendar.read','calendar.manage','announcements.read','announcements.manage','content.read','content.manage','reports.read','prayer.request.share');
 
 INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
 SELECT 'role-coordinator',id,'branch',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM capability
@@ -204,4 +206,75 @@ BEFORE UPDATE OF revoked_at, revoked_by ON staff_record_share
 WHEN OLD.revoked_at IS NOT NULL
 BEGIN
   SELECT RAISE(ABORT, 'STAFF_RECORD_SHARE_ALREADY_REVOKED');
+END;
+
+-- Enforce the share authority and recipient capability in the database as well
+-- as in Worker code. Prayer shares may be issued only by an active Admin/Pastor
+-- and only to an active Prayer Intercessor in the same branch. Pastoral shares
+-- remain unavailable until a separately approved capability is granted.
+CREATE TRIGGER IF NOT EXISTS staff_record_share_authorize_insert
+BEFORE INSERT ON staff_record_share
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+    FROM staff_profile grantor
+    JOIN staff_role_assignment ga ON ga.staff_profile_id = grantor.id
+    JOIN role gr ON gr.id = ga.role_id AND gr.is_active = 1
+    JOIN role_capability grc ON grc.role_id = gr.id
+    JOIN capability gc ON gc.id = grc.capability_id AND gc.is_active = 1
+    WHERE grantor.id = NEW.granted_by
+      AND grantor.account_status = 'active'
+      AND ga.branch_id = NEW.branch_id
+      AND ga.revoked_at IS NULL
+      AND ga.starts_at <= NEW.created_at
+      AND (ga.ends_at IS NULL OR ga.ends_at > NEW.created_at)
+      AND gc.code = CASE NEW.record_type
+        WHEN 'prayer_request' THEN 'prayer.request.share'
+        WHEN 'pastoral_case' THEN 'pastoral.case.share'
+      END
+  ) THEN RAISE(ABORT, 'SENSITIVE_SHARE_GRANT_NOT_AUTHORIZED') END;
+
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+    FROM staff_profile recipient
+    JOIN staff_role_assignment ra ON ra.staff_profile_id = recipient.id
+    JOIN role rr ON rr.id = ra.role_id AND rr.is_active = 1
+    JOIN role_capability rrc ON rrc.role_id = rr.id
+    JOIN capability rc ON rc.id = rrc.capability_id AND rc.is_active = 1
+    WHERE recipient.id = NEW.staff_profile_id
+      AND recipient.account_status = 'active'
+      AND ra.branch_id = NEW.branch_id
+      AND ra.revoked_at IS NULL
+      AND ra.starts_at <= NEW.created_at
+      AND (ra.ends_at IS NULL OR ra.ends_at > NEW.created_at)
+      AND rc.code = CASE NEW.record_type
+        WHEN 'prayer_request' THEN 'prayer.request.read'
+        WHEN 'pastoral_case' THEN 'pastoral.case.read'
+      END
+      AND rrc.scope_mode = 'explicit_share'
+  ) THEN RAISE(ABORT, 'SENSITIVE_SHARE_RECIPIENT_NOT_AUTHORIZED') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS staff_record_share_authorize_revoke
+BEFORE UPDATE OF revoked_at, revoked_by ON staff_record_share
+WHEN OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+    FROM staff_profile actor
+    JOIN staff_role_assignment ra ON ra.staff_profile_id = actor.id
+    JOIN role r ON r.id = ra.role_id AND r.is_active = 1
+    JOIN role_capability rc ON rc.role_id = r.id
+    JOIN capability c ON c.id = rc.capability_id AND c.is_active = 1
+    WHERE actor.id = NEW.revoked_by
+      AND actor.account_status = 'active'
+      AND ra.branch_id = NEW.branch_id
+      AND ra.revoked_at IS NULL
+      AND ra.starts_at <= NEW.revoked_at
+      AND (ra.ends_at IS NULL OR ra.ends_at > NEW.revoked_at)
+      AND c.code = CASE NEW.record_type
+        WHEN 'prayer_request' THEN 'prayer.request.share'
+        WHEN 'pastoral_case' THEN 'pastoral.case.share'
+      END
+  ) THEN RAISE(ABORT, 'SENSITIVE_SHARE_REVOKE_NOT_AUTHORIZED') END;
 END;
