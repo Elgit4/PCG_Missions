@@ -1545,44 +1545,43 @@ class AuthorizationQueryTests(unittest.TestCase):
 
 
     def test_event_lifecycle_mutations_are_actor_authorized_and_audited(self):
-        self._lifecycle_fixture("event-branch")
-        self._lifecycle_staff("event-admin-user", "event-admin", "Event Admin", "event-admin@example.test")
-        self._lifecycle_assignment("event-admin-role", "event-admin", "admin_pastor", "event-branch", "event-admin")
-
+        admin_user, _ = self.staff["admin"]
+        field_user, _ = self.staff["field"]
         self.db.execute(
             """INSERT INTO event
                (id, branch_id, title, starts_at, ends_at, timezone, registration_state,
                 visibility, status, transport_enabled, created_by, last_modified_by,
                 created_at, updated_at)
-               VALUES ('event-audit-1', 'event-branch', 'Sunday Service',
+               VALUES ('event-audit-1', 'authz-branch', 'Sunday Service',
                        '2026-02-01T08:00:00.000Z', '2026-02-01T11:00:00.000Z',
                        'Africa/Accra', 'closed', 'private', 'draft', 0,
-                       'event-admin-user', 'event-admin-user',
-                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+                       ?, ?, ?, ?)""",
+            (admin_user, admin_user, self.NOW, self.NOW),
         )
         created = self.db.execute(
             "SELECT actor_profile_id, action FROM event_change_audit WHERE event_id='event-audit-1'"
         ).fetchone()
-        self.assertEqual(created, ("event-admin", "created"))
+        self.assertEqual(created, ("authz-staff-admin", "created"))
 
         self.db.execute(
             """UPDATE event
-               SET status='published', visibility='staff', last_modified_by='event-admin-user',
-                   updated_at='2026-01-02T00:00:00.000Z'
-               WHERE id='event-audit-1' AND branch_id='event-branch'"""
+               SET status='published', visibility='staff', last_modified_by=?,
+                   updated_at='2026-01-15T12:01:00.000Z'
+               WHERE id='event-audit-1' AND branch_id='authz-branch'""",
+            (admin_user,),
         )
         actions = self.db.execute(
             "SELECT action FROM event_change_audit WHERE event_id='event-audit-1' ORDER BY created_at,id"
         ).fetchall()
         self.assertEqual(actions, [("created",), ("published",)])
 
-        self._lifecycle_staff("event-other-user", "event-other", "Other Staff", "event-other@example.test")
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute(
                 """UPDATE event
-                   SET title='Unauthorized change', last_modified_by='event-other-user',
-                       updated_at='2026-01-03T00:00:00.000Z'
-                   WHERE id='event-audit-1' AND branch_id='event-branch'"""
+                   SET title='Unauthorized change', last_modified_by=?,
+                       updated_at='2026-01-15T12:02:00.000Z'
+                   WHERE id='event-audit-1' AND branch_id='authz-branch'""",
+                (field_user,),
             )
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute(
