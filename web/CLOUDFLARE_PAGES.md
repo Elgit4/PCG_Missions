@@ -14,7 +14,7 @@ Connect the GitHub repository `Elgit4/PCG_Missions` and use:
 | Build output directory | `dist` |
 | Node.js version | `22` (from `.node-version`) |
 
-The `web/wrangler.toml` file declares the Pages project name, compatibility date, and build output directory. The `web/functions/api/auth.ts` file is deployed automatically as the `/api/auth` Pages Function. The `web/public/_redirects` file provides a single-page-app fallback for React routes.
+The `web/wrangler.toml` file declares the Pages project name, compatibility date, and build output directory. The `web/functions/api/auth.ts` file is deployed automatically as the `/api/auth` Pages Function. The `web/public/_redirects` file provides a single-page-app fallback for React routes. The `web/public/_routes.json` file limits Function execution to `/api/auth`, so ordinary static page and asset requests do not invoke the auth proxy.
 
 ## Environment variables
 
