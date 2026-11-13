@@ -56,6 +56,15 @@ create index if not exists ministry_report_branch_period_idx
   on public.ministry_report(branch_id, period_start desc, report_type);
 create index if not exists ministry_report_author_created_idx
   on public.ministry_report(author_profile_id, created_at desc);
+create unique index if not exists ministry_report_one_submission_per_scope_uq
+  on public.ministry_report(
+    branch_id,
+    author_profile_id,
+    report_type,
+    period_start,
+    (coalesce(team_id, '00000000-0000-0000-0000-000000000000'::uuid)),
+    (coalesce(event_id, '00000000-0000-0000-0000-000000000000'::uuid))
+  );
 create index if not exists ministry_report_team_period_idx
   on public.ministry_report(team_id, period_start desc)
   where team_id is not null;
