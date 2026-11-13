@@ -822,7 +822,7 @@ async function listStaffAudit(
   const beforeValue = url.searchParams.get("before");
   const before = beforeValue === null ? new Date().toISOString() : parseIsoTimestamp(beforeValue, "");
   const beforeIdValue = url.searchParams.get("before_id");
-  const beforeId = beforeIdValue === null && beforeValue === null ? "\\uffff" : beforeIdValue;
+  const beforeId = beforeIdValue === null && beforeValue === null ? "~".repeat(128) : beforeIdValue;
   if (!before || !beforeId || beforeId.length > 128 ||
       ((beforeValue === null) !== (beforeIdValue === null))) {
     return json(400, { ok: false, error: { code: "INVALID_AUDIT_CURSOR" } }, requestId, origin);
