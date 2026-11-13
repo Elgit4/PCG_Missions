@@ -2776,6 +2776,88 @@ function isValidTimezone(value: string): boolean {
   }
 }
 
+async function getReportsOverview(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"reports.read");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const url=new URL(request.url);
+  if ([...url.searchParams.keys()].some((key)=>!["from","to"].includes(key))) {
+    return json(400,{ok:false,error:{code:"INVALID_REPORT_QUERY"}},requestId,origin);
+  }
+  const now=new Date();
+  const toDefault=now.toISOString().slice(0,10);
+  const fromDefault=new Date(now.getTime()-29*24*60*60*1000).toISOString().slice(0,10);
+  const from=url.searchParams.get("from")??fromDefault;
+  const to=url.searchParams.get("to")??toDefault;
+  const validDate=(value:string)=>/^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(value+"T00:00:00.000Z"))
+    && new Date(value+"T00:00:00.000Z").toISOString().slice(0,10)===value;
+  if (!validDate(from)||!validDate(to)||from>to) {
+    return json(400,{ok:false,error:{code:"INVALID_REPORT_DATE_RANGE"}},requestId,origin);
+  }
+  const fromMs=Date.parse(from+"T00:00:00.000Z");
+  const toMs=Date.parse(to+"T00:00:00.000Z");
+  if (toMs-fromMs>366*24*60*60*1000) {
+    return json(400,{ok:false,error:{code:"REPORT_RANGE_TOO_LARGE"}},requestId,origin);
+  }
+  const fromAt=from+"T00:00:00.000Z";
+  const toExclusive=new Date(toMs+24*60*60*1000).toISOString();
+  const branchId=access.activeBranch.branchId;
+  const row=await env.DB.prepare(`
+    WITH p AS (
+      SELECT ? AS branch_id,? AS from_at,? AS to_at,? AS now_at
+    )
+    SELECT
+      (SELECT COUNT(*) FROM contact c,p
+       WHERE c.branch_id=p.branch_id AND c.merged_into_contact_id IS NULL
+         AND c.created_at>=p.from_at AND c.created_at<p.to_at) AS contacts_created,
+      (SELECT COUNT(*) FROM contact c,p
+       WHERE c.branch_id=p.branch_id AND c.merged_into_contact_id IS NULL) AS contacts_total,
+      (SELECT COUNT(*) FROM followup_task f,p
+       WHERE f.branch_id=p.branch_id AND f.created_at>=p.from_at AND f.created_at<p.to_at) AS followups_created,
+      (SELECT COUNT(*) FROM followup_task f,p
+       WHERE f.branch_id=p.branch_id AND f.status='completed'
+         AND f.completed_at>=p.from_at AND f.completed_at<p.to_at) AS followups_completed,
+      (SELECT COUNT(*) FROM followup_task f,p
+       WHERE f.branch_id=p.branch_id AND f.status NOT IN ('completed','cancelled')
+         AND f.due_at IS NOT NULL AND f.due_at<p.now_at) AS followups_overdue,
+      (SELECT COUNT(*) FROM event e,p
+       WHERE e.branch_id=p.branch_id AND e.status='published'
+         AND e.starts_at>=p.from_at AND e.starts_at<p.to_at) AS events_published,
+      (SELECT COUNT(*) FROM event_registration er,p
+       WHERE er.branch_id=p.branch_id AND er.registered_at>=p.from_at
+         AND er.registered_at<p.to_at AND er.status IN ('registered','attended')) AS event_registrations,
+      (SELECT COUNT(*) FROM event_registration er,p
+       WHERE er.branch_id=p.branch_id AND er.registered_at>=p.from_at
+         AND er.registered_at<p.to_at AND er.status='attended') AS event_attended,
+      (SELECT COUNT(*) FROM event_checkin ec,p
+       WHERE ec.branch_id=p.branch_id AND ec.checked_in_at>=p.from_at
+         AND ec.checked_in_at<p.to_at) AS event_checkins,
+      (SELECT COUNT(*) FROM prayer_request pr,p
+       WHERE pr.branch_id=p.branch_id AND pr.created_at>=p.from_at
+         AND pr.created_at<p.to_at) AS prayer_requests_created,
+      (SELECT COUNT(*) FROM prayer_request pr,p
+       WHERE pr.branch_id=p.branch_id AND pr.answered_at>=p.from_at
+         AND pr.answered_at<p.to_at) AS prayer_requests_answered,
+      (SELECT COUNT(*) FROM announcement a,p
+       WHERE a.branch_id=p.branch_id AND a.status='published'
+         AND a.published_at>=p.from_at AND a.published_at<p.to_at) AS announcements_published,
+      (SELECT COUNT(*) FROM calendar_entry ce,p
+       WHERE ce.branch_id=p.branch_id AND ce.starts_at>=p.from_at
+         AND ce.starts_at<p.to_at) AS calendar_entries
+  `).bind(branchId,fromAt,toExclusive,now.toISOString()).first<Record<string,number>>();
+  return json(200,{
+    ok:true,
+    period:{from,to,timezone:"UTC"},
+    metrics:row??{},
+    privacy:{aggregate_only:true,prayer_request_content_included:false,personal_identifiers_included:false},
+  },requestId,origin);
+}
+
 async function listEvents(
   request: Request,
   env: Env,
@@ -5872,6 +5954,9 @@ async function updatePrayerRequestStatus(
       if (request.method === "PATCH") return updateAnnouncement(request, env, announcementId, requestId, origin);
     }
 
+    if (url.pathname === "/api/v1/reports/overview" && request.method === "GET") {
+      return getReportsOverview(request,env,requestId,origin);
+    }
     if (url.pathname === "/api/v1/events" && request.method === "GET") {
       return listEvents(request, env, requestId, origin);
     }
