@@ -51,7 +51,7 @@ function isLeader(staff: StaffDirectoryEntry | undefined): boolean {
   return !!staff?.roles.some((role) => role.code === "team_leader");
 }
 
-function displayName(staff: StaffDirectoryEntry | null | undefined): string {
+function displayName(staff: Pick<StaffDirectoryEntry, "id" | "full_name" | "account_status"> | null | undefined): string {
   return staff?.full_name ?? "Staff account unavailable";
 }
 
