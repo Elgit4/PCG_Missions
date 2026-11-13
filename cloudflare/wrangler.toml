@@ -10,8 +10,7 @@ APP_ENV = "non-production"
 [[d1_databases]]
 binding = "DB"
 database_name = "pcg-missions-dev"
-# Replace only after creating the NON-PRODUCTION database with:
-# npx wrangler d1 create pcg-missions-dev --jurisdiction=eu
-# Never paste a production database ID into this file.
-database_id = "00000000-0000-0000-0000-000000000000"
+# Non-production D1 created with jurisdiction = "eu".
+# Never replace this with a production database ID.
+database_id = "376a6782-d059-41f9-9e09-f93718fef2bb"
 migrations_dir = "migrations"
