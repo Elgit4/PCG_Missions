@@ -178,5 +178,16 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("event_registration_authorize_insert", self.event_guard_migration)
 
 
+    def test_event_operations_use_event_assignment_roles_not_only_branch_manager_grants(self):
+        self.assertIn("async function hasEventAssignmentRole(", self.source)
+        for name in ("listEventRegistrations", "createEventRegistration", "cancelEventRegistration",
+                     "createEventCheckin", "listEventCheckins", "listTransportOptions",
+                     "createTransportOption", "updateTransportOption", "listTransportReservations",
+                     "createTransportReservation", "cancelTransportReservation"):
+            handler = re.search(rf"async function {name}\([\s\S]*?\n\}}", self.source)
+            self.assertIsNotNone(handler, name)
+            self.assertIn("hasEventAssignmentRole", handler.group(0), name)
+
+
 if __name__ == "__main__":
     unittest.main()
