@@ -12,10 +12,7 @@ import {
 } from "./validation.ts";
 import { generateTemporaryPassword } from "./temporary_password.ts";
 import { resolveBootstrapPath } from "./bootstrap_state.ts";
-import {
-  createAllowedOrigins,
-  isAllowedOrigin,
-} from "../_shared/cors.ts";
+import { createAllowedOrigins, isAllowedOrigin } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
