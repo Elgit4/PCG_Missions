@@ -44,7 +44,7 @@ Latest CI for this branch is pending; the preceding merged foundation passed 37 
 - Exact-origin checks, secure HttpOnly session cookies, no cookie cache, seven-day server-side sessions, Cloudflare client-IP detection and D1-persistent rate-limit counters are configured.
 - `GET /api/v1/me` resolves the session to an active staff profile and branch-valid roles/capability metadata; caller-supplied branch IDs are validated against active assignments.
 - The endpoint is context discovery, not a substitute for server-side authorization.
-- Branch-scoped staff directory, deactivate/suspend/reactivate routes and account audit are implemented. D1 enforces actor capability, branch membership, self-change denial and last-Admin/Pastor protection; deactivation/suspension immediately revoke sessions.
+- Branch-scoped staff directory, paginated governance audit, deactivate/suspend/reactivate routes and account audit are implemented. D1 enforces actor capability, branch membership, self-change denial and last-Admin/Pastor protection; deactivation/suspension immediately revoke sessions.
 - Admin/Pastor revocation now has its own request/list/approve/reject workflow. The requester and reviewer must be distinct; the assignment update must reference the approved request, and the existing last-Admin/Pastor guard remains in force. No ministry contact/follow-up business routes are enabled yet.
 
 ## Not implemented yet
