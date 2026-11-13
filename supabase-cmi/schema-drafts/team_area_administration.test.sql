@@ -275,5 +275,52 @@ select throws_ok(
   'Team administration audit rows cannot be rewritten'
 );
 
+
+select throws_ok(
+  $q$ select public.cmi_manage_team_operations(
+    'team.member.add',
+    jsonb_build_object(
+      'branch_id','71000000-0000-4000-8000-000000000010',
+      'team_id',(select id from public.team where branch_id='71000000-0000-4000-8000-000000000010' and name='Test Follow-up Team'),
+      'staff_profile_id','73000000-0000-4000-8000-000000000010',
+      'membership_role','leader'
+    )
+  ) $q$,
+  '42501',
+  'TEAM_LEADER_ROLE_REQUIRED',
+  'A Team Leader membership cannot be assigned from the Admin role alone'
+);
+
+select public.cmi_manage_team_operations(
+  'team.create',
+  jsonb_build_object(
+    'branch_id','71000000-0000-4000-8000-000000000010',
+    'name','Active Membership Guard',
+    'description','Temporary active membership guard test.'
+  )
+);
+select public.cmi_manage_team_operations(
+  'team.member.add',
+  jsonb_build_object(
+    'branch_id','71000000-0000-4000-8000-000000000010',
+    'team_id',(select id from public.team where branch_id='71000000-0000-4000-8000-000000000010' and name='Active Membership Guard'),
+    'staff_profile_id','73000000-0000-4000-8000-000000000011',
+    'membership_role','member'
+  )
+);
+select throws_ok(
+  $q$ select public.cmi_manage_team_operations(
+    'team.update',
+    jsonb_build_object(
+      'branch_id','71000000-0000-4000-8000-000000000010',
+      'team_id',(select id from public.team where branch_id='71000000-0000-4000-8000-000000000010' and name='Active Membership Guard'),
+      'is_active',false
+    )
+  ) $q$,
+  '23514',
+  'TEAM_HAS_ACTIVE_MEMBERS',
+  'A team with active members cannot be deactivated'
+);
+
 select * from finish();
 rollback;
