@@ -187,7 +187,6 @@ Deno.serve(async (request: Request) => {
       const ownScopes = await scopes(auth.service, auth.profileId, branch_id, "report.read.own");
       const branchReview = await scopes(auth.service, auth.profileId, branch_id, "report.review.branch");
       const teamReview = await scopes(auth.service, auth.profileId, branch_id, "report.review.team");
-      const ids = new Set<string>();
       const buildReportQuery = () => {
         let query = auth.service.from("ministry_report").select(REPORT_COLUMNS)
           .eq("branch_id", branch_id);
@@ -203,7 +202,7 @@ Deno.serve(async (request: Request) => {
         rows = data ?? [];
       } else {
         if (ownScopes.includes("self")) {
-          const { data, error } = await filters(auth.service.from("ministry_report").select(REPORT_COLUMNS))
+          const { data, error } = await buildReportQuery()
             .eq("author_profile_id", auth.profileId).order("period_start", { ascending: false }).limit(250);
           if (error) throw new Error("REPORT_OWN_LIST_FAILED");
           rows.push(...(data ?? []));
