@@ -1,5 +1,6 @@
 import {
   CMI_CORS_ALLOWED_HEADERS,
+  CMI_CORS_ALLOWED_METHODS,
   createAllowedOrigins,
   createPreflightResponse,
   isAllowedOrigin,
@@ -64,7 +65,7 @@ Deno.test("production OPTIONS response includes required CORS headers", async ()
   }
   if (
     response.headers.get("Access-Control-Allow-Methods") !==
-      "GET, POST, OPTIONS"
+      CMI_CORS_ALLOWED_METHODS
   ) {
     throw new Error("allowed methods are incomplete");
   }
