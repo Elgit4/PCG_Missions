@@ -82,6 +82,7 @@ async function findSqliteFiles(directory) {
 
 const pythonSeed = [
   "import pathlib, sqlite3, sys",
+  "from datetime import datetime, timezone",
   "db_path = pathlib.Path(sys.argv[1])",
   "migration_dir = pathlib.Path(sys.argv[2])",
   "user_id, email, password_hash, created_at = sys.argv[3], sys.argv[4], sys.argv[5], int(sys.argv[6])",
@@ -93,6 +94,12 @@ const pythonSeed = [
   "           (user_id, 'Cloudflare Test User', email, 1, created_at, created_at))",
   "db.execute('INSERT INTO account (id,accountId,providerId,userId,password,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?)',",
   "           ('cloudflare-test-account', user_id, 'credential', user_id, password_hash, created_at, created_at))",
+  "now = datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')",
+  "db.execute('INSERT INTO church (id,name,timezone,created_at,updated_at) VALUES (?,?,?,?,?)', ('test-church', 'Cloudflare Test Church', 'Africa/Accra', now, now))",
+  "db.execute('INSERT INTO branch (id,church_id,name,code,timezone,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)', ('test-branch', 'test-church', 'Cloudflare Test Branch', 'TEST', 'Africa/Accra', 1, now, now))",
+  "db.execute('INSERT INTO staff_profile (id,auth_user_id,full_name,email,account_status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)', ('test-staff-profile', user_id, 'Cloudflare Test User', email, 'active', now, now))",
+  "role_id = db.execute(\"SELECT id FROM role WHERE code='admin_pastor' AND is_active=1\").fetchone()[0]",
+  "db.execute('INSERT INTO staff_role_assignment (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at,reason) VALUES (?,?,?,?,?,?,?,?)', ('test-admin-assignment', 'test-staff-profile', role_id, 'test-branch', 'test-staff-profile', now, now, 'Automated non-production integration fixture'))",
   "db.commit()",
   "version = db.execute(\"SELECT schema_version FROM app_meta WHERE id=1 AND environment='non-production'\").fetchone()",
   "if not version or version[0] != 24:",
@@ -149,6 +156,15 @@ try {
   const signedInBody = await signedInSession.text();
   assert(signedInSession.status === 200 && signedInBody.includes(testEmail),
     "Better Auth session lookup failed: " + signedInSession.status + ": " + signedInBody);
+  const me = await fetch(baseUrl + "/api/v1/me", { headers: { Cookie: cookie } });
+  const meBody = await me.text();
+  assert(me.status === 200 && meBody.includes("test-branch"),
+    "authenticated staff context failed: " + me.status + ": " + meBody);
+
+  const contacts = await fetch(baseUrl + "/api/v1/contacts", { headers: { Cookie: cookie } });
+  const contactsBody = await contacts.text();
+  assert(contacts.status === 200, "authorized branch-scoped contacts read failed: " + contacts.status + ": " + contactsBody);
+
 
   const signOut = await fetch(baseUrl + "/api/auth/sign-out", {
     method: "POST",
