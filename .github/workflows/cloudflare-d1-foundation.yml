@@ -96,6 +96,8 @@ jobs:
         env:
           WORKER_HEALTH_URL: https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev/health
           WORKER_API_URL: https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev/api/v1/me
+          AUTH_SESSION_URL: https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev/api/auth/get-session
+          FRONTEND_ORIGIN: https://pcg-missions-git-migration-cloudflare-nonprod-completion-eltech.vercel.app
         run: |
           set -eu
           ready=0
@@ -113,7 +115,22 @@ jobs:
 
           api_status=$(curl --silent --output /tmp/worker-me.json --write-out "%{http_code}" "$WORKER_API_URL")
           test "$api_status" = "401" || { cat /tmp/worker-me.json; echo "::error::Unauthenticated staff-context gate returned HTTP $api_status; expected 401."; exit 1; }
-          echo "Verified Worker health, non-production environment, D1 schema 28 and unauthenticated API gate."
+
+          session_status=$(curl --silent --output /tmp/worker-session.json --write-out "%{http_code}" "$AUTH_SESSION_URL" -H "Origin: $FRONTEND_ORIGIN")
+          test "$session_status" = "200" || { cat /tmp/worker-session.json; echo "::error::Better Auth session endpoint returned HTTP $session_status; expected 200 for an unauthenticated session lookup."; exit 1; }
+
+          cors_status=$(curl --silent --dump-header /tmp/worker-cors.headers --output /tmp/worker-cors.body --write-out "%{http_code}" -X OPTIONS "$WORKER_API_URL" -H "Origin: $FRONTEND_ORIGIN" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: content-type,x-branch-id")
+          test "$cors_status" = "204" || { cat /tmp/worker-cors.body; echo "::error::Allowed-origin CORS preflight returned HTTP $cors_status; expected 204."; exit 1; }
+          grep -Fqi "access-control-allow-origin: $FRONTEND_ORIGIN" /tmp/worker-cors.headers || { cat /tmp/worker-cors.headers; echo "::error::Allowed frontend origin was not reflected in CORS headers."; exit 1; }
+
+          denied_status=$(curl --silent --dump-header /tmp/worker-denied.headers --output /tmp/worker-denied.body --write-out "%{http_code}" -X OPTIONS "$WORKER_API_URL" -H "Origin: https://not-allowed.invalid" -H "Access-Control-Request-Method: GET")
+          test "$denied_status" = "403" || { cat /tmp/worker-denied.body; echo "::error::Disallowed-origin preflight returned HTTP $denied_status; expected 403."; exit 1; }
+          if grep -qi "^access-control-allow-origin:" /tmp/worker-denied.headers; then
+            cat /tmp/worker-denied.headers
+            echo "::error::Disallowed origin received an Access-Control-Allow-Origin header."
+            exit 1
+          fi
+          echo "Verified Worker health, D1 schema 28, unauthenticated API denial, Better Auth session endpoint, allowed-origin CORS and disallowed-origin rejection."
 
       - name: Preserve non-production Worker bundle for deployment review
         if: always()
