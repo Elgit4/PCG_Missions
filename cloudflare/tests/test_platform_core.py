@@ -359,6 +359,93 @@ class PlatformCoreMigrationTests(unittest.TestCase):
             self.db.execute("DELETE FROM followup_task_event WHERE id = 'task-event-1'")
 
 
+    def test_prayer_request_is_private_and_assignment_is_limited_to_intercessor(self):
+        admin_user, admin_profile = self.staff["admin"]
+        prayer_user, prayer_profile = self.staff["prayer"]
+        field_user, field_profile = self.staff["field"]
+        self.db.execute(
+            """INSERT INTO prayer_request
+               (id, branch_id, created_by, request_text, created_at, updated_at)
+               VALUES ('prayer-1', 'authz-branch', ?, 'Confidential prayer narrative',
+                       ?, ?)""",
+            (admin_user, self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO prayer_assignment
+               (id, prayer_request_id, branch_id, intercessor_user_id, assigned_by,
+                starts_at, created_at)
+               VALUES ('prayer-assignment-1', 'prayer-1', 'authz-branch', ?, ?, ?, ?)""",
+            (prayer_user, admin_user, self.NOW, self.NOW),
+        )
+        self.assertEqual(
+            self.db.execute(
+                "SELECT actor_user_id, action FROM prayer_access_audit WHERE prayer_request_id='prayer-1'"
+            ).fetchone(),
+            (admin_user, "assigned"),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO prayer_assignment
+                   (id, prayer_request_id, branch_id, intercessor_user_id, assigned_by,
+                    starts_at, created_at)
+                   VALUES ('prayer-assignment-field', 'prayer-1', 'authz-branch', ?, ?, ?, ?)""",
+                (field_user, admin_user, self.NOW, self.NOW),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM prayer_access_audit WHERE prayer_request_id='prayer-1'")
+
+    def test_prayer_intercessor_has_no_contact_or_pastoral_case_grants(self):
+        grants = {
+            row[0] for row in self.db.execute(
+                """SELECT c.code FROM role_capability rc
+                   JOIN role r ON r.id=rc.role_id
+                   JOIN capability c ON c.id=rc.capability_id
+                   WHERE r.code='prayer_intercessor'"""
+            )
+        }
+        self.assertNotIn("contacts.read", grants)
+        self.assertNotIn("pastoral.case.read", grants)
+        self.assertIn("prayer.request.read", grants)
+        self.assertIn("prayer.request.respond", grants)
+
+    def test_care_record_creation_is_admin_only_and_audits_assignment(self):
+        admin_user, admin_profile = self.staff["admin"]
+        prayer_user, prayer_profile = self.staff["prayer"]
+        self.db.execute(
+            """INSERT INTO contact
+               (id, branch_id, first_name, created_at, updated_at)
+               VALUES ('care-contact', 'authz-branch', 'Care Subject', ?, ?)""",
+            (self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO care_record
+               (id, branch_id, contact_id, created_by, created_at, updated_at)
+               VALUES ('care-record-1', 'authz-branch', 'care-contact', ?, ?, ?)""",
+            (admin_user, self.NOW, self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO care_assignment
+               (id, care_record_id, branch_id, assignee_user_id, assigned_by,
+                starts_at, created_at)
+               VALUES ('care-assignment-1', 'care-record-1', 'authz-branch', ?, ?, ?, ?)""",
+            (prayer_user, admin_user, self.NOW, self.NOW),
+        )
+        self.assertEqual(
+            self.db.execute(
+                "SELECT actor_user_id, action FROM care_access_audit WHERE care_record_id='care-record-1'"
+            ).fetchone(),
+            (admin_user, "assigned"),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO care_record
+                   (id, branch_id, contact_id, created_by, created_at, updated_at)
+                   VALUES ('care-record-unauthorized', 'authz-branch', 'care-contact', ?, ?, ?)""",
+                (prayer_user, self.NOW, self.NOW),
+            )
+
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -368,7 +455,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
