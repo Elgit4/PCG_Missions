@@ -363,6 +363,8 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
     def test_field_worker_has_no_reassignment_or_private_field_grant(self):
         grants = self.grants("field_worker")
         self.assertIn("contacts.create", grants)
+        self.assertEqual(self.db.execute(\"SELECT scope_mode FROM role_capability WHERE role_id = 'role-field-worker' AND capability_id = 'contacts.create'\").fetchone()[0], 'branch')
+        self.assertEqual(self.db.execute(\"SELECT scope_mode FROM role_capability WHERE role_id = 'role-field-worker' AND capability_id = 'contacts.read'\").fetchone()[0], 'assigned')
         self.assertIn("contacts.interaction.create", grants)
         self.assertNotIn("contacts.assign", grants)
         self.assertNotIn("contacts.private_fields.read", grants)
@@ -433,3 +435,9 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             self.db.execute("UPDATE sensitive_record_access_audit SET purpose = 'tampered purpose' WHERE id = 'sensitive-audit-1'")
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute("DELETE FROM sensitive_record_access_audit WHERE id = 'sensitive-audit-1'")
+
+
+    def test_admin_role_elevation_is_not_part_of_ordinary_assignment_grant(self):
+        grants = self.grants("admin_pastor")
+        self.assertIn("staff.role.approve", grants)
+        self.assertNotIn("staff.role.assign_admin_pastor", grants)
