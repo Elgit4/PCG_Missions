@@ -370,7 +370,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql", "0018_event_operations_guards.sql", "0019_event_cancellation_idempotency.sql", "0020_event_assignment_privilege_guards.sql", "0021_announcement_delivery_read_receipts.sql", "0022_typed_ministry_reports.sql", "0023_prayer_request_idempotency.sql", "0024_calendar_audit_cancellation_read_receipts.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql", "0018_event_operations_guards.sql", "0019_event_cancellation_idempotency.sql", "0020_event_assignment_privilege_guards.sql", "0021_announcement_delivery_read_receipts.sql", "0022_typed_ministry_reports.sql", "0023_prayer_request_idempotency.sql", "0024_calendar_audit_cancellation_read_receipts.sql", "0025_pastoral_care_explicit_share.sql", "0026_calendar_recurring_series.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def test_prayer_intake_idempotency_is_branch_scoped_and_unique(self):
@@ -386,6 +386,54 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             "PRAGMA table_info(prayer_request_idempotency)"
         )}
         self.assertTrue({"branch_id", "actor_user_id", "idempotency_key", "digest_hex", "prayer_request_id"}.issubset(columns))
+
+    def test_calendar_recurring_series_is_branch_authorized_and_append_only(self):
+        self._lifecycle_fixture("calendar-series-branch")
+        self._lifecycle_staff("calendar-series-admin-user","calendar-series-admin","Calendar Admin","calendar-admin@example.test")
+        self._lifecycle_assignment("calendar-series-admin-assignment","calendar-series-admin","admin_pastor",
+                                   "calendar-series-branch","calendar-series-admin")
+        series_values = (
+            "calendar-series-1","calendar-series-branch","Weekly Service","service",
+            "2026-11-16T10:00:00.000Z","2026-11-16T11:00:00.000Z","Africa/Accra",
+            "branch",None,None,None,"weekly",1,4,"calendar-series-admin-user",
+            "calendar-series-admin-user","2026-11-13T00:00:00.000Z","2026-11-13T00:00:00.000Z",
+        )
+        self.db.execute("""INSERT INTO calendar_series
+            (id,branch_id,title,entry_type,starts_at,ends_at,timezone,scope_type,team_id,event_id,
+             owner_user_id,recurrence_frequency,recurrence_interval,occurrence_count,created_by,
+             updated_by,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",series_values)
+        self.assertEqual(self.db.execute(
+            "SELECT action FROM calendar_series_audit WHERE series_id='calendar-series-1'"
+        ).fetchone()[0],"created")
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(calendar_entry)")}
+        self.assertIn("series_id",columns)
+        self.db.execute("""INSERT INTO calendar_entry
+            (id,branch_id,entry_type,title,starts_at,ends_at,timezone,scope_type,team_id,event_id,
+             owner_user_id,created_by,updated_by,created_at,updated_at,series_id)
+            VALUES ('calendar-series-entry-1','calendar-series-branch','service','Weekly Service',
+             '2026-11-16T10:00:00.000Z','2026-11-16T11:00:00.000Z','Africa/Accra','branch',
+             NULL,NULL,NULL,'calendar-series-admin-user','calendar-series-admin-user',
+             '2026-11-13T00:00:00.000Z','2026-11-13T00:00:00.000Z','calendar-series-1')""")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("""INSERT INTO calendar_entry
+                (id,branch_id,entry_type,title,starts_at,ends_at,timezone,scope_type,team_id,event_id,
+                 owner_user_id,created_by,updated_by,created_at,updated_at,series_id)
+                VALUES ('calendar-series-entry-duplicate','calendar-series-branch','service','Weekly Service',
+                 '2026-11-16T10:00:00.000Z','2026-11-16T11:00:00.000Z','Africa/Accra','branch',
+                 NULL,NULL,NULL,'calendar-series-admin-user','calendar-series-admin-user',
+                 '2026-11-13T00:00:00.000Z','2026-11-13T00:00:00.000Z','calendar-series-1')""")
+        self.db.execute("""UPDATE calendar_series SET status='cancelled',cancelled_at=?,cancelled_by=?,
+            cancellation_reason=?,updated_by=?,updated_at=? WHERE id='calendar-series-1'""",
+            ("2026-11-13T01:00:00.000Z","calendar-series-admin-user","Series discontinued by administrator",
+             "calendar-series-admin-user","2026-11-13T01:00:00.000Z"))
+        self.assertEqual(self.db.execute(
+            "SELECT action FROM calendar_series_audit WHERE series_id='calendar-series-1' ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()[0],"cancelled")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM calendar_series WHERE id='calendar-series-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE calendar_series_audit SET reason='changed' WHERE series_id='calendar-series-1'")
 
     def test_calendar_cancellation_audit_and_read_receipts_are_present(self):
         columns = {row[1] for row in self.db.execute("PRAGMA table_info(calendar_entry)")}
