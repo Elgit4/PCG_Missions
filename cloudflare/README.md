@@ -10,7 +10,9 @@ This is an isolated Cloudflare Workers + D1 implementation track. It is not conn
 - Schema version: 15
 - Migration ledger: 15 applied migrations
 - Application tables: 69
-- Worker: not deployed yet
+- Full API Worker: not deployed yet
+- Diagnostic Worker: `pcg-missions-d1-smoke` deployed with read-only `GET /health` and the EU D1 binding
+- Diagnostic URL: https://pcg-missions-d1-smoke.pcg-missions-nonprod.workers.dev/health
 - Production Supabase, Vercel, DNS and live data: unchanged
 
 The database was created with an EU jurisdiction. This setting is fixed at creation time. EU D1 placement does not, by itself, guarantee EU-only processing for Worker execution, logs, email delivery, analytics or third-party providers; those require separate data-location review.
@@ -46,7 +48,7 @@ The prayer/care, events/attendance/transport and calendar/announcement/content s
 - `POST /api/v1/pastoral/prayer/requests/{id}/shares` and `POST /api/v1/pastoral/prayer/requests/{id}/shares/{shareId}/revoke` — explicit share grant/revocation.
 - `PATCH /api/v1/pastoral/prayer/requests/{id}` — assigned intercessor status update.
 
-These are source-code routes, not a live service yet: the Cloudflare Worker has not been deployed or runtime-tested.
+These are source-code routes, not a live service yet: the full Cloudflare API Worker has not been deployed. The separate diagnostic Worker exposes only a read-only health check and does not serve these API routes.
 
 ## Not enabled yet
 
@@ -89,7 +91,7 @@ The latest GitHub Actions run, [43469371911](https://github.com/Elgit4/PCG_Missi
 - 56 Python/SQLite migration and authorization tests.
 - Worker and Better Auth TypeScript type-check.
 
-The remote EU D1 database reports schema version 15, all 15 migration records, 69 application tables and no foreign-key violations. This is not a substitute for deployed Worker request tests or Better Auth runtime compatibility testing.
+The remote EU D1 database reports schema version 15, all 15 migration records, 69 application tables and no foreign-key violations. A separate diagnostic Worker has been uploaded with the D1 binding and its `workers.dev` route enabled. Its public HTTP response and the full API runtime still require verification; this is not a substitute for Better Auth runtime compatibility testing.
 
 ## Safety boundary
 
