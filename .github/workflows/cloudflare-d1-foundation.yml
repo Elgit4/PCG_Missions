@@ -43,3 +43,10 @@ jobs:
         run: npm run typecheck
       - name: Bundle Worker without deploying
         run: npm run build
+      - name: Preserve non-production Worker bundle for deployment review
+        uses: actions/upload-artifact@v4
+        with:
+          name: pcg-missions-worker-bundle
+          path: cloudflare/.wrangler-build/
+          if-no-files-found: error
+          retention-days: 1
