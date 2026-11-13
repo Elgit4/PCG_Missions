@@ -44,6 +44,7 @@ The Worker is a single entry point in `src/index.ts`. Protected routes resolve t
 | Content management | `GET /api/v1/content`, `POST /api/v1/content/{kind}`, `PATCH /api/v1/content/{kind}/{id}`, `POST /api/v1/content/{kind}/{id}/publish|archive` | Branch capability-gated draft and publication lifecycle for welcome messages, sermons, daily words and digital tracts |
 | Church profile and links | `GET/PATCH /api/v1/content/profile`, `POST /api/v1/content/links` | Church-scoped profile upsert and immutable HTTPS links to sermon/tract content |
 | Content audit | `GET /api/v1/content/audit` | Branch/church-visible append-only public-content change history |
+| Reporting | `GET /api/v1/reports/overview?from={YYYY-MM-DD}&to={YYYY-MM-DD}` | Branch `reports.read` capability; aggregate-only metrics for contacts, follow-up, events, prayer counts, announcements and calendar; no personal identifiers or prayer narratives |
 | Content management | `GET /api/v1/content`, `POST /api/v1/content/{kind}`, `PATCH /api/v1/content/{kind}/{id}`, `POST /{kind}/{id}/publish`, `POST /{kind}/{id}/archive` | Branch capability-gated draft and publication lifecycle for welcome messages, sermons, daily words and digital tracts |
 | Church profile and links | `GET/PATCH /api/v1/content/profile`, `POST /api/v1/content/links` | Church-scoped profile upsert and immutable HTTPS links to sermon/tract content |
 | Content audit | `GET /api/v1/content/audit` | Branch/church-visible append-only public-content change history |
@@ -100,6 +101,6 @@ All protected business routes require a verified session and an authorized activ
 - No deployed Worker request has exercised Better Auth against the EU D1 binding.
 - Invitation email and password-reset delivery are not configured; invitation token delivery remains a manual one-time handoff.
 - Pastoral-care narrative routes remain disabled.
-- Event registration/transport/check-in/closeout, calendar, announcement inbox/read receipts and public-content routes are implemented in source and D1 schema, but remain undeployed and require Worker-level integration tests. Reporting remains incomplete.
+- Event registration/transport/check-in/closeout, calendar, announcement inbox/read receipts and public-content routes are implemented in source and D1 schema, but remain undeployed and require Worker-level integration tests. Advanced reporting and privacy-controlled exports remain incomplete.
 - The D1 schema is a first porting slice, not a complete replacement for the full live Supabase schema.
 - No production data migration, frontend cutover, production DNS change or Supabase shutdown is authorized or performed.
