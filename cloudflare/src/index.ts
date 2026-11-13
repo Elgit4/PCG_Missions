@@ -98,7 +98,11 @@ type StaffRoleRequest = {
 
 function parseIsoTimestamp(value: unknown, fallback: string): string | null {
   if (value === undefined || value === null || value === "") return fallback;
-  if (typeof value !== "string" || value.length > 40) return null;
+  if (
+    typeof value !== "string" ||
+    value.length > 40 ||
+    !/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,3})?)?(?:Z|[+-]\\d{2}:\\d{2})$/.test(value)
+  ) return null;
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) return null;
   return parsed.toISOString();
@@ -132,6 +136,10 @@ async function assignStaffRole(
     payload = await request.json() as StaffRoleRequest;
   } catch {
     return json(400, { ok: false, error: { code: "INVALID_JSON" } }, requestId, origin);
+  }
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return json(400, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
   }
 
   const allowedKeys = new Set(["target_profile_id", "role_code", "starts_at", "ends_at", "reason"]);
@@ -240,6 +248,9 @@ async function revokeStaffRole(
     return json(400, { ok: false, error: { code: "INVALID_JSON" } }, requestId, origin);
   }
 
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return json(400, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
+  }
   const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
   if (Object.keys(payload).some((key) => key !== "reason") || reason.length < 10 || reason.length > 500) {
     return json(400, { ok: false, error: { code: "INVALID_REVOCATION_REASON" } }, requestId, origin);
@@ -343,7 +354,13 @@ export default {
 
     const roleAssignmentMatch = url.pathname.match(/^\/api\/v1\/staff\/roles\/([^/]+)$/);
     if (roleAssignmentMatch && request.method === "DELETE") {
-      return revokeStaffRole(request, env, decodeURIComponent(roleAssignmentMatch[1]), requestId, origin);
+      let assignmentId: string;
+      try {
+        assignmentId = decodeURIComponent(roleAssignmentMatch[1]);
+      } catch {
+        return json(400, { ok: false, error: { code: "INVALID_ASSIGNMENT_ID" } }, requestId, origin);
+      }
+      return revokeStaffRole(request, env, assignmentId, requestId, origin);
     }
 
     if (request.method !== "GET") {
