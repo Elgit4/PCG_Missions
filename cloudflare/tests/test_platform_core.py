@@ -623,14 +623,74 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             "care_group", "care_group_membership", "care_record",
             "care_assignment", "care_interaction", "care_access_audit",
         }.issubset(tables))
+        self._lifecycle_fixture()
+        self._lifecycle_staff("care-admin-user", "care-admin", "Care Admin", "care-admin@example.test")
+        self._lifecycle_staff("care-worker-user", "care-worker", "Care Worker", "care-worker@example.test")
+        self._lifecycle_assignment("care-admin-role", "care-admin", "admin_pastor", "lifecycle-branch", "care-admin")
+        self._lifecycle_assignment("care-worker-role", "care-worker", "field_worker", "lifecycle-branch", "care-admin")
+        self.db.execute(
+            """INSERT INTO contact (id, branch_id, first_name, created_by, created_at, updated_at)
+               VALUES ('care-contact', 'lifecycle-branch', 'Care Contact', 'care-admin-user',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO care_group (id, branch_id, name, created_at)
+               VALUES ('care-group-1', 'lifecycle-branch', 'Care Group', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO care_group_membership
+               (id, care_group_id, contact_id, branch_id, starts_at, created_by, created_at)
+               VALUES ('care-membership-1', 'care-group-1', 'care-contact', 'lifecycle-branch',
+                       '2026-01-01T00:00:00.000Z', 'care-admin-user', '2026-01-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO care_group_membership
+                   (id, care_group_id, contact_id, branch_id, starts_at, created_by, created_at)
+                   VALUES ('care-membership-overlap', 'care-group-1', 'care-contact', 'lifecycle-branch',
+                           '2026-01-01T12:00:00.000Z', 'care-admin-user', '2026-01-01T12:00:00.000Z')"""
+            )
+        self.db.execute(
+            """INSERT INTO care_record
+               (id, branch_id, contact_id, care_group_id, created_by, created_at, updated_at)
+               VALUES ('care-record-1', 'lifecycle-branch', 'care-contact', 'care-group-1',
+                       'care-admin-user', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO care_assignment
+               (id, care_record_id, branch_id, assignee_user_id, assigned_by, starts_at, created_at)
+               VALUES ('care-assignment-1', 'care-record-1', 'lifecycle-branch',
+                       'care-worker-user', 'care-admin-user',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO care_assignment
+                   (id, care_record_id, branch_id, assignee_user_id, assigned_by, starts_at, created_at)
+                   VALUES ('care-assignment-overlap', 'care-record-1', 'lifecycle-branch',
+                           'care-worker-user', 'care-admin-user',
+                           '2026-01-01T12:00:00.000Z', '2026-01-01T12:00:00.000Z')"""
+            )
+        self.db.execute(
+            """INSERT INTO care_interaction
+               (id, care_record_id, branch_id, actor_user_id, interaction_type,
+                restricted_note, occurred_at, created_at)
+               VALUES ('care-interaction-1', 'care-record-1', 'lifecycle-branch',
+                       'care-worker-user', 'visit', 'Restricted care note',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
         self.db.execute(
             """INSERT INTO care_access_audit
                (id, care_record_id, branch_id, actor_user_id, action, reason,
                 accessed_at, safe_metadata)
-               VALUES ('care-audit-test', 'missing-care-record', 'lifecycle-branch',
-                       'lifecycle-admin-user', 'read', 'Care audit foreign key test',
+               VALUES ('care-audit-test', 'care-record-1', 'lifecycle-branch',
+                       'care-worker-user', 'read', 'Care record access audit entry',
                        '2026-01-01T00:00:00.000Z', '{}')"""
-        ) if False else None
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE care_access_audit SET reason = 'tampered care audit'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM care_access_audit")
 
     def test_followup_task_idempotency_key_is_unique_per_branch(self):
         self._lifecycle_fixture()
