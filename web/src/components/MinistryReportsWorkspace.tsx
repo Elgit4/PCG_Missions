@@ -53,6 +53,8 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
   const [events, setEvents] = useState<Array<{ id: string; title: string; starts_at: string }>>([]);
   const [counts, setCounts] = useState<Record<CountKey, string>>(emptyCounts);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [editingReportId, setEditingReportId] = useState<string | null>(null);
+  const [correctionCounts, setCorrectionCounts] = useState<Record<CountKey, string>>(emptyCounts);
   const [reviewComment, setReviewComment] = useState("");
 
   const load = useCallback(async (quiet = false) => {
@@ -123,6 +125,24 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
       setCounts(emptyCounts());
       setTeamId("");
       setEventId("");
+      await load(true);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const resubmit = async (report: MinistryReportRecord) => {
+    if (!canSubmit || editingReportId !== report.id) return;
+    setSaving(true);
+    setError("");
+    try {
+      await api.resubmitMinistryReport(report.id, Object.fromEntries(
+        COUNT_FIELDS.map(([key]) => [key, Number(correctionCounts[key])]),
+      ) as Record<CountKey, number>);
+      setNotice("Your corrected report has been resubmitted.");
+      setEditingReportId(null);
       await load(true);
     } catch (cause) {
       setError(errorMessage(cause));
@@ -220,6 +240,28 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
                 <div><strong>{report.visits_completed}</strong><span>Visits</span></div>
                 <div><strong>{report.attendance_count}</strong><span>Attendance</span></div>
               </div>
+              {own && canSubmit && report.status === "returned" && (
+                <div className="ministry-report-review">
+                  {editingReportId === report.id ? (
+                    <>
+                      <div className="ministry-report-count-grid">
+                        {COUNT_FIELDS.map(([key, label]) => (
+                          <label key={key}><span>{label}</span><input type="number" min="0" max="100000" step="1" value={correctionCounts[key]} onChange={(event) => setCorrectionCounts((current) => ({ ...current, [key]: event.target.value }))} /></label>
+                        ))}
+                      </div>
+                      <div>
+                        <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setEditingReportId(null)}>Cancel</button>
+                        <button type="button" className="cmi-button cmi-button-primary" disabled={saving} onClick={() => void resubmit(report)}>{saving ? "Resubmitting…" : "Resubmit corrected report"}</button>
+                      </div>
+                    </>
+                  ) : (
+                    <button type="button" className="cmi-button cmi-button-secondary" onClick={() => {
+                      setCorrectionCounts(Object.fromEntries(COUNT_FIELDS.map(([key]) => [key, String(report[key])])) as Record<CountKey, string>);
+                      setEditingReportId(report.id);
+                    }}>Correct &amp; resubmit</button>
+                  )}
+                </div>
+              )}
               {canAct && <div className="ministry-report-review">
                 {reviewingId === report.id ? <>
                   <label><span>Review note (required when returning)</span><textarea value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} rows={2} maxLength={2000} /></label>
