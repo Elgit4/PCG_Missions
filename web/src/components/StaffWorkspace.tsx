@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Activity, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, KeyRound, LogOut, Megaphone, Network, Plus, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { Activity, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { OperationsWorkspace } from "./OperationsWorkspace";
 import { TeamAdministrationWorkspace } from "./TeamAdministrationWorkspace";
 import { MinistryReportsWorkspace } from "./MinistryReportsWorkspace";
@@ -46,6 +46,28 @@ function formatDate(value: string | null, timeZone: string): string {
 function statusLabel(status: string): string {
   return status.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
+
+function navigationIcon(item: Page, size = 18) {
+  switch (item) {
+    case "Overview": return <Activity size={size} strokeWidth={1.9} />;
+    case "Contacts": return <Users size={size} strokeWidth={1.9} />;
+    case "Follow-up": return <ClipboardList size={size} strokeWidth={1.9} />;
+    case "Events": return <CalendarDays size={size} strokeWidth={1.9} />;
+    case "Calendar": return <CalendarClock size={size} strokeWidth={1.9} />;
+    case "Announcements": return <Megaphone size={size} strokeWidth={1.9} />;
+    case "Content": return <BookOpen size={size} strokeWidth={1.9} />;
+    case "Teams & Areas": return <Network size={size} strokeWidth={1.9} />;
+    case "Reports": return <FileText size={size} strokeWidth={1.9} />;
+    case "Staff": return <Users size={size} strokeWidth={1.9} />;
+    case "Access requests": return <KeyRound size={size} strokeWidth={1.9} />;
+  }
+}
+
+function navigationLabel(item: Page): string {
+  if (item === "Follow-up") return "Follow-up tasks";
+  if (item === "Content") return "Visitor content";
+  return item;
+}
 function isOverdue(task: FollowUpTask): boolean {
   return (task.status === "open" || task.status === "in_progress") &&
     !!task.due_at && new Date(task.due_at).getTime() < Date.now();
@@ -64,6 +86,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [resetRequests, setResetRequests] = useState<StaffPasswordResetRequest[]>([]);
   const [staffMembers, setStaffMembers] = useState<StaffDirectoryEntry[]>([]);
   const [showStaffForm, setShowStaffForm] = useState(false);
+  const [showMobileMore, setShowMobileMore] = useState(false);
   const [staffStatusEdit, setStaffStatusEdit] = useState<{ profileId: string; nextStatus: "active" | "inactive" } | null>(null);
   const [staffStatusReason, setStaffStatusReason] = useState("");
   const [actionNotice, setActionNotice] = useState("");
@@ -111,6 +134,17 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     if (canManagePasswordResets) pages.push("Access requests");
     return pages;
   }, [session, branchId, canCreateContacts, canManagePasswordResets, canReadStaffDirectory]);
+  const navigationSections = [
+    { label: "WORKSPACE", items: availablePages.filter((item) => ["Overview", "Contacts", "Follow-up"].includes(item)) },
+    { label: "MINISTRY", items: availablePages.filter((item) => ["Events", "Calendar", "Announcements", "Content", "Reports"].includes(item)) },
+    { label: "ADMINISTRATION", items: availablePages.filter((item) => ["Teams & Areas", "Staff", "Access requests"].includes(item)) },
+  ].filter((section) => section.items.length > 0);
+  const preferredMobilePages: Page[] = ["Overview", "Contacts", "Follow-up", "Calendar"];
+  const mobilePrimaryPages = [
+    ...preferredMobilePages.filter((item) => availablePages.includes(item)),
+    ...availablePages.filter((item) => !preferredMobilePages.includes(item)),
+  ].slice(0, 4);
+  const mobileMorePages = availablePages.filter((item) => !mobilePrimaryPages.includes(item));
   const canCaptureIdentity = hasIdentityCapture(session, branchId);
   const canReadIdentity = hasIdentityRead(session, branchId);
   const activeBranch = session.branches.find((branch) => branch.id === branchId);
@@ -483,16 +517,32 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     <div className="cmi-workspace">
       <a className="cmi-skip-link" href="#cmi-content">Skip to content</a>
       <aside className="cmi-sidebar">
-        <div className="cmi-brand"><img src="/logo.svg" alt="" /><span><strong>PCG MISSIONS</strong><small>STAFF WORKSPACE</small></span></div>
-        <div className="cmi-sidebar-label">WORKSPACE</div>
-        <nav className="cmi-nav" aria-label="Staff workspace">
-          {availablePages.map((item) => <button key={item} type="button" className={page === item ? "active" : ""} aria-current={page === item ? "page" : undefined} onClick={() => setPage(item)}>
-            {item === "Overview" ? <Activity size={19} /> : item === "Contacts" ? <Users size={19} /> : item === "Access requests" ? <KeyRound size={19} /> : item === "Staff" ? <Users size={19} /> : item === "Teams & Areas" ? <Network size={19} /> : item === "Events" ? <CalendarDays size={19} /> : item === "Calendar" ? <CalendarClock size={19} /> : item === "Announcements" ? <Megaphone size={19} /> : item === "Content" ? <BookOpen size={19} /> : item === "Reports" ? <FileText size={19} /> : <ClipboardList size={19} />}
-            <span className="cmi-nav-desktop-label">{item === "Follow-up" ? "Follow-up tasks" : item === "Content" ? "Visitor content" : item}</span>
-            <span className="cmi-nav-mobile-label">{item === "Overview" ? "Home" : item === "Contacts" ? "People" : item === "Access requests" ? "Access" : item === "Staff" ? "Staff" : item === "Events" ? "Events" : item === "Calendar" ? "Calendar" : item === "Announcements" ? "Updates" : item === "Content" ? "Content"  : item === "Teams & Areas" ? "Teams" : item === "Reports" ? "Reports" : "Tasks"}</span>
-            {item === "Follow-up" && openTasks.length > 0 ? <em>{openTasks.length}</em> : null}
-          </button>)}
-        </nav>
+        <div className="cmi-brand">
+          <img src="/logo.svg" alt="" />
+          <span><strong>PCG MISSIONS</strong><small>MINISTRY WORKSPACE</small></span>
+        </div>
+        <div className="cmi-sidebar-navigation">
+          {navigationSections.map((section) => (
+            <section className="cmi-nav-section" key={section.label}>
+              <div className="cmi-sidebar-label">{section.label}</div>
+              <nav className="cmi-nav" aria-label={`${section.label.toLowerCase()} navigation`}>
+                {section.items.map((item) => (
+                  <button
+                    key={item}
+                    type="button"
+                    className={page === item ? "active" : ""}
+                    aria-current={page === item ? "page" : undefined}
+                    onClick={() => { setPage(item); setShowMobileMore(false); }}
+                  >
+                    {navigationIcon(item)}
+                    <span className="cmi-nav-desktop-label">{navigationLabel(item)}</span>
+                    {item === "Follow-up" && openTasks.length > 0 ? <em>{openTasks.length}</em> : null}
+                  </button>
+                ))}
+              </nav>
+            </section>
+          ))}
+        </div>
         <div className="cmi-sidebar-bottom">
           <div className="cmi-access-note"><ShieldCheck size={16} /><span>Access is controlled by your active role grants and branch assignment.</span></div>
           <div className="cmi-user-card">
@@ -503,6 +553,35 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         </div>
       </aside>
 
+      <nav className="cmi-mobile-nav" aria-label="Primary navigation" onKeyDown={(event) => { if (event.key === "Escape") setShowMobileMore(false); }}>
+        {showMobileMore && mobileMorePages.length > 0 && (
+          <div id="cmi-mobile-more-list" className="cmi-mobile-more" role="group" aria-label="More workspace pages">
+            {mobileMorePages.map((item) => (
+              <button key={item} type="button" className={page === item ? "active" : ""}
+                onClick={() => { setPage(item); setShowMobileMore(false); }}>
+                {navigationIcon(item, 17)}<span>{navigationLabel(item)}</span>
+                {item === "Follow-up" && openTasks.length > 0 ? <em>{openTasks.length}</em> : null}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="cmi-mobile-nav-items" style={{ gridTemplateColumns: `repeat(${mobilePrimaryPages.length + (mobileMorePages.length > 0 ? 1 : 0)}, minmax(0, 1fr))` }}>
+          {mobilePrimaryPages.map((item) => (
+            <button key={item} type="button" className={page === item ? "active" : ""}
+              aria-current={page === item ? "page" : undefined}
+              onClick={() => { setPage(item); setShowMobileMore(false); }}>
+              {navigationIcon(item, 19)}<span>{item === "Overview" ? "Home" : item === "Contacts" ? "People" : item === "Follow-up" ? "Tasks" : item}</span>
+            </button>
+          ))}
+          {mobileMorePages.length > 0 && (
+            <button type="button" className={showMobileMore || mobileMorePages.includes(page) ? "active" : ""}
+              aria-expanded={showMobileMore} aria-controls="cmi-mobile-more-list"
+              onClick={() => setShowMobileMore((value) => !value)}>
+              <MoreHorizontal size={20} strokeWidth={1.9} /><span>More</span>
+            </button>
+          )}
+        </div>
+      </nav>
       <main className="cmi-main">
         <header className="cmi-topbar">
           <div className="cmi-topbar-heading">
