@@ -30,6 +30,7 @@ The Worker exposes:
 - `GET /health` and `GET /api/v1/health` for non-production D1 readiness.
 - Better Auth endpoints under `/api/auth/*` for provisioned-account sign-in and session management.
 - `GET /api/v1/me` for verified staff context and active branch/capability metadata.
+- `POST /api/v1/staff/roles` and `DELETE /api/v1/staff/roles/{assignmentId}` for audited branch-scoped standard-role assignment and revocation by Admin/Pastor.
 
 Public self-registration remains disabled. Business routes remain unavailable until handler-level authorization and same-query record scoping are implemented. See AUTHENTICATION_FOUNDATION.md for configuration and limitations.
 
