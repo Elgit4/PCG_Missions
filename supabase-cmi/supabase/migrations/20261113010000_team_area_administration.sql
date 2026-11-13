@@ -489,14 +489,19 @@ begin
     if p_payload - array['branch_id','area_id','staff_profile_id'] <> '{}'::jsonb then
       raise exception using errcode = '22023', message = 'UNSUPPORTED_AREA_COVERAGE_FIELDS';
     end if;
-    if coalesce(p_payload->>'area_id','') !~
-      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
-      or coalesce(p_payload->>'staff_profile_id','') !~
-      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{12}$' then
+    -- Parse UUIDs with PostgreSQL's UUID input routine rather than a
+    -- version/variant-specific regex. Valid UUID versions are accepted while
+    -- malformed or missing identifiers are rejected before relationship checks.
+    begin
+      v_area_id := nullif(p_payload->>'area_id','')::uuid;
+      v_staff_profile_id := nullif(p_payload->>'staff_profile_id','')::uuid;
+    exception
+      when invalid_text_representation then
+        raise exception using errcode = '22023', message = 'INVALID_AREA_COVERAGE_REFERENCE';
+    end;
+    if v_area_id is null or v_staff_profile_id is null then
       raise exception using errcode = '22023', message = 'INVALID_AREA_COVERAGE_REFERENCE';
     end if;
-    v_area_id := (p_payload->>'area_id')::uuid;
-    v_staff_profile_id := (p_payload->>'staff_profile_id')::uuid;
     perform 1 from public.service_area sa
     where sa.id = v_area_id and sa.branch_id = v_branch_id and sa.is_active
     for update;
