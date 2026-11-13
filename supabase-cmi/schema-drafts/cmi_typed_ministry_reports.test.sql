@@ -1,5 +1,5 @@
 begin;
-select plan(26);
+select plan(27);
 
 select has_table('public','ministry_report','Typed ministry report table exists');
 select has_table('public','report_review_event','Append-only report review history exists');
@@ -47,6 +47,14 @@ insert into auth.users(
 );
 insert into public.staff_profile(id,auth_user_id,full_name,account_status,must_change_password)
 values('73000000-0000-4000-8000-000000000021','72000000-0000-4000-8000-000000000021','Report Test Reviewer','active',false);
+
+-- Assign only the minimum report capabilities needed by the workflow fixture.
+insert into public.staff_role_assignment(staff_profile_id,role_id,branch_id,assigned_by)
+select '73000000-0000-4000-8000-000000000020',r.id,'71000000-0000-4000-8000-000000000020','73000000-0000-4000-8000-000000000021'
+from public.role r where r.code='field_worker';
+insert into public.staff_role_assignment(staff_profile_id,role_id,branch_id,assigned_by)
+select '73000000-0000-4000-8000-000000000021',r.id,'71000000-0000-4000-8000-000000000020','73000000-0000-4000-8000-000000000021'
+from public.role r where r.code='coordinator';
 
 select throws_ok(
   $q$ insert into public.ministry_report(branch_id,report_type,period_start,period_end,author_profile_id)
@@ -111,6 +119,13 @@ select throws_ok(
   '42501','REPORT_SELF_REVIEW_FORBIDDEN',
   'Authors cannot review their own reports');
 
+select throws_ok(
+  $q$ select public.cmi_review_ministry_report(
+    (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
+    '73000000-0000-4000-8000-000000000020','approved',null
+  ) $q$,
+  '42501','REPORT_SELF_REVIEW_FORBIDDEN',
+  'Self-review remains forbidden inside the transaction');
 select lives_ok(
   $q$ select public.cmi_review_ministry_report(
     (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
