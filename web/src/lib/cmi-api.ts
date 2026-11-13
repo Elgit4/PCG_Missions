@@ -728,6 +728,16 @@ export class CmiApiClient {
       { method: "POST", body: { branch_id: branchId, reason } },
     );
   }
+  listReportTeams(branchId: string) {
+    return this.request<Array<{ id: string; name: string }>>("report-operations", "/teams", {
+      query: { branch_id: branchId },
+    });
+  }
+  listReportEvents(branchId: string) {
+    return this.request<Array<{ id: string; title: string; starts_at: string }>>("report-operations", "/events", {
+      query: { branch_id: branchId },
+    });
+  }
   listMinistryReports(branchId: string, options: {
     report_type?: MinistryReportType;
     status?: Exclude<MinistryReportStatus, "draft">;
