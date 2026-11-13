@@ -368,7 +368,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_restricted_pastoral_domain.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_restricted_pastoral_domain.sql", "0013_sensitive_share_revocation_reason.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
@@ -595,7 +595,8 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             )
         self.db.execute(
             """UPDATE staff_record_share
-               SET revoked_at = '2026-01-02T00:00:00.000Z', revoked_by = 'pastor-profile'
+               SET revoked_at = '2026-01-02T00:00:00.000Z', revoked_by = 'pastor-profile',
+                   revocation_reason = 'Intercessor no longer needs this prayer request'
                WHERE id = 'prayer-share-1'"""
         )
         self.db.execute(
@@ -1069,7 +1070,9 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             )
         self.db.execute(
             """UPDATE staff_record_share SET revoked_at = '2026-01-10T00:00:00.000Z',
-               revoked_by = 'share-staff-a' WHERE id = 'share-1'"""
+               revoked_by = 'share-staff-a',
+               revocation_reason = 'Coverage period completed for this prayer request'
+               WHERE id = 'share-1'"""
         )
         revoke_audit = self.db.execute(
             "SELECT actor_profile_id, action FROM sensitive_record_access_audit WHERE id = 'share-revoke-share-1'"
@@ -1088,7 +1091,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_restricted_pastoral_domain.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_restricted_pastoral_domain.sql", "0013_sensitive_share_revocation_reason.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
@@ -1220,7 +1223,8 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.assertIsNotNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "prayer-authz"))
         self.assertIsNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "other-prayer"))
         self.db.execute(
-            "UPDATE staff_record_share SET revoked_at = ?, revoked_by = 'authz-staff-admin' WHERE id = 'authz-prayer-share'",
+            "UPDATE staff_record_share SET revoked_at = ?, revoked_by = 'authz-staff-admin',
+               revocation_reason = 'Prayer support assignment is no longer required' WHERE id = 'authz-prayer-share'",
             (self.NOW,),
         )
         self.assertIsNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "prayer-authz"))
