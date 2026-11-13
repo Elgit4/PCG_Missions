@@ -279,3 +279,216 @@ BEGIN
       END
   ) THEN RAISE(ABORT, 'SENSITIVE_SHARE_REVOKE_NOT_AUTHORIZED') END;
 END;
+
+
+-- One-time owner-controlled bootstrap window for the first two Admin/Pastor
+-- holders. After both slots are consumed, all additional Admin/Pastor grants
+-- require a distinct second administrator's approval.
+CREATE TABLE IF NOT EXISTS staff_admin_bootstrap_state (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  remaining_slots INTEGER NOT NULL CHECK (remaining_slots BETWEEN 0 AND 2)
+);
+INSERT INTO staff_admin_bootstrap_state (id, remaining_slots)
+VALUES (1, 2)
+ON CONFLICT(id) DO NOTHING;
+
+CREATE TABLE IF NOT EXISTS staff_role_elevation_request (
+  id TEXT PRIMARY KEY,
+  branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE RESTRICT,
+  target_profile_id TEXT NOT NULL REFERENCES staff_profile(id) ON DELETE RESTRICT,
+  role_id TEXT NOT NULL REFERENCES role(id) ON DELETE RESTRICT,
+  requested_by TEXT NOT NULL REFERENCES staff_profile(id) ON DELETE RESTRICT,
+  reason TEXT NOT NULL CHECK (length(trim(reason)) BETWEEN 10 AND 500),
+  requested_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+  reviewed_by TEXT REFERENCES staff_profile(id) ON DELETE RESTRICT,
+  reviewed_at TEXT,
+  review_reason TEXT,
+  CHECK (
+    (status = 'pending' AND reviewed_by IS NULL AND reviewed_at IS NULL AND review_reason IS NULL)
+    OR
+    (status IN ('approved', 'rejected') AND reviewed_by IS NOT NULL AND reviewed_at IS NOT NULL
+      AND review_reason IS NOT NULL AND length(trim(review_reason)) BETWEEN 10 AND 500)
+  )
+);
+CREATE UNIQUE INDEX IF NOT EXISTS staff_role_elevation_one_pending_idx
+  ON staff_role_elevation_request(branch_id, target_profile_id)
+  WHERE status = 'pending';
+
+CREATE TABLE IF NOT EXISTS staff_role_elevation_audit (
+  id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL REFERENCES staff_role_elevation_request(id) ON DELETE RESTRICT,
+  branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE RESTRICT,
+  actor_profile_id TEXT NOT NULL REFERENCES staff_profile(id) ON DELETE RESTRICT,
+  action TEXT NOT NULL CHECK (action IN ('request_created', 'request_approved', 'request_rejected')),
+  reason TEXT NOT NULL CHECK (length(trim(reason)) BETWEEN 10 AND 500),
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS staff_role_elevation_audit_branch_time_idx
+  ON staff_role_elevation_audit(branch_id, created_at DESC);
+CREATE TRIGGER IF NOT EXISTS staff_role_elevation_audit_no_update
+BEFORE UPDATE ON staff_role_elevation_audit
+BEGIN
+  SELECT RAISE(ABORT, 'STAFF_ROLE_ELEVATION_AUDIT_APPEND_ONLY');
+END;
+CREATE TRIGGER IF NOT EXISTS staff_role_elevation_audit_no_delete
+BEFORE DELETE ON staff_role_elevation_audit
+BEGIN
+  SELECT RAISE(ABORT, 'STAFF_ROLE_ELEVATION_AUDIT_APPEND_ONLY');
+END;
+
+CREATE TRIGGER IF NOT EXISTS staff_role_elevation_request_authorize_insert
+BEFORE INSERT ON staff_role_elevation_request
+BEGIN
+  SELECT CASE WHEN (
+    SELECT code FROM role WHERE id = NEW.role_id
+  ) <> 'admin_pastor' THEN RAISE(ABORT, 'ELEVATION_REQUEST_ROLE_INVALID') END;
+
+  SELECT CASE WHEN NEW.target_profile_id = NEW.requested_by THEN
+    RAISE(ABORT, 'ELEVATION_REQUEST_SELF_ASSIGNMENT') END;
+
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+    FROM staff_profile actor
+    JOIN staff_role_assignment ra ON ra.staff_profile_id = actor.id
+    JOIN role r ON r.id = ra.role_id AND r.is_active = 1
+    JOIN role_capability rc ON rc.role_id = r.id
+    JOIN capability c ON c.id = rc.capability_id AND c.is_active = 1
+    JOIN staff_profile target ON target.id = NEW.target_profile_id
+    WHERE actor.id = NEW.requested_by
+      AND actor.account_status = 'active'
+      AND target.account_status = 'active'
+      AND ra.branch_id = NEW.branch_id
+      AND ra.revoked_at IS NULL
+      AND ra.starts_at <= NEW.requested_at
+      AND (ra.ends_at IS NULL OR ra.ends_at > NEW.requested_at)
+      AND c.code = 'staff.role.assign'
+  ) THEN RAISE(ABORT, 'ELEVATION_REQUEST_NOT_AUTHORIZED') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS staff_role_elevation_request_immutable
+BEFORE UPDATE OF id, branch_id, target_profile_id, role_id, requested_by, reason, requested_at
+ON staff_role_elevation_request
+BEGIN
+  SELECT RAISE(ABORT, 'ELEVATION_REQUEST_IMMUTABLE_FIELDS');
+END;
+
+CREATE TRIGGER IF NOT EXISTS staff_role_elevation_request_review_authorize
+BEFORE UPDATE OF status, reviewed_by, reviewed_at, review_reason
+ON staff_role_elevation_request
+WHEN OLD.status = 'pending'
+BEGIN
+  SELECT CASE WHEN NEW.status NOT IN ('approved', 'rejected') OR NEW.reviewed_by = NEW.requested_by
+    THEN RAISE(ABORT, 'ELEVATION_REQUIRES_DISTINCT_REVIEWER') END;
+
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+    FROM staff_profile reviewer
+    JOIN staff_role_assignment ra ON ra.staff_profile_id = reviewer.id
+    JOIN role r ON r.id = ra.role_id AND r.is_active = 1
+    JOIN role_capability rc ON rc.role_id = r.id
+    JOIN capability c ON c.id = rc.capability_id AND c.is_active = 1
+    WHERE reviewer.id = NEW.reviewed_by
+      AND reviewer.account_status = 'active'
+      AND ra.branch_id = NEW.branch_id
+      AND ra.revoked_at IS NULL
+      AND ra.starts_at <= NEW.reviewed_at
+      AND (ra.ends_at IS NULL OR ra.ends_at > NEW.reviewed_at)
+      AND c.code = 'staff.role.approve'
+  ) THEN RAISE(ABORT, 'ELEVATION_REVIEW_NOT_AUTHORIZED') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS staff_role_elevation_audit_request
+AFTER INSERT ON staff_role_elevation_request
+BEGIN
+  INSERT INTO staff_role_elevation_audit
+    (id, request_id, branch_id, actor_profile_id, action, reason, created_at)
+  VALUES
+    ('elevation-request-' || NEW.id, NEW.id, NEW.branch_id, NEW.requested_by,
+     'request_created', NEW.reason, NEW.requested_at);
+END;
+CREATE TRIGGER IF NOT EXISTS staff_role_elevation_audit_review
+AFTER UPDATE OF status ON staff_role_elevation_request
+WHEN OLD.status = 'pending' AND NEW.status IN ('approved', 'rejected')
+BEGIN
+  INSERT INTO staff_role_elevation_audit
+    (id, request_id, branch_id, actor_profile_id, action, reason, created_at)
+  VALUES
+    ('elevation-review-' || NEW.id, NEW.id, NEW.branch_id, NEW.reviewed_by,
+     CASE NEW.status WHEN 'approved' THEN 'request_approved' ELSE 'request_rejected' END,
+     NEW.review_reason, NEW.reviewed_at);
+END;
+
+ALTER TABLE staff_role_assignment
+ADD COLUMN approval_request_id TEXT REFERENCES staff_role_elevation_request(id) ON DELETE RESTRICT;
+CREATE UNIQUE INDEX IF NOT EXISTS staff_role_assignment_approval_request_idx
+  ON staff_role_assignment(approval_request_id)
+  WHERE approval_request_id IS NOT NULL;
+
+CREATE TRIGGER IF NOT EXISTS staff_role_assignment_admin_elevation_insert
+BEFORE INSERT ON staff_role_assignment
+WHEN (SELECT code FROM role WHERE id = NEW.role_id) = 'admin_pastor'
+BEGIN
+  SELECT CASE WHEN NEW.approval_request_id IS NULL
+    AND (SELECT remaining_slots FROM staff_admin_bootstrap_state WHERE id = 1) <= 0
+    THEN RAISE(ABORT, 'ADMIN_PASTOR_REQUIRES_DUAL_APPROVAL') END;
+
+  SELECT CASE WHEN NEW.approval_request_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM staff_role_elevation_request req
+    WHERE req.id = NEW.approval_request_id
+      AND req.branch_id = NEW.branch_id
+      AND req.target_profile_id = NEW.staff_profile_id
+      AND req.role_id = NEW.role_id
+      AND req.status = 'approved'
+      AND req.reviewed_by = NEW.assigned_by
+      AND req.requested_by <> req.reviewed_by
+  ) THEN RAISE(ABORT, 'ADMIN_PASTOR_APPROVAL_INVALID') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS staff_role_assignment_admin_bootstrap_consume
+AFTER INSERT ON staff_role_assignment
+WHEN (SELECT code FROM role WHERE id = NEW.role_id) = 'admin_pastor'
+  AND NEW.approval_request_id IS NULL
+BEGIN
+  UPDATE staff_admin_bootstrap_state
+  SET remaining_slots = remaining_slots - 1
+  WHERE id = 1 AND remaining_slots > 0;
+  INSERT INTO staff_access_audit
+    (id, branch_id, actor_profile_id, target_profile_id, action, reason, metadata, created_at)
+  VALUES
+    ('admin-bootstrap-' || NEW.id, NEW.branch_id, NEW.assigned_by, NEW.staff_profile_id,
+     'role_assigned', 'Owner-controlled initial Admin/Pastor bootstrap',
+     json_object('bootstrap', 1), NEW.created_at);
+END;
+
+CREATE TRIGGER IF NOT EXISTS staff_role_assignment_admin_elevation_audit
+AFTER INSERT ON staff_role_assignment
+WHEN (SELECT code FROM role WHERE id = NEW.role_id) = 'admin_pastor'
+  AND NEW.approval_request_id IS NOT NULL
+BEGIN
+  INSERT INTO staff_access_audit
+    (id, branch_id, actor_profile_id, target_profile_id, action, reason, metadata, created_at)
+  SELECT
+    'admin-elevation-' || NEW.id, NEW.branch_id, NEW.assigned_by, NEW.staff_profile_id,
+    'role_assigned', req.reason, json_object('approval_request_id', req.id), NEW.created_at
+  FROM staff_role_elevation_request req
+  WHERE req.id = NEW.approval_request_id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS staff_role_assignment_admin_last_holder_guard
+BEFORE UPDATE OF revoked_at, ends_at ON staff_role_assignment
+WHEN (SELECT code FROM role WHERE id = OLD.role_id) = 'admin_pastor'
+  AND OLD.revoked_at IS NULL
+  AND (NEW.revoked_at IS NOT NULL OR (NEW.ends_at IS NOT NULL AND NEW.ends_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now')))
+  AND (
+    SELECT COUNT(*) FROM staff_role_assignment active
+    JOIN role ar ON ar.id = active.role_id
+    WHERE active.branch_id = OLD.branch_id
+      AND ar.code = 'admin_pastor'
+      AND active.revoked_at IS NULL
+      AND active.starts_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now')
+      AND (active.ends_at IS NULL OR active.ends_at > strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  ) <= 1
+BEGIN
+  SELECT RAISE(ABORT, 'CANNOT_REMOVE_LAST_ACTIVE_ADMIN_PASTOR');
+END;
