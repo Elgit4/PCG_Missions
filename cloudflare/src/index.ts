@@ -3043,6 +3043,206 @@ async function publishEvent(
   return json(200, { ok: true, event_id: eventId, status: "published", visibility: "staff" }, requestId, origin);
 }
 
+async function eventRequestDigest(payload: unknown): Promise<{ bytes: Uint8Array; hex: string }> {
+  const bytes = new Uint8Array(await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(payload)),
+  ));
+  const hex = Array.from(bytes).map((value) => value.toString(16).padStart(2,"0")).join("");
+  return { bytes, hex };
+}
+
+async function findEventReceipt(
+  env: Env,
+  eventId: string,
+  operation: string,
+  idempotencyKey: string,
+  actorUserId: string,
+  digestHex: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response | null> {
+  const receipt = await env.DB.prepare(`
+    SELECT actor_user_id,hex(request_digest) AS digest_hex,resource_type,resource_id,response_status
+    FROM event_idempotency_receipt
+    WHERE event_id=? AND operation=? AND idempotency_key=? LIMIT 1
+  `).bind(eventId,operation,idempotencyKey).first<{
+    actor_user_id: string; digest_hex: string; resource_type: string;
+    resource_id: string; response_status: number;
+  }>();
+  if (!receipt) return null;
+  if (receipt.actor_user_id !== actorUserId || receipt.digest_hex.toLowerCase() !== digestHex) {
+    return json(409,{ok:false,error:{code:"IDEMPOTENCY_KEY_REUSED"}},requestId,origin);
+  }
+  const key = receipt.resource_type === "event_registration" ? "registration_id" :
+    receipt.resource_type === "transport_reservation" ? "reservation_id" :
+    receipt.resource_type === "event_checkin" ? "checkin_id" : "closeout_id";
+  return json(receipt.response_status,{ok:true,[key]:receipt.resource_id,idempotent_replay:true},requestId,origin);
+}
+
+async function setEventRegistrationState(
+  request: Request,
+  env: Env,
+  eventId: string,
+  state: "open" | "closed",
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request,env,"events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(`
+      UPDATE event SET registration_state=?,last_modified_by=?,updated_at=?
+      WHERE id=? AND branch_id=? AND status='published'
+    `).bind(state,access.staff.userId,now,eventId,access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_STATE_UNAVAILABLE"}},requestId,origin);
+  } catch {
+    return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_STATE_UPDATE_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,event_id:eventId,registration_state:state},requestId,origin);
+}
+
+async function listEventRegistrations(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request,env,"events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const rows = await env.DB.prepare(`
+    SELECT id,event_id,contact_id,attendee_name_snapshot,attendee_phone_snapshot,
+           attendee_email_snapshot,registration_source,status,registered_at,created_by,
+           cancelled_by,cancelled_at
+    FROM event_registration
+    WHERE event_id=? AND branch_id=?
+    ORDER BY registered_at DESC,id DESC LIMIT 200
+  `).bind(eventId,access.activeBranch.branchId).all<Record<string,unknown>>();
+  return json(200,{ok:true,registrations:rows.results??[]},requestId,origin);
+}
+
+async function createEventRegistration(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const idempotencyKey=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (idempotencyKey.length<8 || idempotencyKey.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["attendee_name","attendee_phone","attendee_email"]);
+  if (!payload || typeof payload!=="object" || Array.isArray(payload) || Object.keys(payload).some((key)=>!allowed.has(key))) {
+    return json(400,{ok:false,error:{code:"INVALID_REGISTRATION_BODY"}},requestId,origin);
+  }
+  const attendeeName=typeof payload.attendee_name==="string"?payload.attendee_name.trim():"";
+  const attendeePhone=payload.attendee_phone===undefined||payload.attendee_phone===null||payload.attendee_phone===""?null:
+    typeof payload.attendee_phone==="string"?payload.attendee_phone.trim():"";
+  const attendeeEmail=payload.attendee_email===undefined||payload.attendee_email===null||payload.attendee_email===""?null:
+    typeof payload.attendee_email==="string"?payload.attendee_email.trim().toLowerCase():"";
+  if (attendeeName.length<2 || attendeeName.length>180 ||
+      (attendeePhone!==null && (typeof attendeePhone!=="string" || !/^\+[1-9]\d{7,14}$/.test(attendeePhone))) ||
+      (attendeeEmail!==null && (typeof attendeeEmail!=="string" || attendeeEmail.length>254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(attendeeEmail)))) {
+    return json(400,{ok:false,error:{code:"INVALID_ATTENDEE_DETAILS"}},requestId,origin);
+  }
+  const scope=bestEventScope(context.activeBranch.capabilities.filter((grant)=>grant.code==="events.read").map((grant)=>grant.scopeMode));
+  if (!scope) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const now=new Date().toISOString();
+  const predicate=eventScopePredicate(scope,"e",context.staff.profileId,context.staff.userId,now);
+  const event=await env.DB.prepare(`
+    SELECT e.id,e.status,e.registration_state,e.capacity
+    FROM event e WHERE e.id=? AND e.branch_id=? AND (${predicate.sql}) LIMIT 1
+  `).bind(eventId,context.activeBranch.branchId,...predicate.values).first<{
+    id:string;status:string;registration_state:string;capacity:number|null;
+  }>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  if (event.status!=="published" || event.registration_state!=="open") return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_CLOSED"}},requestId,origin);
+  const digest=await eventRequestDigest({attendee_name:attendeeName,attendee_phone:attendeePhone,attendee_email:attendeeEmail});
+  const replay=await findEventReceipt(env,eventId,"staff_registration",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  const registrationId=crypto.randomUUID();
+  const receiptId=crypto.randomUUID();
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO event_registration
+          (id,event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,
+           attendee_email_snapshot,registration_source,status,registered_at,client_request_id,created_by)
+        VALUES (?,?,?,?,?,?,'staff','registered',?,?,?)
+      `).bind(
+        registrationId,eventId,context.activeBranch.branchId,attendeeName,
+        attendeePhone,attendeeEmail,now,idempotencyKey,context.staff.userId,
+      ),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES (?,?,?,'staff_registration','staff',?,?,1,?,'event_registration',?,201,?)
+      `).bind(
+        receiptId,eventId,context.activeBranch.branchId,context.staff.userId,
+        idempotencyKey,digest.bytes,registrationId,now,
+      ),
+    ]);
+    if (results.some((result)=>!result.success || (result.meta?.changes??0)!==1)) throw new Error("EVENT_REGISTRATION_BATCH_FAILED");
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"staff_registration",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    const count=await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM event_registration WHERE event_id=? AND branch_id=? AND status IN ('registered','attended')",
+    ).bind(eventId,context.activeBranch.branchId).first<{count:number}>();
+    if (event.capacity!==null && (count?.count??0)>=event.capacity) return json(409,{ok:false,error:{code:"EVENT_CAPACITY_REACHED"}},requestId,origin);
+    return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,registration_id:registrationId},requestId,origin);
+}
+
+async function cancelEventRegistration(
+  request: Request,
+  env: Env,
+  eventId: string,
+  registrationId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const idempotencyKey=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (idempotencyKey.length<8 || idempotencyKey.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const digest=await eventRequestDigest({registration_id:registrationId,action:"cancel"});
+  const replay=await findEventReceipt(env,eventId,"registration_cancel",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  const now=new Date().toISOString();
+  try {
+    const result=await env.DB.prepare(`
+      UPDATE event_registration SET status='cancelled',cancelled_by=?,cancelled_at=?
+      WHERE id=? AND event_id=? AND branch_id=? AND status='registered'
+    `).bind(context.staff.userId,now,registrationId,eventId,context.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"REGISTRATION_NOT_CANCELLABLE"}},requestId,origin);
+    await env.DB.prepare(`
+      INSERT INTO event_idempotency_receipt
+        (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+         digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+      VALUES (?,?,?,'registration_cancel','staff',?,?,1,?,'event_registration',?,200,?)
+    `).bind(
+      crypto.randomUUID(),eventId,context.activeBranch.branchId,context.staff.userId,
+      idempotencyKey,digest.bytes,registrationId,now,
+    ).run();
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"registration_cancel",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    return json(409,{ok:false,error:{code:"REGISTRATION_CANCEL_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,registration_id:registrationId,status:"cancelled"},requestId,origin);
+}
+
 async function listEventAudit(
   request: Request,
   env: Env,
@@ -4862,6 +5062,29 @@ async function updatePrayerRequestStatus(
     if (url.pathname === "/api/v1/events" && request.method === "POST") {
       return createEvent(request, env, requestId, origin);
     }
+    const eventRegistrationStateMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/registration\/(open|close)$/);
+    if (eventRegistrationStateMatch && request.method === "POST") {
+      let eventId: string;
+      try { eventId = decodeURIComponent(eventRegistrationStateMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      return setEventRegistrationState(request,env,eventId,eventRegistrationStateMatch[2]==="open"?"open":"closed",requestId,origin);
+    }
+    const eventRegistrationCancelMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/registrations\/([^/]+)\/cancel$/);
+    if (eventRegistrationCancelMatch && request.method === "POST") {
+      let eventId: string, registrationId: string;
+      try { eventId=decodeURIComponent(eventRegistrationCancelMatch[1]); registrationId=decodeURIComponent(eventRegistrationCancelMatch[2]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_REGISTRATION_ID"}},requestId,origin); }
+      return cancelEventRegistration(request,env,eventId,registrationId,requestId,origin);
+    }
+    const eventRegistrationsMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/registrations$/);
+    if (eventRegistrationsMatch) {
+      let eventId: string;
+      try { eventId=decodeURIComponent(eventRegistrationsMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      if (request.method==="GET") return listEventRegistrations(request,env,eventId,requestId,origin);
+      if (request.method==="POST") return createEventRegistration(request,env,eventId,requestId,origin);
+    }
+
     const eventAuditMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/audit$/);
     if (eventAuditMatch && request.method === "GET") {
       let eventId: string;
