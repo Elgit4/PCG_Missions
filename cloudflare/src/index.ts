@@ -3167,10 +3167,10 @@ async function createEventRegistration(
     id:string;status:string;registration_state:string;capacity:number|null;
   }>();
   if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
-  if (event.status!=="published" || event.registration_state!=="open") return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_CLOSED"}},requestId,origin);
   const digest=await eventRequestDigest({attendee_name:attendeeName,attendee_phone:attendeePhone,attendee_email:attendeeEmail});
   const replay=await findEventReceipt(env,eventId,"staff_registration",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
   if (replay) return replay;
+  if (event.status!=="published" || event.registration_state!=="open") return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_CLOSED"}},requestId,origin);
   const registrationId=crypto.randomUUID();
   const receiptId=crypto.randomUUID();
   try {
