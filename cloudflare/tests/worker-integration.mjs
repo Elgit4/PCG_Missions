@@ -205,6 +205,13 @@ try {
   assert(scheduledAnnouncement.headers.get("x-content-type-options") === "nosniff",
     "security headers missing on announcement schedule");
 
+  const protectedSchedule = await fetch(baseUrl + "/api/v1/announcements/test-announcement/schedule", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ publish_at: "2026-11-14T10:00:00.000Z" }),
+  });
+  assert(protectedSchedule.status === 401, "unauthenticated schedule request should be 401, got " + protectedSchedule.status);
+
   const allowedPreflight = await fetch(baseUrl + "/api/v1/me", {
     method: "OPTIONS",
     headers: { Origin: allowedOrigin, "Access-Control-Request-Method": "GET" },
