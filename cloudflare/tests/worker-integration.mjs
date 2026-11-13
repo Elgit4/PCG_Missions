@@ -35,7 +35,7 @@ async function waitForWorker(child) {
   throw new Error(`Worker did not become healthy: ${lastError}`);
 }
 
-const migrate = spawn("npx", ["wrangler", "d1", "migrations", "apply", "pcg-missions-dev", "--local", "--yes"], {
+const migrate = spawn("npx", ["wrangler", "d1", "migrations", "apply", "pcg-missions-dev", "--local"], {
   cwd: process.cwd(),
   env,
   stdio: "inherit",
