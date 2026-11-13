@@ -1457,9 +1457,25 @@ async function updateContact(
     return json(400, { ok: false, error: { code: "INVALID_CONTACT_UPDATE" } }, requestId, origin);
   }
   const values: Record<string, string | null> = {};
-  const privateFieldsAllowed = access.activeBranch.capabilities.some((grant) => grant.code === "contacts.private_fields.read");
-  if ((Object.hasOwn(payload, "age_range") || Object.hasOwn(payload, "preferred_language")) && !privateFieldsAllowed) {
-    return json(403, { ok: false, error: { code: "PRIVATE_CONTACT_FIELDS_FORBIDDEN" } }, requestId, origin);
+  const hasPrivateFields = Object.hasOwn(payload, "age_range") || Object.hasOwn(payload, "preferred_language");
+  const hasContactDetails = Object.hasOwn(payload, "phone_e164") || Object.hasOwn(payload, "email");
+  let privateFieldAccess: Awaited<ReturnType<typeof authorizeRequestCapability>> | null = null;
+  let detailFieldAccess: Awaited<ReturnType<typeof authorizeRequestCapability>> | null = null;
+  if (hasPrivateFields) {
+    privateFieldAccess = await authorizeRequestCapability(request, env, "contacts.private_fields.read", {
+      type: "contact", recordId: contactId, teamId: resource.teamId,
+    });
+    if (privateFieldAccess.state !== "authorized") {
+      return json(403, { ok: false, error: { code: "PRIVATE_CONTACT_FIELDS_FORBIDDEN" } }, requestId, origin);
+    }
+  }
+  if (hasContactDetails) {
+    detailFieldAccess = await authorizeRequestCapability(request, env, "contacts.contact_details.read", {
+      type: "contact", recordId: contactId, teamId: resource.teamId,
+    });
+    if (detailFieldAccess.state !== "authorized") {
+      return json(403, { ok: false, error: { code: "CONTACT_DETAILS_FORBIDDEN" } }, requestId, origin);
+    }
   }
   for (const [key, value] of Object.entries(payload)) {
     if (value !== null && typeof value !== "string") {
@@ -1497,11 +1513,32 @@ async function updateContact(
   const now = new Date().toISOString();
   assignments.push("updated_at = ?");
   const predicate = contactScopePredicate(access.decision.scopeMode as ContactScopeMode, "contact", access.staff.userId, access.activeBranch.branchId, now);
+  const additionalPredicates: string[] = [];
+  const additionalValues: unknown[] = [];
+  if (privateFieldAccess?.state === "authorized") {
+    const privatePredicate = contactScopePredicate(
+      privateFieldAccess.decision.scopeMode as ContactScopeMode, "contact",
+      access.staff.userId, access.activeBranch.branchId, now,
+    );
+    additionalPredicates.push(privatePredicate.sql);
+    additionalValues.push(...privatePredicate.values);
+  }
+  if (detailFieldAccess?.state === "authorized") {
+    const detailPredicate = contactScopePredicate(
+      detailFieldAccess.decision.scopeMode as ContactScopeMode, "contact",
+      access.staff.userId, access.activeBranch.branchId, now,
+    );
+    additionalPredicates.push(detailPredicate.sql);
+    additionalValues.push(...detailPredicate.values);
+  }
   const result = await env.DB.prepare(`
     UPDATE contact SET ${assignments.join(", ")}
-    WHERE id = ? AND branch_id = ? AND contact_status <> 'merged' AND (${predicate.sql})
+    WHERE id = ? AND branch_id = ? AND contact_status <> 'merged'
+      AND (${predicate.sql})
+      ${additionalPredicates.map((sql) => `AND (${sql})`).join(" ")}
   `).bind(
-    ...Object.values(values), now, contactId, access.activeBranch.branchId, ...predicate.values,
+    ...Object.values(values), now, contactId, access.activeBranch.branchId,
+    ...predicate.values, ...additionalValues,
   ).run();
   if (!result.success || (result.meta?.changes ?? 0) !== 1) {
     return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND_OR_NOT_ACCESSIBLE" } }, requestId, origin);
