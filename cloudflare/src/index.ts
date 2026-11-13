@@ -4,6 +4,7 @@ import { resolveStaffContext, type StaffEnvironment } from "./staff-context";
 interface D1PreparedStatement {
   bind(...values: unknown[]): D1PreparedStatement;
   first<T = Record<string, unknown>>(columnName?: string): Promise<T | null>;
+  all<T = Record<string, unknown>>(): Promise<{ results?: T[] }>;
   run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
 }
 
@@ -11,12 +12,9 @@ interface D1Database {
   prepare(query: string): D1PreparedStatement;
 }
 
-interface Env extends StaffEnvironment {
-  DB: D1Database & StaffEnvironment["DB"];
+interface Env extends Omit<StaffEnvironment, "DB"> {
+  DB: D1Database;
   APP_ENV?: string;
-  BETTER_AUTH_SECRET?: string;
-  BETTER_AUTH_URL?: string;
-  BETTER_AUTH_TRUSTED_ORIGINS?: string;
 }
 
 function json(status: number, body: Record<string, unknown>, requestId: string, origin?: string): Response {
@@ -146,7 +144,6 @@ export default {
           state: "ready",
           environment: result.environment,
           schema_version: result.schema_version,
-          authentication: "configured_at_runtime",
         }, requestId, origin);
       } catch {
         return json(503, {
@@ -168,6 +165,9 @@ export default {
         }
         if (context.state === "staff_inactive") {
           return json(403, { ok: false, error: { code: "STAFF_ACCOUNT_INACTIVE" } }, requestId, origin);
+        }
+        if (context.state === "branch_not_authorized") {
+          return json(403, { ok: false, error: { code: "BRANCH_NOT_AUTHORIZED" } }, requestId, origin);
         }
         return json(200, {
           ok: true,
