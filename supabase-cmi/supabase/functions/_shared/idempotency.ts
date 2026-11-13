@@ -20,7 +20,10 @@ export interface RequestDigest {
   digestHex: string;
 }
 
-function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string {
+function canonicalize(
+  value: unknown,
+  ancestors = new WeakSet<object>(),
+): string {
   if (value === null) return "null";
 
   if (typeof value === "string") return JSON.stringify(value.normalize("NFC"));
@@ -47,7 +50,9 @@ function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string
       for (const key of keys) {
         if (key === "length") continue;
         if (typeof key !== "string" || !/^(0|[1-9][0-9]*)$/.test(key)) {
-          throw new TypeError("JSON arrays cannot contain extra or symbol properties.");
+          throw new TypeError(
+            "JSON arrays cannot contain extra or symbol properties.",
+          );
         }
 
         const index = Number(key);
@@ -57,13 +62,18 @@ function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string
 
         const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
-          throw new TypeError("JSON arrays must contain enumerable data properties.");
+          throw new TypeError(
+            "JSON arrays must contain enumerable data properties.",
+          );
         }
       }
 
       const items: string[] = [];
       for (let index = 0; index < value.length; index++) {
-        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        const descriptor = Object.getOwnPropertyDescriptor(
+          value,
+          String(index),
+        );
         if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
           throw new TypeError(
             "Sparse arrays and accessor properties are not supported.",
