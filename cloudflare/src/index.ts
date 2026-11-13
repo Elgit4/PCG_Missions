@@ -3112,6 +3112,10 @@ async function listEventRegistrations(
 ): Promise<Response> {
   const access = await authorizeRequestCapability(request,env,"events.manage");
   if (access.state !== "authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const event = await env.DB.prepare(
+    "SELECT id FROM event WHERE id=? AND branch_id=? LIMIT 1",
+  ).bind(eventId,access.activeBranch.branchId).first<{id:string}>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
   const rows = await env.DB.prepare(`
     SELECT id,event_id,contact_id,attendee_name_snapshot,attendee_phone_snapshot,
            attendee_email_snapshot,registration_source,status,registered_at,created_by,
