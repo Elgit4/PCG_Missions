@@ -816,12 +816,17 @@ async function listStaffAudit(
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
-      [...url.searchParams.keys()].some((key) => !["limit", "before"].includes(key))) {
+      [...url.searchParams.keys()].some((key) => !["limit", "before", "before_id"].includes(key))) {
     return json(400, { ok: false, error: { code: "INVALID_AUDIT_QUERY" } }, requestId, origin);
   }
   const beforeValue = url.searchParams.get("before");
   const before = beforeValue === null ? new Date().toISOString() : parseIsoTimestamp(beforeValue, "");
-  if (!before) return json(400, { ok: false, error: { code: "INVALID_AUDIT_CURSOR" } }, requestId, origin);
+  const beforeIdValue = url.searchParams.get("before_id");
+  const beforeId = beforeIdValue === null && beforeValue === null ? "\\uffff" : beforeIdValue;
+  if (!before || !beforeId || beforeId.length > 128 ||
+      ((beforeValue === null) !== (beforeIdValue === null))) {
+    return json(400, { ok: false, error: { code: "INVALID_AUDIT_CURSOR" } }, requestId, origin);
+  }
 
   const rows = await env.DB.prepare(`
     SELECT * FROM (
@@ -832,14 +837,14 @@ async function listStaffAudit(
       FROM staff_access_audit a
       JOIN staff_profile actor ON actor.id = a.actor_profile_id
       JOIN staff_profile target ON target.id = a.target_profile_id
-      WHERE a.branch_id = ? AND a.created_at < ?
+      WHERE a.branch_id = ? AND (a.created_at < ? OR (a.created_at = ? AND a.id < ?))
       UNION ALL
       SELECT a.id, 'staff_account', a.actor_profile_id, actor.full_name,
              a.target_profile_id, target.full_name, a.action, a.reason, a.metadata, a.created_at
       FROM staff_account_audit a
       JOIN staff_profile actor ON actor.id = a.actor_profile_id
       JOIN staff_profile target ON target.id = a.target_profile_id
-      WHERE a.branch_id = ? AND a.created_at < ?
+      WHERE a.branch_id = ? AND (a.created_at < ? OR (a.created_at = ? AND a.id < ?))
       UNION ALL
       SELECT a.id, 'admin_elevation', a.actor_profile_id, actor.full_name,
              req.target_profile_id, target.full_name, a.action, a.reason,
@@ -848,7 +853,7 @@ async function listStaffAudit(
       JOIN staff_role_elevation_request req ON req.id = a.request_id
       JOIN staff_profile actor ON actor.id = a.actor_profile_id
       JOIN staff_profile target ON target.id = req.target_profile_id
-      WHERE a.branch_id = ? AND a.created_at < ?
+      WHERE a.branch_id = ? AND (a.created_at < ? OR (a.created_at = ? AND a.id < ?))
       UNION ALL
       SELECT a.id, 'admin_revocation', a.actor_profile_id, actor.full_name,
              req.target_profile_id, target.full_name, a.action, a.reason,
@@ -857,15 +862,15 @@ async function listStaffAudit(
       JOIN staff_role_revocation_request req ON req.id = a.request_id
       JOIN staff_profile actor ON actor.id = a.actor_profile_id
       JOIN staff_profile target ON target.id = req.target_profile_id
-      WHERE a.branch_id = ? AND a.created_at < ?
+      WHERE a.branch_id = ? AND (a.created_at < ? OR (a.created_at = ? AND a.id < ?))
     )
     ORDER BY created_at DESC, event_id DESC
     LIMIT ?
   `).bind(
-    access.activeBranch.branchId, before,
-    access.activeBranch.branchId, before,
-    access.activeBranch.branchId, before,
-    access.activeBranch.branchId, before,
+    access.activeBranch.branchId, before, before, beforeId,
+    access.activeBranch.branchId, before, before, beforeId,
+    access.activeBranch.branchId, before, before, beforeId,
+    access.activeBranch.branchId, before, before, beforeId,
     limit,
   ).all<{
     event_id: string; event_type: string; actor_profile_id: string; actor_name: string;
@@ -877,6 +882,7 @@ async function listStaffAudit(
     ok: true,
     events,
     next_before: events.length === limit ? events[events.length - 1].created_at : null,
+    next_before_id: events.length === limit ? events[events.length - 1].event_id : null,
   }, requestId, origin);
 }
 
