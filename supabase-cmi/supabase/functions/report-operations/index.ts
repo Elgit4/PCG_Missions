@@ -133,6 +133,42 @@ Deno.serve(async (request: Request) => {
     const item = path[path.length - 3] === "report-operations" && previous === "reports" && isUuid(last);
     const review = path[path.length - 4] === "report-operations" && path[path.length - 3] === "reports" && isUuid(path[path.length - 2]) && last === "review";
 
+    const teamCollection = previous === "report-operations" && last === "teams";
+    const eventCollection = previous === "report-operations" && last === "events";
+
+    if (request.method === "GET" && (teamCollection || eventCollection)) {
+      const branchValues = url.searchParams.getAll("branch_id");
+      if (branchValues.length !== 1 ||
+        [...url.searchParams.keys()].some((key) => key !== "branch_id") ||
+        !isUuid(branchValues[0])) {
+        return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, requestId);
+      }
+      const branchId = branchValues[0];
+      const submitScopes = await scopes(auth.service, auth.profileId, branchId, "report.submit.own");
+      const reviewScopes = await scopes(auth.service, auth.profileId, branchId, "report.review.team");
+      const branchReview = await scopes(auth.service, auth.profileId, branchId, "report.review.branch");
+      if (!submitScopes.includes("self") && !reviewScopes.includes("team") && !branchReview.includes("branch")) {
+        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+      }
+      if (teamCollection) {
+        const teamIds = await activeTeamIds(auth.service, auth.profileId, branchId);
+        if (!teamIds.length) return response({ data: [], request_id: requestId }, 200, origin, requestId);
+        const { data, error } = await auth.service.from("team").select("id,name")
+          .eq("branch_id", branchId).eq("is_active", true).in("id", teamIds)
+          .order("name", { ascending: true });
+        if (error) throw new Error("REPORT_TEAM_OPTIONS_FAILED");
+        return response({ data: data ?? [], request_id: requestId }, 200, origin, requestId);
+      }
+      if (!submitScopes.includes("self")) {
+        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+      }
+      const { data, error } = await auth.service.from("event")
+        .select("id,title,starts_at").eq("branch_id", branchId)
+        .order("starts_at", { ascending: false }).limit(100);
+      if (error) throw new Error("REPORT_EVENT_OPTIONS_FAILED");
+      return response({ data: data ?? [], request_id: requestId }, 200, origin, requestId);
+    }
+
     if (request.method === "GET" && collection) {
       const parsed = parseReportListQuery(url);
       if (!parsed.ok) return fail("INVALID_QUERY", parsed.error, 400, origin, requestId);
