@@ -108,7 +108,7 @@ Legend: **G** ordinary active grant; **S** active assignment/team scoped grant; 
 | Staff account lifecycle | P | — | — | — | — | — |
 | Role assignment | P | — | — | — | — | — |
 | Capability/policy administration | — | — | — | — | — | — |
-| Team/service-area administration | — | — | — | — | — | — |
+| Team and service-area administration (branch control) | B (branch) | — | — | — | — | — |
 | Contact capture create | G | G | S | S | — | — |
 | Ordinary contact read | G | S | S | S | S | — |
 | Ordinary contact update | G | S | S | S | S | — |
@@ -138,7 +138,7 @@ Legend: **G** ordinary active grant; **S** active assignment/team scoped grant; 
 | Privileged audit log read | — | — | — | — | — | — |
 | Church-wide settings | — | — | — | — | — | — |
 
-* Admin/Pastor pastoral oversight remains a separate explicit capability, not an unconditional bypass of assignment/privacy rules. B (branch) marks the seven additive draft-workspace capabilities granted on 12 November 2026; it never implies a publish, send, registration, attendance or pastoral-mutation capability.
+* Admin/Pastor pastoral oversight remains a separate explicit capability, not an unconditional bypass of assignment/privacy rules. B (branch) marks the seven private-draft capabilities granted on 12 November 2026 plus the two team/service-area administration capabilities added on 13 November 2026. It never implies a publish, send, registration, attendance, cross-team leadership or pastoral-mutation capability.
 
 ### Role interpretation
 
