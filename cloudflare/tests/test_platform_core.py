@@ -13,7 +13,7 @@ class PlatformCoreMigrationTests(unittest.TestCase):
         self.db.execute("PRAGMA foreign_keys = ON")
         self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
         self.db.executescript((MIGRATION.parent / "0002_contacts_followup.sql").read_text(encoding="utf-8"))
-        self.db.executescript((MIGRATION.parent / "0004_staff_session_revocation.sql").read_text(encoding="utf-8"))
+        self.db.executescript((MIGRATION.parent / "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql").read_text(encoding="utf-8"))
         self.db.executescript((MIGRATION.parent / "0005_better_auth_rate_limit.sql").read_text(encoding="utf-8"))
         self.db.execute(
             'INSERT INTO "user" (id, name, email, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?)',
@@ -561,7 +561,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
