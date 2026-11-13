@@ -370,7 +370,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql", "0018_event_operations_guards.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
@@ -1025,7 +1025,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql", "0018_event_operations_guards.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
@@ -1656,4 +1656,126 @@ class AuthorizationQueryTests(unittest.TestCase):
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute(
                 "UPDATE public_content_change_audit SET action='updated' WHERE entity_type='church_public_profile'"
+            )
+
+
+    def test_event_registration_transport_and_closeout_guards(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, _ = self.staff["field"]
+
+        def insert_event(event_id, capacity):
+            self.db.execute(
+                """INSERT INTO event
+                   (id,branch_id,title,starts_at,ends_at,timezone,capacity,
+                    registration_state,visibility,status,transport_enabled,
+                    created_by,last_modified_by,created_at,updated_at)
+                   VALUES (?, 'authz-branch', 'Community Gathering',
+                           '2026-02-01T08:00:00.000Z','2026-02-01T11:00:00.000Z',
+                           'Africa/Accra',?,'open','staff','published',1,?,?,?,?)""",
+                (event_id,capacity,admin_user,admin_user,self.NOW,self.NOW),
+            )
+
+        def insert_registration(registration_id,event_id,request_id):
+            self.db.execute(
+                """INSERT INTO event_registration
+                   (id,event_id,branch_id,attendee_name_snapshot,registration_source,
+                    status,registered_at,client_request_id,created_by)
+                   VALUES (?,?,'authz-branch','Attendee','staff','registered',?,?,?)""",
+                (registration_id,event_id,self.NOW,request_id,admin_user),
+            )
+
+        insert_event("event-capacity-1",1)
+        insert_registration("registration-1","event-capacity-1","request-1")
+        with self.assertRaises(sqlite3.IntegrityError):
+            insert_registration("registration-over-capacity","event-capacity-1","request-2")
+        self.db.execute(
+            """UPDATE event_registration SET status='cancelled',cancelled_by=?,cancelled_at=?
+               WHERE id='registration-1'""",
+            (admin_user,self.NOW),
+        )
+        insert_registration("registration-2","event-capacity-1","request-2")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE event_registration SET status='cancelled',cancelled_by=?,cancelled_at=?
+                   WHERE id='registration-2'""",
+                (field_user,self.NOW),
+            )
+
+        insert_event("event-transport-1",5)
+        insert_registration("transport-registration-1","event-transport-1","transport-request-1")
+        insert_registration("transport-registration-2","event-transport-1","transport-request-2")
+        self.db.execute(
+            """INSERT INTO transport_option
+               (id,event_id,branch_id,label,capacity,is_enabled,created_at,created_by)
+               VALUES ('transport-option-1','event-transport-1','authz-branch','Main shuttle',1,1,?,?)""",
+            (self.NOW,admin_user),
+        )
+        self.db.execute(
+            """INSERT INTO transport_reservation
+               (id,registration_id,event_id,transport_option_id,branch_id,seat_count,status,
+                created_at,updated_at,created_by)
+               VALUES ('transport-reservation-1','transport-registration-1','event-transport-1',
+                       'transport-option-1','authz-branch',1,'reserved',?,?,?)""",
+            (self.NOW,self.NOW,admin_user),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO transport_reservation
+                   (id,registration_id,event_id,transport_option_id,branch_id,seat_count,status,
+                    created_at,updated_at,created_by)
+                   VALUES ('transport-reservation-over','transport-registration-2','event-transport-1',
+                           'transport-option-1','authz-branch',1,'reserved',?,?,?)""",
+                (self.NOW,self.NOW,admin_user),
+            )
+        self.db.execute(
+            """UPDATE transport_reservation
+               SET status='cancelled',updated_by=?,cancelled_by=?,cancelled_at=?,updated_at=?
+               WHERE id='transport-reservation-1'""",
+            (admin_user,admin_user,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO transport_reservation
+               (id,registration_id,event_id,transport_option_id,branch_id,seat_count,status,
+                created_at,updated_at,created_by)
+               VALUES ('transport-reservation-2','transport-registration-2','event-transport-1',
+                       'transport-option-1','authz-branch',1,'reserved',?,?,?)""",
+            (self.NOW,self.NOW,admin_user),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE transport_reservation SET status='boarded',updated_by=?,updated_at=?
+                   WHERE id='transport-reservation-2'""",
+                (field_user,self.NOW),
+            )
+
+        self.db.execute(
+            """INSERT INTO event_closeout
+               (id,event_id,branch_id,submitted_by,submitted_at,status,
+                attendee_count,registration_count,transport_seat_count,summary_notes,created_at,updated_at)
+               VALUES ('closeout-1','event-transport-1','authz-branch',?,?,'submitted',2,2,1,'Summary',?,?)""",
+            (admin_user,self.NOW,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO event_closeout_event
+               (id,closeout_id,actor_user_id,action,details,created_at)
+               VALUES ('closeout-event-submit','closeout-1',?,'submitted','{}',?)""",
+            (admin_user,self.NOW),
+        )
+        self.db.execute(
+            """UPDATE event_closeout SET status='approved',reviewed_by=?,reviewed_at=?,updated_at=?
+               WHERE id='closeout-1'""",
+            (admin_user,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO event_closeout_event
+               (id,closeout_id,actor_user_id,action,details,created_at)
+               VALUES ('closeout-event-approve','closeout-1',?,'approved','{}',?)""",
+            (admin_user,self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO event_closeout_event
+                   (id,closeout_id,actor_user_id,action,details,created_at)
+                   VALUES ('closeout-event-unauthorized','closeout-1',?,'approved','{}',?)""",
+                (field_user,self.NOW),
             )
