@@ -6,17 +6,19 @@ import {
   parseAnnouncementPatch,
 } from "./validation.ts";
 import { readJson } from "../_shared/request_body.ts";
+import {
+  createAllowedOrigins,
+  createPreflightResponse,
+  isAllowedOrigin,
+} from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "";
 const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const allowedOrigins = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+const allowedOrigins = createAllowedOrigins(
+  Deno.env.get("CMI_ALLOWED_ORIGINS"),
 );
 
 function createServiceClient() {
@@ -242,22 +244,12 @@ Deno.serve(async (request: Request) => {
   const id = requestId();
   const origin = request.headers.get("Origin");
 
-  if (origin && !allowedOrigins.has(origin)) {
+  if (!isAllowedOrigin(origin, allowedOrigins)) {
     return fail("ORIGIN_NOT_ALLOWED", "Origin not allowed.", 403, null, id);
   }
 
   if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
-        "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-        "Access-Control-Allow-Headers":
-          "Authorization, apikey, Content-Type, x-client-info",
-        "Access-Control-Max-Age": "600",
-        "Vary": "Origin",
-      },
-    });
+    return createPreflightResponse(origin, allowedOrigins);
   }
 
   if (!["GET", "POST", "PATCH"].includes(request.method)) {
