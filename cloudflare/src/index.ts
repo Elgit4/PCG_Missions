@@ -2757,7 +2757,9 @@ async function listPrayerQueue(
       context.staff.profileId, now, now, limit,
     ),
   ]);
-  const rows = batch[2]?.results ?? [];
+  const rows = (batch[2] as unknown as {
+    results?: Array<{ id: string; status: string; sensitivity: string; expires_at: string | null; created_at: string; updated_at: string }>;
+  })?.results ?? [];
   if (!batch[0]?.success || !batch[1]?.success ||
       (batch[0]?.meta?.changes ?? 0) !== rows.length ||
       (batch[1]?.meta?.changes ?? 0) !== rows.length) {
@@ -2876,7 +2878,9 @@ async function listAssignedPrayerRequests(
       context.staff.profileId, now, now, limit,
     ),
   ]);
-  const rows = batch[2]?.results ?? [];
+  const rows = (batch[2] as unknown as {
+    results?: Array<{ id: string; request_text: string; status: string; sensitivity: string; expires_at: string | null; answered_at: string | null; created_at: string; updated_at: string }>;
+  })?.results ?? [];
   if (!batch[0]?.success || !batch[1]?.success ||
       (batch[0]?.meta?.changes ?? 0) !== rows.length ||
       (batch[1]?.meta?.changes ?? 0) !== rows.length) {
