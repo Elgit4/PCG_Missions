@@ -2776,6 +2776,152 @@ function isValidTimezone(value: string): boolean {
   }
 }
 
+const REPORT_COUNT_FIELDS = [
+  "contacts_captured","gospel_presentations","decisions_for_christ",
+  "followup_required","followup_completed","visits_completed",
+  "calls_completed","events_supported","attendance_count",
+] as const;
+type ReportCountField = typeof REPORT_COUNT_FIELDS[number];
+type ReportType = "daily_evangelism" | "event_evangelism" | "weekly_ministry";
+type ReportCounts = Record<ReportCountField,number>;
+type ParsedReportCreate = {
+  branch_id:string;report_type:ReportType;period_start:string;period_end:string;
+  team_id:string|null;event_id:string|null;
+} & ReportCounts;
+
+function isUuidValue(value: unknown): value is string {
+  return typeof value==="string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isPlainRecord(value: unknown): value is Record<string,unknown> {
+  return value!==null && typeof value==="object" && !Array.isArray(value);
+}
+
+function isReportDate(value: unknown): value is string {
+  if (typeof value!=="string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed=new Date(value+"T00:00:00.000Z");
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0,10)===value;
+}
+
+function parseReportCounts(value:Record<string,unknown>,allowDefaults:boolean):{ok:true;counts:ReportCounts}|{ok:false;error:string} {
+  const counts={} as ReportCounts;
+  for (const field of REPORT_COUNT_FIELDS) {
+    const raw=value[field]===undefined&&allowDefaults?0:value[field];
+    if (typeof raw!=="number" || !Number.isSafeInteger(raw) || raw<0 || raw>100000) {
+      return {ok:false,error:`${field} must be a whole number from 0 to 100000.`};
+    }
+    counts[field]=raw;
+  }
+  if (counts.decisions_for_christ>counts.gospel_presentations) return {ok:false,error:"Decisions for Christ cannot exceed gospel presentations."};
+  if (counts.followup_completed>counts.followup_required) return {ok:false,error:"Completed follow-ups cannot exceed follow-ups required."};
+  return {ok:true,counts};
+}
+
+function parseMinistryReportCreate(value:unknown):{ok:true;value:ParsedReportCreate}|{ok:false;error:string} {
+  if (!isPlainRecord(value)) return {ok:false,error:"A JSON object is required."};
+  const allowed=new Set(["branch_id","report_type","period_start","period_end","team_id","event_id",...REPORT_COUNT_FIELDS]);
+  if (Object.keys(value).some((key)=>!allowed.has(key))) return {ok:false,error:"Unsupported report field."};
+  if (!isUuidValue(value.branch_id)) return {ok:false,error:"Invalid branch_id."};
+  if (!["daily_evangelism","event_evangelism","weekly_ministry"].includes(String(value.report_type))) return {ok:false,error:"Invalid report_type."};
+  if (!isReportDate(value.period_start)||!isReportDate(value.period_end)) return {ok:false,error:"Report dates must be valid YYYY-MM-DD dates."};
+  const span=(Date.parse(value.period_end+"T00:00:00.000Z")-Date.parse(value.period_start+"T00:00:00.000Z"))/86400000;
+  if (span<0 || (value.report_type!=="weekly_ministry"&&span!==0) || (value.report_type==="weekly_ministry"&&span!==6)) {
+    return {ok:false,error:"Daily and event reports cover one day; weekly reports cover seven days."};
+  }
+  const teamId=value.team_id===undefined||value.team_id===null||value.team_id===""?null:value.team_id;
+  const eventId=value.event_id===undefined||value.event_id===null||value.event_id===""?null:value.event_id;
+  if (teamId!==null&&!isUuidValue(teamId)) return {ok:false,error:"Invalid team_id."};
+  if (eventId!==null&&!isUuidValue(eventId)) return {ok:false,error:"Invalid event_id."};
+  if ((value.report_type==="event_evangelism")!==(eventId!==null)) return {ok:false,error:"Event evangelism requires an event; other report types must not include one."};
+  const parsedCounts=parseReportCounts(value,true);
+  if (!parsedCounts.ok) return parsedCounts;
+  return {ok:true,value:{
+    branch_id:value.branch_id,report_type:value.report_type as ReportType,
+    period_start:value.period_start,period_end:value.period_end,
+    team_id:teamId as string|null,event_id:eventId as string|null,...parsedCounts.counts,
+  }};
+}
+
+function parseMinistryReportList(url:URL):{ok:true;value:{branch_id:string;report_type:ReportType|null;status:string|null;limit:number;offset:number}}|{ok:false;error:string} {
+  const allowed=new Set(["branch_id","report_type","status","limit","offset"]),seen=new Set<string>();
+  for (const [key] of url.searchParams) {
+    if (!allowed.has(key)) return {ok:false,error:"Unsupported query parameter."};
+    if (seen.has(key)) return {ok:false,error:"Duplicate query parameter."};
+    seen.add(key);
+  }
+  const branchId=url.searchParams.get("branch_id")??"";
+  if (!isUuidValue(branchId)) return {ok:false,error:"Invalid branch_id."};
+  const type=url.searchParams.get("report_type");
+  if (type!==null&&!["daily_evangelism","event_evangelism","weekly_ministry"].includes(type)) return {ok:false,error:"Invalid report_type."};
+  const status=url.searchParams.get("status");
+  if (status!==null&&!["submitted","returned","approved"].includes(status)) return {ok:false,error:"Invalid report status."};
+  const limit=url.searchParams.has("limit")?Number(url.searchParams.get("limit")):25;
+  const offset=url.searchParams.has("offset")?Number(url.searchParams.get("offset")):0;
+  if (!Number.isInteger(limit)||limit<1||limit>50) return {ok:false,error:"Limit must be an integer from 1 to 50."};
+  if (!Number.isInteger(offset)||offset<0||offset>5000) return {ok:false,error:"Offset must be an integer from 0 to 5000."};
+  return {ok:true,value:{branch_id:branchId,report_type:type as ReportType|null,status,limit,offset}};
+}
+
+function parseMinistryReportReview(value:unknown):{ok:true;value:{decision:"approved"|"returned"|"comment";comment:string|null}}|{ok:false;error:string} {
+  if (!isPlainRecord(value)) return {ok:false,error:"A JSON object is required."};
+  if (Object.keys(value).some((key)=>!["decision","comment"].includes(key))) return {ok:false,error:"Unsupported review field."};
+  if (!["approved","returned","comment"].includes(String(value.decision))) return {ok:false,error:"Invalid review decision."};
+  let comment:string|null=null;
+  if (value.comment!==undefined&&value.comment!==null) {
+    if (typeof value.comment!=="string"||value.comment.trim().length>2000) return {ok:false,error:"Review comment must be 2000 characters or fewer."};
+    comment=value.comment.trim()||null;
+  }
+  if (value.decision==="returned"&&!comment) return {ok:false,error:"A reason is required when returning a report."};
+  return {ok:true,value:{decision:value.decision as "approved"|"returned"|"comment",comment}};
+}
+
+function parseMinistryReportCorrection(value:unknown):{ok:true;counts:ReportCounts}|{ok:false;error:string} {
+  if (!isPlainRecord(value)) return {ok:false,error:"A JSON object is required."};
+  if (Object.keys(value).length!==REPORT_COUNT_FIELDS.length||Object.keys(value).some((key)=>!(REPORT_COUNT_FIELDS as readonly string[]).includes(key))) {
+    return {ok:false,error:"All report count fields are required; other fields are not editable."};
+  }
+  return parseReportCounts(value,false);
+}
+
+function hasReportScope(context:AuthenticatedStaffContext,code:string,scope:string):boolean {
+  return !!context.activeBranch?.capabilities.some((grant)=>grant.code===code&&grant.scopeMode===scope);
+}
+
+async function activeReportTeamIds(env:Env,profileId:string,branchId:string,now:string):Promise<string[]> {
+  const rows=await env.DB.prepare(`
+    SELECT stm.team_id FROM staff_team_membership stm
+    JOIN team t ON t.id=stm.team_id AND t.branch_id=stm.branch_id AND t.is_active=1
+    WHERE stm.staff_profile_id=? AND stm.branch_id=? AND stm.revoked_at IS NULL
+      AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+    ORDER BY stm.team_id
+  `).bind(profileId,branchId,now,now).all<{team_id:string}>();
+  return [...new Set((rows.results??[]).map((row)=>row.team_id))];
+}
+
+function canReadMinistryReport(
+  context:AuthenticatedStaffContext,
+  report:{author_profile_id:string;team_id:string|null},
+  teamIds:string[],
+):boolean {
+  return hasReportScope(context,"report.review.branch","branch")
+    || (hasReportScope(context,"report.read.own","self")&&report.author_profile_id===context.staff.profileId)
+    || (hasReportScope(context,"report.review.team","team")&&!!report.team_id&&teamIds.includes(report.team_id));
+}
+
+function canReviewMinistryReport(
+  context:AuthenticatedStaffContext,
+  report:{author_profile_id:string;team_id:string|null},
+  teamIds:string[],
+):boolean {
+  if (report.author_profile_id===context.staff.profileId) return false;
+  return hasReportScope(context,"report.review.branch","branch")
+    || (hasReportScope(context,"report.review.team","team")&&!!report.team_id&&teamIds.includes(report.team_id));
+}
+
+const MINISTRY_REPORT_COLUMNS=`id,branch_id,report_type,period_start,period_end,author_profile_id,team_id,event_id,
+  contacts_captured,gospel_presentations,decisions_for_christ,followup_required,followup_completed,
+  visits_completed,calls_completed,events_supported,attendance_count,status,submitted_at,created_at,updated_at`;
+
 async function getReportsOverview(
   request: Request,
   env: Env,
