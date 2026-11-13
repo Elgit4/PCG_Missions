@@ -7,7 +7,10 @@ on:
       - "web/**"
       - ".github/workflows/cmi-web-ci.yml"
   pull_request:
-    branches: [main]
+    branches:
+      - main
+      - "feat/team-area-administration-mainline"
+      - "feat/cmi-*"
     paths:
       - "web/**"
       - ".github/workflows/cmi-web-ci.yml"
