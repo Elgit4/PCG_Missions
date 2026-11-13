@@ -576,6 +576,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                   <div><span className={canReadTasks ? "cmi-dot enabled" : "cmi-dot"} />Follow-up tasks <strong>{canReadTasks ? "Available" : "Not granted"}</strong></div>
                   <div><span className={canReadStaffDirectory ? "cmi-dot enabled" : "cmi-dot"} />Staff accounts <strong>{canReadStaffDirectory ? "Available" : "Not granted"}</strong></div>
                   <div><span className={canManagePasswordResets ? "cmi-dot enabled" : "cmi-dot"} />Password-reset requests <strong>{canManagePasswordResets ? "Available" : "Not granted"}</strong></div>
+                  <div><span className={availablePages.includes("Teams & Areas") ? "cmi-dot enabled" : "cmi-dot"} />Teams & service areas <strong>{availablePages.includes("Teams & Areas") ? "Available" : "Not granted"}</strong></div>
+                  <div><span className={availablePages.includes("Reports") ? "cmi-dot enabled" : "cmi-dot"} />Typed ministry reports <strong>{availablePages.includes("Reports") ? "Available" : "Not granted"}</strong></div>
                 </div>
                 <div className="cmi-module-boundary">
                   <p className="cmi-eyebrow">RESTRICTED OR NOT YET ENABLED</p>
@@ -583,7 +585,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                     <span><strong>Events & calendar drafts</strong><small>Private branch-scoped authoring is available to Admin/Pastor; registration, transport, attendance and check-in remain disabled</small></span>
                     <span><strong>Announcements & visitor content</strong><small>Admin/Pastor can prepare private announcement, sermon and welcome-message drafts; publication and delivery remain disabled</small></span>
                     <span><strong>Prayer & pastoral care</strong><small>Restricted workflows are not exposed in this workspace</small></span>
-                    <span><strong>Reports & exports</strong><small>Not implemented for production use</small></span>
+                    <span><strong>Report exports</strong><small>Typed reports support role-scoped submission and review; bulk export remains disabled</small></span>
                     <span><strong>SMS campaigns & automation</strong><small>Dispatch, consent and delivery tracking are not enabled</small></span>
                     <span><strong>Offline capture and sync</strong><small>Disabled for this release</small></span>
                   </div>
