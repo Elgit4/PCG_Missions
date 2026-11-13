@@ -1243,7 +1243,7 @@ class AuthorizationQueryTests(unittest.TestCase):
                 (self.NOW, second_profile),
             )
 
-def test_prayer_request_is_private_and_assignment_is_limited_to_intercessor(self):
+    def test_prayer_request_is_private_and_assignment_is_limited_to_intercessor(self):
         admin_user, admin_profile = self.staff["admin"]
         prayer_user, prayer_profile = self.staff["prayer"]
         field_user, field_profile = self.staff["field"]
