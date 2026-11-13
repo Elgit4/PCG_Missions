@@ -56,6 +56,22 @@ Both routes require `X-Branch-Id` to select an active branch already assigned to
 
 Admin/Pastor elevation and revocation are intentionally excluded from these standard routes. Elevation requires the separate two-person approval workflow; Admin/Pastor revocation remains blocked until its dual-control workflow is implemented. The endpoint never allows a caller to select a different branch in the request body.
 
+
+## Two-person Admin/Pastor elevation
+
+The separate dual-control workflow is now exposed:
+
+| Method and path | Purpose |
+|---|---|
+| `GET /api/v1/staff/role-elevations` | List pending Admin/Pastor elevation requests in the selected branch |
+| `POST /api/v1/staff/role-elevations` | Request Admin/Pastor elevation for another active staff member |
+| `POST /api/v1/staff/role-elevations/{requestId}/approve` | Approve and apply a pending request as a distinct Admin/Pastor |
+| `POST /api/v1/staff/role-elevations/{requestId}/reject` | Reject a pending request as a distinct Admin/Pastor |
+
+Request creation requires `staff.role.assign`; listing and review require `staff.role.approve`. The database triggers independently verify the actor's active branch assignment, capability, target status, distinct requester/reviewer, pending request state and approved assignment. Approval and role creation execute in one D1 batch; the database audit triggers record request, review, assignment and application events. A requestor cannot approve their own request. The initial two owner-controlled bootstrap slots remain a separate bootstrap-only operation, not an ordinary API grant.
+
+Admin/Pastor revocation remains blocked in the standard-role endpoint and has no public Worker route yet. That needs its own two-person revocation workflow before it can be enabled.
+
 ## Deliberately incomplete
 
 - Public sign-up is disabled. There is not yet a staff invitation/create-account endpoint.
