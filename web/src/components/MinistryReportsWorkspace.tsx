@@ -49,6 +49,8 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
   const [periodEnd, setPeriodEnd] = useState(new Date().toISOString().slice(0, 10));
   const [teamId, setTeamId] = useState("");
   const [eventId, setEventId] = useState("");
+  const [teams, setTeams] = useState<Array<{ id: string; name: string }>>([]);
+  const [events, setEvents] = useState<Array<{ id: string; title: string; starts_at: string }>>([]);
   const [counts, setCounts] = useState<Record<CountKey, string>>(emptyCounts);
   const [reviewingId, setReviewingId] = useState<string | null>(null);
   const [reviewComment, setReviewComment] = useState("");
@@ -69,6 +71,24 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
   }, [api, branchId]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (!showForm) return;
+    let current = true;
+    void api.listReportTeams(branchId).then((result) => {
+      if (current) setTeams(result.data);
+    }).catch(() => {
+      if (current) setTeams([]);
+    });
+    if (reportType === "event_evangelism") {
+      void api.listReportEvents(branchId).then((result) => {
+        if (current) setEvents(result.data);
+      }).catch(() => {
+        if (current) setEvents([]);
+      });
+    }
+    return () => { current = false; };
+  }, [api, branchId, showForm, reportType]);
+
   useEffect(() => {
     if (reportType === "weekly_ministry") {
       const start = new Date(periodStart + "T00:00:00Z");
@@ -163,8 +183,8 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
             </select></label>
             <label><span>Period starts</span><input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} required /></label>
             <label><span>Period ends</span><input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} required readOnly={reportType !== "weekly_ministry"} /></label>
-            <label><span>Team ID <small>(optional)</small></span><input value={teamId} onChange={(event) => setTeamId(event.target.value)} placeholder="Paste your active team ID" /></label>
-            {reportType === "event_evangelism" && <label className="ministry-report-wide"><span>Event ID (required)</span><input value={eventId} onChange={(event) => setEventId(event.target.value)} placeholder="Paste the event ID" required /></label>}
+            <label><span>Team <small>(optional)</small></span><select value={teamId} onChange={(event) => setTeamId(event.target.value)}><option value="">No team selected</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
+            {reportType === "event_evangelism" && <label className="ministry-report-wide"><span>Event (required)</span><select value={eventId} onChange={(event) => setEventId(event.target.value)} required><option value="">Choose an event</option>{events.map((item) => <option key={item.id} value={item.id}>{item.title} · {dateLabel(item.starts_at.slice(0, 10))}</option>)}</select>{events.length === 0 && <small>No event options are available for this branch.</small>}</label>}
           </div>
           <div className="ministry-report-count-grid">
             {COUNT_FIELDS.map(([key, label]) => <label key={key}><span>{label}</span><input type="number" min="0" max="100000" step="1" value={counts[key]} onChange={(event) => setCounts((current) => ({ ...current, [key]: event.target.value }))} required /></label>)}
