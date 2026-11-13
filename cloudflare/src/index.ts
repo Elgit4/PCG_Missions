@@ -1633,7 +1633,7 @@ async function assignContact(
           AND starts_at <= ?
           AND (ends_at IS NULL OR ends_at > ?)
       `).bind(
-        transitionAt, access.staff.userId, `Reassigned: ${reason}`,
+        transitionAt, access.staff.userId, reason,
         contactId, access.activeBranch.branchId, now, transitionAt,
       ),
       env.DB.prepare(`
