@@ -27,6 +27,7 @@ The Worker is a single entry point in `src/index.ts`. Protected routes resolve t
 | Contact assignment | `POST /api/v1/contacts/{id}/assign` | Branch/team/assignment checks and assignment history |
 | Follow-up tasks | `GET/POST /api/v1/followup/tasks`, `PATCH /api/v1/followup/tasks/{id}` | Scoped task list/create/update with idempotency and event ledger |
 | Follow-up assignment | `POST /api/v1/followup/tasks/{id}/assign` | Scoped reassignment to an active staff member or team |
+| Pastoral care | `GET/POST /api/v1/pastoral/care`, `GET/PATCH /api/v1/pastoral/care/{id}`, `POST /{id}/assignments`, `POST /{id}/assignments/{assignmentId}/revoke`, `POST /{id}/interactions` | Admin/Pastor branch-scoped metadata; narrative reads, status updates and interactions require an active explicit share and care assignment; reasoned revocation and append-only care audit |
 | Prayer intake and queue | `POST /api/v1/pastoral/prayer/requests`, `GET /api/v1/pastoral/prayer/queue` | Authenticated branch-capability intake with bounded narrative, idempotency key, restricted default sensitivity and creation audit; metadata-only Admin/Pastor assignment queue; sensitive reads are audited |
 | Assigned prayer | `GET /api/v1/pastoral/prayer/assigned` | Narrative projection only for active intercessor assignment and explicit share |
 | Prayer shares | `POST /api/v1/pastoral/prayer/requests/{id}/shares`, `POST /.../{shareId}/revoke` | Explicit share grant and reasoned revocation |
@@ -89,7 +90,7 @@ All protected business routes require a verified session and an authorized activ
 | P0 | Runtime deployment and auth | Deploy full Worker to non-production; validate Better Auth D1 schema compatibility; test sign-in, session refresh, sign-out, invitation acceptance and revocation |
 | P0 | API integration tests | Add real Worker/D1 tests for staff, contacts, follow-up, prayer, event, calendar, announcement and content endpoints, including negative cross-branch/team/assignment cases |
 | P1 | Prayer intake | Authenticated creation is now implemented with branch capability, idempotency and audit; add real Worker/D1 integration tests and remaining lifecycle controls. Keep public intake disabled until separately approved |
-| P1 | Pastoral care | Implement case metadata and narrative handlers only after a distinct care-reader capability, explicit-share policy and audit tests are approved |
+| P1 | Pastoral care | Case metadata and explicit-share narrative handlers are implemented in source; apply migration 0025 and add real Worker/D1 integration tests for cross-branch, expired-share, revoked-assignment and audit failure cases |
 | P1 | Events | Add real Worker/D1 integration tests for all new staff-only operations and verify the UI workflow; public registration remains deliberately disabled |
 | P1 | Calendar | Cancellation, immutable change audit and scoped read receipts are now in source and schema; recurring-series generation and real Worker/D1 integration tests remain |
 | P1 | Announcements | Add deployed Worker integration tests for audience fan-out, inbox isolation and immutable read receipts; publishing and recipient-scoped inbox are in source |
@@ -104,7 +105,7 @@ All protected business routes require a verified session and an authorized activ
 - The full Worker is not yet deployed. The only deployed script is the isolated D1 smoke-check Worker. Wrangler typecheck and dry-run bundling pass; GitHub Actions skips deployment until the repository secret `CLOUDFLARE_API_TOKEN` is configured.
 - No deployed Worker request has exercised Better Auth against the EU D1 binding.
 - Invitation email and password-reset delivery are not configured; invitation token delivery remains a manual one-time handoff.
-- Pastoral-care narrative routes remain disabled.
+- Pastoral-care routes are implemented in source but are not deployed or runtime-tested; migration 0025 remains unapplied to remote EU D1.
 - Event registration/transport/check-in/closeout, calendar, announcement inbox/read receipts, aggregate reporting and public-content routes are implemented in source and D1 schema, but remain undeployed and require Worker-level integration tests. Advanced reporting and privacy-controlled exports remain incomplete.
 - The D1 schema is a first porting slice, not a complete replacement for the full live Supabase schema.
 - No production data migration, frontend cutover, production DNS change or Supabase shutdown is authorized or performed.
