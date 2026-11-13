@@ -23,22 +23,23 @@
 | `0012_prayer_pastoral_care.sql` | 9 restricted domain tables | Prayer requests/assignments, separate prayer and care access ledgers, care groups/memberships, care records/assignments/interactions; creation and assignment triggers enforce capability, branch and intercessor-role boundaries; schema version 12 |
 | `0013_events_attendance_transport.sql` | 10 operational tables | Events, typed staff/team assignments, staff registrations, transport options/reservations, check-in, closeout, append-only closeout events and idempotency receipts; branch-scoped actor checks; public registration remains disabled; schema version 13 |
 | `0014_calendar_announcements_public_content.sql` | 11 content/workspace tables | Typed calendar scopes; branch/team/event announcement audiences; in-app-only delivery ledger; public profile, welcome messages, sermons, daily word, digital tracts and typed external links; actor-scoped create/update checks; schema version 14 |
+| `0015_prayer_share_revocation_hardening.sql` | 0 new tables | Requires a reason for sensitive-share revocation, ties prayer-assignment revocation to the matching revoked share, records actor/reason, and appends immutable prayer and sensitive-access audit events; schema version 15 |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
 ## Remote non-production D1 verification
 
 - Database UUID: `376a6782-d059-41f9-9e09-f93718fef2bb`.
-- Migrations `0001` through `0014` applied successfully; schema version reports `14` and environment marker is `non-production`.
+- Migrations `0001` through `0015` applied successfully; schema version reports `15` and environment marker is `non-production`.
 - Database contains 69 application tables and all six expected role records.
 - `PRAGMA foreign_key_check` returned no violations.
-- Wrangler migration ledger `d1_migrations` was initialized with the 14 applied migration filenames after applying the SQL through the Cloudflare D1 API.
+- Wrangler migration ledger `d1_migrations` contains all 15 applied migration filenames. Migration `0015` was applied to the EU non-production database and verified through the Cloudflare D1 API.
 - This is a direct remote D1 schema test; Better Auth login, Worker request lifecycle and domain endpoints have not yet been exercised against a deployed Worker.
 
 ## Current test coverage
 
 The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations against an in-memory SQLite database and checks:
-- migration application through schema version 14 and non-production marker;
+- migration application through schema version 15 and non-production marker;
 - identity foreign keys;
 - temporal overlap rejection for staff role assignments, team membership, area coverage and contact assignments;
 - adjacent assignment periods;
@@ -54,7 +55,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - branch-scoped event creation, event check-in capability and event/team assignment authorization, staff registration actor checks, required idempotency keys, transport assignment checks and closeout review capability;
 - typed calendar scope integrity, branch-scoped announcement management, content-manager checks on public content creation and update, and typed external document links.
 
-Latest verified CI run: [43464674852](https://github.com/Elgit4/PCG_Missions/actions/runs/43464674852) — **55 Python/SQLite tests passed** and Worker/Better Auth TypeScript type-check passed. This verifies migration replay and tested invariants in CI's SQLite runtime; it does not replace real D1 Worker request testing or Better Auth schema compatibility validation.
+Latest verified CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/actions/runs/43469371911) — **56 Python/SQLite tests passed** and Worker/Better Auth TypeScript type-check passed. This verifies migration replay and tested invariants in CI's SQLite runtime; it does not replace real D1 Worker request testing or Better Auth schema compatibility validation.
 
 ## Authentication and authorization progress
 
@@ -65,13 +66,13 @@ Latest verified CI run: [43464674852](https://github.com/Elgit4/PCG_Missions/act
 - The endpoint is context discovery, not a substitute for server-side authorization.
 - Branch-scoped staff directory, paginated governance audit, deactivate/suspend/reactivate routes and account audit are implemented.
 - Invitation issuance/list/revocation/acceptance routes are implemented. A 256-bit one-time token is hashed before storage, expires after 72 hours, and is consumed during account provisioning. The invitee sets their own password; public Better Auth sign-up remains disabled outside the private acceptance path. D1 enforces actor capability, branch membership, self-change denial and last-Admin/Pastor protection; deactivation/suspension immediately revoke sessions.
-- Admin/Pastor revocation now has its own request/list/approve/reject workflow. The requester and reviewer must be distinct; the assignment update must reference the approved request, and the existing last-Admin/Pastor guard remains in force. Contact and follow-up endpoints are implemented with server-side branch/record predicates; event, calendar, announcement, content and reporting handlers remain outstanding.
+- Admin/Pastor revocation now has its own request/list/approve/reject workflow. The requester and reviewer must be distinct; the assignment update must reference the approved request, and the existing last-Admin/Pastor guard remains in force. Contact and follow-up endpoints are implemented with server-side branch/record predicates. Prayer queue metadata, explicit-share intercessor narrative reads, share grant/revocation and assigned-request status updates now have Worker handlers with transactionally paired audit writes.
 
 ## Not implemented yet
 
 - Better Auth schema compatibility validation against the exact pinned package in a real local D1/Worker runtime.
 - Worker-level integration tests for staff invitation, account lifecycle, staff governance and the existing contact/follow-up routes.
-- Transactionally audited prayer narrative read/response routes; care record routes remain disabled until explicit care-reader capability decisions are approved.
+- Pastoral-care narrative read/write routes remain disabled until explicit care-reader capability decisions are approved.
 - Event lifecycle handlers, capacity enforcement, replay-safe request-digest verification, transport reservations, check-in and closeout workflows.
 - Calendar and announcement management handlers, content editing/publication handlers, and public content read projections.
 - Reporting, analytics, export/import tooling and source-to-D1 reconciliation.
@@ -89,14 +90,13 @@ Latest verified CI run: [43464674852](https://github.com/Elgit4/PCG_Missions/act
 - Prayer Intercessor remains isolated from the visitor CRM; only the `prayer.request.read` and `prayer.request.respond` capabilities are baseline grants, both with explicit-share scope.
 - Prayer requests can be created by Admin/Pastor and Coordinator, but narrative reads are not granted by those roles. Assignment requires an active Admin/Pastor share capability and an active Prayer Intercessor role in the same branch.
 - Pastoral-care record creation and sharing are Admin/Pastor-controlled. Care assignment is branch-bound; actual narrative reads must still be authorized through the separate care access ledger.
-- Prayer and care read ledgers are append-only. Worker read handlers must append the access event in the same D1 batch before returning narrative fields.
+- Prayer and care read ledgers are append-only. Prayer narrative reads now write both prayer-specific and sensitive-record access audit rows in the same D1 batch before returning narrative fields. Care narrative reads remain disabled.
 - No public prayer intake, public care intake, SMS, export, generic search, report or offline access is enabled.
 
 ## Required next steps
 
-1. Harden sensitive-record sharing and revocation so prayer assignment and explicit-share state remain synchronized, including reasoned revocation and audit.
-2. Add transactionally audited prayer intercessor read/status routes and dedicated care authorization only after the privilege matrix is approved.
-3. Implement event, calendar, announcement and public-content Worker handlers with per-operation capability checks and D1 transactional invariants.
-4. Validate Better Auth's generated schema against the pinned release and exercise the complete auth/session lifecycle on the EU D1 binding.
-5. Add local/preview end-to-end tests, then implement migration export/import and reconciliation for the remaining live schema.
-6. Deploy only to a non-production Cloudflare Worker/Pages preview. Production cutover remains a separate approval gate.
+1. Implement event lifecycle handlers, capacity enforcement, replay-safe request-digest validation, transport reservations, check-in and closeout workflows.
+2. Implement calendar, announcement and public-content handlers with per-operation capability checks and D1 transactional invariants.
+3. Validate Better Auth's generated schema against the pinned release and exercise the complete auth/session lifecycle on the EU D1 binding.
+4. Add Worker-level integration tests for staff, contacts, follow-up and prayer routes; then implement migration export/import and reconciliation for the remaining live schema.
+5. Configure a non-production Workers Build/preview deployment and verify the deployed Worker against EU D1. Production cutover remains a separate approval gate.
