@@ -758,6 +758,15 @@ export class CmiApiClient {
       method: "POST", body: input,
     });
   }
+  resubmitMinistryReport(reportId: string, counts: Omit<MinistryReportCreateInput,
+    "branch_id" | "report_type" | "period_start" | "period_end" | "team_id" | "event_id"
+  >) {
+    return this.request<MinistryReportRecord>(
+      "report-operations",
+      "/reports/" + encodeURIComponent(reportId) + "/resubmit",
+      { method: "POST", body: counts },
+    );
+  }
   reviewMinistryReport(reportId: string, input: MinistryReportReviewInput) {
     return this.request<MinistryReportReviewResult>(
       "report-operations",
