@@ -1,10 +1,12 @@
 import { createAuth, type AuthEnvironment } from "./auth";
+import { authorizeCapability, type AssignableResource, type AuthorizationDatabase, type AuthorizationDecision } from "./authorization";
 
 export interface StaffDatabase {
   prepare(sql: string): {
     bind(...values: unknown[]): {
       first<T = Record<string, unknown>>(): Promise<T | null>;
       all<T = Record<string, unknown>>(): Promise<{ results?: T[] }>;
+      run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
     };
   };
 }
@@ -122,5 +124,44 @@ export async function resolveStaffContext(
         sensitivity: row.sensitivity,
       })),
     },
+  };
+}
+
+export type CapabilityRequestResult =
+  | { state: "unauthenticated" | "staff_inactive" | "staff_not_provisioned" | "branch_not_authorized" | "branch_required" | "capability_denied" }
+  | { state: "authorized"; staff: AuthenticatedStaff; activeBranch: ActiveBranchContext; decision: AuthorizationDecision };
+
+/**
+ * Shared gate for future business handlers. Call it before the handler query,
+ * then repeat the branch/record predicate inside that same read/write SQL
+ * statement. Resource IDs/team IDs passed here must be derived from a
+ * branch-constrained server-side lookup, never copied from caller claims.
+ */
+export async function authorizeRequestCapability(
+  request: Request,
+  env: StaffEnvironment,
+  capability: string,
+  resource?: { type: AssignableResource; recordId: string; teamId?: string },
+): Promise<CapabilityRequestResult> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return context;
+  if (!context.activeBranch) return { state: "branch_required" };
+
+  const decision = await authorizeCapability(env.DB as AuthorizationDatabase, {
+    actorProfileId: context.staff.profileId,
+    branchId: context.activeBranch.branchId,
+    capability,
+    now: new Date().toISOString(),
+    resourceType: resource?.type,
+    recordId: resource?.recordId,
+    teamId: resource?.teamId,
+  });
+
+  if (!decision.allowed) return { state: "capability_denied" };
+  return {
+    state: "authorized",
+    staff: context.staff,
+    activeBranch: context.activeBranch,
+    decision,
   };
 }
