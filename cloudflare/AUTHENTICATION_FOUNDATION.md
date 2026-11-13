@@ -39,6 +39,7 @@ Never set production secrets or bind this Worker to production DNS during this p
 | `/api/auth/get-session` | Returns the current Better Auth session |
 | `/api/v1/me` | Returns verified staff context and branch-scoped role/capability metadata |
 | `GET /api/v1/staff` | Returns a limited branch-scoped staff directory to authorized roles |
+| `GET /api/v1/staff/audit` | Reads a branch-scoped, paginated governance audit across role, account and high-privilege change events |
 | `POST /api/v1/staff/{profileId}/deactivate|suspend|reactivate` | Changes staff account status with reason, branch authorization, audit event and immediate session revocation |
 | `GET/POST /api/v1/staff/role-revocations` | Lists pending dual-control Admin/Pastor revocations or requests one |
 | `POST /api/v1/staff/role-revocations/{id}/approve|reject` | Applies/rejects a high-privilege revocation through a distinct Admin/Pastor reviewer |
