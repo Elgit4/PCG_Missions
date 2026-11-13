@@ -6,7 +6,7 @@ on:
       - "cloudflare/**"
       - ".github/workflows/cloudflare-d1-foundation.yml"
   push:
-    branches: [main]
+    branches: [main, 'migration/**']
     paths:
       - "cloudflare/**"
       - ".github/workflows/cloudflare-d1-foundation.yml"
