@@ -25,6 +25,7 @@ All routes require a valid Supabase Auth bearer token and an active staff profil
 | `GET /reports/{reportId}?branch_id={uuid}` | Read one report only when own/team/branch scope passes. Includes append-only review history. |
 | `POST /reports` | Create and submit a typed report. Author identity and submitted status are server-derived. |
 | `POST /reports/{reportId}/review` | Approve, return or comment on a submitted report. Self-review is forbidden. |
+| `POST /reports/{reportId}/resubmit` | Author-only correction of a returned report; the new submission and count updates commit atomically. |
 | `GET /teams?branch_id={uuid}` | Minimal active team options for teams the caller currently belongs to. |
 | `GET /events?branch_id={uuid}` | Minimal event options limited to events actively assigned to the caller. |
 
@@ -45,7 +46,7 @@ The API enforces these permissions on every request. UI navigation is only a con
 
 ## Review integrity
 
-Review decisions are appended to `report_review_event`. Updates, deletes and truncation are rejected. The service-role-only `cmi_review_ministry_report` database transaction locks the report, rejects self-review and non-submitted reports, changes status when approving/returning, and inserts the review event in the same transaction. A failed review cannot leave a status change without its history record.
+Review decisions are appended to `report_review_event`. Updates, deletes and truncation are rejected. The service-role-only `cmi_review_ministry_report` database transaction locks the report, rejects self-review and non-submitted reports, changes status when approving/returning, and inserts the review event in the same transaction. The service-role-only `cmi_resubmit_ministry_report` transaction permits only the original author to correct a returned report and resubmit it. A failed review or resubmission cannot partially change the report.
 
 ## Release and verification boundaries
 
