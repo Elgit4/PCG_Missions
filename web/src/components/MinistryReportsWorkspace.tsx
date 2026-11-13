@@ -344,7 +344,7 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
               )}
               {canAct && <div className="ministry-report-review">
                 {reviewingId === report.id ? <>
-                  <label><span>Review note (required when returning)</span><textarea value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} rows={2} maxLength={2000} /></label>
+                  <label><span>Review note (required when returning)</span><small>Keep it brief. Do not include personal details or pastoral narratives.</small><textarea value={reviewComment} onChange={(event) => setReviewComment(event.target.value)} rows={2} maxLength={2000} /></label>
                   <div>
                     <button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setReviewingId(null); setReviewComment(""); }}>Cancel</button>
                     <button type="button" className="cmi-button cmi-button-secondary" disabled={saving || !reviewComment.trim()} onClick={() => void review(report, "returned")}>Return</button>
