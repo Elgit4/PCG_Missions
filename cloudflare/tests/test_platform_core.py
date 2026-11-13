@@ -548,6 +548,123 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute("DELETE FROM staff_role_revocation_audit")
 
+
+    def test_staff_invitation_requires_admin_and_is_audited(self):
+        self._lifecycle_fixture()
+        self._lifecycle_staff("invite-admin-user", "invite-admin", "Invite Admin", "invite-admin@example.test")
+        self._lifecycle_staff("invite-coordinator-user", "invite-coordinator", "Coordinator", "invite-coordinator@example.test")
+        self._lifecycle_assignment("invite-admin-role", "invite-admin", "admin_pastor", "lifecycle-branch", "invite-admin")
+        self._lifecycle_assignment("invite-coordinator-role", "invite-coordinator", "coordinator", "lifecycle-branch", "invite-admin")
+        self.db.execute(
+            """INSERT INTO staff_invitation
+               (id, branch_id, invited_by, email, full_name, role_id, token_hash,
+                expires_at, reason, created_at, updated_at)
+               VALUES ('invite-1', 'lifecycle-branch', 'invite-admin',
+                       'new-staff@example.test', 'New Staff', 'role-field-worker', ?,
+                       '2026-02-01T00:00:00.000Z', 'Add new field worker to branch',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')""",
+            ("a" * 64,),
+        )
+        self.assertEqual(
+            self.db.execute(
+                "SELECT actor_profile_id, action FROM staff_invitation_audit WHERE invitation_id = 'invite-1'"
+            ).fetchone(),
+            ("invite-admin", "invitation_created"),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO staff_invitation
+                   (id, branch_id, invited_by, email, full_name, role_id, token_hash,
+                    expires_at, reason, created_at, updated_at)
+                   VALUES ('invite-unauthorized', 'lifecycle-branch', 'invite-coordinator',
+                           'unauthorized@example.test', 'Unauthorized', 'role-field-worker', ?,
+                           '2026-02-01T00:00:00.000Z', 'Attempt unauthorized account invitation',
+                           '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')""",
+                ("b" * 64,),
+            )
+
+    def test_staff_invitation_acceptance_consumes_token_and_assigns_role(self):
+        self._lifecycle_fixture()
+        self._lifecycle_staff("invite-admin-user", "invite-admin", "Invite Admin", "invite-admin@example.test")
+        self._lifecycle_assignment("invite-admin-role", "invite-admin", "admin_pastor", "lifecycle-branch", "invite-admin")
+        self.db.execute(
+            """INSERT INTO staff_invitation
+               (id, branch_id, invited_by, email, full_name, role_id, token_hash,
+                expires_at, reason, created_at, updated_at)
+               VALUES ('invite-accept', 'lifecycle-branch', 'invite-admin',
+                       'accept@example.test', 'Accepted Staff', 'role-field-worker', ?,
+                       '2026-02-01T00:00:00.000Z', 'Invite a new field worker',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')""",
+            ("c" * 64,),
+        )
+        self.db.execute(
+            """INSERT INTO "user" (id, name, email, createdAt, updatedAt)
+               VALUES ('accepted-user', 'Accepted Staff', 'accept@example.test', 1, 1)"""
+        )
+        self.db.execute(
+            """INSERT INTO staff_profile
+               (id, auth_user_id, full_name, email, account_status, created_at, updated_at, password_changed_at)
+               VALUES ('accepted-profile', 'accepted-user', 'Accepted Staff', 'accept@example.test',
+                       'active', '2026-01-02T00:00:00.000Z', '2026-01-02T00:00:00.000Z',
+                       '2026-01-02T00:00:00.000Z')"""
+        )
+        self._lifecycle_assignment("accepted-field-role", "accepted-profile", "field_worker", "lifecycle-branch", "invite-admin")
+        self.db.execute(
+            """UPDATE staff_invitation
+               SET status = 'accepted', accepted_at = '2026-01-02T00:00:00.000Z',
+                   accepted_user_id = 'accepted-user', accepted_profile_id = 'accepted-profile',
+                   token_hash = NULL, updated_at = '2026-01-02T00:00:00.000Z'
+               WHERE id = 'invite-accept'"""
+        )
+        self.assertEqual(
+            self.db.execute(
+                "SELECT status, token_hash FROM staff_invitation WHERE id = 'invite-accept'"
+            ).fetchone(),
+            ("accepted", None),
+        )
+        self.assertEqual(
+            self.db.execute(
+                "SELECT actor_profile_id, action FROM staff_invitation_audit WHERE invitation_id = 'invite-accept' ORDER BY created_at DESC LIMIT 1"
+            ).fetchone(),
+            ("accepted-profile", "invitation_accepted"),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE staff_invitation SET status = 'revoked' WHERE id = 'invite-accept'")
+
+    def test_staff_invitation_revocation_consumes_token_and_is_audited(self):
+        self._lifecycle_fixture()
+        self._lifecycle_staff("invite-admin-user", "invite-admin", "Invite Admin", "invite-admin@example.test")
+        self._lifecycle_assignment("invite-admin-role", "invite-admin", "admin_pastor", "lifecycle-branch", "invite-admin")
+        self.db.execute(
+            """INSERT INTO staff_invitation
+               (id, branch_id, invited_by, email, full_name, role_id, token_hash,
+                expires_at, reason, created_at, updated_at)
+               VALUES ('invite-revoke', 'lifecycle-branch', 'invite-admin',
+                       'revoke@example.test', 'Revoked Staff', 'role-field-worker', ?,
+                       '2026-02-01T00:00:00.000Z', 'Invite field worker for testing',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')""",
+            ("d" * 64,),
+        )
+        self.db.execute(
+            """UPDATE staff_invitation
+               SET status = 'revoked', revoked_at = '2026-01-02T00:00:00.000Z',
+                   revoked_by = 'invite-admin', token_hash = NULL,
+                   updated_at = '2026-01-02T00:00:00.000Z'
+               WHERE id = 'invite-revoke'"""
+        )
+        self.assertEqual(
+            self.db.execute(
+                "SELECT status, token_hash FROM staff_invitation WHERE id = 'invite-revoke'"
+            ).fetchone(),
+            ("revoked", None),
+        )
+        self.assertEqual(
+            self.db.execute(
+                "SELECT action FROM staff_invitation_audit WHERE invitation_id = 'invite-revoke' ORDER BY created_at DESC LIMIT 1"
+            ).fetchone(),
+            ("invitation_revoked",),
+        )
+
     def test_exactly_six_fixed_roles_are_seeded(self):
         self.assertEqual(
             {row[0] for row in self.db.execute("SELECT code FROM role WHERE is_active = 1")},
