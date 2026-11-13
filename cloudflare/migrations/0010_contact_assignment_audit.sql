@@ -108,6 +108,26 @@ BEGIN
   ) THEN RAISE(ABORT, 'CONTACT_ASSIGNMENT_END_NOT_AUTHORIZED') END;
 END;
 
+
+CREATE TRIGGER contact_assignment_end_once
+BEFORE UPDATE OF ends_at ON contact_assignment
+WHEN OLD.ends_at IS NOT NULL AND NEW.ends_at <> OLD.ends_at
+BEGIN
+  SELECT RAISE(ABORT, 'CONTACT_ASSIGNMENT_ALREADY_ENDED');
+END;
+CREATE TRIGGER contact_assignment_reason_update_guard
+BEFORE UPDATE OF reason ON contact_assignment
+WHEN NOT (OLD.ends_at IS NULL AND NEW.ends_at IS NOT NULL)
+BEGIN
+  SELECT RAISE(ABORT, 'CONTACT_ASSIGNMENT_REASON_IMMUTABLE');
+END;
+CREATE TRIGGER contact_assignment_ended_by_immutable
+BEFORE UPDATE OF ended_by ON contact_assignment
+WHEN OLD.ended_by IS NOT NULL OR (NEW.ended_by IS NOT NULL AND NEW.ends_at IS OLD.ends_at)
+BEGIN
+  SELECT RAISE(ABORT, 'CONTACT_ASSIGNMENT_END_ACTOR_IMMUTABLE');
+END;
+
 CREATE TRIGGER contact_assignment_audit_insert
 AFTER INSERT ON contact_assignment
 BEGIN
