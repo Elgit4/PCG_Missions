@@ -537,7 +537,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         )
         self.assertEqual(
             self.db.execute("SELECT COUNT(*) FROM staff_role_revocation_audit WHERE request_id = ?", (request_id,)).fetchone()[0],
-            4,
+            3,
         )
 
     def test_exactly_six_fixed_roles_are_seeded(self):
@@ -954,16 +954,79 @@ class AuthorizationQueryTests(unittest.TestCase):
                            'authz-branch', 'authz-staff-admin', ?, ?)""",
                 (self.NOW, self.NOW),
             )
+        # Approve a revocation of the promoted admin in advance while two
+        # independent active administrators still exist. It must still be
+        # blocked when applied after the other two admin assignments are removed.
         self.db.execute(
-            "UPDATE staff_role_assignment SET revoked_at = ? WHERE id = 'authz-role-admin'",
+            """INSERT INTO staff_role_revocation_request
+               (id, branch_id, assignment_id, target_profile_id, role_id, requested_by, reason, requested_at)
+               VALUES ('revoke-promoted', 'authz-branch', 'authz-role-field-promoted',
+                       'authz-staff-field', 'role-admin-pastor', 'authz-staff-admin',
+                       'Prepare a final-admin safeguard test', ?)""",
             (self.NOW,),
         )
         self.db.execute(
-            "UPDATE staff_role_assignment SET revoked_at = ? WHERE id = 'authz-role-admin-two'",
+            """UPDATE staff_role_revocation_request
+               SET status = 'approved', reviewed_by = ?, reviewed_at = ?,
+                   review_reason = 'Independent reviewer approved the test request'
+               WHERE id = 'revoke-promoted'""",
+            (second_profile, self.NOW),
+        )
+
+        # The second admin is revoked first, with the first admin requesting
+        # and the promoted admin reviewing.
+        self.db.execute(
+            """INSERT INTO staff_role_revocation_request
+               (id, branch_id, assignment_id, target_profile_id, role_id, requested_by, reason, requested_at)
+               VALUES ('revoke-admin-two', 'authz-branch', 'authz-role-admin-two',
+                       ?, 'role-admin-pastor', 'authz-staff-admin',
+                       'Remove the second bootstrap administrator', ?)""",
+            (second_profile, self.NOW),
+        )
+        self.db.execute(
+            """UPDATE staff_role_revocation_request
+               SET status = 'approved', reviewed_by = 'authz-staff-field', reviewed_at = ?,
+                   review_reason = 'Independent promoted administrator approved removal'
+               WHERE id = 'revoke-admin-two'""",
             (self.NOW,),
         )
+        self.db.execute(
+            """UPDATE staff_role_assignment
+               SET revoked_at = ?, revoked_by = 'authz-staff-field',
+                   revocation_request_id = 'revoke-admin-two'
+               WHERE id = 'authz-role-admin-two'""",
+            (self.NOW,),
+        )
+
+        # The first admin then requests their own step-down; the promoted admin
+        # independently reviews and applies it.
+        self.db.execute(
+            """INSERT INTO staff_role_revocation_request
+               (id, branch_id, assignment_id, target_profile_id, role_id, requested_by, reason, requested_at)
+               VALUES ('revoke-admin-one', 'authz-branch', 'authz-role-admin',
+                       'authz-staff-admin', 'role-admin-pastor', 'authz-staff-admin',
+                       'First administrator requests a role transition', ?)""",
+            (self.NOW,),
+        )
+        self.db.execute(
+            """UPDATE staff_role_revocation_request
+               SET status = 'approved', reviewed_by = 'authz-staff-field', reviewed_at = ?,
+                   review_reason = 'Independent promoted administrator approved removal'
+               WHERE id = 'revoke-admin-one'""",
+            (self.NOW,),
+        )
+        self.db.execute(
+            """UPDATE staff_role_assignment
+               SET revoked_at = ?, revoked_by = 'authz-staff-field',
+                   revocation_request_id = 'revoke-admin-one'
+               WHERE id = 'authz-role-admin'""",
+            (self.NOW,),
+        )
+
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute(
-                "UPDATE staff_role_assignment SET revoked_at = ? WHERE id = 'authz-role-field-promoted'",
-                (self.NOW,),
+                """UPDATE staff_role_assignment
+                   SET revoked_at = ?, revoked_by = ?, revocation_request_id = 'revoke-promoted'
+                   WHERE id = 'authz-role-field-promoted'""",
+                (self.NOW, second_profile),
             )
