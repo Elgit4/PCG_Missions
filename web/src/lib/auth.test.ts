@@ -3,7 +3,7 @@ import { AuthClientError, PcgAuthClient } from "./auth";
 
 describe("PcgAuthClient — Better Auth cookie sessions", () => {
   it("signs in with normalized email and relies on HttpOnly cookies", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
       user: { id: "staff-user", email: "staff@example.test" },
       session: { id: "session-1", expiresAt: "2026-11-20T00:00:00.000Z" },
     }), { status: 200 }));
@@ -18,7 +18,7 @@ describe("PcgAuthClient — Better Auth cookie sessions", () => {
   });
 
   it("restores the server session without reading browser storage", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
       user: { id: "staff-user", email: "staff@example.test" },
       session: { id: "session-1", expiresAt: "2026-11-20T00:00:00.000Z" },
     }), { status: 200 }));
@@ -29,13 +29,13 @@ describe("PcgAuthClient — Better Auth cookie sessions", () => {
   });
 
   it("returns null when there is no signed-in session", async () => {
-    const fetcher = vi.fn(async () => new Response("null", { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response("null", { status: 200 }));
     const client = new PcgAuthClient(fetcher as typeof fetch);
     await expect(client.getSession()).resolves.toBeNull();
   });
 
   it("signs out through Better Auth", async () => {
-    const fetcher = vi.fn(async () => new Response("{}", { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response("{}", { status: 200 }));
     const client = new PcgAuthClient(fetcher as typeof fetch);
     await client.signOut();
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/auth/sign-out");
@@ -43,7 +43,7 @@ describe("PcgAuthClient — Better Auth cookie sessions", () => {
   });
 
   it("tests API readiness without sending fake credentials", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
       ok: true, schema_version: 24,
     }), { status: 200 }));
     const client = new PcgAuthClient(fetcher as typeof fetch);
@@ -60,7 +60,7 @@ describe("PcgAuthClient — Better Auth cookie sessions", () => {
   });
 
   it("reports failed sign-in responses with a stable error code", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
       code: "INVALID_EMAIL_OR_PASSWORD", message: "Invalid email or password",
     }), { status: 401 }));
     const client = new PcgAuthClient(fetcher as typeof fetch);
@@ -69,7 +69,7 @@ describe("PcgAuthClient — Better Auth cookie sessions", () => {
   });
 
   it("surfaces network errors without exposing secrets", async () => {
-    const client = new PcgAuthClient(vi.fn(async () => { throw new TypeError("offline"); }) as typeof fetch);
+    const client = new PcgAuthClient(vi.fn(async (..._args: Parameters<typeof fetch>) => { throw new TypeError("offline"); }) as typeof fetch);
     await expect(client.getSession()).rejects.toBeInstanceOf(AuthClientError);
   });
 });
