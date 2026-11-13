@@ -1728,7 +1728,7 @@ async function listContactInteractions(
     access.activeBranch.branchId,
     now,
   );
-  const rows = await env.DB.prepare(\`
+  const rows = await env.DB.prepare(`
     SELECT i.id, i.interaction_type, i.occurred_at, i.outcome_code,
            i.summary, i.next_action_at, i.actor_user_id,
            actor.full_name AS actor_name, i.created_at
@@ -1737,10 +1737,10 @@ async function listContactInteractions(
     LEFT JOIN staff_profile actor ON actor.auth_user_id = i.actor_user_id
     WHERE i.contact_id = ? AND i.branch_id = ?
       AND c.contact_status <> 'merged'
-      AND (\${predicate.sql})
+      AND (${predicate.sql})
     ORDER BY i.occurred_at DESC, i.id DESC
     LIMIT 100
-  \`).bind(
+  `).bind(
     contactId,
     access.activeBranch.branchId,
     ...predicate.values,
@@ -2736,25 +2736,25 @@ function eventScopePredicate(
 ): { sql: string; values: unknown[] } {
   if (mode === "branch") return { sql: "1 = 1", values: [] };
   if (mode === "assigned") return {
-    sql: \`EXISTS (
+    sql: `EXISTS (
       SELECT 1 FROM event_staff_assignment esa
-      WHERE esa.event_id = \${alias}.id
-        AND esa.branch_id = \${alias}.branch_id
+      WHERE esa.event_id = ${alias}.id
+        AND esa.branch_id = ${alias}.branch_id
         AND esa.staff_auth_user_id = ?
         AND esa.revoked_at IS NULL
         AND esa.starts_at <= ?
         AND (esa.ends_at IS NULL OR esa.ends_at > ?)
-    )\`,
+    )`,
     values: [staffUserId, now, now],
   };
   return {
-    sql: \`EXISTS (
+    sql: `EXISTS (
       SELECT 1
       FROM event_team_assignment eta
       JOIN staff_team_membership tm
         ON tm.team_id = eta.team_id AND tm.branch_id = eta.branch_id
-      WHERE eta.event_id = \${alias}.id
-        AND eta.branch_id = \${alias}.branch_id
+      WHERE eta.event_id = ${alias}.id
+        AND eta.branch_id = ${alias}.branch_id
         AND tm.staff_profile_id = ?
         AND eta.revoked_at IS NULL
         AND eta.starts_at <= ?
@@ -2762,7 +2762,7 @@ function eventScopePredicate(
         AND tm.revoked_at IS NULL
         AND tm.starts_at <= ?
         AND (tm.ends_at IS NULL OR tm.ends_at > ?)
-    )\`,
+    )`,
     values: [staffProfileId, now, now, now, now],
   };
 }
@@ -2804,17 +2804,17 @@ async function listEvents(
     scope, "e", context.staff.profileId, context.staff.userId, now,
   );
   const statusPredicate = status === "all" ? "1 = 1" : "e.status = ?";
-  const rows = await env.DB.prepare(\`
+  const rows = await env.DB.prepare(`
     SELECT e.id, e.branch_id, e.title, e.description, e.starts_at, e.ends_at,
            e.timezone, e.location, e.capacity, e.registration_state,
            e.visibility, e.status, e.transport_enabled, e.created_at, e.updated_at
     FROM event e
     WHERE e.branch_id = ?
-      AND \${statusPredicate}
-      AND (\${predicate.sql})
+      AND ${statusPredicate}
+      AND (${predicate.sql})
     ORDER BY e.starts_at DESC, e.id DESC
     LIMIT ?
-  \`).bind(
+  `).bind(
     context.activeBranch.branchId,
     ...(status === "all" ? [] : [status]),
     ...predicate.values,
@@ -2841,14 +2841,14 @@ async function getEvent(
   const predicate = eventScopePredicate(
     scope, "e", context.staff.profileId, context.staff.userId, now,
   );
-  const row = await env.DB.prepare(\`
+  const row = await env.DB.prepare(`
     SELECT e.id, e.branch_id, e.title, e.description, e.starts_at, e.ends_at,
            e.timezone, e.location, e.capacity, e.registration_state,
            e.visibility, e.status, e.transport_enabled, e.created_at, e.updated_at
     FROM event e
-    WHERE e.id = ? AND e.branch_id = ? AND (\${predicate.sql})
+    WHERE e.id = ? AND e.branch_id = ? AND (${predicate.sql})
     LIMIT 1
-  \`).bind(eventId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
+  `).bind(eventId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
   if (!row) return json(404, { ok: false, error: { code: "EVENT_NOT_FOUND" } }, requestId, origin);
   return json(200, { ok: true, event: row }, requestId, origin);
 }
@@ -2895,13 +2895,13 @@ async function createEvent(
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   try {
-    const result = await env.DB.prepare(\`
+    const result = await env.DB.prepare(`
       INSERT INTO event
         (id, branch_id, title, description, starts_at, ends_at, timezone,
          location, capacity, registration_state, visibility, status,
          transport_enabled, created_by, last_modified_by, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', 'private', 'draft', ?, ?, ?, ?, ?)
-    \`).bind(
+    `).bind(
       id, access.activeBranch.branchId, title, description, startsAt, endsAt,
       timezone, location, capacity, transportEnabled ? 1 : 0,
       access.staff.userId, access.staff.userId, now, now,
@@ -2937,11 +2937,11 @@ async function updateEvent(
       Object.keys(payload).length === 0 || Object.keys(payload).some((key) => !allowed.has(key))) {
     return json(400, { ok: false, error: { code: "INVALID_EVENT_UPDATE" } }, requestId, origin);
   }
-  const existing = await env.DB.prepare(\`
+  const existing = await env.DB.prepare(`
     SELECT id, starts_at, ends_at FROM event
     WHERE id = ? AND branch_id = ? AND status = 'draft'
     LIMIT 1
-  \`).bind(eventId, access.activeBranch.branchId).first<{
+  `).bind(eventId, access.activeBranch.branchId).first<{
     id: string; starts_at: string; ends_at: string;
   }>();
   if (!existing) return json(404, { ok: false, error: { code: "DRAFT_EVENT_NOT_FOUND" } }, requestId, origin);
@@ -3003,10 +3003,10 @@ async function updateEvent(
   assignments.push("updated_at = ?");
   values.push(new Date().toISOString());
   try {
-    const result = await env.DB.prepare(\`
-      UPDATE event SET \${assignments.join(", ")}
+    const result = await env.DB.prepare(`
+      UPDATE event SET ${assignments.join(", ")}
       WHERE id = ? AND branch_id = ? AND status = 'draft'
-    \`).bind(...values, eventId, access.activeBranch.branchId).run();
+    `).bind(...values, eventId, access.activeBranch.branchId).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) {
       return json(409, { ok: false, error: { code: "EVENT_CHANGED" } }, requestId, origin);
     }
@@ -3027,13 +3027,13 @@ async function publishEvent(
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
   const now = new Date().toISOString();
   try {
-    const result = await env.DB.prepare(\`
+    const result = await env.DB.prepare(`
       UPDATE event
       SET status = 'published', visibility = 'staff',
           registration_state = 'closed', last_modified_by = ?, updated_at = ?
       WHERE id = ? AND branch_id = ? AND status = 'draft'
         AND length(trim(title)) >= 2 AND ends_at > starts_at
-    \`).bind(access.staff.userId, now, eventId, access.activeBranch.branchId).run();
+    `).bind(access.staff.userId, now, eventId, access.activeBranch.branchId).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) {
       return json(409, { ok: false, error: { code: "EVENT_NOT_PUBLISHABLE" } }, requestId, origin);
     }
@@ -3054,11 +3054,11 @@ async function cancelEvent(
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
   const now = new Date().toISOString();
   try {
-    const result = await env.DB.prepare(\`
+    const result = await env.DB.prepare(`
       UPDATE event
       SET status = 'cancelled', registration_state = 'closed', last_modified_by = ?, updated_at = ?
       WHERE id = ? AND branch_id = ? AND status IN ('draft','published')
-    \`).bind(access.staff.userId, now, eventId, access.activeBranch.branchId).run();
+    `).bind(access.staff.userId, now, eventId, access.activeBranch.branchId).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) {
       return json(409, { ok: false, error: { code: "EVENT_NOT_CANCELLABLE" } }, requestId, origin);
     }
@@ -3086,34 +3086,34 @@ function calendarScopePredicate(
 ): { sql: string; values: unknown[] } {
   if (mode === "branch") return { sql: "1 = 1", values: [] };
   if (mode === "assigned") return {
-    sql: \`(
-      (\${alias}.scope_type='own' AND \${alias}.owner_user_id=?)
-      OR (\${alias}.scope_type='event' AND EXISTS (
+    sql: `(
+      (${alias}.scope_type='own' AND ${alias}.owner_user_id=?)
+      OR (${alias}.scope_type='event' AND EXISTS (
         SELECT 1 FROM event_staff_assignment esa
-        WHERE esa.event_id=\${alias}.event_id AND esa.branch_id=\${alias}.branch_id
+        WHERE esa.event_id=${alias}.event_id AND esa.branch_id=${alias}.branch_id
           AND esa.staff_auth_user_id=? AND esa.revoked_at IS NULL
           AND esa.starts_at<=? AND (esa.ends_at IS NULL OR esa.ends_at>?)
       ))
-    )\`,
+    )`,
     values: [staffUserId, staffUserId, now, now],
   };
   return {
-    sql: \`(
-      (\${alias}.scope_type='team' AND EXISTS (
+    sql: `(
+      (${alias}.scope_type='team' AND EXISTS (
         SELECT 1 FROM staff_team_membership tm
-        WHERE tm.team_id=\${alias}.team_id AND tm.branch_id=\${alias}.branch_id
+        WHERE tm.team_id=${alias}.team_id AND tm.branch_id=${alias}.branch_id
           AND tm.staff_profile_id=? AND tm.revoked_at IS NULL
           AND tm.starts_at<=? AND (tm.ends_at IS NULL OR tm.ends_at>?)
       ))
-      OR (\${alias}.scope_type='event' AND EXISTS (
+      OR (${alias}.scope_type='event' AND EXISTS (
         SELECT 1 FROM event_team_assignment eta
         JOIN staff_team_membership tm ON tm.team_id=eta.team_id AND tm.branch_id=eta.branch_id
-        WHERE eta.event_id=\${alias}.event_id AND eta.branch_id=\${alias}.branch_id
+        WHERE eta.event_id=${alias}.event_id AND eta.branch_id=${alias}.branch_id
           AND tm.staff_profile_id=? AND eta.revoked_at IS NULL AND tm.revoked_at IS NULL
           AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
           AND tm.starts_at<=? AND (tm.ends_at IS NULL OR tm.ends_at>?)
       ))
-    )\`,
+    )`,
     values: [staffProfileId, now, now, staffProfileId, now, now, now, now],
   };
 }
@@ -3145,7 +3145,7 @@ async function listCalendarEntries(
   }
   const now = new Date().toISOString();
   const predicate = calendarScopePredicate(scope, "ce", context.staff.profileId, context.staff.userId, now);
-  const rows = await env.DB.prepare(\`
+  const rows = await env.DB.prepare(`
     SELECT ce.id, ce.branch_id, ce.entry_type, ce.title, ce.starts_at, ce.ends_at,
            ce.timezone, ce.scope_type, ce.team_id, ce.event_id, ce.owner_user_id,
            ce.created_by, ce.created_at, ce.updated_at
@@ -3153,10 +3153,10 @@ async function listCalendarEntries(
     WHERE ce.branch_id = ?
       AND ce.starts_at < ?
       AND (ce.ends_at IS NULL OR ce.ends_at >= ?)
-      AND (\${predicate.sql})
+      AND (${predicate.sql})
     ORDER BY ce.starts_at ASC, ce.id ASC
     LIMIT ?
-  \`).bind(
+  `).bind(
     context.activeBranch.branchId, to, from, ...predicate.values, limit,
   ).all<Record<string, unknown>>();
   return json(200, { ok: true, entries: rows.results ?? [] }, requestId, origin);
@@ -3178,14 +3178,14 @@ async function getCalendarEntry(
   if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
   const now = new Date().toISOString();
   const predicate = calendarScopePredicate(scope, "ce", context.staff.profileId, context.staff.userId, now);
-  const row = await env.DB.prepare(\`
+  const row = await env.DB.prepare(`
     SELECT ce.id, ce.branch_id, ce.entry_type, ce.title, ce.starts_at, ce.ends_at,
            ce.timezone, ce.scope_type, ce.team_id, ce.event_id, ce.owner_user_id,
            ce.created_by, ce.created_at, ce.updated_at
     FROM calendar_entry ce
-    WHERE ce.id=? AND ce.branch_id=? AND (\${predicate.sql})
+    WHERE ce.id=? AND ce.branch_id=? AND (${predicate.sql})
     LIMIT 1
-  \`).bind(entryId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
+  `).bind(entryId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
   if (!row) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
   return json(200, { ok: true, entry: row }, requestId, origin);
 }
@@ -3242,12 +3242,12 @@ async function createCalendarEntry(
   const now = new Date().toISOString();
   const ownerUserId = scopeType === "own" ? access.staff.userId : null;
   try {
-    const result = await env.DB.prepare(\`
+    const result = await env.DB.prepare(`
       INSERT INTO calendar_entry
         (id,branch_id,entry_type,title,starts_at,ends_at,timezone,scope_type,
          team_id,event_id,owner_user_id,created_by,updated_by,created_at,updated_at)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-    \`).bind(
+    `).bind(
       id, access.activeBranch.branchId, entryType, title, startsAt, endsAt,
       timezone, scopeType, teamId, eventId, ownerUserId,
       access.staff.userId, access.staff.userId, now, now,
@@ -3313,10 +3313,10 @@ async function updateCalendarEntry(
   assignments.push("updated_by=?"); values.push(access.staff.userId);
   assignments.push("updated_at=?"); values.push(new Date().toISOString());
   try {
-    const result = await env.DB.prepare(\`
-      UPDATE calendar_entry SET \${assignments.join(",")}
+    const result = await env.DB.prepare(`
+      UPDATE calendar_entry SET ${assignments.join(",")}
       WHERE id=? AND branch_id=?
-    \`).bind(...values, entryId, access.activeBranch.branchId).run();
+    `).bind(...values, entryId, access.activeBranch.branchId).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "CALENDAR_ENTRY_CHANGED" } }, requestId, origin);
   } catch {
     return json(409, { ok: false, error: { code: "CALENDAR_UPDATE_CONFLICT" } }, requestId, origin);
@@ -3341,38 +3341,38 @@ function announcementScopePredicate(
   now: string,
 ): { sql: string; values: unknown[] } {
   if (mode === "branch") return { sql: "1 = 1", values: [] };
-  const base = \`(\${alias}.audience_type IN ('branch','staff') OR (\${alias}.audience_type='public' AND \${alias}.is_public=1))\`;
-  const team = \`(\${alias}.audience_type='team' AND EXISTS (
+  const base = `(${alias}.audience_type IN ('branch','staff') OR (${alias}.audience_type='public' AND ${alias}.is_public=1))`;
+  const team = `(${alias}.audience_type='team' AND EXISTS (
     SELECT 1 FROM announcement_team_audience ata
     JOIN staff_team_membership tm ON tm.team_id=ata.team_id AND tm.branch_id=ata.branch_id
-    WHERE ata.announcement_id=\${alias}.id AND ata.branch_id=\${alias}.branch_id
+    WHERE ata.announcement_id=${alias}.id AND ata.branch_id=${alias}.branch_id
       AND tm.staff_profile_id=? AND tm.revoked_at IS NULL
       AND tm.starts_at<=? AND (tm.ends_at IS NULL OR tm.ends_at>?)
-  ))\`;
-  const eventTeam = \`(\${alias}.audience_type='event' AND EXISTS (
+  ))`;
+  const eventTeam = `(${alias}.audience_type='event' AND EXISTS (
     SELECT 1 FROM announcement_event_audience aea
     JOIN event_team_assignment eta ON eta.event_id=aea.event_id AND eta.branch_id=aea.branch_id
     JOIN staff_team_membership tm ON tm.team_id=eta.team_id AND tm.branch_id=eta.branch_id
-    WHERE aea.announcement_id=\${alias}.id AND aea.branch_id=\${alias}.branch_id
+    WHERE aea.announcement_id=${alias}.id AND aea.branch_id=${alias}.branch_id
       AND tm.staff_profile_id=? AND eta.revoked_at IS NULL AND tm.revoked_at IS NULL
       AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
       AND tm.starts_at<=? AND (tm.ends_at IS NULL OR tm.ends_at>?)
-  ))\`;
+  ))`;
   if (mode === "team") {
     return {
-      sql: \`(\${base} OR \${team} OR \${eventTeam})\`,
+      sql: `(${base} OR ${team} OR ${eventTeam})`,
       values: [staffProfileId, now, now, staffProfileId, now, now, now, now],
     };
   }
-  const eventStaff = \`(\${alias}.audience_type='event' AND EXISTS (
+  const eventStaff = `(${alias}.audience_type='event' AND EXISTS (
     SELECT 1 FROM announcement_event_audience aea
     JOIN event_staff_assignment esa ON esa.event_id=aea.event_id AND esa.branch_id=aea.branch_id
-    WHERE aea.announcement_id=\${alias}.id AND aea.branch_id=\${alias}.branch_id
+    WHERE aea.announcement_id=${alias}.id AND aea.branch_id=${alias}.branch_id
       AND esa.staff_auth_user_id=? AND esa.revoked_at IS NULL
       AND esa.starts_at<=? AND (esa.ends_at IS NULL OR esa.ends_at>?)
-  ))\`;
+  ))`;
   return {
-    sql: \`(\${base} OR \${team} OR \${eventTeam} OR \${eventStaff})\`,
+    sql: `(${base} OR ${team} OR ${eventTeam} OR ${eventStaff})`,
     values: [staffProfileId, now, now, staffProfileId, now, now, now, now, staffUserId, now, now],
   };
 }
@@ -3404,14 +3404,14 @@ async function listAnnouncements(
   const now = new Date().toISOString();
   const predicate = announcementScopePredicate(scope, "a", context.staff.profileId, context.staff.userId, now);
   const statusPredicate = status === "all" ? "1=1" : "a.status=?";
-  const rows = await env.DB.prepare(\`
+  const rows = await env.DB.prepare(`
     SELECT a.id,a.branch_id,a.title,a.body,a.audience_type,a.is_public,a.status,
            a.publish_at,a.published_at,a.created_by,a.created_at,a.updated_at
     FROM announcement a
-    WHERE a.branch_id=? AND \${statusPredicate} AND (\${predicate.sql})
+    WHERE a.branch_id=? AND ${statusPredicate} AND (${predicate.sql})
     ORDER BY COALESCE(a.published_at,a.created_at) DESC,a.id DESC
     LIMIT ?
-  \`).bind(
+  `).bind(
     context.activeBranch.branchId,
     ...(status === "all" ? [] : [status]),
     ...predicate.values,
@@ -3436,13 +3436,13 @@ async function getAnnouncement(
   if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
   const now = new Date().toISOString();
   const predicate = announcementScopePredicate(scope, "a", context.staff.profileId, context.staff.userId, now);
-  const row = await env.DB.prepare(\`
+  const row = await env.DB.prepare(`
     SELECT a.id,a.branch_id,a.title,a.body,a.audience_type,a.is_public,a.status,
            a.publish_at,a.published_at,a.created_by,a.created_at,a.updated_at
     FROM announcement a
-    WHERE a.id=? AND a.branch_id=? AND a.status='published' AND (\${predicate.sql})
+    WHERE a.id=? AND a.branch_id=? AND a.status='published' AND (${predicate.sql})
     LIMIT 1
-  \`).bind(announcementId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
+  `).bind(announcementId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
   if (!row) return json(404, { ok: false, error: { code: "ANNOUNCEMENT_NOT_FOUND" } }, requestId, origin);
   return json(200, { ok: true, announcement: row }, requestId, origin);
 }
@@ -3482,25 +3482,25 @@ async function createAnnouncement(
   const branchId = access.activeBranch.branchId;
   if (teamIds.length) {
     const found = await env.DB.prepare(
-      \`SELECT COUNT(*) AS count FROM team WHERE branch_id=? AND is_active=1 AND id IN (\${teamIds.map(() => "?").join(",")})\`,
+      `SELECT COUNT(*) AS count FROM team WHERE branch_id=? AND is_active=1 AND id IN (${teamIds.map(() => "?").join(",")})`,
     ).bind(branchId, ...teamIds).first<{ count: number }>();
     if ((found?.count ?? 0) !== teamIds.length) return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_TEAM_AUDIENCE" } }, requestId, origin);
   }
   if (eventIds.length) {
     const found = await env.DB.prepare(
-      \`SELECT COUNT(*) AS count FROM event WHERE branch_id=? AND status<>'cancelled' AND id IN (\${eventIds.map(() => "?").join(",")})\`,
+      `SELECT COUNT(*) AS count FROM event WHERE branch_id=? AND status<>'cancelled' AND id IN (${eventIds.map(() => "?").join(",")})`,
     ).bind(branchId, ...eventIds).first<{ count: number }>();
     if ((found?.count ?? 0) !== eventIds.length) return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_EVENT_AUDIENCE" } }, requestId, origin);
   }
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const statements = [
-    env.DB.prepare(\`
+    env.DB.prepare(`
       INSERT INTO announcement
         (id,branch_id,title,body,audience_type,is_public,status,publish_at,published_at,
          created_by,updated_by,created_at,updated_at)
       VALUES (?,?,?,?,?,?, 'draft',NULL,NULL,?,?,?,?)
-    \`).bind(
+    `).bind(
       id, branchId, title, message, audience, audience === "public" ? 1 : 0,
       access.staff.userId, access.staff.userId, now, now,
     ),
@@ -3559,10 +3559,10 @@ async function updateAnnouncement(
   assignments.push("updated_by=?"); values.push(access.staff.userId);
   assignments.push("updated_at=?"); values.push(now);
   try {
-    const result = await env.DB.prepare(\`
-      UPDATE announcement SET \${assignments.join(",")}
+    const result = await env.DB.prepare(`
+      UPDATE announcement SET ${assignments.join(",")}
       WHERE id=? AND branch_id=? AND status='draft'
-    \`).bind(...values, announcementId, access.activeBranch.branchId).run();
+    `).bind(...values, announcementId, access.activeBranch.branchId).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "ANNOUNCEMENT_NOT_EDITABLE" } }, requestId, origin);
   } catch {
     return json(409, { ok: false, error: { code: "ANNOUNCEMENT_UPDATE_CONFLICT" } }, requestId, origin);
@@ -3581,12 +3581,12 @@ async function publishAnnouncement(
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
   const now = new Date().toISOString();
   try {
-    const result = await env.DB.prepare(\`
+    const result = await env.DB.prepare(`
       UPDATE announcement
       SET status='published',published_at=?,updated_at=?,updated_by=?
       WHERE id=? AND branch_id=? AND status='draft'
         AND (publish_at IS NULL OR publish_at<=?)
-    \`).bind(now, now, access.staff.userId, announcementId, access.activeBranch.branchId, now).run();
+    `).bind(now, now, access.staff.userId, announcementId, access.activeBranch.branchId, now).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "ANNOUNCEMENT_NOT_PUBLISHABLE" } }, requestId, origin);
   } catch {
     return json(409, { ok: false, error: { code: "ANNOUNCEMENT_PUBLISH_CONFLICT" } }, requestId, origin);
@@ -3605,11 +3605,11 @@ async function archiveAnnouncement(
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
   const now = new Date().toISOString();
   try {
-    const result = await env.DB.prepare(\`
+    const result = await env.DB.prepare(`
       UPDATE announcement
       SET status='archived',updated_at=?,updated_by=?
       WHERE id=? AND branch_id=? AND status IN ('draft','published','scheduled')
-    \`).bind(now, access.staff.userId, announcementId, access.activeBranch.branchId).run();
+    `).bind(now, access.staff.userId, announcementId, access.activeBranch.branchId).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "ANNOUNCEMENT_NOT_ARCHIVABLE" } }, requestId, origin);
   } catch {
     return json(409, { ok: false, error: { code: "ANNOUNCEMENT_ARCHIVE_CONFLICT" } }, requestId, origin);
@@ -3633,47 +3633,47 @@ async function getPublicContent(
   ).bind(branchId).first<{ id: string; church_id: string }>();
   if (!branch) return json(404, { ok: false, error: { code: "PUBLIC_BRANCH_NOT_FOUND" } }, requestId, origin);
   const [profile,welcome,sermons,dailyWord,tracts,announcements,events,links] = await Promise.all([
-    env.DB.prepare(\`
+    env.DB.prepare(`
       SELECT public_name,welcome_content,public_phone,public_email,address_text,website_url,social_links
       FROM church_public_profile WHERE church_id=? LIMIT 1
-    \`).bind(branch.church_id).first<Record<string, unknown>>(),
-    env.DB.prepare(\`
+    `).bind(branch.church_id).first<Record<string, unknown>>(),
+    env.DB.prepare(`
       SELECT id,title,body,display_order,published_at
       FROM welcome_message WHERE status='published' AND (branch_id IS NULL OR branch_id=?)
       ORDER BY display_order ASC,published_at DESC LIMIT 20
-    \`).bind(branchId).all<Record<string, unknown>>(),
-    env.DB.prepare(\`
+    `).bind(branchId).all<Record<string, unknown>>(),
+    env.DB.prepare(`
       SELECT id,title,body,public_slug,published_at
       FROM sermon WHERE status='published' AND (branch_id IS NULL OR branch_id=?)
       ORDER BY published_at DESC LIMIT 20
-    \`).bind(branchId).all<Record<string, unknown>>(),
-    env.DB.prepare(\`
+    `).bind(branchId).all<Record<string, unknown>>(),
+    env.DB.prepare(`
       SELECT id,title,body,publication_date,public_slug,published_at
       FROM daily_word WHERE status='published'
       ORDER BY publication_date DESC LIMIT 10
-    \`).all<Record<string, unknown>>(),
-    env.DB.prepare(\`
+    `).all<Record<string, unknown>>(),
+    env.DB.prepare(`
       SELECT id,title,body,public_slug,published_at
       FROM digital_tract WHERE status='published'
       ORDER BY published_at DESC LIMIT 30
-    \`).all<Record<string, unknown>>(),
-    env.DB.prepare(\`
+    `).all<Record<string, unknown>>(),
+    env.DB.prepare(`
       SELECT id,title,body,published_at FROM announcement
       WHERE branch_id=? AND is_public=1 AND audience_type='public' AND status='published'
       ORDER BY published_at DESC LIMIT 20
-    \`).bind(branchId).all<Record<string, unknown>>(),
-    env.DB.prepare(\`
+    `).bind(branchId).all<Record<string, unknown>>(),
+    env.DB.prepare(`
       SELECT id,title,description,starts_at,ends_at,timezone,location,capacity
       FROM event WHERE branch_id=? AND visibility='public' AND status='published'
       ORDER BY starts_at ASC LIMIT 20
-    \`).bind(branchId).all<Record<string, unknown>>(),
-    env.DB.prepare(\`
+    `).bind(branchId).all<Record<string, unknown>>(),
+    env.DB.prepare(`
       SELECT l.id,l.label,l.url,l.digital_tract_id,l.sermon_id
       FROM external_document_link l
       WHERE (l.digital_tract_id IN (SELECT id FROM digital_tract WHERE status='published')
          OR l.sermon_id IN (SELECT id FROM sermon WHERE status='published' AND (branch_id IS NULL OR branch_id=?)))
       ORDER BY l.created_at DESC LIMIT 100
-    \`).bind(branchId).all<Record<string, unknown>>(),
+    `).bind(branchId).all<Record<string, unknown>>(),
   ]);
   return json(200, {
     ok: true,
