@@ -54,6 +54,8 @@ CREATE TRIGGER calendar_entry_change_audit_no_delete
 BEFORE DELETE ON calendar_entry_change_audit
 BEGIN SELECT RAISE(ABORT,'CALENDAR_CHANGE_AUDIT_APPEND_ONLY'); END;
 
+CREATE UNIQUE INDEX calendar_entry_id_branch_uq ON calendar_entry(id,branch_id);
+
 CREATE TABLE calendar_entry_read_receipt (
   id TEXT PRIMARY KEY,
   entry_id TEXT NOT NULL REFERENCES calendar_entry(id) ON DELETE RESTRICT,
