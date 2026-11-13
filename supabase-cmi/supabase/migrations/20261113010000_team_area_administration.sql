@@ -210,8 +210,8 @@ begin
     ) values (
       v_branch_id,v_actor_profile_id,'team',v_team_id,'team.updated',
       jsonb_build_object('changed_fields',
-        (select coalesce(jsonb_agg(k),'[]'::jsonb)
-         from pg_catalog.jsonb_object_keys(p_payload - array['branch_id','team_id']) as k))
+        (select coalesce(jsonb_agg(key),'[]'::jsonb)
+         from pg_catalog.jsonb_object_keys(p_payload - array['branch_id','team_id']) as fields(key)))
     );
     return v_result;
   end if;
@@ -337,9 +337,9 @@ begin
       raise exception using errcode = '22023', message = 'UNSUPPORTED_MEMBERSHIP_REVOKE_FIELDS';
     end if;
     if coalesce(p_payload->>'team_id','') !~
-      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8aAbB][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
       or coalesce(p_payload->>'membership_id','') !~
-      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8aAbB][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$' then
+      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$' then
       raise exception using errcode = '22023', message = 'INVALID_MEMBERSHIP_REFERENCE';
     end if;
     v_team_id := (p_payload->>'team_id')::uuid;
@@ -434,7 +434,7 @@ begin
       v_branch_id,v_actor_profile_id,'service_area',v_area_id,'service_area.updated',
       jsonb_build_object('changed_fields',
         (select coalesce(jsonb_agg(k),'[]'::jsonb)
-         from pg_catalog.jsonb_object_keys(p_payload - array['branch_id','area_id']) as k))
+         from pg_catalog.jsonb_object_keys(p_payload - array['branch_id','area_id']) as fields(key)))
     );
     return v_result;
   end if;
@@ -444,7 +444,7 @@ begin
       raise exception using errcode = '22023', message = 'UNSUPPORTED_AREA_COVERAGE_FIELDS';
     end if;
     if coalesce(p_payload->>'area_id','') !~
-      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8aAbB][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
       or coalesce(p_payload->>'staff_profile_id','') !~
       '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8aAbB][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{12}$' then
       raise exception using errcode = '22023', message = 'INVALID_AREA_COVERAGE_REFERENCE';
@@ -493,7 +493,7 @@ begin
       raise exception using errcode = '22023', message = 'UNSUPPORTED_AREA_COVERAGE_REVOKE_FIELDS';
     end if;
     if coalesce(p_payload->>'area_id','') !~
-      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8aAbB][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
       or coalesce(p_payload->>'coverage_id','') !~
       '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8aAbB][0-9a-fA-F]{3}-[89aAbB][0-9a-F]{3}-[0-9a-fA-F]{12}$' then
       raise exception using errcode = '22023', message = 'INVALID_AREA_COVERAGE_REFERENCE';
