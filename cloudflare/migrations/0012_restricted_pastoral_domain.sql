@@ -113,6 +113,26 @@ BEGIN
       AND rc.scope_mode = 'explicit_share'
   ) THEN RAISE(ABORT, 'PRAYER_ASSIGNMENT_RECIPIENT_NOT_AUTHORIZED') END;
 END;
+
+CREATE TRIGGER prayer_assignment_requires_active_share
+BEFORE INSERT ON prayer_assignment
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+    FROM staff_record_share share
+    JOIN staff_profile recipient ON recipient.id = share.staff_profile_id
+    JOIN staff_profile grantor ON grantor.id = share.granted_by
+    WHERE share.record_type = 'prayer_request'
+      AND share.record_id = NEW.prayer_request_id
+      AND share.branch_id = NEW.branch_id
+      AND recipient.auth_user_id = NEW.intercessor_user_id
+      AND grantor.auth_user_id = NEW.assigned_by
+      AND share.revoked_at IS NULL
+      AND share.starts_at <= NEW.starts_at
+      AND (share.ends_at IS NULL OR share.ends_at > NEW.starts_at)
+  ) THEN RAISE(ABORT, 'PRAYER_ASSIGNMENT_REQUIRES_ACTIVE_EXPLICIT_SHARE') END;
+END;
+
 CREATE TRIGGER prayer_assignment_authorize_revoke
 BEFORE UPDATE OF revoked_at, revoked_by ON prayer_assignment
 WHEN OLD.revoked_at IS NULL AND NEW.revoked_at IS NOT NULL
@@ -133,6 +153,18 @@ BEGIN
       AND ra.starts_at <= NEW.revoked_at
       AND (ra.ends_at IS NULL OR ra.ends_at > NEW.revoked_at)
   ) THEN RAISE(ABORT, 'PRAYER_ASSIGNMENT_REVOKE_NOT_AUTHORIZED') END;
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+    FROM staff_record_share share
+    JOIN staff_profile actor ON actor.id = share.revoked_by
+    JOIN staff_profile recipient ON recipient.id = share.staff_profile_id
+    WHERE share.record_type = 'prayer_request'
+      AND share.record_id = OLD.prayer_request_id
+      AND share.branch_id = OLD.branch_id
+      AND recipient.auth_user_id = OLD.intercessor_user_id
+      AND actor.auth_user_id = NEW.revoked_by
+      AND share.revoked_at = NEW.revoked_at
+  ) THEN RAISE(ABORT, 'PRAYER_ASSIGNMENT_SHARE_NOT_REVOKED') END;
 END;
 
 CREATE TABLE prayer_access_audit (
