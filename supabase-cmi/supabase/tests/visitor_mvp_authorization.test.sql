@@ -3,7 +3,7 @@ select plan(12);
 
 select is(
   (select count(*)::integer from public.role_capability),
-  67,
+  76,
   'MVP has the exact owner-directed role-capability grant count'
 );
 

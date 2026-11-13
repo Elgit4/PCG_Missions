@@ -1,0 +1,103 @@
+-- PCG Missions CMI — safe correction and resubmission of returned reports.
+begin;
+
+create or replace function public.cmi_resubmit_ministry_report(
+  p_report_id uuid,
+  p_author_profile_id uuid,
+  p_contacts_captured integer,
+  p_gospel_presentations integer,
+  p_decisions_for_christ integer,
+  p_followup_required integer,
+  p_followup_completed integer,
+  p_visits_completed integer,
+  p_calls_completed integer,
+  p_events_supported integer,
+  p_attendance_count integer
+)
+returns public.ministry_report
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_report public.ministry_report;
+  v_can_submit boolean := false;
+begin
+  select * into v_report
+  from public.ministry_report
+  where id = p_report_id
+  for update;
+
+  if not found then
+    raise exception using errcode = 'P0002', message = 'REPORT_NOT_FOUND';
+  end if;
+  if v_report.author_profile_id <> p_author_profile_id then
+    raise exception using errcode = '42501', message = 'REPORT_AUTHOR_MISMATCH';
+  end if;
+
+  -- Revalidate the author's self-submit grant in the correction transaction.
+  select exists (
+    select 1
+    from public.staff_role_assignment sra
+    join public.staff_profile sp on sp.id = sra.staff_profile_id
+      and sp.account_status = 'active' and not sp.must_change_password
+    join public.role r on r.id = sra.role_id and r.is_active
+    join public.role_capability rc on rc.role_id = r.id and rc.scope_mode = 'self'
+    join public.capability c on c.id = rc.capability_id
+      and c.code = 'report.submit.own' and c.is_active
+    where sra.staff_profile_id = p_author_profile_id
+      and sra.branch_id = v_report.branch_id
+      and sra.starts_at <= pg_catalog.clock_timestamp()
+      and (sra.ends_at is null or sra.ends_at > pg_catalog.clock_timestamp())
+      and sra.revoked_at is null
+  ) into v_can_submit;
+
+  if not v_can_submit then
+    raise exception using errcode = '42501', message = 'REPORT_SUBMIT_SCOPE_REQUIRED';
+  end if;
+
+  if v_report.status <> 'returned' then
+    raise exception using errcode = '55000', message = 'REPORT_NOT_RETURNED';
+  end if;
+  if p_contacts_captured < 0 or p_gospel_presentations < 0
+    or p_decisions_for_christ < 0 or p_followup_required < 0
+    or p_followup_completed < 0 or p_visits_completed < 0
+    or p_calls_completed < 0 or p_events_supported < 0
+    or p_attendance_count < 0 then
+    raise exception using errcode = '23514', message = 'REPORT_COUNTS_INVALID';
+  end if;
+
+  update public.ministry_report
+  set contacts_captured = p_contacts_captured,
+      gospel_presentations = p_gospel_presentations,
+      decisions_for_christ = p_decisions_for_christ,
+      followup_required = p_followup_required,
+      followup_completed = p_followup_completed,
+      visits_completed = p_visits_completed,
+      calls_completed = p_calls_completed,
+      events_supported = p_events_supported,
+      attendance_count = p_attendance_count,
+      status = 'submitted',
+      submitted_at = pg_catalog.clock_timestamp(),
+      updated_at = pg_catalog.clock_timestamp()
+  where id = p_report_id
+  returning * into v_report;
+
+  insert into public.report_review_event(
+    report_id, actor_profile_id, decision, comment
+  ) values (
+    p_report_id, p_author_profile_id, 'resubmitted', null
+  );
+
+  return v_report;
+end;
+$$;
+
+revoke all on function public.cmi_resubmit_ministry_report(
+  uuid,uuid,integer,integer,integer,integer,integer,integer,integer,integer,integer
+) from public, anon, authenticated;
+grant execute on function public.cmi_resubmit_ministry_report(
+  uuid,uuid,integer,integer,integer,integer,integer,integer,integer,integer,integer
+) to service_role;
+
+commit;

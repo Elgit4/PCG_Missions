@@ -68,6 +68,10 @@ verify_jwt = true
 # Branch-scoped team membership and service-area administration.
 verify_jwt = true
 
+[functions.report-operations]
+# Authenticated typed ministry reports with own/team/branch scope enforcement.
+verify_jwt = true
+
 
 [functions.staff-auth]
 # Public recovery request + one-time bootstrap routes use dedicated abuse controls

@@ -281,4 +281,174 @@ describe("CmiApiClient", () => {
     });
   });
 
+
+  it("routes all private event, calendar, announcement and content draft CRUD operations", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "draft-1" }, request_id: "draft-operation" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+
+    await client.listEventDrafts("branch-a");
+    await client.createEventDraft({
+      branch_id: "branch-a", title: "Outreach", description: null,
+      starts_at: "2026-11-14T08:00:00.000Z", ends_at: "2026-11-14T10:00:00.000Z",
+      timezone: "Africa/Accra", location: null,
+    });
+    await client.updateEventDraft("branch-a", "event-1", { title: "Updated outreach" });
+
+    await client.listCalendarEntries("branch-a");
+    await client.createCalendarEntry({
+      branch_id: "branch-a", entry_type: "service", title: "Sunday service",
+      starts_at: "2026-11-15T09:00:00.000Z", ends_at: null,
+    });
+    await client.updateCalendarEntry("branch-a", "calendar-1", { title: "Updated service" });
+
+    await client.listAnnouncementDrafts("branch-a");
+    await client.createAnnouncementDraft({ branch_id: "branch-a", title: "Notice", body: "Service begins at 9." });
+    await client.updateAnnouncementDraft("branch-a", "announcement-1", { body: "Updated notice" });
+
+    await client.listSermonDrafts("branch-a");
+    await client.createSermonDraft({ branch_id: "branch-a", title: "Faith", body: "Sermon notes", public_slug: "faith" });
+    await client.updateSermonDraft("branch-a", "sermon-1", { title: "Faith renewed" });
+
+    await client.listWelcomeMessageDrafts("branch-a");
+    await client.createWelcomeMessageDraft({ branch_id: "branch-a", title: "Welcome", body: "Welcome to church", display_order: 1 });
+    await client.updateWelcomeMessageDraft("branch-a", "welcome-1", { display_order: 2 });
+
+    const calls = fetcher.mock.calls as unknown as Array<[URL, RequestInit]>;
+    expect(calls.map(([url, init]) => [url.pathname, init.method ?? "GET"])).toEqual([
+      ["/functions/v1/event-operations/events", "GET"],
+      ["/functions/v1/event-operations/events", "POST"],
+      ["/functions/v1/event-operations/events/event-1", "PATCH"],
+      ["/functions/v1/calendar-operations/entries", "GET"],
+      ["/functions/v1/calendar-operations/entries", "POST"],
+      ["/functions/v1/calendar-operations/entries/calendar-1", "PATCH"],
+      ["/functions/v1/announcement-operations/announcements", "GET"],
+      ["/functions/v1/announcement-operations/announcements", "POST"],
+      ["/functions/v1/announcement-operations/announcements/announcement-1", "PATCH"],
+      ["/functions/v1/content-operations/sermons", "GET"],
+      ["/functions/v1/content-operations/sermons", "POST"],
+      ["/functions/v1/content-operations/sermons/sermon-1", "PATCH"],
+      ["/functions/v1/content-operations/welcome-messages", "GET"],
+      ["/functions/v1/content-operations/welcome-messages", "POST"],
+      ["/functions/v1/content-operations/welcome-messages/welcome-1", "PATCH"],
+    ]);
+    for (const [url, init] of calls) {
+      expect(url.searchParams.get("branch_id") ?? JSON.parse(String(init.body ?? "{}")).branch_id).toBe("branch-a");
+      expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
+    }
+  });
+
+  it("lists ministry reports through the scoped report operations function", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: [], total: 0, request_id: "reports-list" }), { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.listMinistryReports("branch-a", { report_type: "weekly_ministry", limit: 10 });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/report-operations/reports");
+    expect(url.searchParams.get("branch_id")).toBe("branch-a");
+    expect(url.searchParams.get("report_type")).toBe("weekly_ministry");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
+  });
+
+  it("submits typed report counts without accepting actor or status fields", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "report-1", status: "submitted" }, request_id: "report-create" }),
+      { status: 201 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.createMinistryReport({
+      branch_id: "branch-a", report_type: "daily_evangelism",
+      period_start: "2026-11-13", period_end: "2026-11-13",
+      contacts_captured: 4, gospel_presentations: 3, decisions_for_christ: 1,
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/report-operations/reports");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      branch_id: "branch-a", contacts_captured: 4, decisions_for_christ: 1,
+    });
+    expect(JSON.stringify(init.body)).not.toContain("author_profile_id");
+    expect(JSON.stringify(init.body)).not.toContain("status");
+  });
+
+  it("preserves the exact total count from paginated report lists", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: [], total: 73, request_id: "report-page" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.listMinistryReports("branch-a", { limit: 50, offset: 50 });
+    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/report-operations/reports");
+    expect(url.searchParams.get("limit")).toBe("50");
+    expect(url.searchParams.get("offset")).toBe("50");
+    expect(result.data).toEqual([]);
+    expect(result.total).toBe(73);
+  });
+
+  it("submits report reviews through the atomic review endpoint", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { report: { id: "report-1" }, review_history: [] }, request_id: "report-review" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.reviewMinistryReport("report/1", {
+      decision: "returned",
+      comment: "Please verify the totals.",
+    });
+    expect(result.data.report.id).toBe("report-1");
+    expect(result.data.review_history).toEqual([]);
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/report-operations/reports/report%2F1/review");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ decision: "returned", comment: "Please verify the totals." });
+  });
+
+  it("loads safe report team and event selectors", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: [], request_id: "report-options" }), { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.listReportTeams("branch-a");
+    await client.listReportEvents("branch-a");
+    const team = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    const events = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(team[0].pathname).toBe("/functions/v1/report-operations/teams");
+    expect(events[0].pathname).toBe("/functions/v1/report-operations/events");
+  });
+
+  it("resubmits a corrected returned report through the protected endpoint", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({
+        data: {
+          report: { id: "report-1", status: "submitted" },
+          review_history: [{
+            id: "history-1",
+            actor_profile_id: "author-1",
+            decision: "resubmitted",
+            comment: null,
+            created_at: "2026-11-13T09:00:00Z",
+          }],
+        },
+        request_id: "report-resubmit",
+      }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.resubmitMinistryReport("report-1", {
+      contacts_captured: 4, gospel_presentations: 3, decisions_for_christ: 1,
+      followup_required: 2, followup_completed: 1, visits_completed: 1,
+      calls_completed: 0, events_supported: 0, attendance_count: 0,
+    });
+    expect(result.data.report.id).toBe("report-1");
+    expect(result.data.review_history[0]?.actor_profile_id).toBe("author-1");
+    expect(result.data.review_history[0]?.decision).toBe("resubmitted");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/report-operations/reports/report-1/resubmit");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toHaveProperty("contacts_captured", 4);
+  });
 });

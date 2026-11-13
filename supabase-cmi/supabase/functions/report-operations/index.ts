@@ -1,0 +1,493 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
+import { readJson } from "../_shared/request_body.ts";
+import {
+  createAllowedOrigins,
+  createCorsHeaders,
+  createPreflightResponse,
+  isAllowedOrigin,
+} from "../_shared/cors.ts";
+import {
+  canReadReport,
+  canReviewReport,
+  canSelectReportEvent,
+  canSelectReportTeam,
+  canSubmitOwnReport,
+} from "./access.ts";
+import { isUuid, parseReportCorrection, parseReportCreate, parseReportListQuery, parseReview } from "./validation.ts";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+const allowedOrigins = createAllowedOrigins(
+  Deno.env.get("CMI_ALLOWED_ORIGINS"),
+);
+
+function serviceClient() {
+  return createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { headers: { "X-Application-Name": "pcg-missions-report-operations" } },
+  });
+}
+type Service = ReturnType<typeof serviceClient>;
+type Scope = "branch" | "team" | "assigned" | "self" | "event" | "explicit_share" | "oversight";
+const REPORT_COLUMNS = "id,branch_id,report_type,period_start,period_end,author_profile_id,team_id,event_id,contacts_captured,gospel_presentations,decisions_for_christ,followup_required,followup_completed,visits_completed,calls_completed,events_supported,attendance_count,status,submitted_at,created_at,updated_at";
+
+function response(body: unknown, status: number, origin: string | null, requestId: string): Response {
+  const headers = new Headers({
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "X-Request-Id": requestId,
+  });
+  createCorsHeaders(origin, allowedOrigins).forEach((value, key) => {
+    headers.set(key, value);
+  });
+  return new Response(JSON.stringify(body), { status, headers });
+}
+function fail(code: string, message: string, status: number, origin: string | null, requestId: string) {
+  return response({ error: { code, message }, request_id: requestId }, status, origin, requestId);
+}
+function bearer(request: Request): string | null {
+  const value = request.headers.get("Authorization");
+  const match = value ? /^Bearer\s+([A-Za-z0-9._~-]+)$/i.exec(value.trim()) : null;
+  return match?.[1] ?? null;
+}
+
+async function resolveStaff(token: string): Promise<
+  | { ok: true; actorId: string; profileId: string; service: Service }
+  | { ok: false; status: number; code: string; message: string }
+> {
+  const authClient = createClient(SUPABASE_URL, PUBLIC_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const service = serviceClient();
+  const { data: auth, error: authError } = await authClient.auth.getUser(token);
+  if (authError || !auth.user) return { ok: false, status: 401, code: "INVALID_SESSION", message: "A valid staff session is required." };
+  const { data: profile, error } = await service.from("staff_profile")
+    .select("id,account_status,must_change_password").eq("auth_user_id", auth.user.id).maybeSingle();
+  if (error) throw new Error("STAFF_PROFILE_LOOKUP_FAILED");
+  if (!profile) return { ok: false, status: 403, code: "STAFF_PROFILE_NOT_FOUND", message: "This account is not provisioned as staff." };
+  if (profile.must_change_password) return { ok: false, status: 403, code: "PASSWORD_CHANGE_REQUIRED", message: "Change the temporary password before using staff operations." };
+  if (profile.account_status !== "active") return { ok: false, status: 403, code: "STAFF_ACCOUNT_NOT_ACTIVE", message: "This staff account is not active." };
+  return { ok: true, actorId: auth.user.id, profileId: profile.id, service };
+}
+
+async function scopes(service: Service, profileId: string, branchId: string, capabilityCode: string): Promise<Scope[]> {
+  const now = new Date().toISOString();
+  const { data: branch, error: branchError } = await service.from("branch").select("id,is_active").eq("id", branchId).maybeSingle();
+  if (branchError) throw new Error("BRANCH_LOOKUP_FAILED");
+  if (!branch?.is_active) return [];
+  const { data: assignments, error: assignmentError } = await service.from("staff_role_assignment")
+    .select("role_id,role:role!inner(is_active)").eq("role.is_active", true)
+    .eq("staff_profile_id", profileId).eq("branch_id", branchId).lte("starts_at", now)
+    .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null);
+  if (assignmentError) throw new Error("ROLE_ASSIGNMENT_LOOKUP_FAILED");
+  const roleIds = [...new Set((assignments ?? []).map((row: { role_id: string }) => row.role_id))];
+  if (!roleIds.length) return [];
+  const { data: grants, error: grantError } = await service.from("role_capability")
+    .select("scope_mode,capability:capability!inner(code,is_active)").in("role_id", roleIds)
+    .eq("capability.code", capabilityCode);
+  if (grantError) throw new Error("CAPABILITY_LOOKUP_FAILED");
+  return [...new Set((grants ?? []).flatMap((grant: {
+    scope_mode: Scope;
+    capability?: { code: string; is_active: boolean } | Array<{ code: string; is_active: boolean }> | null;
+  }) => {
+    const capability = Array.isArray(grant.capability) ? grant.capability[0] : grant.capability;
+    return capability?.is_active ? [grant.scope_mode] : [];
+  }))];
+}
+
+async function activeTeamIds(service: Service, profileId: string, branchId: string): Promise<string[]> {
+  const now = new Date().toISOString();
+  const { data, error } = await service.from("staff_team_membership")
+    .select("team_id,team:team!inner(is_active)").eq("staff_profile_id", profileId)
+    .eq("branch_id", branchId).eq("team.is_active", true).lte("starts_at", now)
+    .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null);
+  if (error) throw new Error("TEAM_MEMBERSHIP_LOOKUP_FAILED");
+  return [...new Set((data ?? []).map((row: { team_id: string }) => row.team_id))];
+}
+
+function readJsonError(error: unknown): { code: string; message: string; status: number } {
+  const code = error instanceof Error ? error.message : "INVALID_JSON";
+  return {
+    code,
+    message: code === "CONTENT_TYPE_REQUIRED" ? "Content-Type must be application/json."
+      : code === "BODY_TOO_LARGE" ? "Request body is too large." : "A valid JSON request body is required.",
+    status: code === "BODY_TOO_LARGE" ? 413 : 400,
+  };
+}
+
+Deno.serve(async (request: Request) => {
+  const requestId = crypto.randomUUID();
+  const origin = request.headers.get("Origin");
+  if (!isAllowedOrigin(origin, allowedOrigins)) {
+    return fail("ORIGIN_NOT_ALLOWED", "Origin not allowed.", 403, null, requestId);
+  }
+  if (request.method === "OPTIONS") {
+    return createPreflightResponse(origin, allowedOrigins);
+  }
+  if (!["GET", "POST"].includes(request.method)) return fail("METHOD_NOT_ALLOWED", "Method not allowed.", 405, origin, requestId);
+  if (!SUPABASE_URL || !SERVICE_KEY || !PUBLIC_KEY) return fail("SERVICE_NOT_CONFIGURED", "Report operations service is not configured.", 503, origin, requestId);
+  const token = bearer(request);
+  if (!token) return fail("AUTH_REQUIRED", "A valid staff session is required.", 401, origin, requestId);
+
+  try {
+    const auth = await resolveStaff(token);
+    if (!auth.ok) return fail(auth.code, auth.message, auth.status, origin, requestId);
+    const url = new URL(request.url);
+    const path = url.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+    const last = path[path.length - 1] ?? "";
+    const previous = path[path.length - 2] ?? "";
+    const collection = previous === "report-operations" && last === "reports";
+    const item = path[path.length - 3] === "report-operations" && previous === "reports" && isUuid(last);
+    const review = path[path.length - 4] === "report-operations" && path[path.length - 3] === "reports" && isUuid(path[path.length - 2]) && last === "review";
+    const resubmit = path[path.length - 4] === "report-operations" &&
+      path[path.length - 3] === "reports" && isUuid(path[path.length - 2]) &&
+      last === "resubmit";
+
+
+    const teamCollection = previous === "report-operations" && last === "teams";
+    const eventCollection = previous === "report-operations" && last === "events";
+
+    if (request.method === "GET" && (teamCollection || eventCollection)) {
+      const branchValues = url.searchParams.getAll("branch_id");
+      if (branchValues.length !== 1 ||
+        [...url.searchParams.keys()].some((key) => key !== "branch_id") ||
+        !isUuid(branchValues[0])) {
+        return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, requestId);
+      }
+      const branchId = branchValues[0];
+      const submitScopes = await scopes(auth.service, auth.profileId, branchId, "report.submit.own");
+      const reviewScopes = await scopes(auth.service, auth.profileId, branchId, "report.review.team");
+      const branchReview = await scopes(auth.service, auth.profileId, branchId, "report.review.branch");
+      if (!submitScopes.includes("self") && !reviewScopes.includes("team") && !branchReview.includes("branch")) {
+        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+      }
+      if (teamCollection) {
+        const teamIds = await activeTeamIds(auth.service, auth.profileId, branchId);
+        if (!teamIds.length) return response({ data: [], request_id: requestId }, 200, origin, requestId);
+        const { data, error } = await auth.service.from("team").select("id,name")
+          .eq("branch_id", branchId).eq("is_active", true).in("id", teamIds)
+          .order("name", { ascending: true });
+        if (error) throw new Error("REPORT_TEAM_OPTIONS_FAILED");
+        return response({ data: data ?? [], request_id: requestId }, 200, origin, requestId);
+      }
+      if (!submitScopes.includes("self")) {
+        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+      }
+      const now = new Date().toISOString();
+      const { data: staffAssignments, error: staffAssignmentError } = await auth.service
+        .from("event_staff_assignment").select("event_id")
+        .eq("branch_id", branchId).eq("staff_auth_user_id", auth.actorId)
+        .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
+        .is("revoked_at", null);
+      if (staffAssignmentError) throw new Error("REPORT_EVENT_ASSIGNMENT_LOOKUP_FAILED");
+      const teamIds = await activeTeamIds(auth.service, auth.profileId, branchId);
+      let teamEventIds: string[] = [];
+      if (teamIds.length) {
+        const { data: teamAssignments, error: teamAssignmentError } = await auth.service
+          .from("event_team_assignment").select("event_id")
+          .eq("branch_id", branchId).in("team_id", teamIds)
+          .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
+          .is("revoked_at", null);
+        if (teamAssignmentError) throw new Error("REPORT_TEAM_EVENT_ASSIGNMENT_LOOKUP_FAILED");
+        teamEventIds = (teamAssignments ?? []).map((row: { event_id: string }) => row.event_id);
+      }
+      const eventIds = [...new Set([
+        ...(staffAssignments ?? []).map((row: { event_id: string }) => row.event_id),
+        ...teamEventIds,
+      ])];
+      if (!eventIds.length) {
+        return response({ data: [], request_id: requestId }, 200, origin, requestId);
+      }
+      const { data, error } = await auth.service.from("event")
+        .select("id,title,starts_at").eq("branch_id", branchId).in("id", eventIds)
+        .order("starts_at", { ascending: false }).limit(100);
+      if (error) throw new Error("REPORT_EVENT_OPTIONS_FAILED");
+      return response({ data: data ?? [], request_id: requestId }, 200, origin, requestId);
+    }
+
+    if (request.method === "GET" && collection) {
+      const parsed = parseReportListQuery(url);
+      if (!parsed.ok) return fail("INVALID_QUERY", parsed.error, 400, origin, requestId);
+      const { branch_id, report_type, status, limit, offset } = parsed.value;
+      const ownScopes = await scopes(auth.service, auth.profileId, branch_id, "report.read.own");
+      const branchReview = await scopes(auth.service, auth.profileId, branch_id, "report.review.branch");
+      const teamReview = await scopes(auth.service, auth.profileId, branch_id, "report.review.team");
+      const canReadOwn = ownScopes.includes("self");
+      const canReviewOwnTeam = teamReview.includes("team");
+      const canReadBranch = branchReview.includes("branch");
+      const teamIds = canReviewOwnTeam
+        ? await activeTeamIds(auth.service, auth.profileId, branch_id)
+        : [];
+      if (!canReadOwn && !canReviewOwnTeam && !canReadBranch) {
+        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+      }
+
+      let query = auth.service.from("ministry_report")
+        .select(REPORT_COLUMNS, { count: "exact" })
+        .eq("branch_id", branch_id);
+      if (report_type) query = query.eq("report_type", report_type);
+      if (status) query = query.eq("status", status);
+
+      if (!canReadBranch) {
+        if (canReadOwn && teamIds.length) {
+          query = query.or(
+            `author_profile_id.eq.${auth.profileId},team_id.in.(${teamIds.join(",")})`,
+          );
+        } else if (canReadOwn) {
+          query = query.eq("author_profile_id", auth.profileId);
+        } else if (teamIds.length) {
+          query = query.in("team_id", teamIds);
+        } else {
+          return response({ data: [], total: 0, request_id: requestId }, 200, origin, requestId);
+        }
+      }
+
+      const { data, error, count } = await query
+        .order("period_start", { ascending: false })
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (error) throw new Error("REPORT_LIST_FAILED");
+      return response({
+        data: data ?? [],
+        total: count ?? 0,
+        request_id: requestId,
+      }, 200, origin, requestId);
+    }
+
+    if (request.method === "GET" && item) {
+      const branchValues = url.searchParams.getAll("branch_id");
+      if (branchValues.length !== 1 || [...url.searchParams.keys()].some((key) => key !== "branch_id") || !isUuid(branchValues[0])) {
+        return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, requestId);
+      }
+      const branchId = branchValues[0];
+      const { data: report, error } = await auth.service.from("ministry_report")
+        .select(REPORT_COLUMNS).eq("id", last).eq("branch_id", branchId).maybeSingle();
+      if (error) throw new Error("REPORT_DETAIL_FAILED");
+      if (!report) return fail("NOT_FOUND", "Report not found.", 404, origin, requestId);
+      const [ownScopes, branchReviewScopes, teamReviewScopes] = await Promise.all([
+        scopes(auth.service, auth.profileId, branchId, "report.read.own"),
+        scopes(auth.service, auth.profileId, branchId, "report.review.branch"),
+        scopes(auth.service, auth.profileId, branchId, "report.review.team"),
+      ]);
+      const teamIds = teamReviewScopes.includes("team")
+        ? await activeTeamIds(auth.service, auth.profileId, branchId)
+        : [];
+      if (!canReadReport({
+        actorProfileId: auth.profileId,
+        authorProfileId: report.author_profile_id,
+        teamId: report.team_id,
+        canReadOwn: ownScopes.includes("self"),
+        canReviewBranch: branchReviewScopes.includes("branch"),
+        canReviewTeam: teamReviewScopes.includes("team"),
+        activeTeamIds: teamIds,
+      })) {
+        return fail("NOT_FOUND", "Report not found.", 404, origin, requestId);
+      }
+      const { data: history, error: historyError } = await auth.service.from("report_review_event")
+        .select("id,actor_profile_id,decision,comment,created_at").eq("report_id", last)
+        .order("created_at", { ascending: true });
+      if (historyError) throw new Error("REPORT_REVIEW_HISTORY_FAILED");
+      return response({ data: { ...report, review_history: history ?? [] }, request_id: requestId }, 200, origin, requestId);
+    }
+
+    if (request.method === "POST" && collection) {
+      let body: unknown;
+      try { body = await readJson(request); } catch (error) {
+        const parsed = readJsonError(error);
+        return fail(parsed.code, parsed.message, parsed.status, origin, requestId);
+      }
+      const parsed = parseReportCreate(body);
+      if (!parsed.ok) return fail("INVALID_REPORT", parsed.error, 400, origin, requestId);
+      const { value } = parsed;
+      const submitScopes = await scopes(
+        auth.service,
+        auth.profileId,
+        value.branch_id,
+        "report.submit.own",
+      );
+      if (!canSubmitOwnReport(submitScopes)) {
+        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+      }
+      if (value.team_id) {
+        const memberships = await activeTeamIds(
+          auth.service,
+          auth.profileId,
+          value.branch_id,
+        );
+        if (!canSelectReportTeam(value.team_id, memberships)) {
+          return fail(
+            "TEAM_SCOPE_REQUIRED",
+            "Select a team you actively belong to.",
+            403,
+            origin,
+            requestId,
+          );
+        }
+      }
+      if (value.event_id) {
+        const now = new Date().toISOString();
+        const { data: staffAssignments, error: staffAssignmentError } = await auth.service
+          .from("event_staff_assignment").select("id")
+          .eq("branch_id", value.branch_id).eq("event_id", value.event_id)
+          .eq("staff_auth_user_id", auth.actorId).lte("starts_at", now)
+          .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null).limit(1);
+        if (staffAssignmentError) throw new Error("REPORT_EVENT_ASSIGNMENT_LOOKUP_FAILED");
+        let hasTeamAssignment = false;
+        if (!staffAssignments?.length) {
+          const teamIds = await activeTeamIds(auth.service, auth.profileId, value.branch_id);
+          if (teamIds.length) {
+            const { data: teamAssignments, error: teamAssignmentError } = await auth.service
+              .from("event_team_assignment").select("id")
+              .eq("branch_id", value.branch_id).eq("event_id", value.event_id)
+              .in("team_id", teamIds).lte("starts_at", now)
+              .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null).limit(1);
+            if (teamAssignmentError) throw new Error("REPORT_TEAM_EVENT_ASSIGNMENT_LOOKUP_FAILED");
+            hasTeamAssignment = !!teamAssignments?.length;
+          }
+        }
+        if (
+          !canSelectReportEvent(
+            Boolean(staffAssignments?.length),
+            hasTeamAssignment,
+          )
+        ) {
+          return fail(
+            "EVENT_SCOPE_REQUIRED",
+            "You or your active team must be assigned to the selected event.",
+            403,
+            origin,
+            requestId,
+          );
+        }
+      }
+      const now = new Date().toISOString();
+      const { data, error } = await auth.service.from("ministry_report").insert({
+        ...value, author_profile_id: auth.profileId, status: "submitted", submitted_at: now,
+      }).select(REPORT_COLUMNS).single();
+      if (error) {
+        const message = error.message ?? "";
+        if (error.code === "23505") {
+          return fail("REPORT_ALREADY_EXISTS", "A report already exists for this author, period and team/event scope.", 409, origin, requestId);
+        }
+        if (message.includes("REPORT_TEAM_BRANCH_MISMATCH")) return fail("INVALID_TEAM_SCOPE", "The selected team does not belong to this branch.", 400, origin, requestId);
+        if (message.includes("REPORT_EVENT_BRANCH_MISMATCH") || error.code === "23503") return fail("INVALID_EVENT_SCOPE", "The selected event does not belong to an available branch event.", 400, origin, requestId);
+        throw new Error("REPORT_CREATE_FAILED");
+      }
+      return response({ data, request_id: requestId }, 201, origin, requestId);
+    }
+
+    if (request.method === "POST" && resubmit) {
+      if ([...url.searchParams.keys()].length) {
+        return fail("INVALID_QUERY", "Resubmission does not accept query parameters.", 400, origin, requestId);
+      }
+      let body: unknown;
+      try {
+        body = await readJson(request);
+      } catch (error) {
+        const parsed = readJsonError(error);
+        return fail(parsed.code, parsed.message, parsed.status, origin, requestId);
+      }
+      const parsed = parseReportCorrection(body);
+      if (!parsed.ok) return fail("INVALID_REPORT_CORRECTION", parsed.error, 400, origin, requestId);
+      const reportId = path[path.length - 2];
+      const { data: report, error } = await auth.service.from("ministry_report")
+        .select("id,branch_id,author_profile_id,status").eq("id", reportId).maybeSingle();
+      if (error) throw new Error("REPORT_RESUBMIT_LOOKUP_FAILED");
+      if (!report || report.author_profile_id !== auth.profileId) {
+        return fail("NOT_FOUND", "Report not found.", 404, origin, requestId);
+      }
+      if (!(await scopes(auth.service, auth.profileId, report.branch_id, "report.submit.own")).includes("self")) {
+        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+      }
+      if (report.status !== "returned") {
+        return fail("REPORT_NOT_RETURNED", "Only a returned report can be corrected and resubmitted.", 409, origin, requestId);
+      }
+      const { data, error: resubmitError } = await auth.service.rpc("cmi_resubmit_ministry_report", {
+        p_report_id: reportId,
+        p_author_profile_id: auth.profileId,
+        ...parsed.value,
+      });
+      if (resubmitError) {
+        const message = resubmitError.message ?? "";
+        if (message.includes("REPORT_NOT_RETURNED")) return fail("REPORT_NOT_RETURNED", "Only a returned report can be corrected and resubmitted.", 409, origin, requestId);
+        if (message.includes("REPORT_AUTHOR_MISMATCH") || message.includes("REPORT_SUBMIT_SCOPE_REQUIRED")) {
+          return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+        }
+        throw new Error("REPORT_RESUBMIT_FAILED");
+      }
+      const { data: history, error: historyError } = await auth.service
+        .from("report_review_event")
+        .select("id,actor_profile_id,decision,comment,created_at")
+        .eq("report_id", reportId)
+        .order("created_at", { ascending: true });
+      if (historyError) throw new Error("REPORT_REVIEW_HISTORY_FAILED");
+      return response({
+        data: { report: data, review_history: history ?? [] },
+        request_id: requestId,
+      }, 200, origin, requestId);
+    }
+
+    if (request.method === "POST" && review) {
+      if ([...url.searchParams.keys()].length) return fail("INVALID_QUERY", "Review requests do not accept query parameters.", 400, origin, requestId);
+      let body: unknown;
+      try { body = await readJson(request); } catch (error) {
+        const parsed = readJsonError(error);
+        return fail(parsed.code, parsed.message, parsed.status, origin, requestId);
+      }
+      const parsed = parseReview(body);
+      if (!parsed.ok) return fail("INVALID_REVIEW", parsed.error, 400, origin, requestId);
+      const reportId = path[path.length - 2];
+      const { data: report, error } = await auth.service.from("ministry_report")
+        .select("id,branch_id,author_profile_id,team_id,status").eq("id", reportId).maybeSingle();
+      if (error) throw new Error("REPORT_REVIEW_LOOKUP_FAILED");
+      if (!report) return fail("NOT_FOUND", "Report not found.", 404, origin, requestId);
+      const [branchReviewScopes, teamReviewScopes] = await Promise.all([
+        scopes(auth.service, auth.profileId, report.branch_id, "report.review.branch"),
+        scopes(auth.service, auth.profileId, report.branch_id, "report.review.team"),
+      ]);
+      const teamIds = teamReviewScopes.includes("team")
+        ? await activeTeamIds(auth.service, auth.profileId, report.branch_id)
+        : [];
+      const reviewPolicy = {
+        actorProfileId: auth.profileId,
+        authorProfileId: report.author_profile_id,
+        teamId: report.team_id,
+        canReadOwn: false,
+        canReviewBranch: branchReviewScopes.includes("branch"),
+        canReviewTeam: teamReviewScopes.includes("team"),
+        activeTeamIds: teamIds,
+      };
+      if (report.author_profile_id === auth.profileId) {
+        return fail("SELF_REVIEW_FORBIDDEN", "You cannot review your own report.", 403, origin, requestId);
+      }
+      if (!canReviewReport(reviewPolicy)) {
+        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+      }
+      const { data: reviewed, error: reviewError } = await auth.service.rpc("cmi_review_ministry_report", {
+        p_report_id: reportId, p_reviewer_profile_id: auth.profileId,
+        p_decision: parsed.value.decision, p_comment: parsed.value.comment,
+      });
+      if (reviewError) {
+        const message = reviewError.message ?? "";
+        if (message.includes("REPORT_NOT_SUBMITTED")) return fail("REPORT_NOT_SUBMITTED", "Only submitted reports can be reviewed.", 409, origin, requestId);
+        if (message.includes("REPORT_SELF_REVIEW_FORBIDDEN")) return fail("SELF_REVIEW_FORBIDDEN", "You cannot review your own report.", 403, origin, requestId);
+        if (message.includes("REPORT_REVIEW_SCOPE_REQUIRED")) return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, requestId);
+        throw new Error("REPORT_REVIEW_FAILED");
+      }
+      const { data: history, error: historyError } = await auth.service.from("report_review_event")
+        .select("id,actor_profile_id,decision,comment,created_at").eq("report_id", reportId)
+        .order("created_at", { ascending: true });
+      if (historyError) throw new Error("REPORT_REVIEW_HISTORY_FAILED");
+      return response({ data: { report: reviewed, review_history: history ?? [] }, request_id: requestId }, 200, origin, requestId);
+    }
+
+    return fail("NOT_FOUND", "The requested report operation does not exist.", 404, origin, requestId);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+    console.error("report-operations failure", { request_id: requestId, code });
+    return fail("REPORT_OPERATION_FAILED", "Unable to complete the report operation.", 500, origin, requestId);
+  }
+});

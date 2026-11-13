@@ -20,7 +20,10 @@ export interface RequestDigest {
   digestHex: string;
 }
 
-function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string {
+function canonicalize(
+  value: unknown,
+  ancestors = new WeakSet<object>(),
+): string {
   if (value === null) return "null";
 
   if (typeof value === "string") return JSON.stringify(value.normalize("NFC"));
@@ -37,7 +40,9 @@ function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string
     if (Object.getPrototypeOf(value) !== Array.prototype) {
       throw new TypeError("Only plain JSON arrays are supported.");
     }
-    if (ancestors.has(value)) throw new TypeError("Circular values are not supported.");
+    if (ancestors.has(value)) {
+      throw new TypeError("Circular values are not supported.");
+    }
 
     ancestors.add(value);
     try {
@@ -45,7 +50,9 @@ function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string
       for (const key of keys) {
         if (key === "length") continue;
         if (typeof key !== "string" || !/^(0|[1-9][0-9]*)$/.test(key)) {
-          throw new TypeError("JSON arrays cannot contain extra or symbol properties.");
+          throw new TypeError(
+            "JSON arrays cannot contain extra or symbol properties.",
+          );
         }
 
         const index = Number(key);
@@ -55,15 +62,22 @@ function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string
 
         const descriptor = Object.getOwnPropertyDescriptor(value, key);
         if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
-          throw new TypeError("JSON arrays must contain enumerable data properties.");
+          throw new TypeError(
+            "JSON arrays must contain enumerable data properties.",
+          );
         }
       }
 
       const items: string[] = [];
       for (let index = 0; index < value.length; index++) {
-        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        const descriptor = Object.getOwnPropertyDescriptor(
+          value,
+          String(index),
+        );
         if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
-          throw new TypeError("Sparse arrays and accessor properties are not supported.");
+          throw new TypeError(
+            "Sparse arrays and accessor properties are not supported.",
+          );
         }
         items.push(canonicalize(descriptor.value, ancestors));
       }
@@ -79,7 +93,9 @@ function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string
     if (prototype !== Object.prototype && prototype !== null) {
       throw new TypeError("Only plain JSON objects are supported.");
     }
-    if (ancestors.has(record)) throw new TypeError("Circular values are not supported.");
+    if (ancestors.has(record)) {
+      throw new TypeError("Circular values are not supported.");
+    }
 
     ancestors.add(record);
     try {
@@ -94,12 +110,16 @@ function canonicalize(value: unknown, ancestors = new WeakSet<object>()): string
 
         const descriptor = Object.getOwnPropertyDescriptor(record, ownKey);
         if (!descriptor || !descriptor.enumerable || !("value" in descriptor)) {
-          throw new TypeError("JSON objects must contain enumerable data properties.");
+          throw new TypeError(
+            "JSON objects must contain enumerable data properties.",
+          );
         }
 
         const normalizedKey = ownKey.normalize("NFC");
         if (normalizedKeys.has(normalizedKey)) {
-          throw new TypeError("Object keys collide after Unicode normalization.");
+          throw new TypeError(
+            "Object keys collide after Unicode normalization.",
+          );
         }
         normalizedKeys.add(normalizedKey);
 
@@ -137,6 +157,50 @@ export function canonicalJson(value: CanonicalJson): string {
 }
 
 /**
+ * Derives a purpose-separated idempotency HMAC key from an existing server-only
+ * master secret. Dedicated CMI_*_IDEMPOTENCY_HMAC_KEY values remain preferred;
+ * this fallback lets existing installations use the already-required Supabase
+ * service-role secret without introducing another manual secret dependency.
+ *
+ * The purpose string is part of HKDF info, so contact and follow-up digests
+ * cannot be correlated or substituted. If the master secret is rotated, bump
+ * the corresponding persisted key version before accepting new writes.
+ */
+export async function deriveIdempotencySecret(
+  masterSecret: string,
+  purpose: "contact" | "followup",
+): Promise<string> {
+  const masterBytes = new TextEncoder().encode(masterSecret);
+  if (masterBytes.byteLength < 32) {
+    throw new TypeError(
+      "Idempotency master secret must contain at least 32 UTF-8 bytes.",
+    );
+  }
+
+  const material = await crypto.subtle.importKey(
+    "raw",
+    masterBytes,
+    "HKDF",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new TextEncoder().encode("PCG-Missions-CMI-idempotency-v1"),
+      info: new TextEncoder().encode("staff-operations:" + purpose),
+    },
+    material,
+    256,
+  );
+  return Array.from(
+    new Uint8Array(bits),
+    (byte) => byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+/**
  * HMAC-SHA-256 over a validated canonical request envelope.
  * The secret must be supplied from server-side secret management.
  */
@@ -167,8 +231,9 @@ export async function createRequestDigest(
     new TextEncoder().encode(canonicalJson(payload)),
   );
 
-  const digestHex = Array.from(new Uint8Array(signature), (byte) =>
-    byte.toString(16).padStart(2, "0")
+  const digestHex = Array.from(
+    new Uint8Array(signature),
+    (byte) => byte.toString(16).padStart(2, "0"),
   ).join("");
 
   return { algorithm: "hmac-sha-256", keyVersion, digestHex };
@@ -184,7 +249,8 @@ export function equalDigestHex(left: string, right: string): boolean {
   const normalizedRight = right.toLowerCase();
   let difference = 0;
   for (let index = 0; index < 64; index++) {
-    difference |= normalizedLeft.charCodeAt(index) ^ normalizedRight.charCodeAt(index);
+    difference |= normalizedLeft.charCodeAt(index) ^
+      normalizedRight.charCodeAt(index);
   }
   return difference === 0;
 }

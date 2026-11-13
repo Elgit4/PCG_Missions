@@ -2331,3 +2331,86 @@ button, input, select, textarea { font: inherit; }
 }
 
 .cmi-structure-leader-note{grid-column:1/-1;margin:0;padding:9px 11px;border:1px solid #e8e1d3;border-radius:7px;background:#fbf8f1;color:#796b52;font-size:9px;line-height:1.55}
+
+/* Typed ministry reports workspace */
+.ministry-reports { display: grid; gap: 22px; }
+.ministry-reports-header, .ministry-report-list-heading, .ministry-report-card-top, .ministry-report-form-heading, .ministry-report-form-footer {
+  display: flex; align-items: center; justify-content: space-between; gap: 18px;
+}
+.ministry-reports-header h2 { margin: 5px 0 6px; font-size: clamp(1.5rem, 2.4vw, 2rem); letter-spacing: -.035em; }
+.ministry-reports-header p:not(.ministry-reports-eyebrow) { margin: 0; color: var(--muted, #68717f); }
+.ministry-reports-eyebrow, .ministry-report-step { margin: 0; color: var(--muted, #68717f); font-size: .68rem; font-weight: 800; letter-spacing: .12em; }
+.ministry-reports-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+.ministry-report-form { display: grid; gap: 20px; padding: 22px; }
+.ministry-report-form-heading { align-items: flex-start; }
+.ministry-report-form-heading h3, .ministry-report-list-heading h3 { margin: 5px 0 0; font-size: 1.12rem; }
+.ministry-report-form-heading p, .ministry-report-form-footer > span { max-width: 440px; margin: 0; color: var(--muted, #68717f); font-size: .82rem; line-height: 1.5; }
+.ministry-report-form-grid, .ministry-report-count-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.ministry-report-form-grid label, .ministry-report-count-grid label, .ministry-report-review label { display: grid; gap: 7px; min-width: 0; }
+.ministry-report-form-grid label > span, .ministry-report-count-grid label > span, .ministry-report-review label > span { color: var(--text, #242b35); font-size: .8rem; font-weight: 700; }
+.ministry-report-form-grid small { color: var(--muted, #68717f); font-weight: 500; }
+.ministry-report-form-grid input, .ministry-report-form-grid select, .ministry-report-count-grid input, .ministry-report-review textarea {
+  width: 100%; min-height: 42px; border: 1px solid var(--border, #dfe3e8); border-radius: 9px; padding: 9px 11px; background: var(--surface, #fff); color: inherit; font: inherit; font-size: .88rem;
+}
+.ministry-report-count-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); padding-top: 16px; border-top: 1px solid var(--border, #e6e9ed); }
+.ministry-report-wide { grid-column: span 2; }
+.ministry-report-form-footer { padding-top: 14px; border-top: 1px solid var(--border, #e6e9ed); }
+.ministry-report-list-heading { margin-top: 4px; }
+.ministry-report-list-heading > div { display: flex; align-items: baseline; gap: 10px; }
+.ministry-report-list-heading > div span, .ministry-report-scope { color: var(--muted, #68717f); font-size: .78rem; }
+.ministry-report-scope { display: inline-flex; align-items: center; gap: 6px; }
+.ministry-report-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ministry-report-card { min-width: 0; padding: 18px; border: 1px solid var(--border, #e4e7eb); border-radius: 14px; background: var(--surface, #fff); box-shadow: 0 5px 18px rgb(18 32 54 / 4%); }
+.ministry-report-type { color: var(--muted, #68717f); font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.ministry-report-card h4 { margin: 5px 0 0; font-size: 1rem; }
+.ministry-report-status { padding: 5px 9px; border-radius: 999px; background: #eef2f5; color: #536170; font-size: .7rem; font-weight: 800; text-transform: capitalize; }
+.ministry-report-status.is-approved { background: #e6f5ec; color: #167342; }
+.ministry-report-status.is-returned { background: #fff1df; color: #9a5a12; }
+.ministry-report-status.is-submitted { background: #eaf0ff; color: #3458a8; }
+.ministry-report-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.ministry-report-metrics > div { display: grid; gap: 3px; padding: 10px; border-radius: 9px; background: var(--surface-muted, #f6f7f9); }
+.ministry-report-metrics strong { font-size: 1.15rem; letter-spacing: -.03em; }
+.ministry-report-metrics span { color: var(--muted, #68717f); font-size: .72rem; }
+.ministry-report-review { display: grid; gap: 10px; margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--border, #e6e9ed); }
+.ministry-report-review > div { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.ministry-report-review textarea { resize: vertical; }
+.ministry-report-alert, .ministry-report-notice { display: flex; align-items: center; gap: 9px; padding: 12px 14px; border-radius: 10px; font-size: .86rem; }
+.ministry-report-alert { background: #fff0ef; color: #a72f2a; }
+.ministry-report-notice { background: #eaf7ef; color: #17683c; }
+.ministry-report-empty, .ministry-report-loading { display: grid; justify-items: center; gap: 8px; padding: 40px 20px; text-align: center; color: var(--muted, #68717f); }
+.ministry-report-empty h3 { margin: 3px 0 0; color: var(--text, #242b35); }
+.ministry-report-empty p { margin: 0; }
+.ministry-spin { animation: ministry-report-spin 1s linear infinite; }
+@keyframes ministry-report-spin { to { transform: rotate(360deg); } }
+@media (max-width: 760px) {
+  .ministry-reports-header, .ministry-report-form-heading, .ministry-report-form-footer { align-items: stretch; flex-direction: column; }
+  .ministry-reports-actions { width: 100%; }
+  .ministry-reports-actions button { flex: 1; justify-content: center; }
+  .ministry-report-form-grid, .ministry-report-count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ministry-report-cards { grid-template-columns: 1fr; }
+  .ministry-report-list-heading { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 440px) {
+  .ministry-report-form-grid, .ministry-report-count-grid { grid-template-columns: 1fr; }
+  .ministry-report-wide { grid-column: auto; }
+  .ministry-report-card { padding: 14px; }
+  .ministry-report-metrics { gap: 8px; }
+}
+
+
+.ministry-report-detail-toggle{display:flex;justify-content:flex-start;margin-top:12px}
+.ministry-report-history{margin-top:12px;padding:16px 18px;border:1px solid var(--cmi-border,#e5e7eb);border-radius:12px;background:var(--cmi-surface-muted,#f8fafc)}
+.ministry-report-history h5{margin:0 0 10px;font-size:.92rem;font-weight:700}
+.ministry-report-history-entry{padding:11px 0;border-top:1px solid var(--cmi-border,#e5e7eb)}
+.ministry-report-history-entry:first-of-type{border-top:0}
+.ministry-report-history-entry>div{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.ministry-report-history-entry strong{font-size:.88rem}
+.ministry-report-history-entry time{font-size:.78rem;color:var(--cmi-text-muted,#64748b)}
+.ministry-report-history-entry p,.ministry-report-history>p{margin:7px 0 0;color:var(--cmi-text-muted,#475569);font-size:.88rem;white-space:pre-wrap;overflow-wrap:anywhere}
+.ministry-report-inline-error{margin:8px 0;color:#b42318;font-size:.86rem}
+
+
+.ministry-report-pagination{display:flex;align-items:center;justify-content:center;gap:12px;flex-wrap:wrap;margin:8px 0 4px;color:var(--cmi-text-muted,#64748b);font-size:.88rem}
+.ministry-report-pagination button{min-width:160px;justify-content:center}
+
+.ministry-report-review label small{display:block;margin:4px 0 7px;color:var(--muted,#68717f);font-size:.76rem;line-height:1.4}
