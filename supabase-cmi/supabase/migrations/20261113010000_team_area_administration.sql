@@ -478,6 +478,279 @@ begin
       '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
       or coalesce(p_payload->>'staff_profile_id','') !~
       '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}
+    end if;
+    v_area_id := (p_payload->>'area_id')::uuid;
+    v_staff_profile_id := (p_payload->>'staff_profile_id')::uuid;
+    if not exists (
+      select 1 from public.service_area sa
+      where sa.id = v_area_id and sa.branch_id = v_branch_id and sa.is_active
+    ) then
+      raise exception using errcode = 'P0002', message = 'ACTIVE_SERVICE_AREA_NOT_FOUND';
+    end if;
+    if not exists (
+      select 1 from public.staff_profile sp
+      where sp.id = v_staff_profile_id
+        and sp.account_status = 'active'
+        and sp.must_change_password = false
+        and exists (
+          select 1 from public.staff_role_assignment sra
+          join public.role r on r.id = sra.role_id and r.is_active
+          where sra.staff_profile_id = sp.id and sra.branch_id = v_branch_id
+            and sra.starts_at <= v_now
+            and (sra.ends_at is null or sra.ends_at > v_now)
+            and sra.revoked_at is null
+        )
+    ) then
+      raise exception using errcode = '42501', message = 'STAFF_NOT_ACTIVE_IN_BRANCH';
+    end if;
+    insert into public.staff_area_coverage(
+      staff_profile_id,service_area_id,branch_id,starts_at,created_by
+    ) values (
+      v_staff_profile_id,v_area_id,v_branch_id,v_now,v_actor_profile_id
+    ) returning to_jsonb(staff_area_coverage.*) into v_result;
+    insert into public.team_management_audit(
+      branch_id,actor_profile_id,target_type,target_id,action,metadata
+    ) values (
+      v_branch_id,v_actor_profile_id,'area_coverage',(v_result->>'id')::uuid,
+      'service_area.coverage_added',
+      jsonb_build_object('service_area_id',v_area_id,'staff_profile_id',v_staff_profile_id)
+    );
+    return v_result;
+  end if;
+
+  if p_action = 'area.coverage.revoke' then
+    if p_payload - array['branch_id','area_id','coverage_id'] <> '{}'::jsonb then
+      raise exception using errcode = '22023', message = 'UNSUPPORTED_AREA_COVERAGE_REVOKE_FIELDS';
+    end if;
+    if coalesce(p_payload->>'area_id','') !~
+      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+      or coalesce(p_payload->>'coverage_id','') !~
+      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$' then
+      raise exception using errcode = '22023', message = 'INVALID_AREA_COVERAGE_REFERENCE';
+    end if;
+    v_area_id := (p_payload->>'area_id')::uuid;
+    v_coverage_id := (p_payload->>'coverage_id')::uuid;
+    update public.staff_area_coverage
+    set ends_at = v_now
+    where id = v_coverage_id and service_area_id = v_area_id
+      and branch_id = v_branch_id
+      and starts_at <= v_now and (ends_at is null or ends_at > v_now)
+    returning to_jsonb(staff_area_coverage.*) into v_result;
+    if v_result is null then
+      raise exception using errcode = 'P0002', message = 'ACTIVE_AREA_COVERAGE_NOT_FOUND';
+    end if;
+    insert into public.team_management_audit(
+      branch_id,actor_profile_id,target_type,target_id,action,metadata
+    ) values (
+      v_branch_id,v_actor_profile_id,'area_coverage',v_coverage_id,
+      'service_area.coverage_revoked',jsonb_build_object('service_area_id',v_area_id)
+    );
+    return v_result;
+  end if;
+
+  raise exception using errcode = '22023', message = 'INVALID_TEAM_OPERATION';
+end;
+$$;
+
+revoke all on function private.cmi_manage_team_operations(uuid,text,jsonb)
+  from public, anon, authenticated, service_role;
+grant usage on schema private to service_role;
+grant execute on function private.cmi_manage_team_operations(uuid,text,jsonb)
+  to service_role;
+
+create or replace function public.cmi_manage_team_operations(
+  p_actor_auth_user_id uuid,
+  p_action text,
+  p_payload jsonb
+)
+returns jsonb
+language sql
+security invoker
+set search_path = ''
+as $$
+  select private.cmi_manage_team_operations(p_actor_auth_user_id,p_action,p_payload);
+$$;
+
+revoke all on function public.cmi_manage_team_operations(uuid,text,jsonb)
+  from public, anon, authenticated, service_role;
+-- Only the authenticated Edge Function's server-side service client may call
+-- this wrapper. The function revalidates the supplied Auth user against the
+-- active staff profile, role, branch and capability before every mutation.
+-- Browser roles retain their existing no-USAGE-on-public/no-direct-table model.
+grant execute on function public.cmi_manage_team_operations(uuid,text,jsonb)
+  to service_role;
+
+-- Admin/Pastor receives management of teams and service areas only at the
+-- selected active branch. Team Leader membership is not inferred from this.
+insert into public.role_capability(role_id,capability_id,scope_mode)
+select r.id,c.id,'branch'
+from public.role r
+cross join public.capability c
+where r.code='admin_pastor'
+  and c.is_active
+  and c.code in ('team.manage','area.manage')
+on conflict do nothing;
+
+do $$
+declare
+  v_count integer;
+begin
+  select count(*)::integer into v_count
+  from public.role_capability rc
+  join public.role r on r.id=rc.role_id
+  join public.capability c on c.id=rc.capability_id
+  where r.code='admin_pastor'
+    and rc.scope_mode='branch'
+    and c.is_active
+    and c.code in ('team.manage','area.manage');
+  if v_count <> 2 then
+    raise exception 'Expected two Admin/Pastor branch team/area grants, found %', v_count;
+  end if;
+end;
+$$;
+
+comment on table public.team_management_audit is
+'Append-only audit evidence for team, membership, service-area and staff-coverage administration. No contact, prayer or care narratives are included.';
+
+commit;
+ then
+      raise exception using errcode = '22023', message = 'INVALID_AREA_COVERAGE_REFERENCE';
+    end if;
+    v_area_id := (p_payload->>'area_id')::uuid;
+    v_staff_profile_id := (p_payload->>'staff_profile_id')::uuid;
+    if not exists (
+      select 1 from public.service_area sa
+      where sa.id = v_area_id and sa.branch_id = v_branch_id and sa.is_active
+    ) then
+      raise exception using errcode = 'P0002', message = 'ACTIVE_SERVICE_AREA_NOT_FOUND';
+    end if;
+    if not exists (
+      select 1 from public.staff_profile sp
+      where sp.id = v_staff_profile_id
+        and sp.account_status = 'active'
+        and sp.must_change_password = false
+        and exists (
+          select 1 from public.staff_role_assignment sra
+          join public.role r on r.id = sra.role_id and r.is_active
+          where sra.staff_profile_id = sp.id and sra.branch_id = v_branch_id
+            and sra.starts_at <= v_now
+            and (sra.ends_at is null or sra.ends_at > v_now)
+            and sra.revoked_at is null
+        )
+    ) then
+      raise exception using errcode = '42501', message = 'STAFF_NOT_ACTIVE_IN_BRANCH';
+    end if;
+    insert into public.staff_area_coverage(
+      staff_profile_id,service_area_id,branch_id,starts_at,created_by
+    ) values (
+      v_staff_profile_id,v_area_id,v_branch_id,v_now,v_actor_profile_id
+    ) returning to_jsonb(staff_area_coverage.*) into v_result;
+    insert into public.team_management_audit(
+      branch_id,actor_profile_id,target_type,target_id,action,metadata
+    ) values (
+      v_branch_id,v_actor_profile_id,'area_coverage',(v_result->>'id')::uuid,
+      'service_area.coverage_added',
+      jsonb_build_object('service_area_id',v_area_id,'staff_profile_id',v_staff_profile_id)
+    );
+    return v_result;
+  end if;
+
+  if p_action = 'area.coverage.revoke' then
+    if p_payload - array['branch_id','area_id','coverage_id'] <> '{}'::jsonb then
+      raise exception using errcode = '22023', message = 'UNSUPPORTED_AREA_COVERAGE_REVOKE_FIELDS';
+    end if;
+    if coalesce(p_payload->>'area_id','') !~
+      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+      or coalesce(p_payload->>'coverage_id','') !~
+      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$' then
+      raise exception using errcode = '22023', message = 'INVALID_AREA_COVERAGE_REFERENCE';
+    end if;
+    v_area_id := (p_payload->>'area_id')::uuid;
+    v_coverage_id := (p_payload->>'coverage_id')::uuid;
+    update public.staff_area_coverage
+    set ends_at = v_now
+    where id = v_coverage_id and service_area_id = v_area_id
+      and branch_id = v_branch_id
+      and starts_at <= v_now and (ends_at is null or ends_at > v_now)
+    returning to_jsonb(staff_area_coverage.*) into v_result;
+    if v_result is null then
+      raise exception using errcode = 'P0002', message = 'ACTIVE_AREA_COVERAGE_NOT_FOUND';
+    end if;
+    insert into public.team_management_audit(
+      branch_id,actor_profile_id,target_type,target_id,action,metadata
+    ) values (
+      v_branch_id,v_actor_profile_id,'area_coverage',v_coverage_id,
+      'service_area.coverage_revoked',jsonb_build_object('service_area_id',v_area_id)
+    );
+    return v_result;
+  end if;
+
+  raise exception using errcode = '22023', message = 'INVALID_TEAM_OPERATION';
+end;
+$$;
+
+revoke all on function private.cmi_manage_team_operations(uuid,text,jsonb)
+  from public, anon, authenticated, service_role;
+grant usage on schema private to service_role;
+grant execute on function private.cmi_manage_team_operations(uuid,text,jsonb)
+  to service_role;
+
+create or replace function public.cmi_manage_team_operations(
+  p_actor_auth_user_id uuid,
+  p_action text,
+  p_payload jsonb
+)
+returns jsonb
+language sql
+security invoker
+set search_path = ''
+as $$
+  select private.cmi_manage_team_operations(p_actor_auth_user_id,p_action,p_payload);
+$$;
+
+revoke all on function public.cmi_manage_team_operations(uuid,text,jsonb)
+  from public, anon, authenticated, service_role;
+-- Only the authenticated Edge Function's server-side service client may call
+-- this wrapper. The function revalidates the supplied Auth user against the
+-- active staff profile, role, branch and capability before every mutation.
+-- Browser roles retain their existing no-USAGE-on-public/no-direct-table model.
+grant execute on function public.cmi_manage_team_operations(uuid,text,jsonb)
+  to service_role;
+
+-- Admin/Pastor receives management of teams and service areas only at the
+-- selected active branch. Team Leader membership is not inferred from this.
+insert into public.role_capability(role_id,capability_id,scope_mode)
+select r.id,c.id,'branch'
+from public.role r
+cross join public.capability c
+where r.code='admin_pastor'
+  and c.is_active
+  and c.code in ('team.manage','area.manage')
+on conflict do nothing;
+
+do $$
+declare
+  v_count integer;
+begin
+  select count(*)::integer into v_count
+  from public.role_capability rc
+  join public.role r on r.id=rc.role_id
+  join public.capability c on c.id=rc.capability_id
+  where r.code='admin_pastor'
+    and rc.scope_mode='branch'
+    and c.is_active
+    and c.code in ('team.manage','area.manage');
+  if v_count <> 2 then
+    raise exception 'Expected two Admin/Pastor branch team/area grants, found %', v_count;
+  end if;
+end;
+$$;
+
+comment on table public.team_management_audit is
+'Append-only audit evidence for team, membership, service-area and staff-coverage administration. No contact, prayer or care narratives are included.';
+
+commit;
+ then
       raise exception using errcode = '22023', message = 'INVALID_AREA_COVERAGE_REFERENCE';
     end if;
     v_area_id := (p_payload->>'area_id')::uuid;
