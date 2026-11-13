@@ -29,7 +29,7 @@ All routes require a valid Supabase Auth bearer token and an active staff profil
 | `GET /teams?branch_id={uuid}` | Minimal active team options for teams the caller currently belongs to. |
 | `GET /events?branch_id={uuid}` | Minimal event options limited to events actively assigned to the caller. |
 
-List limits are 1–50 and offset is 0–5000. Counts must be whole numbers from 0–100000. Report exports are not implemented. Browser roles have no direct table access.
+List limits are 1–50 and offset is 0–5000, using database-side exact counts and pagination. Duplicate submissions for the same author, report type, period and team/event scope are rejected with HTTP 409. Counts must be whole numbers from 0–100000. Report exports are not implemented. Browser roles have no direct table access.
 
 ## Role matrix
 
