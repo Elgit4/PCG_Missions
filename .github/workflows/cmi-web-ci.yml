@@ -2,7 +2,7 @@ name: CMI web CI
 
 on:
   push:
-    branches: [main, feat/team-area-administration-mainline]
+    branches: [main, feat/team-area-administration-mainline, "feat/cmi-*"]
     paths:
       - "web/**"
       - ".github/workflows/cmi-web-ci.yml"
