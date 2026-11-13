@@ -24,3 +24,20 @@ jobs:
           python-version: "3.12"
       - name: Validate D1 schema and security invariants
         run: python -m unittest discover -s cloudflare/tests -p "test_*.py" -v
+
+  worker-typecheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: cloudflare/package.json
+      - name: Install pinned Worker dependencies
+        run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
+      - name: Type-check Worker and Better Auth integration
+        run: npm run typecheck
