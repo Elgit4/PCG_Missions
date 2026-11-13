@@ -137,6 +137,47 @@ export function canonicalJson(value: CanonicalJson): string {
 }
 
 /**
+ * Derives a purpose-separated idempotency HMAC key from an existing server-only
+ * master secret. Dedicated CMI_*_IDEMPOTENCY_HMAC_KEY values remain preferred;
+ * this fallback lets existing installations use the already-required Supabase
+ * service-role secret without introducing another manual secret dependency.
+ *
+ * The purpose string is part of HKDF info, so contact and follow-up digests
+ * cannot be correlated or substituted. If the master secret is rotated, bump
+ * the corresponding persisted key version before accepting new writes.
+ */
+export async function deriveIdempotencySecret(
+  masterSecret: string,
+  purpose: "contact" | "followup",
+): Promise<string> {
+  const masterBytes = new TextEncoder().encode(masterSecret);
+  if (masterBytes.byteLength < 32) {
+    throw new TypeError("Idempotency master secret must contain at least 32 UTF-8 bytes.");
+  }
+
+  const material = await crypto.subtle.importKey(
+    "raw",
+    masterBytes,
+    "HKDF",
+    false,
+    ["deriveBits"],
+  );
+  const bits = await crypto.subtle.deriveBits(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new TextEncoder().encode("PCG-Missions-CMI-idempotency-v1"),
+      info: new TextEncoder().encode("staff-operations:" + purpose),
+    },
+    material,
+    256,
+  );
+  return Array.from(new Uint8Array(bits), (byte) =>
+    byte.toString(16).padStart(2, "0")
+  ).join("");
+}
+
+/**
  * HMAC-SHA-256 over a validated canonical request envelope.
  * The secret must be supplied from server-side secret management.
  */
