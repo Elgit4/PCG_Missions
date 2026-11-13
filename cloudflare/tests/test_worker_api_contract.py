@@ -17,6 +17,7 @@ class WorkerApiContractTests(unittest.TestCase):
         cls.prayer_idempotency_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0023_prayer_request_idempotency.sql").read_text(encoding="utf-8")
         cls.calendar_audit_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0024_calendar_audit_cancellation_read_receipts.sql").read_text(encoding="utf-8")
         cls.calendar_series_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0026_calendar_recurring_series.sql").read_text(encoding="utf-8")
+        cls.report_export_migration = (Path(__file__).resolve().parents[1] / "migrations" / "0027_ministry_report_aggregate_exports.sql").read_text(encoding="utf-8")
 
     def test_contact_team_scope_uses_profile_id_and_assigned_scope_uses_auth_user_id(self):
         match = re.search(
@@ -269,6 +270,14 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("calendarCancelMatch", self.source)
         self.assertIn("calendarReadMatch", self.source)
 
+
+    def test_report_export_is_aggregate_only_and_admin_pastor_gated(self):
+        self.assertIn("async function exportReportsCsv(", self.source)
+        self.assertIn('"/api/v1/reports/export"', self.source)
+        self.assertIn("reports.export", self.source)
+        self.assertIn("HAVING COUNT(DISTINCT author_profile_id)>=3", self.source)
+        self.assertIn("ministry_report_export_audit", self.source)
+        self.assertIn("MINISTRY_REPORT_EXPORT_NOT_AUTHORIZED", self.report_export_migration)
 
     def test_calendar_recurring_series_uses_timezone_aware_bounded_expansion(self):
         self.assertIn("function buildCalendarOccurrenceStarts(", self.source)
