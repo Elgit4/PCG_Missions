@@ -34,6 +34,7 @@ export default function App() {
       if (cause.status === 403) return "Your account cannot access the staff workspace. Contact an authorised church administrator.";
       if (cause.code === "NO_ACTIVE_BRANCH") return "Your account is active, but it has no active branch assignment. Contact an authorised church administrator.";
       if (cause.status === 0) return cause.message;
+      if (cause.status === 501) return cause.message;
       if (cause.status >= 500) return "Your credentials were accepted, but the staff workspace service could not complete the request. Retry the workspace connection.";
     }
     return "We could not complete that request. Please try again.";
