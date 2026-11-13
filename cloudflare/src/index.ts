@@ -3279,6 +3279,82 @@ async function getReportsOverview(
   },requestId,origin);
 }
 
+async function exportReportsCsv(request:Request,env:Env,requestId:string,origin?:string):Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"reports.export");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const url=new URL(request.url);
+  if([...url.searchParams.keys()].some(key=>!["from","to"].includes(key))) return json(400,{ok:false,error:{code:"INVALID_REPORT_QUERY"}},requestId,origin);
+  const today=new Date();
+  const toDefault=today.toISOString().slice(0,10);
+  const fromDefault=new Date(today.getTime()-29*86400000).toISOString().slice(0,10);
+  const from=url.searchParams.get("from")??fromDefault;
+  const to=url.searchParams.get("to")??toDefault;
+  const validDate=(value:string)=>/^\d{4}-\d{2}-\d{2}$/.test(value)&&
+    Number.isFinite(Date.parse(value+"T00:00:00.000Z"))&&
+    new Date(value+"T00:00:00.000Z").toISOString().slice(0,10)===value;
+  if(!validDate(from)||!validDate(to)||from>to) return json(400,{ok:false,error:{code:"INVALID_REPORT_DATE_RANGE"}},requestId,origin);
+  const fromMs=Date.parse(from+"T00:00:00.000Z"),toMs=Date.parse(to+"T00:00:00.000Z");
+  if(toMs-fromMs>366*86400000) return json(400,{ok:false,error:{code:"REPORT_RANGE_TOO_LARGE"}},requestId,origin);
+  const fromAt=from+"T00:00:00.000Z",toExclusive=new Date(toMs+86400000).toISOString();
+  const branchId=access.activeBranch.branchId,now=new Date().toISOString();
+  const metrics=await env.DB.prepare(`
+    WITH p AS (SELECT ? AS branch_id,? AS from_at,? AS to_at,? AS now_at)
+    SELECT
+      (SELECT COUNT(*) FROM contact c,p WHERE c.branch_id=p.branch_id AND c.merged_into_contact_id IS NULL AND c.created_at>=p.from_at AND c.created_at<p.to_at) AS contacts_created,
+      (SELECT COUNT(*) FROM contact c,p WHERE c.branch_id=p.branch_id AND c.merged_into_contact_id IS NULL) AS contacts_total,
+      (SELECT COUNT(*) FROM followup_task f,p WHERE f.branch_id=p.branch_id AND f.created_at>=p.from_at AND f.created_at<p.to_at) AS followups_created,
+      (SELECT COUNT(*) FROM followup_task f,p WHERE f.branch_id=p.branch_id AND f.status='completed' AND f.completed_at>=p.from_at AND f.completed_at<p.to_at) AS followups_completed,
+      (SELECT COUNT(*) FROM followup_task f,p WHERE f.branch_id=p.branch_id AND f.status NOT IN ('completed','cancelled') AND f.due_at IS NOT NULL AND f.due_at<p.now_at) AS followups_overdue,
+      (SELECT COUNT(*) FROM event e,p WHERE e.branch_id=p.branch_id AND e.status='published' AND e.starts_at>=p.from_at AND e.starts_at<p.to_at) AS events_published,
+      (SELECT COUNT(*) FROM event_registration er,p WHERE er.branch_id=p.branch_id AND er.registered_at>=p.from_at AND er.registered_at<p.to_at AND er.status IN ('registered','attended')) AS event_registrations,
+      (SELECT COUNT(*) FROM event_registration er,p WHERE er.branch_id=p.branch_id AND er.registered_at>=p.from_at AND er.registered_at<p.to_at AND er.status='attended') AS event_attended,
+      (SELECT COUNT(*) FROM event_checkin ec,p WHERE ec.branch_id=p.branch_id AND ec.checked_in_at>=p.from_at AND ec.checked_in_at<p.to_at) AS event_checkins,
+      (SELECT COUNT(*) FROM prayer_request pr,p WHERE pr.branch_id=p.branch_id AND pr.created_at>=p.from_at AND pr.created_at<p.to_at) AS prayer_requests_created,
+      (SELECT COUNT(*) FROM prayer_request pr,p WHERE pr.branch_id=p.branch_id AND pr.answered_at>=p.from_at AND pr.answered_at<p.to_at) AS prayer_requests_answered,
+      (SELECT COUNT(*) FROM announcement a,p WHERE a.branch_id=p.branch_id AND a.status='published' AND a.published_at>=p.from_at AND a.published_at<p.to_at) AS announcements_published,
+      (SELECT COUNT(*) FROM calendar_entry ce,p WHERE ce.branch_id=p.branch_id AND ce.starts_at>=p.from_at AND ce.starts_at<p.to_at) AS calendar_entries
+  `).bind(branchId,fromAt,toExclusive,now).first<Record<string,number>>();
+  const seriesSql=`
+    SELECT period_start AS period,report_type,COUNT(*) AS report_count,
+      SUM(contacts_captured) AS contacts_captured,SUM(gospel_presentations) AS gospel_presentations,
+      SUM(decisions_for_christ) AS decisions_for_christ,SUM(followup_completed) AS followup_completed,
+      SUM(visits_completed) AS visits_completed,SUM(calls_completed) AS calls_completed,
+      SUM(events_supported) AS events_supported,SUM(attendance_count) AS attendance_count
+    FROM ministry_report WHERE branch_id=? AND period_start>=? AND period_start<=?
+      AND status IN ('submitted','approved','returned')
+    GROUP BY period_start,report_type
+    HAVING COUNT(DISTINCT author_profile_id)>=3
+    ORDER BY period_start ASC,report_type ASC LIMIT 1100
+  `;
+  const periodDays=Math.floor((toMs-fromMs)/86400000)+1;
+  const previousTo=new Date(fromMs-86400000).toISOString().slice(0,10);
+  const previousFrom=new Date(fromMs-periodDays*86400000).toISOString().slice(0,10);
+  const [currentSeries,previousSeries]=await Promise.all([
+    env.DB.prepare(seriesSql).bind(branchId,from,to).all<Record<string,unknown>>(),
+    env.DB.prepare(seriesSql).bind(branchId,previousFrom,previousTo).all<Record<string,unknown>>(),
+  ]);
+  const rows:(string|number)[][]=[["section","period","report_type","metric","value","report_count","contacts_captured","gospel_presentations","decisions_for_christ","followup_completed","visits_completed","calls_completed","events_supported","attendance_count"]];
+  for(const [key,value] of Object.entries(metrics??{})) rows.push(["branch_metric",from+".."+to,"",key,Number(value??0),"","","","","","","","",""]);
+  for(const item of currentSeries.results??[]) rows.push(["current_period",String(item.period),String(item.report_type),"","",Number(item.report_count??0),Number(item.contacts_captured??0),Number(item.gospel_presentations??0),Number(item.decisions_for_christ??0),Number(item.followup_completed??0),Number(item.visits_completed??0),Number(item.calls_completed??0),Number(item.events_supported??0),Number(item.attendance_count??0)]);
+  for(const item of previousSeries.results??[]) rows.push(["previous_period",String(item.period),String(item.report_type),"","",Number(item.report_count??0),Number(item.contacts_captured??0),Number(item.gospel_presentations??0),Number(item.decisions_for_christ??0),Number(item.followup_completed??0),Number(item.visits_completed??0),Number(item.calls_completed??0),Number(item.events_supported??0),Number(item.attendance_count??0)]);
+  const csvCell=(value:string|number)=>{const raw=String(value??"");const safe=/^[=+\-@]/.test(raw)?"'"+raw:raw;return '"'+safe.replace(/"/g,'""')+'"';};
+  const csv=rows.map(row=>row.map(csvCell).join(",")).join("\r\n")+"\r\n";
+  try {
+    const audit=await env.DB.prepare(`
+      INSERT INTO ministry_report_export_audit
+        (id,branch_id,actor_user_id,period_from,period_to,exported_rows,privacy_threshold,format,created_at)
+      VALUES(?,?,?,?,?,?,3,'csv',?)
+    `).bind(crypto.randomUUID(),branchId,access.staff.userId,from,to,rows.length-1,now).run();
+    if(!audit.success||(audit.meta?.changes??0)!==1) throw new Error("REPORT_EXPORT_AUDIT_FAILED");
+  } catch { return json(503,{ok:false,error:{code:"REPORT_EXPORT_AUDIT_FAILED"}},requestId,origin); }
+  const response=new Response(csv,{status:200,headers:{
+    "Content-Type":"text/csv; charset=utf-8",
+    "Content-Disposition":'attachment; filename="pcg-missions-report-'+from+'-'+to+'.csv"',
+    "X-Request-ID":requestId,
+  }});
+  return withSecurityHeaders(response,origin);
+}
+
 async function listEvents(
   request: Request,
   env: Env,
@@ -7108,6 +7184,7 @@ async function updatePrayerRequestStatus(
       catch { return json(400,{ok:false,error:{code:"INVALID_REPORT_ID"}},requestId,origin); }
       return resubmitMinistryReport(request,env,reportId,requestId,origin);
     }
+    if (url.pathname === "/api/v1/reports/export" && request.method === "GET") return exportReportsCsv(request,env,requestId,origin);
     if (url.pathname === "/api/v1/reports/overview" && request.method === "GET") {
       return getReportsOverview(request,env,requestId,origin);
     }
