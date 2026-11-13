@@ -2619,6 +2619,9 @@ async function listPrayerQueue(
     ),
   ]);
   const rows = batch[1]?.results ?? [];
+  if (!batch[0]?.success || (batch[0]?.meta?.changes ?? 0) !== rows.length) {
+    return json(503, { ok: false, error: { code: "PRAYER_QUEUE_AUDIT_FAILED" } }, requestId, origin);
+  }
   return json(200, { ok: true, requests: rows }, requestId, origin);
 }
 
@@ -2682,6 +2685,7 @@ async function listAssignedPrayerRequests(
       JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
       JOIN staff_record_share ON staff_record_share.record_id = prayer_request.id
       WHERE prayer_request.branch_id = ?
+        AND prayer_request.status IN ('assigned','in_progress','answered')
         AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
         AND ${activeShareAndAssignment}
       ORDER BY prayer_request.created_at DESC, prayer_request.id DESC
@@ -2709,7 +2713,11 @@ async function listAssignedPrayerRequests(
       context.staff.profileId, now, now, limit,
     ),
   ]);
-  return json(200, { ok: true, requests: batch[1]?.results ?? [] }, requestId, origin);
+  const rows = batch[1]?.results ?? [];
+  if (!batch[0]?.success || (batch[0]?.meta?.changes ?? 0) !== rows.length) {
+    return json(503, { ok: false, error: { code: "PRAYER_READ_AUDIT_FAILED" } }, requestId, origin);
+  }
+  return json(200, { ok: true, requests: rows }, requestId, origin);
 }
 
 async function sharePrayerRequest(
