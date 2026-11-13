@@ -370,7 +370,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql", "0018_event_operations_guards.sql", "0019_event_cancellation_idempotency.sql", "0020_event_assignment_privilege_guards.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql", "0018_event_operations_guards.sql", "0019_event_cancellation_idempotency.sql", "0020_event_assignment_privilege_guards.sql", "0021_announcement_delivery_read_receipts.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
@@ -1025,7 +1025,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql", "0018_event_operations_guards.sql", "0019_event_cancellation_idempotency.sql", "0020_event_assignment_privilege_guards.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql", "0018_event_operations_guards.sql", "0019_event_cancellation_idempotency.sql", "0020_event_assignment_privilege_guards.sql", "0021_announcement_delivery_read_receipts.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
@@ -1660,6 +1660,69 @@ class AuthorizationQueryTests(unittest.TestCase):
             )
 
 
+
+
+    def test_announcement_delivery_and_read_receipts_are_audience_scoped_and_immutable(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, field_profile = self.staff["field"]
+        outsider_user = "authz-user-outsider"
+        outsider_profile = "authz-staff-outsider"
+        self.db.execute(
+            """INSERT INTO "user" (id,name,email,createdAt,updatedAt)
+               VALUES (?, 'Outsider', 'outsider@example.test', 1, 1)""",
+            (outsider_user,),
+        )
+        self.db.execute(
+            """INSERT INTO staff_profile
+               (id,auth_user_id,full_name,account_status,created_at,updated_at)
+               VALUES (?,?,'Outsider','active',?,?)""",
+            (outsider_profile,outsider_user,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO announcement
+               (id,branch_id,title,body,audience_type,is_public,status,published_at,
+                created_by,created_at,updated_at)
+               VALUES ('announcement-delivery','authz-branch','Branch Update','Service begins at 9',
+                       'branch',0,'published',?,?,?,?)""",
+            (self.NOW,admin_user,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO announcement_delivery
+               (id,announcement_id,channel,recipient_ref,status,attempted_at,created_at)
+               VALUES ('announcement-delivery-field','announcement-delivery','in_app',?,'delivered',?,?)""",
+            (field_profile,self.NOW,self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO announcement_delivery
+                   (id,announcement_id,channel,recipient_ref,status,attempted_at,created_at)
+                   VALUES ('announcement-delivery-outsider','announcement-delivery','in_app',?,'delivered',?,?)""",
+                (outsider_profile,self.NOW,self.NOW),
+            )
+        self.db.execute(
+            """INSERT INTO announcement_read_receipt
+               (id,announcement_id,branch_id,staff_profile_id,read_by,read_at)
+               VALUES ('announcement-read-field','announcement-delivery','authz-branch',?,?,?)""",
+            (field_profile,field_user,self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO announcement_read_receipt
+                   (id,announcement_id,branch_id,staff_profile_id,read_by,read_at)
+                   VALUES ('announcement-read-outsider','announcement-delivery','authz-branch',?,?,?)""",
+                (outsider_profile,outsider_user,self.NOW),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE announcement_read_receipt SET read_at=? WHERE id='announcement-read-field'",
+                ("2026-01-16T12:00:00.000Z",),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM announcement_read_receipt WHERE id='announcement-read-field'")
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM announcement_read_receipt WHERE announcement_id='announcement-delivery'").fetchone()[0],
+            1,
+        )
 
     def test_event_registration_is_limited_to_event_organizers_and_cancellation_keys_are_unique(self):
         admin_user, _ = self.staff["admin"]
