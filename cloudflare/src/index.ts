@@ -5411,15 +5411,25 @@ async function getCareRecord(request: Request, env: Env, careId: string, request
   `).bind(careId,access.activeBranch.branchId,access.staff.userId,now,now).first<Record<string,unknown>>();
   if(!record) return json(404,{ok:false,error:{code:"CARE_RECORD_NOT_FOUND"}},requestId,origin);
   try {
-    await env.DB.prepare(`INSERT INTO care_access_audit
-      (id,care_record_id,branch_id,actor_user_id,action,reason,request_id,safe_metadata,accessed_at)
-      VALUES(?,?,?,?,'read','Authorized explicit-share pastoral case read',?,'{}',?)`)
-      .bind(crypto.randomUUID(),careId,access.activeBranch.branchId,access.staff.userId,requestId,now).run();
+    const audit=await env.DB.prepare(`
+      INSERT INTO care_access_audit
+        (id,care_record_id,branch_id,actor_user_id,action,reason,request_id,safe_metadata,accessed_at)
+      SELECT ?,?,?,?,'read','Authorized explicit-share pastoral case read',?,'{}',?
+      WHERE EXISTS(SELECT 1 FROM care_assignment ca
+        WHERE ca.care_record_id=? AND ca.branch_id=? AND ca.assignee_user_id=?
+          AND ca.revoked_at IS NULL AND ca.starts_at<=? AND (ca.ends_at IS NULL OR ca.ends_at>?))
+    `).bind(crypto.randomUUID(),careId,access.activeBranch.branchId,access.staff.userId,requestId,now,
+      careId,access.activeBranch.branchId,access.staff.userId,now,now).run();
+    if(!audit.success||(audit.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"CARE_RECORD_NOT_FOUND"}},requestId,origin);
   } catch { return json(503,{ok:false,error:{code:"CARE_ACCESS_AUDIT_FAILED"}},requestId,origin); }
   const interactions=await env.DB.prepare(`
-    SELECT id,interaction_type,outcome_code,restricted_note,occurred_at,created_at
-    FROM care_interaction WHERE care_record_id=? ORDER BY occurred_at DESC LIMIT 100
-  `).bind(careId).all<Record<string,unknown>>();
+    SELECT ci.id,ci.interaction_type,ci.outcome_code,ci.restricted_note,ci.occurred_at,ci.created_at
+    FROM care_interaction ci WHERE ci.care_record_id=? AND EXISTS(
+      SELECT 1 FROM care_assignment ca WHERE ca.care_record_id=ci.care_record_id
+        AND ca.branch_id=? AND ca.assignee_user_id=? AND ca.revoked_at IS NULL
+        AND ca.starts_at<=? AND (ca.ends_at IS NULL OR ca.ends_at>?)
+    ) ORDER BY ci.occurred_at DESC LIMIT 100
+  `).bind(careId,access.activeBranch.branchId,access.staff.userId,now,now).all<Record<string,unknown>>();
   return json(200,{ok:true,care_record:record,interactions:interactions.results??[]},requestId,origin);
 }
 
