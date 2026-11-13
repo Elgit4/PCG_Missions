@@ -29,7 +29,9 @@ INSERT INTO capability (id,code,description,sensitivity,created_at) VALUES
 ('area.manage','area.manage','Manage service areas and staff coverage.','restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('staff.directory.read','staff.directory.read','Read limited staff directory in the active branch.','restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('staff.account.manage','staff.account.manage','Create, deactivate and reactivate staff accounts; trigger invitation and reset workflows.','highly_restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-('staff.role.assign','staff.role.assign','Assign and revoke the fixed six-role catalogue in an authorized branch.','highly_restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+('staff.role.assign','staff.role.assign','Assign and revoke standard roles in an authorized branch.','highly_restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+('staff.role.approve','staff.role.approve','Approve high-privilege Admin/Pastor role changes under two-person control.','highly_restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+('staff.role.assign_admin_pastor','staff.role.assign_admin_pastor','Reserved capability for the separately approved Admin/Pastor elevation workflow.','highly_restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('staff.audit.read','staff.audit.read','Read staff access and account administration audit entries.','highly_restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('events.read','events.read','Read branch events and schedules.','ordinary',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
 ('events.manage','events.manage','Create and manage branch events and registrations.','restricted',strftime('%Y-%m-%dT%H:%M:%fZ','now')),
@@ -53,7 +55,7 @@ DELETE FROM role_capability WHERE role_id IN (
 
 INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
 SELECT 'role-admin-pastor',id,'branch',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM capability
-WHERE code IN ('contacts.read','contacts.create','contacts.update','contacts.assign','contacts.private_fields.read','contacts.interaction.create','contacts.note.create','followup.read','followup.create','followup.update','followup.assign','team.read','team.manage','area.read','area.manage','staff.directory.read','staff.account.manage','staff.role.assign','staff.audit.read','events.read','events.manage','events.checkin','calendar.read','calendar.manage','announcements.read','announcements.manage','content.read','content.manage','reports.read');
+WHERE code IN ('contacts.read','contacts.create','contacts.update','contacts.assign','contacts.private_fields.read','contacts.interaction.create','contacts.note.create','followup.read','followup.create','followup.update','followup.assign','team.read','team.manage','area.read','area.manage','staff.directory.read','staff.account.manage','staff.role.assign','staff.role.approve','staff.audit.read','events.read','events.manage','events.checkin','calendar.read','calendar.manage','announcements.read','announcements.manage','content.read','content.manage','reports.read');
 
 INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
 SELECT 'role-coordinator',id,'branch',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM capability
@@ -65,7 +67,12 @@ WHERE code IN ('contacts.read','contacts.update','contacts.interaction.create','
 
 INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
 SELECT 'role-field-worker',id,'assigned',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM capability
-WHERE code IN ('contacts.read','contacts.create','contacts.update','contacts.interaction.create','contacts.note.create','followup.read','followup.update','events.read','events.checkin','calendar.read','announcements.read','content.read');
+WHERE code IN ('contacts.read','contacts.update','contacts.interaction.create','contacts.note.create','followup.read','followup.update','events.read','events.checkin','calendar.read','announcements.read','content.read');
+
+-- A worker may create a new branch contact, but may only read/update existing
+-- contacts after the assignment predicate is satisfied.
+INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
+VALUES ('role-field-worker','contacts.create','branch',strftime('%Y-%m-%dT%H:%M:%fZ','now'));
 
 INSERT INTO role_capability(role_id,capability_id,scope_mode,created_at)
 SELECT 'role-follow-up-volunteer',id,'assigned',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM capability
