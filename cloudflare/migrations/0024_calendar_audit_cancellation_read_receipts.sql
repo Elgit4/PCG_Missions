@@ -1,5 +1,4 @@
 -- Calendar cancellation state, append-only change history and read receipts.
-ALTER TABLE calendar_entry ADD COLUMN updated_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
 ALTER TABLE calendar_entry ADD COLUMN status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','cancelled'));
 ALTER TABLE calendar_entry ADD COLUMN cancelled_at TEXT;
 ALTER TABLE calendar_entry ADD COLUMN cancelled_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
