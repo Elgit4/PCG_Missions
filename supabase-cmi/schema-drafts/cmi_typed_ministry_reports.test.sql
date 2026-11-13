@@ -1,5 +1,5 @@
 begin;
-select plan(29);
+select plan(30);
 
 select has_table('public','ministry_report','Typed ministry report table exists');
 select has_table('public','report_review_event','Append-only report review history exists');
@@ -115,6 +115,11 @@ insert into public.ministry_report(branch_id,report_type,period_start,period_end
 values('71000000-0000-4000-8000-000000000020','daily_evangelism','2026-11-10','2026-11-10','73000000-0000-4000-8000-000000000020','74000000-0000-4000-8000-000000000020');
 select is((select count(*)::integer from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),1,
   'A valid typed daily report can be stored');
+select throws_ok(
+  $q$ insert into public.ministry_report(branch_id,report_type,period_start,period_end,author_profile_id)
+      values('71000000-0000-4000-8000-000000000020','daily_evangelism','2026-11-10','2026-11-10','73000000-0000-4000-8000-000000000020') $q$,
+  '23505', null, 'Duplicate author, period and team/event report scope is rejected');
+
 insert into public.report_review_event(report_id,actor_profile_id,decision,comment)
 select id,'73000000-0000-4000-8000-000000000020','comment','Test review'
 from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020';
