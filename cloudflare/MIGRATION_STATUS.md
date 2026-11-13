@@ -20,6 +20,8 @@
 | `0009_contacts_private_field_write.sql` | 0 new tables | Separates highly restricted contact demographic/language writes from ordinary contact updates; schema version 9 |
 | `0010_contact_assignment_audit.sql` | 1 new table | Enforces active branch actor/target checks, preserves assignment history, and records immutable assignment/reassignment audit; schema version 10 |
 | `0011_followup_task_idempotency.sql` | 0 new tables | Enforces branch-scoped uniqueness for follow-up task idempotency keys; schema version 11 |
+| `0012_restricted_pastoral_domain.sql` | 9 new tables | Adds restricted prayer and pastoral-care records, assignments, interactions and separate append-only access ledgers; explicit-share recipient/actor checks for prayer assignments; schema version 12 |
+| `0013_sensitive_share_revocation_reason.sql` | 0 new tables | Requires and audits an explicit reason when revoking high-sensitivity record shares; schema version 13 |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
@@ -58,8 +60,8 @@ Latest verified CI run: [43461336276](https://github.com/Elgit4/PCG_Missions/act
 - Session revocation is enforced by D1 triggers on deactivation/suspension and loss of the final active branch role. The staff account lifecycle endpoints are implemented, but invitation issuance/acceptance and real email delivery remain outstanding.
 - Staff directory/account lifecycle, audit-read and dual-control role revocation routes still need Worker-level integration tests against local D1.
 - Better Auth schema compatibility validation against the exact pinned package in local D1 and Worker runtime.
-- First contact handlers are implemented for scoped list/create/read/update, interactions, visibility-filtered notes and audited branch-scoped assignment/reassignment. Contact creation is idempotent and auto-assigns the contact to the capturing staff member. Phone/email visibility and private demographic/language field writes are separately gated. Contact note, reassignment and first follow-up task list/create/update/reassignment APIs are implemented with scope predicates, idempotency and append-only events. Follow-up lists, task reassignment, notifications and the remaining ministry handlers remain outstanding.
-- Ministry-sensitive prayer/care domain tables and runtime access-audit enforcement (the immutable audit ledger is now defined).
+- First contact handlers are implemented for scoped list/create/read/update, interactions, visibility-filtered notes and audited branch-scoped assignment/reassignment. Contact creation is idempotent and auto-assigns the contact to the capturing staff member. Phone/email visibility and private demographic/language field writes are separately gated. Contact note, reassignment and first follow-up task list/create/update/reassignment APIs are implemented with scope predicates, idempotency and append-only events. Prayer queue metadata, explicitly shared intercessor reads, share grant/revoke and status-only response APIs are implemented. Care-record schema is present but care reads/writes remain disabled because no baseline role has the required pastoral-case capabilities. Follow-up lists, reminders and the remaining ministry handlers remain outstanding.
+- Public prayer-request intake/creation, care-record operations, care-group administration and pastoral-case access remain outstanding; care access requires an explicit role/capability decision before any route is enabled.
 - Events, registrations, check-in, transport, calendar, announcements, public content and reports.
 - Data export/import tooling and reconciliation reports.
 - Cloudflare Pages preview binding or frontend API cutover.
