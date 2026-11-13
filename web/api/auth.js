@@ -1,278 +1,59 @@
-const MAX_BODY_BYTES = 8 * 1024;
-
-function sendJson(res, status, body) {
-  res.statusCode = status;
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Cache-Control", "no-store, max-age=0");
-  res.setHeader("Pragma", "no-cache");
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.end(JSON.stringify(body));
-}
-
-function requestBody(req) {
-  if (req.body && typeof req.body === "object" && !Array.isArray(req.body)) {
-    return req.body;
-  }
-  if (typeof req.body === "string") {
-    try {
-      const parsed = JSON.parse(req.body);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-        ? parsed
-        : null;
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
-
-function headerValue(value) {
-  return Array.isArray(value) ? value[0] : value;
-}
-
-function isSameOrigin(req, requestUrl) {
-  const origin = headerValue(req.headers.origin);
-  if (!origin) return true;
-  const forwardedHost = headerValue(req.headers["x-forwarded-host"]);
-  const requestHost = forwardedHost || headerValue(req.headers.host) || requestUrl.host;
-  try {
-    return new URL(origin).host === String(requestHost).split(",")[0].trim();
-  } catch {
-    return false;
-  }
-}
-
 export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store, max-age=0");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("X-Content-Type-Options", "nosniff");
-
-  const host = headerValue(req.headers.host) || "localhost";
-  let requestUrl;
-  try {
-    requestUrl = new URL(req.url || "/api/auth", `https://${host}`);
-  } catch {
-    return sendJson(res, 400, {
-      error: { code: "INVALID_REQUEST", message: "The request could not be read." },
-    });
-  }
-
-  if (!isSameOrigin(req, requestUrl)) {
-    return sendJson(res, 403, {
-      error: { code: "ORIGIN_NOT_ALLOWED", message: "This request origin is not allowed." },
-    });
-  }
-
-  const supabaseUrl = String(
-    process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "",
-  ).replace(/\/+$/, "");
-  const publishableKey = String(
-    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-      process.env.SUPABASE_PUBLISHABLE_KEY ||
-      process.env.SUPABASE_ANON_KEY ||
-      "",
-  );
-
-  if (!supabaseUrl || !publishableKey) {
-    if (requestUrl.searchParams.get("health") === "1") {
-      return sendJson(res, 503, {
-        ok: false,
-        service: "pcg-missions-auth-proxy",
-        release: process.env.VERCEL_GIT_COMMIT_SHA || null,
-        configuration: {
-          supabaseUrlPresent: Boolean(supabaseUrl),
-          publishableKeyPresent: Boolean(publishableKey),
-          upstreamReachable: false,
-        },
-      });
-    }
-    return sendJson(res, 503, {
-      error: {
-        code: "AUTH_PROXY_NOT_CONFIGURED",
-        message: "The secure sign-in service is not configured on the server.",
-      },
-    });
-  }
-
-  if (requestUrl.searchParams.get("health") === "1") {
-    let upstreamStatus = null;
-    let upstreamReachable = false;
+  const origin = Array.isArray(req.headers.origin) ? req.headers.origin[0] : req.headers.origin;
+  const host = Array.isArray(req.headers.host) ? req.headers.host[0] : req.headers.host;
+  if (origin) {
     try {
-      const healthResponse = await fetch(`${supabaseUrl}/auth/v1/settings`, {
-        method: "GET",
-        headers: { apikey: publishableKey, Accept: "application/json" },
-        cache: "no-store",
-        signal: AbortSignal.timeout(10000),
-      });
-      upstreamStatus = healthResponse.status;
-      upstreamReachable = healthResponse.ok;
-      await healthResponse.body?.cancel().catch(() => {});
+      if (new URL(origin).host !== host) {
+        res.statusCode = 403;
+        return res.end(JSON.stringify({ error: { code: "ORIGIN_NOT_ALLOWED" } }));
+      }
     } catch {
-      upstreamReachable = false;
-    }
-    return sendJson(res, upstreamReachable ? 200 : 503, {
-      ok: upstreamReachable,
-      service: "pcg-missions-auth-proxy",
-      release: process.env.VERCEL_GIT_COMMIT_SHA || null,
-      configuration: {
-        supabaseUrlPresent: true,
-        publishableKeyPresent: true,
-        upstreamReachable,
-        upstreamStatus,
-      },
-    });
-  }
-
-  const grantType = requestUrl.searchParams.get("grant_type");
-  const resource = requestUrl.searchParams.get("resource");
-  const body = requestBody(req);
-  let upstreamPath = "";
-  let expectedMethod = "";
-  let requiresBearer = false;
-  let outgoingBody;
-
-  if (grantType === "password" || grantType === "refresh_token") {
-    expectedMethod = "POST";
-    upstreamPath = `/auth/v1/token?grant_type=${grantType}`;
-    if (!body) {
-      return sendJson(res, 400, {
-        error: { code: "INVALID_REQUEST", message: "Sign-in details are required." },
-      });
-    }
-    if (grantType === "password") {
-      if (
-        typeof body.email !== "string" ||
-        body.email.length > 254 ||
-        typeof body.password !== "string" ||
-        body.password.length < 1 ||
-        body.password.length > 128
-      ) {
-        return sendJson(res, 400, {
-          error: { code: "INVALID_CREDENTIALS_FORMAT", message: "Enter a valid email address and password." },
-        });
-      }
-      outgoingBody = { email: body.email.trim().toLowerCase(), password: body.password };
-    } else {
-      if (
-        typeof body.refresh_token !== "string" ||
-        body.refresh_token.length < 1 ||
-        body.refresh_token.length > 4096
-      ) {
-        return sendJson(res, 400, {
-          error: { code: "INVALID_SESSION", message: "The session could not be refreshed." },
-        });
-      }
-      outgoingBody = { refresh_token: body.refresh_token };
-    }
-  } else {
-    const resources = {
-      user: { method: "GET", path: "/auth/v1/user", bearer: true },
-      logout: { method: "POST", path: "/auth/v1/logout?scope=global", bearer: true },
-      "staff-session": { method: "GET", path: "/functions/v1/staff-session", bearer: true },
-      "complete-password-change": {
-        method: "POST",
-        path: "/functions/v1/staff-auth/complete-password-change",
-        bearer: true,
-      },
-      "request-password-reset": {
-        method: "POST",
-        path: "/functions/v1/staff-auth/request-password-reset",
-        bearer: false,
-      },
-    };
-    const selected = resources[resource];
-    if (!selected) {
-      return sendJson(res, 404, {
-        error: { code: "AUTH_ROUTE_NOT_FOUND", message: "The requested authentication operation does not exist." },
-      });
-    }
-    expectedMethod = selected.method;
-    upstreamPath = selected.path;
-    requiresBearer = selected.bearer;
-    if (
-      (resource === "complete-password-change" || resource === "request-password-reset") &&
-      !body
-    ) {
-      return sendJson(res, 400, {
-        error: { code: "INVALID_REQUEST", message: "The request body is invalid." },
-      });
-    }
-    if (resource === "request-password-reset" &&
-      (typeof body.email !== "string" || body.email.length > 254)
-    ) {
-      return sendJson(res, 400, {
-        error: { code: "INVALID_EMAIL", message: "Enter a valid staff email address." },
-      });
-    }
-    if (resource === "complete-password-change" &&
-      (typeof body.password !== "string" || body.password.length < 12 || body.password.length > 128)
-    ) {
-      return sendJson(res, 400, {
-        error: { code: "WEAK_PASSWORD", message: "Use a strong new password of at least 12 characters." },
-      });
-    }
-    if (resource === "complete-password-change" || resource === "request-password-reset") {
-      outgoingBody = body;
+      res.statusCode = 403;
+      return res.end(JSON.stringify({ error: { code: "ORIGIN_NOT_ALLOWED" } }));
     }
   }
-
-  if (req.method !== expectedMethod) {
-    res.setHeader("Allow", expectedMethod);
-    return sendJson(res, 405, {
-      error: { code: "METHOD_NOT_ALLOWED", message: "The request method is not allowed." },
-    });
-  }
-
-  const bearerHeaderValue = headerValue(req.headers.authorization);
-  if (requiresBearer && (
-    typeof bearerHeaderValue !== "string" ||
-    !bearerHeaderValue.trim().toLowerCase().startsWith("bearer ") ||
-    bearerHeaderValue.trim().slice(7).length === 0
-  )) {
-    return sendJson(res, 401, {
-      error: { code: "AUTH_REQUIRED", message: "A valid sign-in session is required." },
-    });
-  }
-
-  if (outgoingBody !== undefined && Buffer.byteLength(JSON.stringify(outgoingBody)) > MAX_BODY_BYTES) {
-    return sendJson(res, 413, {
-      error: { code: "REQUEST_TOO_LARGE", message: "The request is too large." },
-    });
-  }
-
-  const headers = {
-    apikey: publishableKey,
-    Accept: "application/json",
-  };
-  if (requiresBearer) headers.Authorization = bearerHeaderValue;
-  if (outgoingBody !== undefined) headers["Content-Type"] = "application/json";
-
+  const configuredOrigin = String(process.env.PCG_MISSIONS_API_ORIGIN || "").replace(/\/+$/, "");
+  let target;
   try {
-    const upstream = await fetch(`${supabaseUrl}${upstreamPath.startsWith("/") ? upstreamPath : `/${upstreamPath}`}`, {
-      method: expectedMethod,
-      headers,
-      ...(outgoingBody !== undefined ? { body: JSON.stringify(outgoingBody) } : {}),
-      cache: "no-store",
-      signal: AbortSignal.timeout(15000),
-    });
-    const responseText = await upstream.text();
-    res.statusCode = upstream.status;
-    res.setHeader(
-      "Content-Type",
-      upstream.headers.get("content-type") || "application/json; charset=utf-8",
-    );
-    res.setHeader("Cache-Control", "no-store, max-age=0");
-    res.setHeader("Pragma", "no-cache");
-    if (upstream.status === 204 || upstream.status === 205 || !responseText) {
-      return res.end();
-    }
-    return res.end(responseText);
+    target = new URL(configuredOrigin);
+    if (target.protocol !== "https:" && target.hostname !== "localhost" && target.hostname !== "127.0.0.1") throw new Error("HTTPS required");
   } catch {
-    return sendJson(res, 502, {
-      error: {
-        code: "AUTH_UPSTREAM_UNAVAILABLE",
-        message: "The authentication service could not be reached. Please retry.",
-      },
+    res.statusCode = 503;
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return res.end(JSON.stringify({ error: { code: "WORKER_PROXY_NOT_CONFIGURED" } }));
+  }
+  const requestUrl = new URL(req.url || "/api/auth", "https://" + (host || "localhost"));
+  const upstreamUrl = new URL(requestUrl.pathname + requestUrl.search, target);
+  const headers = new Headers();
+  for (const name of ["accept", "content-type", "cookie", "origin", "user-agent", "authorization", "x-branch-id", "idempotency-key"]) {
+    const value = req.headers[name];
+    if (typeof value === "string") headers.set(name, value);
+  }
+  try {
+    const upstream = await fetch(upstreamUrl, {
+      method: req.method || "GET",
+      headers,
+      ...(req.method === "GET" || req.method === "HEAD" ? {} : { body: req, duplex: "half" }),
+      redirect: "manual",
+      cache: "no-store",
     });
+    res.statusCode = upstream.status;
+    for (const name of ["content-type", "cache-control", "pragma", "location", "x-request-id", "x-content-type-options", "referrer-policy"]) {
+      const value = upstream.headers.get(name);
+      if (value) res.setHeader(name, value);
+    }
+    const cookies = typeof upstream.headers.getSetCookie === "function"
+      ? upstream.headers.getSetCookie()
+      : (upstream.headers.get("set-cookie") ? [upstream.headers.get("set-cookie")] : []);
+    if (cookies.length) res.setHeader("Set-Cookie", cookies);
+    if (upstream.status === 204 || upstream.status === 205 || req.method === "HEAD") return res.end();
+    return res.end(Buffer.from(await upstream.arrayBuffer()));
+  } catch {
+    res.statusCode = 502;
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    return res.end(JSON.stringify({ error: { code: "WORKER_UPSTREAM_UNAVAILABLE" } }));
   }
 }
