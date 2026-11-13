@@ -42,5 +42,29 @@ class WorkerApiContractTests(unittest.TestCase):
             )
 
 
+    def test_cors_allows_idempotency_header_used_by_browser_mutations(self):
+        cors = re.search(r"function authCorsHeaders\\([\\s\\S]*?\\n\\}", self.source)
+        self.assertIsNotNone(cors)
+        self.assertRegex(cors.group(0), r"(?i)Access-Control-Allow-Headers[\\s\\S]*Idempotency-Key")
+
+    def test_followup_contact_details_use_followup_task_scope_predicate(self):
+        handler = re.search(r"async function listFollowupTasks\\([\\s\\S]*?\\n\\}", self.source)
+        self.assertIsNotNone(handler)
+        self.assertIn('followupScopePredicate(detailScope, "ft"', handler.group(0))
+        self.assertNotIn('contactScopePredicate(detailScope, "ft"', handler.group(0))
+
+    def test_contact_list_never_returns_merged_records_even_with_all_status_filter(self):
+        handler = re.search(r"async function listContacts\\([\\s\\S]*?\\n\\}", self.source)
+        self.assertIsNotNone(handler)
+        self.assertIn("c.contact_status <> 'merged'", handler.group(0))
+
+    def test_contact_interaction_history_has_a_scoped_get_route(self):
+        self.assertIn("async function listContactInteractions(", self.source)
+        self.assertRegex(
+            self.source,
+            r'if \\(request\\.method === "GET"\\) return listContactInteractions\\(request, env, contactId',
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
