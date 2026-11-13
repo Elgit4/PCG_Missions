@@ -2899,12 +2899,12 @@ async function createEvent(
       INSERT INTO event
         (id, branch_id, title, description, starts_at, ends_at, timezone,
          location, capacity, registration_state, visibility, status,
-         transport_enabled, created_by, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', 'private', 'draft', ?, ?, ?, ?)
+         transport_enabled, created_by, last_modified_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', 'private', 'draft', ?, ?, ?, ?, ?)
     \`).bind(
       id, access.activeBranch.branchId, title, description, startsAt, endsAt,
       timezone, location, capacity, transportEnabled ? 1 : 0,
-      access.staff.userId, now, now,
+      access.staff.userId, access.staff.userId, now, now,
     ).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error("EVENT_CREATE_FAILED");
   } catch {
@@ -2998,6 +2998,8 @@ async function updateEvent(
   const nextStart = typeof payload.starts_at === "string" ? parseIsoTimestamp(payload.starts_at, "")! : existing.starts_at;
   const nextEnd = typeof payload.ends_at === "string" ? parseIsoTimestamp(payload.ends_at, "")! : existing.ends_at;
   if (nextEnd <= nextStart) return json(400, { ok: false, error: { code: "EVENT_END_MUST_FOLLOW_START" } }, requestId, origin);
+  assignments.push("last_modified_by = ?");
+  values.push(access.staff.userId);
   assignments.push("updated_at = ?");
   values.push(new Date().toISOString());
   try {
@@ -3028,10 +3030,10 @@ async function publishEvent(
     const result = await env.DB.prepare(\`
       UPDATE event
       SET status = 'published', visibility = 'staff',
-          registration_state = 'closed', updated_at = ?
+          registration_state = 'closed', last_modified_by = ?, updated_at = ?
       WHERE id = ? AND branch_id = ? AND status = 'draft'
         AND length(trim(title)) >= 2 AND ends_at > starts_at
-    \`).bind(now, eventId, access.activeBranch.branchId).run();
+    \`).bind(access.staff.userId, now, eventId, access.activeBranch.branchId).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) {
       return json(409, { ok: false, error: { code: "EVENT_NOT_PUBLISHABLE" } }, requestId, origin);
     }
@@ -3054,9 +3056,9 @@ async function cancelEvent(
   try {
     const result = await env.DB.prepare(\`
       UPDATE event
-      SET status = 'cancelled', registration_state = 'closed', updated_at = ?
+      SET status = 'cancelled', registration_state = 'closed', last_modified_by = ?, updated_at = ?
       WHERE id = ? AND branch_id = ? AND status IN ('draft','published')
-    \`).bind(now, eventId, access.activeBranch.branchId).run();
+    \`).bind(access.staff.userId, now, eventId, access.activeBranch.branchId).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) {
       return json(409, { ok: false, error: { code: "EVENT_NOT_CANCELLABLE" } }, requestId, origin);
     }
