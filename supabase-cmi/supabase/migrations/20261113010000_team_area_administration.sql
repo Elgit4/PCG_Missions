@@ -570,7 +570,7 @@ security invoker
 set search_path = ''
 as $$
   select private.cmi_manage_team_operations(p_actor_auth_user_id,p_action,p_payload);
-$;
+$$;
 
 revoke all on function public.cmi_manage_team_operations(uuid,text,jsonb)
   from public, anon, authenticated, service_role;
