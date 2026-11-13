@@ -4545,7 +4545,7 @@ async function listCalendarEntries(
   const rows = await env.DB.prepare(`
     SELECT ce.id, ce.branch_id, ce.entry_type, ce.title, ce.starts_at, ce.ends_at,
            ce.timezone, ce.scope_type, ce.team_id, ce.event_id, ce.owner_user_id,
-           ce.created_by, ce.created_at, ce.updated_at
+           ce.created_by, ce.created_at, ce.updated_at, ce.series_id
     FROM calendar_entry ce
     WHERE ce.branch_id = ? AND ce.status = 'active'
       AND ce.starts_at < ?
@@ -4578,7 +4578,7 @@ async function getCalendarEntry(
   const row = await env.DB.prepare(`
     SELECT ce.id, ce.branch_id, ce.entry_type, ce.title, ce.starts_at, ce.ends_at,
            ce.timezone, ce.scope_type, ce.team_id, ce.event_id, ce.owner_user_id,
-           ce.created_by, ce.created_at, ce.updated_at
+           ce.created_by, ce.created_at, ce.updated_at, ce.series_id
     FROM calendar_entry ce
     WHERE ce.id=? AND ce.branch_id=? AND ce.status='active' AND (${predicate.sql})
     LIMIT 1
@@ -4658,7 +4658,7 @@ async function createCalendarSeries(request:Request,env:Env,requestId:string,ori
   const scopeType=typeof payload.scope_type==="string"?payload.scope_type:"";
   const teamId=typeof payload.team_id==="string"?payload.team_id.trim()||null:null;
   const eventId=typeof payload.event_id==="string"?payload.event_id.trim()||null:null;
-  const recurrence=payload.recurrence as {frequency?:unknown;interval?:unknown;count?:unknown};
+  const recurrence=payload.recurrence as {frequency?:unknown;interval?:unknown;count?:unknown} | null;
   const frequency=recurrence?.frequency;
   const interval=recurrence?.interval;
   const count=recurrence?.count;
@@ -4671,9 +4671,10 @@ async function createCalendarSeries(request:Request,env:Env,requestId:string,ori
      !["branch","team","event","own"].includes(scopeType)||
      (scopeType==="team"&&!teamId)||(scopeType!=="team"&&teamId!==null)||
      (scopeType==="event"&&!eventId)||(scopeType!=="event"&&eventId!==null)||
+     !recurrence||typeof recurrence!=="object"||Array.isArray(recurrence)||
      !["daily","weekly","monthly"].includes(String(frequency))||
-     !Number.isInteger(interval)||Number(interval)<1||Number(interval)>12||
-     !Number.isInteger(count)||Number(count)<2||Number(count)>52||
+     typeof interval!=="number"||!Number.isInteger(interval)||interval<1||interval>12||
+     typeof count!=="number"||!Number.isInteger(count)||count<2||count>52||
      (frequency==="monthly"&&Number(count)>24)) {
     return json(400,{ok:false,error:{code:"INVALID_CALENDAR_SERIES_DETAILS"}},requestId,origin);
   }
