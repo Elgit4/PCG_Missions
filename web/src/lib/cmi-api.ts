@@ -1,9 +1,8 @@
 /**
- * PCG Missions CMI v2.1 browser API adapter.
- *
- * Browser clients use a publishable key and a Supabase Auth access token only.
- * All business authorization is performed by the Edge Functions; this adapter
- * never talks directly to Postgres or carries service-role/provider secrets.
+ * PCG Missions browser API adapter.
+ * Business authorization and record scoping are enforced by the Cloudflare Worker.
+ * Authentication is carried by Better Auth HttpOnly cookies; this client never
+ * reads or stores session tokens in JavaScript-accessible storage.
  */
 export interface CmiApiConfig {
   apiUrl?: string;
@@ -540,8 +539,13 @@ export class CmiApiClient {
         cache: "no-store",
         headers: { Accept: "application/json", "X-Branch-Id": branches[0].id },
       });
-      const parsed = parseJson(await selected.text()) as Record<string, unknown> | null;
-      if (selected.ok && parsed) active = parsed;
+      const parsed = parseJson(await selected.text()) as (Record<string, unknown> & ApiErrorBody) | null;
+      if (!selected.ok || !parsed) {
+        const code = parsed?.error?.code ?? `HTTP_${selected.status}`;
+        const message = parsed?.error?.message ?? "The selected branch context could not be loaded.";
+        throw new CmiApiError(selected.status || 502, code, message, parsed?.request_id ?? null);
+      }
+      active = parsed;
     }
     const activeBranch = active.active_branch as Record<string, unknown> | null | undefined;
     const userId = String(staff?.userId ?? "");
