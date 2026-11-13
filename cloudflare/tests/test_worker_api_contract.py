@@ -272,6 +272,14 @@ if __name__ == "__main__":
         self.assertIn("calendarReadMatch", self.source)
 
 
+    def test_scheduled_announcement_publication_is_actor_bound_and_idempotent(self):
+        self.assertIn("async function scheduleAnnouncement(", self.source)
+        self.assertIn("async function publishDueAnnouncements(", self.source)
+        self.assertIn('status=\'scheduled\'', self.source)
+        self.assertIn("announcement.updated_by", self.source)
+        self.assertIn("announcement_delivery", self.source)
+        self.assertIn("announcementScheduleMatch", self.source)
+
     def test_report_overview_compares_prior_period_with_same_privacy_threshold(self):
         handler = re.search(r"async function getReportsOverview\([\s\S]*?\n\}", self.source)
         self.assertIsNotNone(handler)
