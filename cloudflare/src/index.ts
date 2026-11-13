@@ -1985,14 +1985,16 @@ async function createFollowupTask(
   const assigneeProfileId = typeof payload.assignee_profile_id === "string" ? payload.assignee_profile_id.trim() : "";
   const requestedTeamId = typeof payload.team_id === "string" ? payload.team_id.trim() : "";
   const listId = typeof payload.list_id === "string" ? payload.list_id.trim() || null : null;
-  const priority = payload.priority === undefined ? 3 : Number(payload.priority);
+  const priority = payload.priority === undefined ? 3 : payload.priority;
   const dueAt = payload.due_at === undefined || payload.due_at === null || payload.due_at === ""
     ? null : parseIsoTimestamp(payload.due_at, "");
   const taskNote = typeof payload.task_note === "string" ? payload.task_note.trim() || null : null;
   if (
     !contactId || contactId.length > 128 ||
     (!!assigneeProfileId === !!requestedTeamId) ||
-    !Number.isInteger(priority) || priority < 1 || priority > 5 ||
+    (payload.priority !== undefined && typeof payload.priority !== "number") ||
+    !Number.isInteger(priority) || Number(priority) < 1 || Number(priority) > 5 ||
+    (payload.list_id !== undefined && payload.list_id !== null && typeof payload.list_id !== "string") ||
     (payload.due_at !== undefined && payload.due_at !== null && payload.due_at !== "" && !dueAt) ||
     (payload.task_note !== undefined && payload.task_note !== null && typeof payload.task_note !== "string") ||
     (taskNote !== null && taskNote.length > 2000)
@@ -2100,6 +2102,53 @@ async function createFollowupTask(
   const taskId = crypto.randomUUID();
   const eventId = crypto.randomUUID();
   const digestBytes = new Uint8Array(digestHex.match(/.{2}/g)!.map((pair) => parseInt(pair, 16)));
+  const contactPredicate = contactScopePredicate(
+    createScope, "c", context.staff.userId, context.activeBranch.branchId, now,
+  );
+  const targetPredicate = assigneeUserId !== null
+    ? `EXISTS (
+        SELECT 1 FROM staff_profile target
+        JOIN staff_role_assignment target_assignment ON target_assignment.staff_profile_id = target.id
+        JOIN role target_role ON target_role.id = target_assignment.role_id AND target_role.is_active = 1
+        WHERE target.auth_user_id = ?
+          AND target.account_status = 'active'
+          AND target_assignment.branch_id = c.branch_id
+          AND target_assignment.revoked_at IS NULL
+          AND target_assignment.starts_at <= ?
+          AND (target_assignment.ends_at IS NULL OR target_assignment.ends_at > ?)
+      )`
+    : `EXISTS (
+        SELECT 1 FROM team target_team
+        WHERE target_team.id = ? AND target_team.branch_id = c.branch_id
+          AND target_team.is_active = 1
+      )`;
+  const targetValues = assigneeUserId !== null
+    ? [assigneeUserId, now, now]
+    : [teamId];
+  const listPredicate = listId === null
+    ? "1 = 1"
+    : `EXISTS (
+        SELECT 1 FROM followup_list target_list
+        WHERE target_list.id = ? AND target_list.branch_id = c.branch_id
+          AND target_list.status = 'active'
+          AND (target_list.team_id IS NULL OR target_list.team_id = ?)
+      )`;
+  const listValues = listId === null ? [] : [listId, teamIdForScope];
+  const actorCapabilityPredicate = (code: string) => `EXISTS (
+    SELECT 1
+    FROM staff_profile actor
+    JOIN staff_role_assignment actor_assignment ON actor_assignment.staff_profile_id = actor.id
+    JOIN role actor_role ON actor_role.id = actor_assignment.role_id AND actor_role.is_active = 1
+    JOIN role_capability actor_grant ON actor_grant.role_id = actor_role.id
+    JOIN capability actor_capability ON actor_capability.id = actor_grant.capability_id
+      AND actor_capability.is_active = 1 AND actor_capability.code = '${code}'
+    WHERE actor.auth_user_id = ?
+      AND actor.account_status = 'active'
+      AND actor_assignment.branch_id = c.branch_id
+      AND actor_assignment.revoked_at IS NULL
+      AND actor_assignment.starts_at <= ?
+      AND (actor_assignment.ends_at IS NULL OR actor_assignment.ends_at > ?)
+  )`;
   try {
     const results = await env.DB.batch([
       env.DB.prepare(`
@@ -2107,11 +2156,21 @@ async function createFollowupTask(
           (id, list_id, contact_id, branch_id, assignee_user_id, team_id, priority,
            due_at, status, task_note, created_by, completed_at, created_at, updated_at,
            client_request_id, digest_key_version, request_digest)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, NULL, ?, ?, ?, 1, ?)
+        SELECT ?, ?, c.id, c.branch_id, ?, ?, ?, ?, 'open', ?, ?, NULL, ?, ?, ?, 1, ?
+        FROM contact c
+        WHERE c.id = ? AND c.branch_id = ? AND c.contact_status = 'active'
+          AND (${contactPredicate.sql})
+          AND (${targetPredicate})
+          AND (${listPredicate})
+          AND (${actorCapabilityPredicate("followup.create")})
+          AND (${actorCapabilityPredicate("followup.assign")})
       `).bind(
-        taskId, listId, contactId, context.activeBranch.branchId,
-        assigneeUserId, teamId, priority, dueAt, taskNote, context.staff.userId,
-        now, now, idempotencyKey, digestBytes,
+        taskId, listId, assigneeUserId, teamId, priority, dueAt, taskNote,
+        context.staff.userId, now, now, idempotencyKey, digestBytes,
+        contactId, context.activeBranch.branchId, ...contactPredicate.values,
+        ...targetValues, ...listValues,
+        context.staff.userId, now, now,
+        context.staff.userId, now, now,
       ),
       env.DB.prepare(`
         INSERT INTO followup_task_event
@@ -2207,8 +2266,8 @@ async function updateFollowupTask(
       (nextStatus !== task.status && !(transitions[task.status] ?? []).includes(nextStatus))) {
     return json(409, { ok: false, error: { code: "INVALID_FOLLOWUP_STATUS_TRANSITION" } }, requestId, origin);
   }
-  const priority = payload.priority === undefined ? undefined : Number(payload.priority);
-  if (priority !== undefined && (!Number.isInteger(priority) || priority < 1 || priority > 5)) {
+  const priority = payload.priority === undefined ? undefined : payload.priority;
+  if (priority !== undefined && (typeof priority !== "number" || !Number.isInteger(priority) || priority < 1 || priority > 5)) {
     return json(400, { ok: false, error: { code: "INVALID_FOLLOWUP_PRIORITY" } }, requestId, origin);
   }
   const dueAt = payload.due_at === undefined ? undefined :
