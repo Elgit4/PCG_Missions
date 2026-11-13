@@ -84,32 +84,12 @@ function createServiceClient() {
   });
 }
 
-function createUserClient(token: string) {
-  return createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-    global: {
-      headers: {
-        Authorization: "Bearer " + token,
-        "X-Application-Name": "pcg-missions-team-operations-user",
-      },
-    },
-  });
-}
-
-type ServiceClient = ReturnType<typeof createServiceClient>;
-type UserClient = ReturnType<typeof createUserClient>;
-
 type StaffResult =
   | {
     ok: true;
     actorId: string;
     profileId: string;
     service: ServiceClient;
-    userClient: UserClient;
   }
   | { ok: false; status: number; code: string; message: string };
 
@@ -169,7 +149,6 @@ async function resolveStaff(token: string): Promise<StaffResult> {
     actorId: auth.user.id,
     profileId: profile.id,
     service,
-    userClient: createUserClient(token),
   };
 }
 
@@ -397,7 +376,8 @@ async function performRpc(
   action: string,
   payload: Record<string, unknown>,
 ): Promise<{ data: unknown; error: null } | { data: null; error: { code?: string; message?: string } }> {
-  const result = await auth.userClient.rpc("cmi_manage_team_operations", {
+  const result = await auth.service.rpc("cmi_manage_team_operations", {
+    p_actor_auth_user_id: auth.actorId,
     p_action: action,
     p_payload: payload,
   });
