@@ -208,4 +208,61 @@ CREATE INDEX care_access_audit_record_time_idx ON care_access_audit(care_record_
 CREATE TRIGGER care_access_audit_no_update BEFORE UPDATE ON care_access_audit BEGIN SELECT RAISE(ABORT,'CARE_ACCESS_AUDIT_APPEND_ONLY'); END;
 CREATE TRIGGER care_access_audit_no_delete BEFORE DELETE ON care_access_audit BEGIN SELECT RAISE(ABORT,'CARE_ACCESS_AUDIT_APPEND_ONLY'); END;
 
+
+-- Explicit pastoral-care sharing is an Admin/Pastor-only grant.
+INSERT OR IGNORE INTO role_capability(role_id,capability_id,scope_mode,created_at)
+SELECT r.id,c.id,'branch',strftime('%Y-%m-%dT%H:%M:%fZ','now')
+FROM role r JOIN capability c ON c.code='pastoral.case.share'
+WHERE r.code='admin_pastor';
+
+CREATE TRIGGER prayer_request_authorize_insert
+BEFORE INSERT ON prayer_request
+BEGIN
+ SELECT CASE WHEN NOT EXISTS (
+  SELECT 1 FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='prayer.request.create' AND c.is_active=1
+  JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
+  WHERE actor.auth_user_id=NEW.created_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.created_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.created_at)
+ ) THEN RAISE(ABORT,'PRAYER_REQUEST_CREATE_NOT_AUTHORIZED') END;
+END;
+
+CREATE TRIGGER care_record_authorize_insert
+BEFORE INSERT ON care_record
+BEGIN
+ SELECT CASE WHEN NOT EXISTS (
+  SELECT 1 FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='pastoral.case.create' AND c.is_active=1
+  JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
+  WHERE actor.auth_user_id=NEW.created_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.created_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.created_at)
+ ) THEN RAISE(ABORT,'CARE_RECORD_CREATE_NOT_AUTHORIZED') END;
+END;
+
+CREATE TRIGGER prayer_assignment_audit_insert
+AFTER INSERT ON prayer_assignment
+BEGIN
+ INSERT INTO prayer_access_audit
+  (id,prayer_request_id,branch_id,actor_user_id,action,reason,request_id,safe_metadata,accessed_at)
+ VALUES('prayer-assigned-'||NEW.id,NEW.prayer_request_id,NEW.branch_id,NEW.assigned_by,
+  'assigned','Assigned to an active prayer intercessor',NULL,'{}',NEW.created_at);
+END;
+
+CREATE TRIGGER care_assignment_audit_insert
+AFTER INSERT ON care_assignment
+BEGIN
+ INSERT INTO care_access_audit
+  (id,care_record_id,branch_id,actor_user_id,action,reason,request_id,safe_metadata,accessed_at)
+ VALUES('care-assigned-'||NEW.id,NEW.care_record_id,NEW.branch_id,NEW.assigned_by,
+  'assigned','Assigned to an authorized care worker',NULL,'{}',NEW.created_at);
+END;
+
 UPDATE app_meta SET schema_version=12 WHERE id=1 AND environment='non-production';
