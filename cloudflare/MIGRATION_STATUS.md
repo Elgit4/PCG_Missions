@@ -110,6 +110,6 @@ Latest previously verified CI run: [43504468309](https://github.com/Elgit4/PCG_M
 2. Add the real frontend origin to `BETTER_AUTH_TRUSTED_ORIGINS`, then exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
 3. Add Worker-level integration tests for staff, contacts, follow-up, prayer, events, calendar, announcements and content, including cross-branch, wrong-team, wrong-assignment, duplicate-key and capacity-race cases.
 4. Apply and verify migration 0025 on the isolated EU D1 database after the migration test suite passes; rerun foreign-key and authorization checks.
-5. Complete ministry-specific report comparisons, privacy-controlled exports and scheduled announcement publishing.
+5. Complete privacy-controlled report exports and scheduled-announcement Worker runtime verification.
 6. Validate Better Auth's generated schema against the pinned release and complete the controlled source-to-D1 export/import and row/count/hash reconciliation for the remaining live schema.
 7. Integrate the frontend with the non-production API and verify end-to-end user workflows. Configure a verified email provider for invitations/password resets. Production cutover remains a separate approval gate.
