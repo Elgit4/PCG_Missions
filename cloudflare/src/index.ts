@@ -1306,6 +1306,13 @@ async function createContact(
     return json(400, { ok: false, error: { code: "INVALID_CONTACT_DETAILS" } }, requestId, origin);
   }
 
+  if (ageRange !== null || preferredLanguage !== null) {
+    const privateWrite = await authorizeRequestCapability(request, env, "contacts.private_fields.update");
+    if (privateWrite.state !== "authorized") {
+      return json(403, { ok: false, error: { code: "PRIVATE_CONTACT_FIELDS_FORBIDDEN" } }, requestId, origin);
+    }
+  }
+
   if (serviceAreaId) {
     const area = await env.DB.prepare(
       "SELECT id FROM service_area WHERE id = ? AND branch_id = ? AND is_active = 1 LIMIT 1",
@@ -1462,7 +1469,7 @@ async function updateContact(
   let privateFieldAccess: Awaited<ReturnType<typeof authorizeRequestCapability>> | null = null;
   let detailFieldAccess: Awaited<ReturnType<typeof authorizeRequestCapability>> | null = null;
   if (hasPrivateFields) {
-    privateFieldAccess = await authorizeRequestCapability(request, env, "contacts.private_fields.read", {
+    privateFieldAccess = await authorizeRequestCapability(request, env, "contacts.private_fields.update", {
       type: "contact", recordId: contactId, teamId: resource.teamId,
     });
     if (privateFieldAccess.state !== "authorized") {
