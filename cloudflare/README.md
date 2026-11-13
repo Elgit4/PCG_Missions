@@ -7,8 +7,8 @@ This is an isolated Cloudflare Workers + D1 implementation track. It is not conn
 - D1 database: `pcg-missions-dev`
 - Database ID: `376a6782-d059-41f9-9e09-f93718fef2bb`
 - Jurisdiction: EU (`eu`), primary region `EEUR`
-- Schema version: 15
-- Migration ledger: 15 applied migrations
+- Schema version: 16
+- Migration ledger: 16 applied migrations
 - Application tables: 69
 - Worker: not deployed yet
 - Production Supabase, Vercel, DNS and live data: unchanged
@@ -26,7 +26,7 @@ The database was created with an EU jurisdiction. This setting is fixed at creat
 - Explicit-share prayer workflows: metadata-only Admin/Pastor queue, assigned intercessor narrative reads, reasoned share revocation and transactionally paired audit records.
 - Append-only access, role, account, contact-assignment and follow-up event ledgers.
 
-The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in D1. Not all of those domains have Worker handlers yet.
+The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in D1. Event draft and staff-only lifecycle handlers are now in source; the other domain workflows remain incomplete.
 
 ## Worker endpoints implemented in source
 
@@ -39,19 +39,19 @@ The prayer/care, events/attendance/transport and calendar/announcement/content s
 - `POST/DELETE /api/v1/staff/roles` — standard role assignment and revocation.
 - `GET/POST /api/v1/staff/role-elevations` and `POST /api/v1/staff/role-elevations/{id}/approve|reject` — two-person elevation.
 - `GET/POST /api/v1/staff/role-revocations` and `POST /api/v1/staff/role-revocations/{id}/approve|reject` — two-person revocation.
-- `GET/POST /api/v1/contacts`, `GET/PATCH /api/v1/contacts/{id}`, and contact notes, interactions and assignment routes.
+- `GET/POST /api/v1/contacts`, `GET/PATCH /api/v1/contacts/{id}`, `GET/POST /api/v1/contacts/{id}/notes`, `GET/POST /api/v1/contacts/{id}/interactions` and `POST /api/v1/contacts/{id}/assign`.
 - `GET/POST /api/v1/followup/tasks`, `PATCH /api/v1/followup/tasks/{id}` and task assignment routes.
-- `GET /api/v1/pastoral/prayer/queue` — metadata-only assignment queue.
+- `GET/POST /api/v1/events`, `GET/PATCH /api/v1/events/{id}`, `POST /api/v1/events/{id}/publish` and `/cancel` — scoped event listing, draft creation/editing and audited staff-only lifecycle.
 - `GET /api/v1/pastoral/prayer/assigned` — narrative reads only for an actively assigned intercessor with a matching explicit share.
 - `POST /api/v1/pastoral/prayer/requests/{id}/shares` and `POST /api/v1/pastoral/prayer/requests/{id}/shares/{shareId}/revoke` — explicit share grant/revocation.
-- `PATCH /api/v1/pastoral/prayer/requests/{id}` — assigned intercessor status update.
+- `GET /api/v1/pastoral/prayer/queue` — metadata-only assignment queue.
 
 These are source-code routes, not a live service yet: the Cloudflare Worker has not been deployed or runtime-tested.
 
 ## Not enabled yet
 
 - Pastoral-care narrative read/write endpoints; the care domain remains restricted pending explicit care-reader capability approval.
-- Event lifecycle APIs, capacity enforcement, registrations, transport reservations, check-in and closeout.
+- Event registrations, capacity enforcement, transport reservations, check-in and closeout; event publishing is staff-only and registration remains closed.
 - Calendar and announcement management APIs.
 - Public-content editing and read projections.
 - Reporting, analytics and full Supabase export/import reconciliation.
@@ -84,12 +84,9 @@ Use a generated secret and never commit `.dev.vars`. For a Cloudflare preview, s
 
 ## Verification
 
-The latest GitHub Actions run, [43469371911](https://github.com/Elgit4/PCG_Missions/actions/runs/43469371911), passed:
+The last recorded GitHub Actions run, [43469371911](https://github.com/Elgit4/PCG_Missions/actions/runs/43469371911), passed 56 Python/SQLite migration and authorization tests and the Worker/Better Auth TypeScript type-check for the earlier schema slice. PR #61 adds API contract and event-audit regression tests; a passing run for those new tests has not yet been observed.
 
-- 56 Python/SQLite migration and authorization tests.
-- Worker and Better Auth TypeScript type-check.
-
-The remote EU D1 database reports schema version 15, all 15 migration records, 69 application tables and no foreign-key violations. This is not a substitute for deployed Worker request tests or Better Auth runtime compatibility testing.
+The remote EU D1 database now reports schema version 16, all 16 migration records, 69 application tables (excluding the Wrangler migration ledger) and no foreign-key violations. This is not a substitute for deployed Worker request tests or Better Auth runtime compatibility testing.
 
 ## Safety boundary
 
