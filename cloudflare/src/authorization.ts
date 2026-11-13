@@ -219,3 +219,51 @@ export async function writeSensitiveAccessAudit(
 
   if (!result.success) throw new Error("SENSITIVE_AUDIT_WRITE_FAILED");
 }
+
+export interface StaffAccessAuditInput {
+  id: string;
+  branchId: string;
+  actorProfileId: string;
+  targetProfileId: string;
+  action: "role_assigned" | "role_revoked" | "account_created" | "account_deactivated" | "account_reactivated";
+  reason: string;
+  metadata?: Record<string, string | number | boolean | null>;
+  createdAt: string;
+}
+
+/** Writes an immutable, metadata-only staff access event. */
+export async function writeStaffAccessAudit(
+  db: AuthorizationDatabase,
+  input: StaffAccessAuditInput,
+): Promise<void> {
+  const safeMetadata = input.metadata ?? {};
+  if (
+    !input.id ||
+    !input.branchId ||
+    !input.actorProfileId ||
+    !input.targetProfileId ||
+    input.reason.trim().length < 10 ||
+    input.reason.trim().length > 500 ||
+    Object.keys(safeMetadata).length > 20
+  ) {
+    throw new Error("STAFF_ACCESS_AUDIT_INPUT_INVALID");
+  }
+
+  const metadata = JSON.stringify(safeMetadata);
+  const result = await db.prepare(`
+    INSERT INTO staff_access_audit
+      (id, branch_id, actor_profile_id, target_profile_id, action, reason, metadata, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(
+    input.id,
+    input.branchId,
+    input.actorProfileId,
+    input.targetProfileId,
+    input.action,
+    input.reason.trim(),
+    metadata,
+    input.createdAt,
+  ).run();
+
+  if (!result.success) throw new Error("STAFF_ACCESS_AUDIT_WRITE_FAILED");
+}
