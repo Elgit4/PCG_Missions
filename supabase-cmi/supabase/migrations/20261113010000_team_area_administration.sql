@@ -460,7 +460,7 @@ begin
       if not v_is_active and exists (
         select 1 from public.staff_area_coverage sac
         where sac.service_area_id = v_area_id and sac.branch_id = v_branch_id
-          and (sac.ends_at is null or sac.ends_at > v_now)
+          and (sac.ends_at is null or sac.ends_at > clock_timestamp())
       ) then
         raise exception using errcode = '23514', message = 'AREA_HAS_ACTIVE_COVERAGE';
       end if;
