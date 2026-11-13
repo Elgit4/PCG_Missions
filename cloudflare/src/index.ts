@@ -3584,9 +3584,11 @@ async function cancelTransportReservation(
         key,digest.bytes,reservationId,now,reservationId,eventId,context.staff.userId,now,key,
       ),
     ]);
-    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) const raced=await findEventReceipt(env,eventId,"transport_cancel",key,context.staff.userId,digest.hex,requestId,origin);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) {
+      const raced=await findEventReceipt(env,eventId,"transport_cancel",key,context.staff.userId,digest.hex,requestId,origin);
       if (raced) return raced;
       return json(409,{ok:false,error:{code:"EVENT_CANCELLATION_IDEMPOTENCY_CONFLICT"}},requestId,origin);
+    }
   } catch {
     const raced=await findEventReceipt(env,eventId,"transport_cancel",key,context.staff.userId,digest.hex,requestId,origin);
     if (raced) return raced;
