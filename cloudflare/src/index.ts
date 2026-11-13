@@ -3230,10 +3230,15 @@ async function cancelEventRegistration(
         INSERT INTO event_idempotency_receipt
           (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
            digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
-        VALUES (?,?,?,'registration_cancel','staff',?,?,1,?,'event_registration',?,200,?)
+        SELECT ?,?,?, 'registration_cancel','staff',?,?,1,?,'event_registration',?,200,?
+        WHERE EXISTS (
+          SELECT 1 FROM event_registration
+          WHERE id=? AND event_id=? AND status='cancelled' AND cancelled_by=? AND cancelled_at=?
+        )
       `).bind(
         crypto.randomUUID(),eventId,context.activeBranch.branchId,context.staff.userId,
         idempotencyKey,digest.bytes,registrationId,now,
+        registrationId,eventId,context.staff.userId,now,
       ),
     ]);
     if (results.some((result)=>!result.success || (result.meta?.changes??0)!==1)) {
