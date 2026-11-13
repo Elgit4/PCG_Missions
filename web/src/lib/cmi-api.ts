@@ -169,6 +169,67 @@ export interface WelcomeMessageDraftCreateInput {
 }
 export type WelcomeMessageDraftPatchInput = Partial<Pick<WelcomeMessageDraftCreateInput, "title" | "body" | "display_order">>;
 
+export interface TeamMemberRecord {
+  id: string;
+  team_id: string;
+  staff_profile_id: string;
+  membership_role: "member" | "leader";
+  starts_at: string;
+  ends_at: string | null;
+  created_at: string;
+  staff: Pick<StaffDirectoryEntry, "id" | "full_name" | "account_status"> | null;
+}
+export interface TeamRecord {
+  id: string;
+  branch_id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  members: TeamMemberRecord[];
+}
+export interface TeamWorkspaceData { teams: TeamRecord[] }
+export interface TeamCreateInput {
+  branch_id: string;
+  name: string;
+  description: string | null;
+}
+export type TeamPatchInput = Partial<Pick<TeamCreateInput, "name" | "description">> & { is_active?: boolean };
+export interface TeamMemberCreateInput {
+  staff_profile_id: string;
+  membership_role: "member" | "leader";
+}
+export interface TeamMemberRoleInput { membership_role: "member" | "leader" }
+
+export interface AreaCoverageRecord {
+  id: string;
+  service_area_id: string;
+  staff_profile_id: string;
+  starts_at: string;
+  ends_at: string | null;
+  created_at: string;
+  staff: Pick<StaffDirectoryEntry, "id" | "full_name" | "account_status"> | null;
+}
+export interface ServiceAreaRecord {
+  id: string;
+  branch_id: string;
+  name: string;
+  code: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  coverage: AreaCoverageRecord[];
+}
+export interface ServiceAreaWorkspaceData { areas: ServiceAreaRecord[] }
+export interface ServiceAreaCreateInput {
+  branch_id: string;
+  name: string;
+  code: string | null;
+}
+export type ServiceAreaPatchInput = Partial<Pick<ServiceAreaCreateInput, "name" | "code">> & { is_active?: boolean };
+export interface AreaCoverageCreateInput { staff_profile_id: string }
+
 export interface ContactRecord {
   id: string;
   branch_id: string;
@@ -671,6 +732,77 @@ export class CmiApiClient {
   updateWelcomeMessageDraft(branchId: string, messageId: string, input: WelcomeMessageDraftPatchInput) {
     return this.request<WelcomeMessageDraftRecord>("content-operations", "/welcome-messages/" + encodeURIComponent(messageId), {
       method: "PATCH", query: { branch_id: branchId }, body: input,
+    });
+  }
+
+  listTeams(branchId: string) {
+    return this.request<TeamWorkspaceData>("team-operations", "/teams", {
+      query: { branch_id: branchId },
+    });
+  }
+  createTeam(input: TeamCreateInput) {
+    return this.request<TeamRecord>("team-operations", "/teams", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateTeam(branchId: string, teamId: string, input: TeamPatchInput) {
+    return this.request<TeamRecord>("team-operations", "/teams/" + encodeURIComponent(teamId), {
+      method: "PATCH",
+      query: { branch_id: branchId },
+      body: input,
+    });
+  }
+  addTeamMember(branchId: string, teamId: string, input: TeamMemberCreateInput) {
+    return this.request<TeamMemberRecord>("team-operations", "/teams/" + encodeURIComponent(teamId) + "/members", {
+      method: "POST",
+      query: { branch_id: branchId },
+      body: input,
+    });
+  }
+  updateTeamMemberRole(branchId: string, teamId: string, membershipId: string, input: TeamMemberRoleInput) {
+    return this.request<TeamMemberRecord>("team-operations", "/teams/" + encodeURIComponent(teamId) + "/members/" + encodeURIComponent(membershipId), {
+      method: "PATCH",
+      query: { branch_id: branchId },
+      body: input,
+    });
+  }
+  revokeTeamMember(branchId: string, teamId: string, membershipId: string) {
+    return this.request<TeamMemberRecord>("team-operations", "/teams/" + encodeURIComponent(teamId) + "/members/" + encodeURIComponent(membershipId) + "/revoke", {
+      method: "POST",
+      query: { branch_id: branchId },
+    });
+  }
+
+  listServiceAreas(branchId: string) {
+    return this.request<ServiceAreaWorkspaceData>("team-operations", "/areas", {
+      query: { branch_id: branchId },
+    });
+  }
+  createServiceArea(input: ServiceAreaCreateInput) {
+    return this.request<ServiceAreaRecord>("team-operations", "/areas", {
+      method: "POST",
+      body: input,
+    });
+  }
+  updateServiceArea(branchId: string, areaId: string, input: ServiceAreaPatchInput) {
+    return this.request<ServiceAreaRecord>("team-operations", "/areas/" + encodeURIComponent(areaId), {
+      method: "PATCH",
+      query: { branch_id: branchId },
+      body: input,
+    });
+  }
+  addAreaCoverage(branchId: string, areaId: string, input: AreaCoverageCreateInput) {
+    return this.request<AreaCoverageRecord>("team-operations", "/areas/" + encodeURIComponent(areaId) + "/coverage", {
+      method: "POST",
+      query: { branch_id: branchId },
+      body: input,
+    });
+  }
+  revokeAreaCoverage(branchId: string, areaId: string, coverageId: string) {
+    return this.request<AreaCoverageRecord>("team-operations", "/areas/" + encodeURIComponent(areaId) + "/coverage/" + encodeURIComponent(coverageId) + "/revoke", {
+      method: "POST",
+      query: { branch_id: branchId },
     });
   }
 
