@@ -102,13 +102,13 @@ const pythonSeed = [
   "db.execute('INSERT INTO staff_role_assignment (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at,reason) VALUES (?,?,?,?,?,?,?,?)', ('test-admin-assignment', 'test-staff-profile', role_id, 'test-branch', 'test-staff-profile', now, now, 'Automated non-production integration fixture'))",
   "db.commit()",
   "version = db.execute(\"SELECT schema_version FROM app_meta WHERE id=1 AND environment='non-production'\").fetchone()",
-  "if not version or version[0] != 26:",
+  "if not version or version[0] != 27:",
   "    raise SystemExit('Expected non-production schema 26, got ' + str(version))",
   "violations = db.execute('PRAGMA foreign_key_check').fetchall()",
   "if violations:",
   "    raise SystemExit('Foreign key violations: ' + str(len(violations)))",
   "db.close()",
-  "print('Seeded local D1 schema version 26 and one Better Auth test identity')",
+  "print('Seeded local D1 schema version 27 and one Better Auth test identity')",
 ].join("\n");
 
 await rm(stateDir, { recursive: true, force: true });
@@ -137,7 +137,7 @@ try {
   const health = await fetch(baseUrl + "/health");
   const healthBody = await health.json();
   assert(health.status === 200 && healthBody.ok === true, "Worker health endpoint failed");
-  assert(healthBody.schema_version === 26, "expected D1 schema 26, got " + healthBody.schema_version);
+  assert(healthBody.schema_version === 27, "expected D1 schema 26, got " + healthBody.schema_version);
 
   const authSession = await fetch(baseUrl + "/api/auth/get-session");
   const authSessionBody = await authSession.text();
