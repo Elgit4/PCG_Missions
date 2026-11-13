@@ -930,7 +930,9 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             )
         self.db.execute(
             """UPDATE staff_record_share SET revoked_at = '2026-01-10T00:00:00.000Z',
-               revoked_by = 'share-staff-a' WHERE id = 'share-1'"""
+               revoked_by = 'share-staff-a',
+               revocation_reason = 'The temporary prayer support assignment has ended'
+               WHERE id = 'share-1'"""
         )
         revoke_audit = self.db.execute(
             "SELECT actor_profile_id, action FROM sensitive_record_access_audit WHERE id = 'share-revoke-share-1'"
@@ -1155,7 +1157,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.assertIsNotNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "prayer-authz"))
         self.assertIsNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "other-prayer"))
         self.db.execute(
-            "UPDATE staff_record_share SET revoked_at = ?, revoked_by = 'authz-staff-admin' WHERE id = 'authz-prayer-share'",
+            "UPDATE staff_record_share SET revoked_at = ?, revoked_by = 'authz-staff-admin', revocation_reason = 'Prayer assignment ended after review' WHERE id = 'authz-prayer-share'",
             (self.NOW,),
         )
         self.assertIsNone(self.query_and_bind("prayer", "prayer.request.read", "prayer_request", "prayer-authz"))
