@@ -13,7 +13,8 @@
 | `0002_contacts_followup.sql` | 9 | Contacts, capture provenance/idempotency, assignment history, visibility-scoped notes, interactions, merge history, follow-up lists/tasks and append-only task events |
 | `0003_staff_authorization_policy.sql` | 5 security tables | Seeds six fixed roles and scoped grants; adds explicit shares, sensitive-access audit, two-person Admin/Pastor elevation requests, elevation audit and two-slot owner bootstrap state |
 | `0004_staff_session_revocation.sql` | 0 new tables | Revokes all Better Auth sessions immediately when a staff account is deactivated or suspended |
-| `0005_better_auth_rate_limit.sql` | 1 | Adds the Better Auth rate-limit table; counters persist in D1 across Worker isolates; schema version 5 |
+| `0005_better_auth_rate_limit.sql` | 1 | Adds the Better Auth rate-limit table; counters persist in D1 across Worker isolates |
+| `0006_last_role_session_revocation.sql` | 0 new tables | Revokes sessions when a staff member loses their final active role across active branches; schema version 6 |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
@@ -29,7 +30,7 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - time-bounded explicit-share grant/revoke authorization and automatic audit attribution;
 - dual-control Admin/Pastor elevation, two bootstrap slots, request/review/application audit and last-admin protection;
 - explicit-share overlap, expiry/revocation history and automatic share grant/revoke audit events;
-- immediate Better Auth session deletion on staff deactivation/suspension and persistent rate-limit key uniqueness;
+- immediate Better Auth session deletion on staff deactivation/suspension or loss of the final active branch role, plus persistent rate-limit key uniqueness;
 - two-slot owner bootstrap, independent Admin/Pastor elevation approval, applied-request audit and last-active-admin protection;
 - contact normalization, capture idempotency and metadata allowlists;
 - follow-up task completion and target invariants.
