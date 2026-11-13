@@ -58,7 +58,7 @@ function authCorsHeaders(origin: string): Headers {
   return new Headers({
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Branch-Id",
     "Access-Control-Max-Age": "600",
     "Vary": "Origin",
@@ -1205,9 +1205,11 @@ async function listContacts(
   const readScope = bestScope(grants.filter((g) => g.code === "contacts.read").map((g) => g.scopeMode));
   if (!readScope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
   const detailScope = bestScope(grants.filter((g) => g.code === "contacts.contact_details.read").map((g) => g.scopeMode));
+  const privateScope = bestScope(grants.filter((g) => g.code === "contacts.private_fields.read").map((g) => g.scopeMode));
   const now = new Date().toISOString();
   const readPredicate = contactScopePredicate(readScope, "c", context.staff.userId, context.activeBranch.branchId, now);
   const detailPredicate = contactScopePredicate(detailScope, "c", context.staff.userId, context.activeBranch.branchId, now);
+  const privatePredicate = contactScopePredicate(privateScope, "c", context.staff.userId, context.activeBranch.branchId, now);
   const url = new URL(request.url);
   const search = (url.searchParams.get("search") ?? "").trim().slice(0, 100);
   const status = url.searchParams.get("status") ?? "active";
@@ -1219,19 +1221,13 @@ async function listContacts(
     return json(400, { ok: false, error: { code: "INVALID_CONTACT_QUERY" } }, requestId, origin);
   }
   const statusPredicate = status === "all" ? "1 = 1" : "c.contact_status = ?";
-  const bindValues: unknown[] = [
-    detailPredicate.values.length > 0 ? 1 : detailScope === "branch" ? 1 : 0,
-    ...detailPredicate.values,
-    context.activeBranch.branchId,
-  ];
-  if (status !== "all") bindValues.push(status);
-  bindValues.push(`%${search}%`, `%${search}%`, `%${search}%`);
-  bindValues.push(...readPredicate.values, limit);
   const rows = await env.DB.prepare(`
     SELECT c.id, c.first_name, c.last_name, c.preferred_name,
            CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.phone_e164 ELSE NULL END AS phone_e164,
            CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.email_normalized ELSE NULL END AS email,
-           c.age_range, c.preferred_language, c.contact_status, c.created_at, c.updated_at
+           CASE WHEN ? = 1 AND (${privatePredicate.sql}) THEN c.age_range ELSE NULL END AS age_range,
+           CASE WHEN ? = 1 AND (${privatePredicate.sql}) THEN c.preferred_language ELSE NULL END AS preferred_language,
+           c.contact_status, c.created_at, c.updated_at
     FROM contact c
     WHERE c.branch_id = ?
       AND ${statusPredicate}
@@ -1242,6 +1238,8 @@ async function listContacts(
   `).bind(
     detailScope ? 1 : 0, ...detailPredicate.values,
     detailScope ? 1 : 0, ...detailPredicate.values,
+    privateScope ? 1 : 0, ...privatePredicate.values,
+    privateScope ? 1 : 0, ...privatePredicate.values,
     context.activeBranch.branchId,
     ...(status === "all" ? [] : [status]),
     search ? `%${search}%` : "%%",
@@ -1404,16 +1402,33 @@ async function getContact(
     type: "contact", recordId: contactId, teamId: resource.teamId,
   });
   const includeDetails = details.state === "authorized";
+  const privateFields = await authorizeRequestCapability(request, env, "contacts.private_fields.read", {
+    type: "contact", recordId: contactId, teamId: resource.teamId,
+  });
+  const includePrivate = privateFields.state === "authorized";
+  const privatePredicate = contactScopePredicate(
+    includePrivate ? privateFields.decision.scopeMode as ContactScopeMode : null,
+    "c", access.staff.userId, access.activeBranch.branchId, now,
+  );
+  const detailPredicate = contactScopePredicate(
+    includeDetails ? details.decision.scopeMode as ContactScopeMode : null,
+    "c", access.staff.userId, access.activeBranch.branchId, now,
+  );
   const row = await env.DB.prepare(`
     SELECT c.id, c.first_name, c.last_name, c.preferred_name,
-           CASE WHEN ? = 1 THEN c.phone_e164 ELSE NULL END AS phone_e164,
-           CASE WHEN ? = 1 THEN c.email_normalized ELSE NULL END AS email,
-           c.age_range, c.preferred_language, c.contact_status, c.created_at, c.updated_at
+           CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.phone_e164 ELSE NULL END AS phone_e164,
+           CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.email_normalized ELSE NULL END AS email,
+           CASE WHEN ? = 1 AND (${privatePredicate.sql}) THEN c.age_range ELSE NULL END AS age_range,
+           CASE WHEN ? = 1 AND (${privatePredicate.sql}) THEN c.preferred_language ELSE NULL END AS preferred_language,
+           c.contact_status, c.created_at, c.updated_at
     FROM contact c
     WHERE c.id = ? AND c.branch_id = ? AND (${predicate.sql})
     LIMIT 1
   `).bind(
-    includeDetails ? 1 : 0, includeDetails ? 1 : 0,
+    includeDetails ? 1 : 0, ...detailPredicate.values,
+    includeDetails ? 1 : 0, ...detailPredicate.values,
+    includePrivate ? 1 : 0, ...privatePredicate.values,
+    includePrivate ? 1 : 0, ...privatePredicate.values,
     contactId, access.activeBranch.branchId, ...predicate.values,
   ).first<Record<string, unknown>>();
   if (!row) return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND" } }, requestId, origin);
@@ -1442,6 +1457,10 @@ async function updateContact(
     return json(400, { ok: false, error: { code: "INVALID_CONTACT_UPDATE" } }, requestId, origin);
   }
   const values: Record<string, string | null> = {};
+  const privateFieldsAllowed = access.activeBranch.capabilities.some((grant) => grant.code === "contacts.private_fields.read");
+  if ((Object.hasOwn(payload, "age_range") || Object.hasOwn(payload, "preferred_language")) && !privateFieldsAllowed) {
+    return json(403, { ok: false, error: { code: "PRIVATE_CONTACT_FIELDS_FORBIDDEN" } }, requestId, origin);
+  }
   for (const [key, value] of Object.entries(payload)) {
     if (value !== null && typeof value !== "string") {
       return json(400, { ok: false, error: { code: "INVALID_CONTACT_UPDATE_VALUE" } }, requestId, origin);
