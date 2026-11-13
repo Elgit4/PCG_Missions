@@ -1,0 +1,543 @@
+{
+  "format_version": 1,
+  "source_project": "PCG Missions",
+  "source_region": "eu-west-1",
+  "target_database": "pcg-missions-dev",
+  "identity_mapping_required": true,
+  "tables": [
+    {
+      "source_table": "public.church",
+      "target_table": "church",
+      "primary_key": [
+        "id"
+      ],
+      "action": "reconcile",
+      "classification": "operational",
+      "reason": "compare approved reference data; do not blindly overwrite seeded target policy"
+    },
+    {
+      "source_table": "public.branch",
+      "target_table": "branch",
+      "primary_key": [
+        "id"
+      ],
+      "action": "reconcile",
+      "classification": "operational",
+      "reason": "compare approved reference data; do not blindly overwrite seeded target policy"
+    },
+    {
+      "source_table": "public.staff_profile",
+      "target_table": "staff_profile",
+      "primary_key": [
+        "id"
+      ],
+      "action": "transform",
+      "classification": "highly_restricted",
+      "reason": "requires explicit schema/identity normalization before hash comparison"
+    },
+    {
+      "source_table": "public.role",
+      "target_table": "role",
+      "primary_key": [
+        "id"
+      ],
+      "action": "reconcile",
+      "classification": "operational",
+      "reason": "compare approved reference data; do not blindly overwrite seeded target policy"
+    },
+    {
+      "source_table": "public.capability",
+      "target_table": "capability",
+      "primary_key": [
+        "id"
+      ],
+      "action": "reconcile",
+      "classification": "operational",
+      "reason": "compare approved reference data; do not blindly overwrite seeded target policy"
+    },
+    {
+      "source_table": "public.role_capability",
+      "target_table": "role_capability",
+      "primary_key": [
+        "role_id",
+        "capability_id",
+        "scope_mode"
+      ],
+      "action": "reconcile",
+      "classification": "operational",
+      "reason": "compare approved reference data; do not blindly overwrite seeded target policy"
+    },
+    {
+      "source_table": "public.staff_role_assignment",
+      "target_table": "staff_role_assignment",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.team",
+      "target_table": "team",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "operational",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.staff_team_membership",
+      "target_table": "staff_team_membership",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.service_area",
+      "target_table": "service_area",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "operational",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.staff_area_coverage",
+      "target_table": "staff_area_coverage",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.contact",
+      "target_table": "contact",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.contact_capture",
+      "target_table": "contact_capture",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.contact_assignment",
+      "target_table": "contact_assignment",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.contact_note",
+      "target_table": "contact_note",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.contact_interaction",
+      "target_table": "contact_interaction",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.contact_merge",
+      "target_table": "contact_merge",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "operational",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.followup_list",
+      "target_table": "followup_list",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "operational",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.followup_task",
+      "target_table": "followup_task",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.followup_task_event",
+      "target_table": "followup_task_event",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.prayer_request",
+      "target_table": "prayer_request",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.prayer_assignment",
+      "target_table": "prayer_assignment",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.prayer_access_audit",
+      "target_table": "prayer_access_audit",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.care_group",
+      "target_table": "care_group",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "operational",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.care_group_membership",
+      "target_table": "care_group_membership",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "operational",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.care_record",
+      "target_table": "care_record",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.care_assignment",
+      "target_table": "care_assignment",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.care_interaction",
+      "target_table": "care_interaction",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.care_access_audit",
+      "target_table": "care_access_audit",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.event",
+      "target_table": "event",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.event_staff_assignment",
+      "target_table": "event_staff_assignment",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.event_team_assignment",
+      "target_table": "event_team_assignment",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.event_registration",
+      "target_table": "event_registration",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.transport_option",
+      "target_table": "transport_option",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "operational",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.transport_reservation",
+      "target_table": "transport_reservation",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "highly_restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.event_checkin",
+      "target_table": "event_checkin",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.event_closeout",
+      "target_table": "event_closeout",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.event_closeout_event",
+      "target_table": "event_closeout_event",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.event_idempotency_receipt",
+      "target_table": "event_idempotency_receipt",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "operational",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.calendar_entry",
+      "target_table": "calendar_entry",
+      "primary_key": [
+        "id"
+      ],
+      "action": "transform",
+      "classification": "restricted",
+      "reason": "requires explicit schema/identity normalization before hash comparison"
+    },
+    {
+      "source_table": "public.announcement",
+      "target_table": "announcement",
+      "primary_key": [
+        "id"
+      ],
+      "action": "transform",
+      "classification": "restricted",
+      "reason": "requires explicit schema/identity normalization before hash comparison"
+    },
+    {
+      "source_table": "public.announcement_team_audience",
+      "target_table": "announcement_team_audience",
+      "primary_key": [
+        "announcement_id",
+        "team_id"
+      ],
+      "action": "copy",
+      "classification": "operational",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.announcement_event_audience",
+      "target_table": "announcement_event_audience",
+      "primary_key": [
+        "announcement_id",
+        "event_id"
+      ],
+      "action": "copy",
+      "classification": "operational",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.church_public_profile",
+      "target_table": "church_public_profile",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "public_content",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.welcome_message",
+      "target_table": "welcome_message",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "public_content",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.sermon",
+      "target_table": "sermon",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "public_content",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.daily_word",
+      "target_table": "daily_word",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "public_content",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.digital_tract",
+      "target_table": "digital_tract",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "public_content",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.external_document_link",
+      "target_table": "external_document_link",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "public_content",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "public.staff_access_audit",
+      "target_table": "staff_access_audit",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve source keys and approved history"
+    },
+    {
+      "source_table": "private.staff_password_reset_request",
+      "target_table": "staff_password_reset_request",
+      "primary_key": [
+        "id"
+      ],
+      "action": "exclude",
+      "classification": "operational",
+      "reason": "secret or one-time recovery state is not portable"
+    },
+    {
+      "source_table": "private.staff_password_reset_audit",
+      "target_table": "staff_password_reset_audit",
+      "primary_key": [
+        "id"
+      ],
+      "action": "reconcile",
+      "classification": "highly_restricted",
+      "reason": "compare approved reference data; do not blindly overwrite seeded target policy"
+    },
+    {
+      "source_table": "private.first_admin_bootstrap_lease",
+      "target_table": "first_admin_bootstrap_lease",
+      "primary_key": [
+        "lock_name"
+      ],
+      "action": "exclude",
+      "classification": "operational",
+      "reason": "secret or one-time recovery state is not portable"
+    }
+  ]
+}
