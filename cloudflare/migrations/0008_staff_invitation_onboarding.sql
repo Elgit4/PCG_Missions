@@ -79,6 +79,16 @@ BEGIN
       AND ra.starts_at <= NEW.created_at
       AND (ra.ends_at IS NULL OR ra.ends_at > NEW.created_at)
       AND c.code IN ('staff.account.manage','staff.role.assign')
+      AND EXISTS (
+        SELECT 1 FROM role_capability required_rc
+        JOIN capability required_c ON required_c.id = required_rc.capability_id AND required_c.is_active = 1
+        WHERE required_rc.role_id = r.id AND required_c.code = 'staff.account.manage'
+      )
+      AND EXISTS (
+        SELECT 1 FROM role_capability required_rc
+        JOIN capability required_c ON required_c.id = required_rc.capability_id AND required_c.is_active = 1
+        WHERE required_rc.role_id = r.id AND required_c.code = 'staff.role.assign'
+      )
       AND target_role.code IN ('coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor')
   ) THEN RAISE(ABORT, 'STAFF_INVITATION_NOT_AUTHORIZED') END;
 
@@ -139,6 +149,16 @@ BEGIN
         AND ra.starts_at <= NEW.accepted_at
         AND (ra.ends_at IS NULL OR ra.ends_at > NEW.accepted_at)
         AND c.code IN ('staff.account.manage','staff.role.assign')
+        AND EXISTS (
+          SELECT 1 FROM role_capability required_rc
+          JOIN capability required_c ON required_c.id = required_rc.capability_id AND required_c.is_active = 1
+          WHERE required_rc.role_id = r.id AND required_c.code = 'staff.account.manage'
+        )
+        AND EXISTS (
+          SELECT 1 FROM role_capability required_rc
+          JOIN capability required_c ON required_c.id = required_rc.capability_id AND required_c.is_active = 1
+          WHERE required_rc.role_id = r.id AND required_c.code = 'staff.role.assign'
+        )
     )
   ) THEN RAISE(ABORT, 'STAFF_INVITATION_ACCEPTANCE_INVALID') END;
 
