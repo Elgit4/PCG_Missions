@@ -311,9 +311,9 @@ CREATE TABLE IF NOT EXISTS staff_role_elevation_request (
       AND review_reason IS NOT NULL AND length(trim(review_reason)) BETWEEN 10 AND 500)
   )
 );
-CREATE UNIQUE INDEX IF NOT EXISTS staff_role_elevation_one_pending_idx
+CREATE UNIQUE INDEX IF NOT EXISTS staff_role_elevation_one_open_idx
   ON staff_role_elevation_request(branch_id, target_profile_id)
-  WHERE status = 'pending';
+  WHERE status IN ('pending', 'approved');
 
 CREATE TABLE IF NOT EXISTS staff_role_elevation_audit (
   id TEXT PRIMARY KEY,
@@ -358,6 +358,18 @@ BEGIN
     WHERE actor.id = NEW.requested_by
       AND actor.account_status = 'active'
       AND target.account_status = 'active'
+      AND NOT EXISTS (
+        SELECT 1 FROM staff_role_assignment existing
+        JOIN role er ON er.id = existing.role_id
+        WHERE existing.staff_profile_id = target.id
+          AND existing.branch_id = NEW.branch_id
+          AND er.code = 'admin_pastor'
+          AND existing.revoked_at IS NULL
+          AND existing.starts_at <= NEW.requested_at
+          AND (existing.ends_at IS NULL OR existing.ends_at > NEW.requested_at)
+      )
+      AND NEW.status = 'pending'
+      AND NEW.reviewed_by IS NULL AND NEW.reviewed_at IS NULL AND NEW.review_reason IS NULL
       AND ra.branch_id = NEW.branch_id
       AND ra.revoked_at IS NULL
       AND ra.starts_at <= NEW.requested_at
@@ -444,10 +456,6 @@ CREATE TRIGGER IF NOT EXISTS staff_role_assignment_admin_elevation_insert
 BEFORE INSERT ON staff_role_assignment
 WHEN (SELECT code FROM role WHERE id = NEW.role_id) = 'admin_pastor'
 BEGIN
-  SELECT CASE WHEN NEW.approval_request_id IS NULL
-    AND (SELECT remaining_slots FROM staff_admin_bootstrap_state WHERE id = 1) <= 0
-    THEN RAISE(ABORT, 'ADMIN_PASTOR_REQUIRES_DUAL_APPROVAL') END;
-
   SELECT CASE WHEN NOT EXISTS (
     SELECT 1 FROM staff_role_elevation_request req
     WHERE req.branch_id = NEW.branch_id
@@ -464,7 +472,7 @@ END;
 CREATE TRIGGER IF NOT EXISTS staff_role_assignment_admin_bootstrap_consume
 AFTER INSERT ON staff_role_assignment
 WHEN (SELECT code FROM role WHERE id = NEW.role_id) = 'admin_pastor'
-  AND NOT EXISTS (SELECT 1 FROM staff_role_elevation_request req WHERE req.branch_id = NEW.branch_id AND req.target_profile_id = NEW.staff_profile_id AND req.role_id = NEW.role_id AND req.status = 'approved' AND req.reviewed_by = NEW.assigned_by AND req.requested_by <> req.reviewed_by AND req.reviewed_at <= NEW.starts_at)
+  AND NOT EXISTS (SELECT 1 FROM staff_role_elevation_request req WHERE req.branch_id = NEW.branch_id AND req.target_profile_id = NEW.staff_profile_id AND req.role_id = NEW.role_id AND req.status IN ('approved','applied') AND req.reviewed_by = NEW.assigned_by AND req.requested_by <> req.reviewed_by AND req.reviewed_at <= NEW.starts_at)
 BEGIN
   UPDATE staff_admin_bootstrap_state
   SET remaining_slots = remaining_slots - 1
@@ -520,7 +528,7 @@ CREATE TRIGGER IF NOT EXISTS staff_role_assignment_admin_last_holder_guard
 BEFORE UPDATE OF revoked_at, ends_at ON staff_role_assignment
 WHEN (SELECT code FROM role WHERE id = OLD.role_id) = 'admin_pastor'
   AND OLD.revoked_at IS NULL
-  AND (NEW.revoked_at IS NOT NULL OR (NEW.ends_at IS NOT NULL AND NEW.ends_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now')))
+  AND (NEW.revoked_at IS NOT NULL OR NEW.ends_at IS NOT NULL)
   AND (
     SELECT COUNT(*) FROM staff_role_assignment active
     JOIN role ar ON ar.id = active.role_id
