@@ -248,7 +248,7 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("prayer_access_audit", code)
         self.assertIn("prayer_request_idempotency", self.prayer_idempotency_migration)
         self.assertIn("schema_version=23", self.prayer_idempotency_migration)
-        self.assertIn("request_text.length > 10000", code)
+        self.assertIn("requestText.length > 10000", code)
         self.assertIn('url.pathname === "/api/v1/pastoral/prayer/requests"', self.source)
 
 
