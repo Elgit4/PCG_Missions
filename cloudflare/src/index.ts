@@ -4102,13 +4102,10 @@ async function listContentAudit(
       (a.branch_id IS NULL AND a.church_id IS NULL AND EXISTS (
         SELECT 1 FROM staff_role_assignment ra
         WHERE ra.staff_profile_id=a.actor_profile_id AND ra.branch_id=?
-          AND ra.revoked_at IS NULL AND ra.starts_at<=?
-          AND (ra.ends_at IS NULL OR ra.ends_at>?)
       ))
     ORDER BY a.created_at DESC,a.id DESC LIMIT 100
   `).bind(
     access.activeBranch.branchId,branch?.church_id??"",access.activeBranch.branchId,
-    new Date().toISOString(),new Date().toISOString(),
   ).all<Record<string,unknown>>();
   return json(200,{ok:true,audit:rows.results??[]},requestId,origin);
 }
@@ -4763,7 +4760,9 @@ async function updatePrayerRequestStatus(
     const contentActionMatch = url.pathname.match(/^\/api\/v1\/content\/(welcome-messages|sermons|daily-words|digital-tracts)\/([^/]+)\/(publish|archive)$/);
     if (contentActionMatch && request.method === "POST") {
       const kind = contentActionMatch[1] as ContentKind;
-      const contentId = decodeURIComponent(contentActionMatch[2]);
+      let contentId: string;
+      try { contentId = decodeURIComponent(contentActionMatch[2]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CONTENT_ID"}},requestId,origin); }
       if (!contentKindConfig(kind)) return json(404,{ok:false,error:{code:"CONTENT_KIND_NOT_FOUND"}},requestId,origin);
       if (contentActionMatch[3] === "publish") return publishContent(request,env,kind,contentId,requestId,origin);
       return archiveContent(request,env,kind,contentId,requestId,origin);
@@ -4771,7 +4770,9 @@ async function updatePrayerRequestStatus(
     const contentItemMatch = url.pathname.match(/^\/api\/v1\/content\/(welcome-messages|sermons|daily-words|digital-tracts)\/([^/]+)$/);
     if (contentItemMatch && request.method === "PATCH") {
       const kind = contentItemMatch[1] as ContentKind;
-      const contentId = decodeURIComponent(contentItemMatch[2]);
+      let contentId: string;
+      try { contentId = decodeURIComponent(contentItemMatch[2]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CONTENT_ID"}},requestId,origin); }
       return updateContent(request,env,kind,contentId,requestId,origin);
     }
     const contentKindMatch = url.pathname.match(/^\/api\/v1\/content\/(welcome-messages|sermons|daily-words|digital-tracts)$/);
