@@ -79,12 +79,12 @@ Admin/Pastor revocation is blocked in the standard-role endpoint and is availabl
 
 ## Deliberately incomplete
 
-- Public sign-up is disabled. There is not yet a staff invitation/create-account endpoint.
+- Public Better Auth sign-up remains disabled. The only creation path is the server-validated invitation acceptance route; its request-local Better Auth instance permits sign-up only after a 256-bit invitation token is verified.
 - Password-reset delivery is intentionally not simulated. The callback fails closed until a real email provider is configured and tested.
 - The Better Auth session-create hook blocks identities without an active staff profile. A D1 trigger deletes all existing sessions immediately when a staff profile changes from active to inactive/suspended. The complete administrative lifecycle (invitation expiry, audited deactivation/reactivation endpoints and session-revocation UX) is not yet wired to Worker routes.
 - The staff-context endpoint reports capabilities for UI composition only. It is not an authorization grant by itself. Every future business handler must call the server-side authorization layer and include the branch/record predicate in the same SQL statement that reads or mutates the record.
 - The manually authored Better Auth core tables still require validation against the exact pinned library using its schema-check tooling and an actual local D1 runtime. CI type-checking alone does not prove schema compatibility.
-- Email delivery, MFA policy, abuse monitoring and account recovery need a separate implementation and test pass.
+- Invitation delivery is not connected to an email provider: the invitation token is returned once to the authorized administrator for manual secure delivery. Email delivery, password-reset delivery, MFA policy, abuse monitoring and account recovery need a separate implementation and test pass.
 
 ## Security constraints
 
