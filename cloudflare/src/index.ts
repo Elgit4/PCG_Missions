@@ -2350,6 +2350,152 @@ async function updateFollowupTask(
   return json(200, { ok: true, task_id: taskId, status: nextStatus, updated_at: now }, requestId, origin);
 }
 
+
+async function reassignFollowupTask(
+  request: Request,
+  env: Env,
+  taskId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const now = new Date().toISOString();
+  const task = await env.DB.prepare(`
+    SELECT id, status, team_id, assignee_user_id
+    FROM followup_task WHERE id = ? AND branch_id = ? LIMIT 1
+  `).bind(taskId, context.activeBranch.branchId).first<{
+    id: string; status: string; team_id: string | null; assignee_user_id: string | null;
+  }>();
+  if (!task) return json(404, { ok: false, error: { code: "FOLLOWUP_TASK_NOT_FOUND" } }, requestId, origin);
+
+  let teamId = task.team_id ?? undefined;
+  if (!teamId && task.assignee_user_id) {
+    const membership = await env.DB.prepare(`
+      SELECT tm.team_id
+      FROM staff_team_membership tm
+      JOIN staff_profile assignee ON assignee.auth_user_id = ?
+      JOIN staff_team_membership member
+        ON member.staff_profile_id = assignee.id AND member.team_id = tm.team_id
+      WHERE tm.staff_profile_id = ? AND tm.branch_id = ?
+        AND tm.membership_role = 'leader' AND tm.revoked_at IS NULL
+        AND tm.starts_at <= ? AND (tm.ends_at IS NULL OR tm.ends_at > ?)
+        AND member.revoked_at IS NULL
+        AND member.starts_at <= ? AND (member.ends_at IS NULL OR member.ends_at > ?)
+      LIMIT 1
+    `).bind(
+      task.assignee_user_id, context.staff.profileId, context.activeBranch.branchId,
+      now, now, now, now,
+    ).first<{ team_id: string }>();
+    teamId = membership?.team_id;
+  }
+
+  const access = await authorizeRequestCapability(request, env, "followup.assign", {
+    type: "followup_task", recordId: taskId, teamId,
+  });
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { assignee_profile_id?: unknown; team_id?: unknown; reason?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !["assignee_profile_id","team_id","reason"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_FOLLOWUP_ASSIGNMENT_BODY" } }, requestId, origin);
+  }
+  const assigneeProfileId = typeof payload.assignee_profile_id === "string" ? payload.assignee_profile_id.trim() : "";
+  const requestedTeamId = typeof payload.team_id === "string" ? payload.team_id.trim() : "";
+  const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+  if (!!assigneeProfileId === !!requestedTeamId || reason.length < 10 || reason.length > 500) {
+    return json(400, { ok: false, error: { code: "INVALID_FOLLOWUP_ASSIGNMENT_TARGET" } }, requestId, origin);
+  }
+
+  let nextAssignee: string | null = null;
+  let nextTeam: string | null = null;
+  const assignScope = access.decision.scopeMode;
+  if (assigneeProfileId) {
+    const target = await env.DB.prepare(`
+      SELECT sp.auth_user_id
+      FROM staff_profile sp
+      WHERE sp.id = ? AND sp.account_status = 'active'
+        AND EXISTS (
+          SELECT 1 FROM staff_role_assignment ra
+          JOIN role r ON r.id = ra.role_id AND r.is_active = 1
+          WHERE ra.staff_profile_id = sp.id AND ra.branch_id = ?
+            AND ra.revoked_at IS NULL AND ra.starts_at <= ?
+            AND (ra.ends_at IS NULL OR ra.ends_at > ?)
+        )
+      LIMIT 1
+    `).bind(assigneeProfileId, context.activeBranch.branchId, now, now).first<{ auth_user_id: string }>();
+    if (!target) return json(400, { ok: false, error: { code: "FOLLOWUP_ASSIGNEE_NOT_ACTIVE" } }, requestId, origin);
+    if (assignScope === "team") {
+      const member = await env.DB.prepare(`
+        SELECT 1 FROM staff_team_membership tm
+        WHERE tm.staff_profile_id = ? AND tm.team_id = ? AND tm.branch_id = ?
+          AND tm.revoked_at IS NULL AND tm.starts_at <= ?
+          AND (tm.ends_at IS NULL OR tm.ends_at > ?)
+        LIMIT 1
+      `).bind(assigneeProfileId, teamId, context.activeBranch.branchId, now, now).first();
+      if (!member) return json(403, { ok: false, error: { code: "FOLLOWUP_ASSIGNEE_OUTSIDE_TEAM" } }, requestId, origin);
+    }
+    nextAssignee = target.auth_user_id;
+  } else {
+    const targetTeam = await env.DB.prepare(
+      "SELECT id FROM team WHERE id = ? AND branch_id = ? AND is_active = 1 LIMIT 1",
+    ).bind(requestedTeamId, context.activeBranch.branchId).first<{ id: string }>();
+    if (!targetTeam) return json(400, { ok: false, error: { code: "FOLLOWUP_TEAM_NOT_ACTIVE" } }, requestId, origin);
+    if (assignScope === "team" && targetTeam.id !== teamId) {
+      return json(403, { ok: false, error: { code: "FOLLOWUP_TEAM_OUTSIDE_SCOPE" } }, requestId, origin);
+    }
+    nextTeam = targetTeam.id;
+  }
+
+  if (nextAssignee === task.assignee_user_id && nextTeam === task.team_id) {
+    return json(409, { ok: false, error: { code: "FOLLOWUP_ASSIGNMENT_UNCHANGED" } }, requestId, origin);
+  }
+  const predicate = followupScopePredicate(
+    access.decision.scopeMode as FollowupScopeMode, "ft",
+    access.staff.profileId, access.staff.userId, now,
+  );
+  const eventId = crypto.randomUUID();
+  const details = JSON.stringify({
+    previous_assignee_user_id: task.assignee_user_id,
+    previous_team_id: task.team_id,
+    assignee_profile_id: assigneeProfileId || null,
+    team_id: nextTeam,
+    reason,
+  });
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE followup_task ft
+        SET assignee_user_id = ?, team_id = ?, updated_at = ?
+        WHERE ft.id = ? AND ft.branch_id = ? AND (${predicate.sql})
+      `).bind(
+        nextAssignee, nextTeam, now, taskId, context.activeBranch.branchId, ...predicate.values,
+      ),
+      env.DB.prepare(`
+        INSERT INTO followup_task_event
+          (id, task_id, actor_user_id, event_type, from_status, to_status, details, created_at)
+        SELECT ?, ft.id, ?, 'reassigned', ?, ?, ?, ?
+        FROM followup_task ft
+        WHERE ft.id = ? AND ft.branch_id = ? AND changes() = 1
+      `).bind(
+        eventId, access.staff.userId, task.status, task.status, details, now,
+        taskId, context.activeBranch.branchId,
+      ),
+    ]);
+    if (results.some((result) => !result.success) ||
+        (results[0]?.meta?.changes ?? 0) !== 1 ||
+        (results[1]?.meta?.changes ?? 0) !== 1) {
+      return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_CHANGED" } }, requestId, origin);
+    }
+  } catch {
+    return json(409, { ok: false, error: { code: "FOLLOWUP_REASSIGNMENT_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, task_id: taskId, assignee_profile_id: assigneeProfileId || null, team_id: nextTeam }, requestId, origin);
+}
+
 async function listStaffAudit(
   request: Request,
   env: Env,
@@ -2479,6 +2625,14 @@ export default {
     if (url.pathname === "/api/v1/followup/tasks" && request.method === "POST") {
       return createFollowupTask(request, env, requestId, origin);
     }
+    const followupTaskAssignMatch = url.pathname.match(/^\/api\/v1\/followup\/tasks\/([^/]+)\/assign$/);
+    if (followupTaskAssignMatch && request.method === "POST") {
+      let taskId: string;
+      try { taskId = decodeURIComponent(followupTaskAssignMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_FOLLOWUP_TASK_ID" } }, requestId, origin); }
+      return reassignFollowupTask(request, env, taskId, requestId, origin);
+    }
+
     const followupTaskMatch = url.pathname.match(/^\/api\/v1\/followup\/tasks\/([^/]+)$/);
     if (followupTaskMatch && request.method === "PATCH") {
       let taskId: string;
