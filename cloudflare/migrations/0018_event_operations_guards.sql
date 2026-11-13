@@ -213,6 +213,7 @@ BEGIN
               AND stm.starts_at<=NEW.updated_at AND (stm.ends_at IS NULL OR stm.ends_at>NEW.updated_at)
           )
         )
+      )
   THEN RAISE(ABORT,'TRANSPORT_RESERVATION_UPDATE_NOT_AUTHORIZED') END;
 END;
 
