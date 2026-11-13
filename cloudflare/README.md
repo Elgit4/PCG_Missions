@@ -11,7 +11,9 @@ This is an isolated Cloudflare Workers + D1 implementation track. It is not conn
 - Remote migration ledger: 24 applied migrations
 - Remote application tables: 77 (excluding Wrangler's migration ledger)
 - Source branch includes migration 0025 (schema version 25); it is not yet applied remotely
-- Full API Worker: not deployed; only the read-only D1 smoke Worker is deployed
+- Full API Worker: not deployed
+- Diagnostic Worker: `pcg-missions-d1-smoke`, read-only `GET /health` with the EU D1 binding; public HTTP response still needs independent verification
+- Diagnostic URL: https://pcg-missions-d1-smoke.pcg-missions-nonprod.workers.dev/health
 - Production Supabase, Vercel, DNS and live data: unchanged
 
 The database was created with an EU jurisdiction. This setting is fixed at creation time. EU D1 placement does not, by itself, guarantee EU-only processing for Worker execution, logs, email delivery, analytics or third-party providers; those require separate data-location review.
