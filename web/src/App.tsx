@@ -3,6 +3,7 @@ import { StaffLogin, type StaffAuthView } from "./components/StaffLogin";
 import { StaffWorkspace } from "./components/StaffWorkspace";
 import { AuthClientError, PcgAuthClient } from "./lib/auth";
 import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
+import { ThemeToggle } from "./lib/theme";
 
 export default function App() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
@@ -259,6 +260,7 @@ export default function App() {
   return (
     <StaffLogin
       view={view}
+      themeToggle={<ThemeToggle />}
       configurationError={configurationError}
       error={error}
       notice={notice}
