@@ -1,5 +1,5 @@
 begin;
-select plan(27);
+select plan(28);
 
 select has_table('public','ministry_report','Typed ministry report table exists');
 select has_table('public','report_review_event','Append-only report review history exists');
@@ -55,6 +55,19 @@ from public.role r where r.code='field_worker';
 insert into public.staff_role_assignment(staff_profile_id,role_id,branch_id,assigned_by)
 select '73000000-0000-4000-8000-000000000021',r.id,'71000000-0000-4000-8000-000000000020','73000000-0000-4000-8000-000000000021'
 from public.role r where r.code='coordinator';
+
+insert into auth.users(
+  instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,
+  raw_app_meta_data,raw_user_meta_data,created_at,updated_at
+) values(
+  '00000000-0000-0000-0000-000000000000',
+  '72000000-0000-4000-8000-000000000022',
+  'authenticated','authenticated','report-unassigned@example.invalid',
+  'not-a-real-password-hash',now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb,now(),now()
+);
+insert into public.staff_profile(id,auth_user_id,full_name,account_status,must_change_password)
+values('73000000-0000-4000-8000-000000000022','72000000-0000-4000-8000-000000000022','Unassigned Report User','active',false);
 
 select throws_ok(
   $q$ insert into public.ministry_report(branch_id,report_type,period_start,period_end,author_profile_id)
@@ -126,6 +139,13 @@ select throws_ok(
   ) $q$,
   '42501','REPORT_SELF_REVIEW_FORBIDDEN',
   'Self-review remains forbidden inside the transaction');
+select throws_ok(
+  $q$ select public.cmi_review_ministry_report(
+    (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
+    '73000000-0000-4000-8000-000000000022','approved',null
+  ) $q$,
+  '42501','REPORT_REVIEW_SCOPE_REQUIRED',
+  'A staff member without an active report review grant is denied transactionally');
 select lives_ok(
   $q$ select public.cmi_review_ministry_report(
     (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
