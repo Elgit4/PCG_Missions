@@ -27,7 +27,7 @@ Multiple roles are additive only for the verified actor in the selected branch. 
 
 ## Sensitive data boundaries
 
-- contacts.private_fields.read is separate from contacts.read. Field Worker and Follow-up Volunteer do not receive it.
+- Phone/email are controlled by contacts.contact_details.read and still require the same branch/team/assigned predicate as the contact or follow-up task. Follow-up Volunteer receives only this minimized detail projection through an assigned task, not general contact browsing. contacts.private_fields.read is a separate highly restricted grant reserved to Admin/Pastor; it is not implied by contact visibility.
 - Follow-up task APIs must return a minimized contact projection, never the full contact row.
 - Prayer request content is highly restricted; Prayer Intercessors see only explicitly assigned/shared requests. Reads and changes must be audited.
 - No baseline role receives pastoral.case.read or pastoral.case.update. A separately reviewed, time-bounded explicit share is required. Reads and changes must be audited.
