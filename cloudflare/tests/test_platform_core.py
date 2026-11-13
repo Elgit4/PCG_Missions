@@ -441,3 +441,62 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         grants = self.grants("admin_pastor")
         self.assertIn("staff.role.approve", grants)
         self.assertNotIn("staff.role.assign_admin_pastor", grants)
+
+
+    def test_explicit_record_share_is_time_bounded_revocable_and_audited(self):
+        self.db.execute(
+            """INSERT INTO church (id, name, created_at, updated_at)
+               VALUES ('share-church', 'Share Church', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO branch (id, church_id, name, created_at, updated_at)
+               VALUES ('share-branch', 'share-church', 'Share Branch', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        for user_id, email, staff_id, name in (
+            ("share-user-a", "a@example.test", "share-staff-a", "Grantor"),
+            ("share-user-b", "b@example.test", "share-staff-b", "Recipient"),
+        ):
+            self.db.execute(
+                """INSERT INTO "user" (id, name, email, createdAt, updatedAt) VALUES (?, ?, ?, 1, 1)""",
+                (user_id, name, email),
+            )
+            self.db.execute(
+                """INSERT INTO staff_profile
+                   (id, auth_user_id, full_name, account_status, created_at, updated_at)
+                   VALUES (?, ?, ?, 'active', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')""",
+                (staff_id, user_id, name),
+            )
+        self.db.execute(
+            """INSERT INTO staff_record_share
+               (id, branch_id, record_type, record_id, staff_profile_id, granted_by,
+                purpose, starts_at, ends_at, created_at)
+               VALUES ('share-1', 'share-branch', 'prayer_request', 'prayer-1',
+                       'share-staff-b', 'share-staff-a', 'Temporary prayer team coverage',
+                       '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z',
+                       '2026-01-01T00:00:00.000Z')"""
+        )
+        grant_audit = self.db.execute(
+            "SELECT actor_profile_id, action FROM sensitive_record_access_audit WHERE id = 'share-grant-share-1'"
+        ).fetchone()
+        self.assertEqual(grant_audit, ("share-staff-a", "share_granted"))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO staff_record_share
+                   (id, branch_id, record_type, record_id, staff_profile_id, granted_by,
+                    purpose, starts_at, created_at)
+                   VALUES ('share-overlap', 'share-branch', 'prayer_request', 'prayer-1',
+                           'share-staff-b', 'share-staff-a', 'Overlapping prayer coverage',
+                           '2026-01-15T00:00:00.000Z', '2026-01-15T00:00:00.000Z')"""
+            )
+        self.db.execute(
+            """UPDATE staff_record_share SET revoked_at = '2026-01-10T00:00:00.000Z',
+               revoked_by = 'share-staff-a' WHERE id = 'share-1'"""
+        )
+        revoke_audit = self.db.execute(
+            "SELECT actor_profile_id, action FROM sensitive_record_access_audit WHERE id = 'share-revoke-share-1'"
+        ).fetchone()
+        self.assertEqual(revoke_audit, ("share-staff-a", "share_revoked"))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE staff_record_share SET revoked_at = NULL, revoked_by = NULL WHERE id = 'share-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM staff_record_share WHERE id = 'share-1'")
