@@ -6,17 +6,20 @@ import {
   parseAnnouncementPatch,
 } from "./validation.ts";
 import { readJson } from "../_shared/request_body.ts";
+import {
+  createAllowedOrigins,
+  createCorsHeaders,
+  createPreflightResponse,
+  isAllowedOrigin,
+} from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "";
 const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const allowedOrigins = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+const allowedOrigins = createAllowedOrigins(
+  Deno.env.get("CMI_ALLOWED_ORIGINS"),
 );
 
 function createServiceClient() {
@@ -55,24 +58,12 @@ function response(
   origin: string | null,
   id: string,
 ): Response {
-  const headers = new Headers({
-    "Content-Type": "application/json; charset=utf-8",
-    "Cache-Control": "no-store",
-    "Pragma": "no-cache",
-    "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-    "X-Request-Id": id,
-    "Vary": "Origin",
-  });
-  if (origin && allowedOrigins.has(origin)) {
-    headers.set("Access-Control-Allow-Origin", origin);
-    headers.set("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
-    headers.set(
-      "Access-Control-Allow-Headers",
-      "Authorization, apikey, Content-Type",
-    );
-    headers.set("Access-Control-Max-Age", "600");
-  }
+  const headers = createCorsHeaders(origin, allowedOrigins);
+  headers.set("Content-Type", "application/json; charset=utf-8");
+  headers.set("Cache-Control", "no-store");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set("X-Request-Id", id);
   return new Response(JSON.stringify(body), { status, headers });
 }
 
@@ -242,22 +233,12 @@ Deno.serve(async (request: Request) => {
   const id = requestId();
   const origin = request.headers.get("Origin");
 
-  if (origin && !allowedOrigins.has(origin)) {
+  if (!isAllowedOrigin(origin, allowedOrigins)) {
     return fail("ORIGIN_NOT_ALLOWED", "Origin not allowed.", 403, null, id);
   }
 
   if (request.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
-        "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-        "Access-Control-Allow-Headers":
-          "Authorization, apikey, Content-Type, x-client-info",
-        "Access-Control-Max-Age": "600",
-        "Vary": "Origin",
-      },
-    });
+    return createPreflightResponse(origin, allowedOrigins);
   }
 
   if (!["GET", "POST", "PATCH"].includes(request.method)) {

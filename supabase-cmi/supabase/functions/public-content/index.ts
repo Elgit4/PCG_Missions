@@ -1,5 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import {
+  CMI_CORS_ALLOWED_HEADERS,
+  createAllowedOrigins,
+  isAllowedOrigin,
+} from "../_shared/cors.ts";
+
+import {
   getScheduledPublicationFilter,
   parsePublicContentRequest,
   PUBLIC_RESOURCES,
@@ -8,12 +14,8 @@ import {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const allowedOrigins = new Set(
-  (Deno.env.get("PUBLIC_CONTENT_ALLOWED_ORIGINS") ??
-    "https://pcg-missions.vercel.app")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+const allowedOrigins = createAllowedOrigins(
+  Deno.env.get("PUBLIC_CONTENT_ALLOWED_ORIGINS"),
 );
 
 const supabase = supabaseUrl && serviceRoleKey
@@ -46,7 +48,7 @@ function response(
   if (origin && allowedOrigins.has(origin)) {
     headers.set("Access-Control-Allow-Origin", origin);
     headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Content-Type");
+    headers.set("Access-Control-Allow-Headers", CMI_CORS_ALLOWED_HEADERS);
   }
   return new Response(JSON.stringify(body), { status, headers });
 }
@@ -54,12 +56,12 @@ function response(
 Deno.serve(async (request: Request) => {
   const origin = request.headers.get("Origin");
 
-  if (origin && !allowedOrigins.has(origin)) {
+  if (!isAllowedOrigin(origin, allowedOrigins)) {
     return response({ error: "Origin not allowed." }, 403, null);
   }
 
   if (request.method === "OPTIONS") {
-    if (origin && !allowedOrigins.has(origin)) {
+    if (!isAllowedOrigin(origin, allowedOrigins)) {
       return response({ error: "Origin not allowed." }, 403, null);
     }
     return new Response(null, {
@@ -67,7 +69,7 @@ Deno.serve(async (request: Request) => {
       headers: {
         ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
         "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
+        "Access-Control-Allow-Headers": CMI_CORS_ALLOWED_HEADERS,
         "Access-Control-Max-Age": "600",
         "Vary": "Origin",
       },

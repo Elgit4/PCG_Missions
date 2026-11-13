@@ -6,14 +6,14 @@ import {
   parseRoleAssignment,
 } from "./validation.ts";
 import { readJson } from "../_shared/request_body.ts";
+import { createAllowedOrigins, isAllowedOrigin } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "",
   SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
   PUBLIC = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
     Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const origins = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
-    .split(",").map((x) => x.trim()).filter(Boolean),
+const origins = createAllowedOrigins(
+  Deno.env.get("CMI_ALLOWED_ORIGINS"),
 );
 function res(body: unknown, status: number, origin: string | null, id: string) {
   const h = new Headers({
@@ -47,7 +47,7 @@ function fail(
 }
 Deno.serve(async (req: Request) => {
   const id = crypto.randomUUID(), origin = req.headers.get("Origin");
-  if (origin && !origins.has(origin)) {
+  if (!isAllowedOrigin(origin, origins)) {
     return fail("ORIGIN_NOT_ALLOWED", "Origin not allowed.", 403, null, id);
   }
   if (req.method === "OPTIONS") {

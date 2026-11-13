@@ -12,15 +12,14 @@ import {
 } from "./validation.ts";
 import { generateTemporaryPassword } from "./temporary_password.ts";
 import { resolveBootstrapPath } from "./bootstrap_state.ts";
+import { createAllowedOrigins, isAllowedOrigin } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const ALLOWED_ORIGINS = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
-    .split(",")
-    .map((value) => value.trim()).filter(Boolean),
+const ALLOWED_ORIGINS = createAllowedOrigins(
+  Deno.env.get("CMI_ALLOWED_ORIGINS"),
 );
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_FROM = Deno.env.get("CMI_AUTH_EMAIL_FROM") ?? "";
@@ -579,7 +578,7 @@ async function bootstrapAdminWithLease(
 Deno.serve(async (request: Request) => {
   const id = crypto.randomUUID();
   const origin = request.headers.get("Origin");
-  if (origin && !ALLOWED_ORIGINS.has(origin)) {
+  if (!isAllowedOrigin(origin, ALLOWED_ORIGINS)) {
     return fail("ORIGIN_NOT_ALLOWED", "Origin not allowed.", 403, null, id);
   }
   if (request.method === "OPTIONS") {

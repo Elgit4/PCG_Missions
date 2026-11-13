@@ -1,6 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 
 import { buildStaffSession } from "./session.ts";
+import { createAllowedOrigins, isAllowedOrigin } from "../_shared/cors.ts";
+
 import type {
   BranchRow,
   RoleAssignmentRow,
@@ -13,11 +15,8 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "";
 const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-const allowedOrigins = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+const allowedOrigins = createAllowedOrigins(
+  Deno.env.get("CMI_ALLOWED_ORIGINS"),
 );
 
 const baseHeaders = {
@@ -79,7 +78,7 @@ Deno.serve(async (request: Request) => {
   const id = requestId();
   const origin = request.headers.get("Origin");
 
-  if (origin && !allowedOrigins.has(origin)) {
+  if (!isAllowedOrigin(origin, allowedOrigins)) {
     return errorResponse(
       "ORIGIN_NOT_ALLOWED",
       "Origin not allowed.",
