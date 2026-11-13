@@ -31,6 +31,7 @@ The Worker exposes:
 - Better Auth endpoints under `/api/auth/*` for provisioned-account sign-in and session management.
 - `GET /api/v1/me` for verified staff context and active branch/capability metadata.
 - `GET /api/v1/staff` for a limited branch-scoped staff directory.
+- `GET /api/v1/staff/audit` for a paginated, branch-scoped staff governance audit.
 - `POST /api/v1/staff/{profileId}/deactivate|suspend|reactivate` for audited account lifecycle changes.
 - `GET/POST /api/v1/staff/role-revocations` and `POST /api/v1/staff/role-revocations/{id}/approve|reject` for two-person Admin/Pastor revocation.
 - `POST /api/v1/staff/roles` and `DELETE /api/v1/staff/roles/{assignmentId}` for audited branch-scoped standard-role assignment and revocation by Admin/Pastor.
