@@ -10,7 +10,7 @@ This is an isolated Cloudflare Workers + D1 implementation track. It is not conn
 - Remote EU D1 schema version: 24
 - Remote migration ledger: 24 applied migrations
 - Remote application tables: 77 (excluding Wrangler's migration ledger)
-- Source branch includes migrations 0025–0026 (schema version 26); they are not yet applied remotely
+- Source branch includes migrations 0025–0027 (schema version 27); they are not yet applied remotely
 - Full API Worker: not deployed
 - Diagnostic Worker: `pcg-missions-d1-smoke`, read-only `GET /health` with the EU D1 binding; public HTTP response still needs independent verification
 - Diagnostic URL: https://pcg-missions-d1-smoke.pcg-missions-nonprod.workers.dev/health
@@ -67,7 +67,7 @@ These are source-code routes, not a live service yet: the Cloudflare Worker has 
 
 - Pastoral-care handlers are implemented in source under migration 0025's explicit-share model; real Worker/D1 integration tests and remote migration application remain outstanding.
 - Public event registration remains disabled. Staff registration, capacity enforcement, transport reservations, check-in and closeout handlers are implemented in source but not deployed or runtime-tested; event visibility remains staff-only by default.
-- Privacy-controlled report exports and secure Supabase export/import reconciliation.
+- Secure Supabase export/import reconciliation and Worker runtime verification of the aggregate CSV export.
 - Public registration, public prayer intake, offline access, SMS and email notifications.
 - Invitation/password-reset email delivery. Invitation tokens are currently returned once for authorized manual delivery; password reset fails closed until a provider is configured.
 
