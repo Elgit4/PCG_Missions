@@ -2329,3 +2329,5 @@ button, input, select, textarea { font: inherit; }
   .cmi-structure-person-actions,.cmi-structure-role{grid-column:2;justify-content:flex-start}
   .cmi-inline-confirm{grid-column:1/-1;justify-content:flex-start}
 }
+
+.cmi-structure-leader-note{grid-column:1/-1;margin:0;padding:9px 11px;border:1px solid #e8e1d3;border-radius:7px;background:#fbf8f1;color:#796b52;font-size:9px;line-height:1.55}
