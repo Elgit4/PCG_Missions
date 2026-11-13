@@ -477,7 +477,11 @@ begin
       raise exception using errcode = '22023', message = 'UNSUPPORTED_AREA_COVERAGE_FIELDS';
     end if;
     if coalesce(p_payload->>'area_id','') !~
-      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}
+      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+      or coalesce(p_payload->>'staff_profile_id','') !~
+      '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$' then
+      raise exception using errcode = '22023', message = 'INVALID_AREA_COVERAGE_REFERENCE';
+    end if;
     v_area_id := (p_payload->>'area_id')::uuid;
     v_staff_profile_id := (p_payload->>'staff_profile_id')::uuid;
     if not exists (
