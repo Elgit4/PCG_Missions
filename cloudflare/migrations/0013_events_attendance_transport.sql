@@ -235,4 +235,137 @@ CREATE TABLE event_idempotency_receipt (
 CREATE TRIGGER event_idempotency_receipt_no_update BEFORE UPDATE ON event_idempotency_receipt BEGIN SELECT RAISE(ABORT,'EVENT_IDEMPOTENCY_RECEIPT_IMMUTABLE'); END;
 CREATE TRIGGER event_idempotency_receipt_no_delete BEFORE DELETE ON event_idempotency_receipt BEGIN SELECT RAISE(ABORT,'EVENT_IDEMPOTENCY_RECEIPT_IMMUTABLE'); END;
 
+
+-- Attribute staff registrations and transport reservations to the authenticated actor.
+ALTER TABLE event_registration ADD COLUMN created_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
+ALTER TABLE transport_reservation ADD COLUMN created_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
+
+CREATE TRIGGER event_staff_assignment_authorize_insert
+BEFORE INSERT ON event_staff_assignment
+BEGIN
+ SELECT CASE WHEN NOT EXISTS (
+  SELECT 1 FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='events.manage' AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.assigned_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.starts_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.starts_at)
+ ) THEN RAISE(ABORT,'EVENT_STAFF_ASSIGNMENT_NOT_AUTHORIZED') END;
+ SELECT CASE WHEN NOT EXISTS (
+  SELECT 1 FROM staff_profile target
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=target.id AND ra.branch_id=NEW.branch_id
+  WHERE target.auth_user_id=NEW.staff_auth_user_id AND target.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.starts_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.starts_at)
+ ) THEN RAISE(ABORT,'EVENT_STAFF_TARGET_NOT_ACTIVE_IN_BRANCH') END;
+END;
+
+CREATE TRIGGER event_team_assignment_authorize_insert
+BEFORE INSERT ON event_team_assignment
+BEGIN
+ SELECT CASE WHEN NOT EXISTS (
+  SELECT 1 FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='events.manage' AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.assigned_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.starts_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.starts_at)
+ ) THEN RAISE(ABORT,'EVENT_TEAM_ASSIGNMENT_NOT_AUTHORIZED') END;
+ SELECT CASE WHEN NOT EXISTS (
+  SELECT 1 FROM team t WHERE t.id=NEW.team_id AND t.branch_id=NEW.branch_id AND t.is_active=1
+ ) THEN RAISE(ABORT,'EVENT_TEAM_NOT_ACTIVE_IN_BRANCH') END;
+END;
+
+CREATE TRIGGER event_registration_authorize_insert
+BEFORE INSERT ON event_registration
+BEGIN
+ SELECT CASE WHEN NEW.created_by IS NULL OR NOT EXISTS (
+  SELECT 1 FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.created_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.registered_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.registered_at)
+   AND (
+    (c.code='events.manage' AND rc.scope_mode='branch')
+    OR EXISTS (SELECT 1 FROM event_staff_assignment esa
+      WHERE esa.event_id=NEW.event_id AND esa.branch_id=NEW.branch_id
+       AND esa.staff_auth_user_id=NEW.created_by AND esa.revoked_at IS NULL
+       AND esa.starts_at<=NEW.registered_at AND (esa.ends_at IS NULL OR esa.ends_at>NEW.registered_at))
+    OR EXISTS (SELECT 1 FROM event_team_assignment eta
+      JOIN staff_team_membership stm ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id
+      WHERE eta.event_id=NEW.event_id AND eta.branch_id=NEW.branch_id
+       AND stm.staff_profile_id=actor.id AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL
+       AND eta.starts_at<=NEW.registered_at AND (eta.ends_at IS NULL OR eta.ends_at>NEW.registered_at)
+       AND stm.starts_at<=NEW.registered_at AND (stm.ends_at IS NULL OR stm.ends_at>NEW.registered_at))
+   )
+ ) THEN RAISE(ABORT,'EVENT_REGISTRATION_NOT_AUTHORIZED') END;
+END;
+
+CREATE TRIGGER transport_reservation_authorize_insert
+BEFORE INSERT ON transport_reservation
+BEGIN
+ SELECT CASE WHEN NEW.created_by IS NULL OR NOT EXISTS (
+  SELECT 1 FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.created_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.created_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.created_at)
+   AND (
+    (c.code='events.manage' AND rc.scope_mode='branch')
+    OR EXISTS (SELECT 1 FROM event_staff_assignment esa
+      WHERE esa.event_id=NEW.event_id AND esa.branch_id=NEW.branch_id
+       AND esa.staff_auth_user_id=NEW.created_by AND esa.assignment_role IN ('owner','organizer','transport')
+       AND esa.revoked_at IS NULL AND esa.starts_at<=NEW.created_at
+       AND (esa.ends_at IS NULL OR esa.ends_at>NEW.created_at))
+    OR EXISTS (SELECT 1 FROM event_team_assignment eta
+      JOIN staff_team_membership stm ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id
+      WHERE eta.event_id=NEW.event_id AND eta.branch_id=NEW.branch_id AND eta.assignment_role IN ('organizer','transport')
+       AND stm.staff_profile_id=actor.id AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL
+       AND eta.starts_at<=NEW.created_at AND (eta.ends_at IS NULL OR eta.ends_at>NEW.created_at)
+       AND stm.starts_at<=NEW.created_at AND (stm.ends_at IS NULL OR stm.ends_at>NEW.created_at))
+   )
+ ) THEN RAISE(ABORT,'TRANSPORT_RESERVATION_NOT_AUTHORIZED') END;
+END;
+
+CREATE TRIGGER event_closeout_authorize_insert
+BEFORE INSERT ON event_closeout
+BEGIN
+ SELECT CASE WHEN NOT EXISTS (
+  SELECT 1 FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code IN ('events.manage','events.checkin') AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.submitted_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.submitted_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.submitted_at)
+ ) THEN RAISE(ABORT,'EVENT_CLOSEOUT_SUBMIT_NOT_AUTHORIZED') END;
+END;
+
+CREATE TRIGGER event_closeout_review_authorize_update
+BEFORE UPDATE OF status ON event_closeout
+WHEN OLD.status IN ('submitted','returned') AND NEW.status IN ('approved','returned')
+BEGIN
+ SELECT CASE WHEN NEW.reviewed_by IS NULL OR NEW.reviewed_at IS NULL OR NOT EXISTS (
+  SELECT 1 FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='events.closeout.review' AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.reviewed_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.reviewed_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.reviewed_at)
+ ) THEN RAISE(ABORT,'EVENT_CLOSEOUT_REVIEW_NOT_AUTHORIZED') END;
+END;
+
 UPDATE app_meta SET schema_version=13 WHERE id=1 AND environment='non-production';
