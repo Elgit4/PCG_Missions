@@ -36,6 +36,9 @@ The Worker is a single entry point in `src/index.ts`. Protected routes resolve t
 | Calendar | `GET/POST /api/v1/calendar`, `GET/PATCH /api/v1/calendar/{id}` | Branch/team/own/event-scoped reads; branch manager creates and updates entries with database actor checks |
 | Announcements | `GET/POST /api/v1/announcements`, `GET/PATCH /api/v1/announcements/{id}`, `POST /{id}/publish`, `POST /{id}/archive` | Branch-managed drafts with branch/staff/public/team/event audience targets; team/event targets are validated and inserted transactionally |
 | Public content | `GET /api/public/content?branch_id={id}` | Anonymous published-only projection for church profile, welcome messages, sermons, daily word, tracts, public announcements, public events and HTTPS links |
+| Content management | `GET /api/v1/content`, `POST /api/v1/content/{kind}`, `PATCH /api/v1/content/{kind}/{id}`, `POST /api/v1/content/{kind}/{id}/publish|archive` | Branch capability-gated draft and publication lifecycle for welcome messages, sermons, daily words and digital tracts |
+| Church profile and links | `GET/PATCH /api/v1/content/profile`, `POST /api/v1/content/links` | Church-scoped profile upsert and immutable HTTPS links to sermon/tract content |
+| Content audit | `GET /api/v1/content/audit` | Branch/church-visible append-only public-content change history |
 | Content management | `GET /api/v1/content`, `POST /api/v1/content/{kind}`, `PATCH /api/v1/content/{kind}/{id}`, `POST /{kind}/{id}/publish`, `POST /{kind}/{id}/archive` | Branch capability-gated draft and publication lifecycle for welcome messages, sermons, daily words and digital tracts |
 | Church profile and links | `GET/PATCH /api/v1/content/profile`, `POST /api/v1/content/links` | Church-scoped profile upsert and immutable HTTPS links to sermon/tract content |
 | Content audit | `GET /api/v1/content/audit` | Branch/church-visible append-only public-content change history |
