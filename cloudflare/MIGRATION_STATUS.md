@@ -29,11 +29,12 @@ The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations a
 - time-bounded explicit-share grant/revoke authorization and automatic audit attribution;
 - dual-control Admin/Pastor elevation, two bootstrap slots, request/review/application audit and last-admin protection;
 - explicit-share overlap, expiry/revocation history and automatic share grant/revoke audit events;
+- immediate Better Auth session deletion on staff deactivation/suspension and persistent rate-limit key uniqueness;
 - two-slot owner bootstrap, independent Admin/Pastor elevation approval, applied-request audit and last-active-admin protection;
 - contact normalization, capture idempotency and metadata allowlists;
 - follow-up task completion and target invariants.
 
-A successful CI result proves the SQL is accepted by the CI runner's SQLite engine. It does not replace a D1 preview test, a Better Auth schema compatibility check, a Worker runtime test or a domain authorization test.
+Latest verified CI run: [43454374409](https://github.com/Elgit4/PCG_Missions/actions/runs/43454374409) — **36 Python/SQLite tests passed and Worker/Better Auth TypeScript type-check passed**. This proves the SQL is accepted by the CI runner's SQLite engine and the Worker code type-checks against the pinned package. It does not replace a real D1 preview test, runtime Better Auth schema validation, a deployed Worker test or domain authorization tests.
 
 ## Authentication and authorization progress
 
