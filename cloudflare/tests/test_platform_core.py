@@ -370,7 +370,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
@@ -942,6 +942,80 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             self.db.execute("DELETE FROM staff_record_share WHERE id = 'share-1'")
 
 
+    def test_prayer_share_revocation_requires_reason_and_synchronized_assignment(self):
+        self._lifecycle_fixture()
+        self._lifecycle_staff("prayer-admin-user", "prayer-admin", "Prayer Admin", "prayer-admin@example.test")
+        self._lifecycle_staff("prayer-intercessor-user", "prayer-intercessor", "Prayer Intercessor", "prayer-intercessor@example.test")
+        self._lifecycle_assignment("prayer-admin-role", "prayer-admin", "admin_pastor", "lifecycle-branch", "prayer-admin")
+        self._lifecycle_assignment("prayer-intercessor-role", "prayer-intercessor", "prayer_intercessor", "lifecycle-branch", "prayer-admin")
+
+        self.db.execute(
+            """INSERT INTO prayer_request
+               (id, branch_id, created_by, request_text, status, sensitivity, created_at, updated_at)
+               VALUES ('prayer-revoke-1', 'lifecycle-branch', 'prayer-admin-user',
+                       'Restricted prayer narrative for revocation testing', 'open', 'highly_restricted',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO staff_record_share
+               (id, branch_id, record_type, record_id, staff_profile_id, granted_by,
+                purpose, starts_at, created_at)
+               VALUES ('prayer-share-revoke-1', 'lifecycle-branch', 'prayer_request', 'prayer-revoke-1',
+                       'prayer-intercessor', 'prayer-admin',
+                       'Temporary prayer assignment for an authorized intercessor',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO prayer_assignment
+               (id, prayer_request_id, branch_id, intercessor_user_id, assigned_by, starts_at, created_at)
+               VALUES ('prayer-assignment-revoke-1', 'prayer-revoke-1', 'lifecycle-branch',
+                       'prayer-intercessor-user', 'prayer-admin-user',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+
+        revoke_at = "2026-01-02T00:00:00.000Z"
+        reason = "Prayer assignment completed and access is no longer required"
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE prayer_assignment
+                   SET revoked_at = ?, revoked_by = ?, revocation_reason = ?
+                   WHERE id = 'prayer-assignment-revoke-1'""",
+                (revoke_at, "prayer-admin-user", reason),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE staff_record_share
+                   SET revoked_at = ?, revoked_by = ?
+                   WHERE id = 'prayer-share-revoke-1'""",
+                (revoke_at, "prayer-admin"),
+            )
+
+        self.db.execute(
+            """UPDATE staff_record_share
+               SET revoked_at = ?, revoked_by = ?, revocation_reason = ?
+               WHERE id = 'prayer-share-revoke-1'""",
+            (revoke_at, "prayer-admin", reason),
+        )
+        self.db.execute(
+            """UPDATE prayer_assignment
+               SET revoked_at = ?, revoked_by = ?, revocation_reason = ?
+               WHERE id = 'prayer-assignment-revoke-1'""",
+            (revoke_at, "prayer-admin-user", reason),
+        )
+        self.assertEqual(
+            self.db.execute(
+                "SELECT action FROM prayer_access_audit WHERE prayer_request_id = 'prayer-revoke-1' ORDER BY accessed_at"
+            ).fetchall(),
+            [("assigned",), ("revoked",)],
+        )
+        self.assertEqual(
+            self.db.execute(
+                "SELECT action, purpose FROM sensitive_record_access_audit WHERE share_reference = 'prayer-share-revoke-1' ORDER BY created_at"
+            ).fetchall(),
+            [("share_granted", "Temporary prayer assignment for an authorized intercessor"),
+             ("share_revoked", reason)],
+        )
+
 class AuthorizationQueryTests(unittest.TestCase):
     NOW = "2026-01-15T12:00:00.000Z"
 
@@ -949,7 +1023,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
