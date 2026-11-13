@@ -56,12 +56,14 @@ Deno.test("allowed-origin error responses retain CORS visibility", () => {
     throw new Error("authorization must be allowed on browser responses");
   }
   const allowedHeaders = headers.get("Access-Control-Allow-Headers") ?? "";
-  for (const required of [
-    "authorization",
-    "apikey",
-    "content-type",
-    "x-client-info",
-  ]) {
+  for (
+    const required of [
+      "authorization",
+      "apikey",
+      "content-type",
+      "x-client-info",
+    ]
+  ) {
     if (!allowedHeaders.includes(required)) {
       throw new Error(`${required} must be allowed on browser responses`);
     }
