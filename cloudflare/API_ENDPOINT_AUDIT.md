@@ -27,7 +27,7 @@ The Worker is a single entry point in `src/index.ts`. Protected routes resolve t
 | Contact assignment | `POST /api/v1/contacts/{id}/assign` | Branch/team/assignment checks and assignment history |
 | Follow-up tasks | `GET/POST /api/v1/followup/tasks`, `PATCH /api/v1/followup/tasks/{id}` | Scoped task list/create/update with idempotency and event ledger |
 | Follow-up assignment | `POST /api/v1/followup/tasks/{id}/assign` | Scoped reassignment to an active staff member or team |
-| Prayer queue | `GET /api/v1/pastoral/prayer/queue` | Metadata-only Admin/Pastor assignment queue; sensitive reads are audited |
+| Prayer intake and queue | `POST /api/v1/pastoral/prayer/requests`, `GET /api/v1/pastoral/prayer/queue` | Authenticated branch-capability intake with bounded narrative, idempotency key, restricted default sensitivity and creation audit; metadata-only Admin/Pastor assignment queue; sensitive reads are audited |
 | Assigned prayer | `GET /api/v1/pastoral/prayer/assigned` | Narrative projection only for active intercessor assignment and explicit share |
 | Prayer shares | `POST /api/v1/pastoral/prayer/requests/{id}/shares`, `POST /.../{shareId}/revoke` | Explicit share grant and reasoned revocation |
 | Prayer response | `PATCH /api/v1/pastoral/prayer/requests/{id}` | Assigned intercessor can move request into progress or answered |
@@ -63,7 +63,9 @@ All protected business routes require a verified session and an authorized activ
 8. **Calendar and announcement workflows:** added branch/team/assigned calendar reads, branch-manager calendar create/update, audience-scoped announcement list/create/update/publish/archive, and a published-only anonymous content projection. The key SQL statements were compiled with `EXPLAIN` against the real EU D1 schema without mutating records.
 9. **Public content management:** added capability-gated draft/update/publish/archive routes for welcome messages, sermons, daily words and digital tracts; church public profile upsert; HTTPS external links; and a scoped audit read. Migration 0017 adds profile/link database authorization and immutable content-change audit.
 10. **Event operations:** added staff registration/list/cancel, open/close registration, check-in, transport option/reservation and closeout submit/resubmit/review endpoints. Migrations 0018–0020 add capacity/actor guards, cancellation request-key uniqueness and role-specific event assignment checks. EU D1 is now at schema version 20.
-11. **Announcement delivery and read receipts:** publishing now fans out in-app deliveries to the configured branch/team/event audience; staff receive a recipient-scoped inbox and can mark items read. Migration 0021 adds an audience-checked delivery trigger and immutable read receipts. EU D1 is now at schema version 21.
+11. **Announcement delivery and read receipts:** publishing now fans out in-app deliveries to the configured branch/team/event audience; staff receive a recipient-scoped inbox and can mark items read. Migration 0021 adds an audience-checked delivery trigger and immutable read receipts. EU D1 was verified at schema version 21 before typed reports were added.
+12. **Typed ministry reports:** migration 0022 adds typed daily/event/weekly submissions, D-12 scopes, self-review protection and append-only review/resubmission history.
+13. **Prayer intake:** added authenticated `POST /api/v1/pastoral/prayer/requests`. It requires `prayer.request.create` at branch scope, validates bounded narrative/contact/expiry inputs, requires an `Idempotency-Key`, stores a request digest and appends a creation audit. Migration 0023 adds the branch-scoped idempotency ledger; public intake remains disabled.
 
 ## API security review checklist
 
@@ -84,7 +86,7 @@ All protected business routes require a verified session and an authorized activ
 |---|---|---|
 | P0 | Runtime deployment and auth | Deploy full Worker to non-production; validate Better Auth D1 schema compatibility; test sign-in, session refresh, sign-out, invitation acceptance and revocation |
 | P0 | API integration tests | Add real Worker/D1 tests for staff, contacts, follow-up, prayer, event, calendar, announcement and content endpoints, including negative cross-branch/team/assignment cases |
-| P1 | Prayer intake | Add authenticated prayer-request creation and lifecycle controls; keep public intake disabled until separately approved |
+| P1 | Prayer intake | Authenticated creation is now implemented with branch capability, idempotency and audit; add real Worker/D1 integration tests and remaining lifecycle controls. Keep public intake disabled until separately approved |
 | P1 | Pastoral care | Implement case metadata and narrative handlers only after a distinct care-reader capability, explicit-share policy and audit tests are approved |
 | P1 | Events | Add real Worker/D1 integration tests for all new staff-only operations and verify the UI workflow; public registration remains deliberately disabled |
 | P1 | Calendar | Add cancellation/recurrence rules, scoped event integration tests and calendar audit/read-receipt behavior; core list/create/update routes are now in source |
