@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/team-area-administration
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
@@ -135,6 +136,12 @@ jobs:
       - name: Test calendar request validation
         run: deno test supabase-cmi/supabase/functions/calendar-operations/validation_test.ts
 
+      - name: Type-check team operations Edge Function
+        run: deno check supabase-cmi/supabase/functions/team-operations/index.ts
+
+      - name: Test team operations request validation
+        run: deno test supabase-cmi/supabase/functions/team-operations/validation_test.ts
+
       - name: Type-check pastoral operations Edge Function
         run: deno check supabase-cmi/supabase/functions/pastoral-operations/index.ts
 
@@ -179,6 +186,7 @@ jobs:
           cp supabase-cmi/schema-drafts/events_attendance_public_content.test.sql supabase-cmi/supabase/tests/cmi_events_attendance_public_content.test.sql
           cp supabase-cmi/schema-drafts/pastoral_read_operations.test.sql supabase-cmi/supabase/tests/cmi_pastoral_read_operations.test.sql
           cp supabase-cmi/schema-drafts/first_admin_bootstrap_lease.test.sql supabase-cmi/supabase/tests/cmi_first_admin_bootstrap_lease.test.sql
+          cp supabase-cmi/schema-drafts/team_area_administration.test.sql supabase-cmi/supabase/tests/cmi_team_area_administration.test.sql
 
       - name: Start isolated local CMI stack and apply CMI migrations
         run: supabase --workdir supabase-cmi start
@@ -203,3 +211,4 @@ jobs:
           rm -f supabase-cmi/supabase/tests/cmi_events_attendance_public_content.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_pastoral_read_operations.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_first_admin_bootstrap_lease.test.sql
+          rm -f supabase-cmi/supabase/tests/cmi_team_area_administration.test.sql
