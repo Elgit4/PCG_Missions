@@ -824,13 +824,24 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             {"admin_pastor", "coordinator", "team_leader", "field_worker", "follow_up_volunteer", "prayer_intercessor"},
         )
 
-    def test_admin_gets_staff_governance_but_not_sensitive_case_access(self):
+    def test_admin_gets_staff_governance_and_only_explicitly_shared_case_access(self):
         grants = self.grants("admin_pastor")
         self.assertIn("staff.account.manage", grants)
         self.assertIn("staff.role.assign", grants)
         self.assertIn("contacts.private_fields.read", grants)
         self.assertNotIn("prayer.request.read", grants)
-        self.assertNotIn("pastoral.case.read", grants)
+        self.assertIn("pastoral.case.metadata.read", grants)
+        self.assertIn("pastoral.case.read", grants)
+        self.assertIn("pastoral.case.update", grants)
+        self.assertIn("pastoral.case.interact", grants)
+        scopes = {row[0] for row in self.db.execute(
+            """SELECT DISTINCT rc.scope_mode FROM role_capability rc
+               JOIN role r ON r.id=rc.role_id
+               JOIN capability c ON c.id=rc.capability_id
+               WHERE r.code='admin_pastor' AND c.code IN
+                 ('pastoral.case.read','pastoral.case.update','pastoral.case.interact')"""
+        )}
+        self.assertEqual(scopes, {"explicit_share"})
         self.assertNotIn("contacts.export", grants)
         self.assertNotIn("sms.dispatch", grants)
 
@@ -885,12 +896,29 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         for role in ("coordinator", "team_leader", "field_worker", "follow_up_volunteer", "prayer_intercessor"):
             self.assertNotIn("contacts.private_fields.update", self.grants(role))
 
-    def test_no_baseline_role_gets_pastoral_case_export_or_sms_capability(self):
-        count = self.db.execute(
-            """SELECT COUNT(*) FROM role_capability rc JOIN capability c ON c.id = rc.capability_id
-               WHERE c.code IN ('pastoral.case.read','pastoral.case.update','contacts.export','sms.dispatch')"""
+    def test_only_admin_pastor_gets_explicit_share_case_grants_and_no_export_or_sms(self):
+        unauthorized = self.db.execute(
+            """SELECT COUNT(*) FROM role_capability rc
+               JOIN role r ON r.id=rc.role_id
+               JOIN capability c ON c.id=rc.capability_id
+               WHERE r.code <> 'admin_pastor'
+                 AND c.code IN ('pastoral.case.read','pastoral.case.update','pastoral.case.interact')"""
         ).fetchone()[0]
-        self.assertEqual(count, 0)
+        self.assertEqual(unauthorized, 0)
+        elevated_scope = self.db.execute(
+            """SELECT COUNT(*) FROM role_capability rc
+               JOIN role r ON r.id=rc.role_id
+               JOIN capability c ON c.id=rc.capability_id
+               WHERE r.code='admin_pastor'
+                 AND c.code IN ('pastoral.case.read','pastoral.case.update','pastoral.case.interact')
+                 AND rc.scope_mode <> 'explicit_share'"""
+        ).fetchone()[0]
+        self.assertEqual(elevated_scope, 0)
+        privileged = self.db.execute(
+            """SELECT COUNT(*) FROM role_capability rc JOIN capability c ON c.id=rc.capability_id
+               WHERE c.code IN ('contacts.export','sms.dispatch')"""
+        ).fetchone()[0]
+        self.assertEqual(privileged, 0)
 
     def test_policy_seed_is_idempotent(self):
         sql = (Path(__file__).resolve().parents[1] / "migrations" / "0003_staff_authorization_policy.sql").read_text(encoding="utf-8")
