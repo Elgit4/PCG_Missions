@@ -128,5 +128,12 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("public_content_change_audit", self.source)
 
 
+    def test_event_audit_read_is_branch_manager_only(self):
+        self.assertIn("function listEventAudit(", self.source)
+        self.assertIn('authorizeRequestCapability(request, env, "events.manage")', self.source)
+        self.assertIn("event_change_audit", self.source)
+        self.assertIn('url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/audit$/)', self.source)
+
+
 if __name__ == "__main__":
     unittest.main()
