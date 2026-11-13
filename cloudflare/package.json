@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "dev": "wrangler dev --local",
-    "deploy:nonprod": "wrangler deploy --env nonprod"
+    "dev": "wrangler dev --local"
   },
   "dependencies": {
     "better-auth": "1.7.22"
