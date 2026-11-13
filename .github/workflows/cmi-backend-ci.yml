@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - feat/team-area-administration-mainline
+      - "feat/cmi-*"
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
