@@ -3239,10 +3239,30 @@ async function getReportsOverview(
        WHERE ce.branch_id=p.branch_id AND ce.starts_at>=p.from_at
          AND ce.starts_at<p.to_at) AS calendar_entries
   `).bind(branchId,fromAt,toExclusive,now.toISOString()).first<Record<string,number>>();
+  const series = await env.DB.prepare(`
+    SELECT period_start AS period, report_type,
+           COUNT(*) AS report_count,
+           SUM(contacts_captured) AS contacts_captured,
+           SUM(gospel_presentations) AS gospel_presentations,
+           SUM(decisions_for_christ) AS decisions_for_christ,
+           SUM(followup_completed) AS followup_completed,
+           SUM(visits_completed) AS visits_completed,
+           SUM(calls_completed) AS calls_completed,
+           SUM(events_supported) AS events_supported,
+           SUM(attendance_count) AS attendance_count
+    FROM ministry_report
+    WHERE branch_id=? AND period_start>=? AND period_start<=?
+      AND status IN ('submitted','approved','returned')
+    GROUP BY period_start,report_type
+    HAVING COUNT(DISTINCT author_profile_id)>=3
+    ORDER BY period_start ASC,report_type ASC
+    LIMIT 1100
+  `).bind(branchId,from,to).all<Record<string,unknown>>();
   return json(200,{
     ok:true,
     period:{from,to,timezone:"UTC"},
     metrics:row??{},
+    time_series:series.results??[],
     privacy:{aggregate_only:true,prayer_request_content_included:false,personal_identifiers_included:false},
   },requestId,origin);
 }
