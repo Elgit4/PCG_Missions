@@ -16,11 +16,13 @@ Deno.test("configured exact origins are additive to the production origin", () =
   const allowed = createAllowedOrigins(
     "https://preview.example, http://localhost:5173",
   );
-  for (const origin of [
-    "https://pcg-missions.vercel.app",
-    "https://preview.example",
-    "http://localhost:5173",
-  ]) {
+  for (
+    const origin of [
+      "https://pcg-missions.vercel.app",
+      "https://preview.example",
+      "http://localhost:5173",
+    ]
+  ) {
     if (!isAllowedOrigin(origin, allowed)) {
       throw new Error(`expected origin to be allowed: ${origin}`);
     }
