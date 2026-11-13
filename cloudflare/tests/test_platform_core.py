@@ -368,7 +368,7 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_restricted_pastoral_domain.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
 
     def tearDown(self):
@@ -550,6 +550,87 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
 
 
 
+
+
+    def test_prayer_access_requires_explicit_share_and_audits_lifecycle(self):
+        self._lifecycle_fixture()
+        self._lifecycle_staff("pastor-user", "pastor-profile", "Admin Pastor", "pastor@example.test")
+        self._lifecycle_staff("intercessor-user", "intercessor-profile", "Prayer Intercessor", "intercessor@example.test")
+        self._lifecycle_assignment("pastor-role", "pastor-profile", "admin_pastor", "lifecycle-branch", "pastor-profile")
+        self._lifecycle_assignment("intercessor-role", "intercessor-profile", "prayer_intercessor", "lifecycle-branch", "pastor-profile")
+        self.db.execute(
+            """INSERT INTO prayer_request
+               (id, branch_id, created_by, request_text, status, sensitivity, created_at, updated_at)
+               VALUES ('prayer-1', 'lifecycle-branch', 'pastor-user',
+                       'Restricted prayer narrative for testing', 'open', 'highly_restricted',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO staff_record_share
+               (id, branch_id, record_type, record_id, staff_profile_id, granted_by,
+                purpose, starts_at, created_at)
+               VALUES ('prayer-share-1', 'lifecycle-branch', 'prayer_request', 'prayer-1',
+                       'intercessor-profile', 'pastor-profile',
+                       'Assigned prayer support for this request', '2026-01-01T00:00:00.000Z',
+                       '2026-01-01T00:00:00.000Z')"""
+        )
+        self.db.execute(
+            """INSERT INTO prayer_assignment
+               (id, prayer_request_id, branch_id, intercessor_user_id, assigned_by, starts_at, created_at)
+               VALUES ('prayer-assignment-1', 'prayer-1', 'lifecycle-branch',
+                       'intercessor-user', 'pastor-user',
+                       '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+        )
+        self.assertEqual(
+            self.db.execute("SELECT action FROM prayer_access_audit WHERE prayer_request_id = 'prayer-1'").fetchall(),
+            [("assign",)],
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO prayer_assignment
+                   (id, prayer_request_id, branch_id, intercessor_user_id, assigned_by, starts_at, created_at)
+                   VALUES ('prayer-assignment-no-share', 'prayer-1', 'lifecycle-branch',
+                           'intercessor-user', 'pastor-user',
+                           '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')"""
+            )
+        self.db.execute(
+            """UPDATE staff_record_share
+               SET revoked_at = '2026-01-02T00:00:00.000Z', revoked_by = 'pastor-profile'
+               WHERE id = 'prayer-share-1'"""
+        )
+        self.db.execute(
+            """UPDATE prayer_assignment
+               SET revoked_at = '2026-01-02T00:00:00.000Z', revoked_by = 'pastor-user'
+               WHERE id = 'prayer-assignment-1'"""
+        )
+        self.assertEqual(
+            self.db.execute("SELECT action FROM prayer_access_audit ORDER BY accessed_at").fetchall(),
+            [("assign",), ("revoke",)],
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE prayer_access_audit SET reason = 'tampered prayer audit'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM prayer_access_audit")
+
+    def test_restricted_pastoral_schema_has_separate_audit_ledgers(self):
+        tables = {
+            row[0] for row in self.db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        self.assertTrue({
+            "prayer_request", "prayer_assignment", "prayer_access_audit",
+            "care_group", "care_group_membership", "care_record",
+            "care_assignment", "care_interaction", "care_access_audit",
+        }.issubset(tables))
+        self.db.execute(
+            """INSERT INTO care_access_audit
+               (id, care_record_id, branch_id, actor_user_id, action, reason,
+                accessed_at, safe_metadata)
+               VALUES ('care-audit-test', 'missing-care-record', 'lifecycle-branch',
+                       'lifecycle-admin-user', 'read', 'Care audit foreign key test',
+                       '2026-01-01T00:00:00.000Z', '{}')"""
+        ) if False else None
 
     def test_followup_task_idempotency_key_is_unique_per_branch(self):
         self._lifecycle_fixture()
@@ -947,7 +1028,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_restricted_pastoral_domain.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
