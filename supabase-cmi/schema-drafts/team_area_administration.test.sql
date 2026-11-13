@@ -272,10 +272,10 @@ select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
 );
 
 select ok(
-  (select ends_at is not null from public.staff_area_coverage
+  (select ends_at is not null and ends_at > starts_at from public.staff_area_coverage
    where branch_id='71000000-0000-4000-8000-000000000010'
      and staff_profile_id='73000000-0000-4000-8000-000000000011'),
-  'Ending service-area coverage preserves its historical record'
+  'Ending service-area coverage preserves a valid historical interval'
 );
 
 select public.cmi_manage_team_operations('72000000-0000-4000-8000-000000000010',
