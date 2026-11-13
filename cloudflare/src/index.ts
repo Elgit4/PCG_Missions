@@ -1,5 +1,7 @@
 interface D1PreparedStatement {
+  bind(...values: unknown[]): D1PreparedStatement;
   first<T = Record<string, unknown>>(columnName?: string): Promise<T | null>;
+  run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
 }
 
 interface D1Database {
