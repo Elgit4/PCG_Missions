@@ -1,5 +1,5 @@
 begin;
-select plan(25);
+select plan(26);
 
 select has_table('public','ministry_report','Typed ministry report table exists');
 select has_table('public','report_review_event','Append-only report review history exists');
