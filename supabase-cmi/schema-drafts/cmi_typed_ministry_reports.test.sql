@@ -84,6 +84,8 @@ select ok(
   'Admin/Pastor and Coordinator receive branch report review');
 select ok(
   exists(select 1 from public.role_capability rc join public.role r on r.id=rc.role_id join public.capability c on c.id=rc.capability_id where r.code='team_leader' and c.code='report.review.team' and rc.scope_mode='team')
+  and exists(select 1 from public.role_capability rc join public.role r on r.id=rc.role_id join public.capability c on c.id=rc.capability_id where r.code='team_leader' and c.code='report.read.own' and rc.scope_mode='self')
+  and not exists(select 1 from public.role_capability rc join public.role r on r.id=rc.role_id join public.capability c on c.id=rc.capability_id where r.code='team_leader' and c.code='report.read.own' and rc.scope_mode<>'self')
   and exists(select 1 from public.role_capability rc join public.role r on r.id=rc.role_id join public.capability c on c.id=rc.capability_id where r.code='field_worker' and c.code='report.submit.own' and rc.scope_mode='self')
   and exists(select 1 from public.role_capability rc join public.role r on r.id=rc.role_id join public.capability c on c.id=rc.capability_id where r.code='follow_up_volunteer' and c.code='report.submit.own' and rc.scope_mode='self'),
   'Team Leader, Field Worker and Follow-up Volunteer receive only their D-12 report scopes');
