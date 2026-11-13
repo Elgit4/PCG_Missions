@@ -3301,6 +3301,9 @@ async function createEventCheckin(
   }
   const event=await getScopedEventForStaff(context,env,eventId);
   if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  const digest=await eventRequestDigest({registration_id:registrationId,attendee_name_snapshot:attendeeName});
+  const replay=await findEventReceipt(env,eventId,"event_checkin",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
   if (event.status!=="published") return json(409,{ok:false,error:{code:"EVENT_NOT_CHECKIN_READY"}},requestId,origin);
   if (registrationId) {
     const registration=await env.DB.prepare(
@@ -3308,9 +3311,6 @@ async function createEventCheckin(
     ).bind(registrationId,eventId,context.activeBranch.branchId).first<{id:string}>();
     if (!registration) return json(404,{ok:false,error:{code:"ACTIVE_REGISTRATION_NOT_FOUND"}},requestId,origin);
   }
-  const digest=await eventRequestDigest({registration_id:registrationId,attendee_name_snapshot:attendeeName});
-  const replay=await findEventReceipt(env,eventId,"event_checkin",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
-  if (replay) return replay;
   const checkinId=crypto.randomUUID(),receiptId=crypto.randomUUID(),now=new Date().toISOString();
   try {
     const results=await env.DB.batch([
