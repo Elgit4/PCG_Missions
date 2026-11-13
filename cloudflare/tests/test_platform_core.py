@@ -1606,6 +1606,22 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.assertEqual(profile_audit, ("authz-staff-admin","created"))
 
         self.db.execute(
+            "INSERT INTO church (id,name,created_at,updated_at) VALUES ('authz-church-other','Other Church',?,?)",
+            (self.NOW,self.NOW),
+        )
+        self.db.execute(
+            "INSERT INTO branch (id,church_id,name,created_at,updated_at) VALUES ('authz-branch-other','authz-church-other','Other Branch',?,?)",
+            (self.NOW,self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO church_public_profile
+                   (id,church_id,public_name,social_links,updated_by,created_at,updated_at)
+                   VALUES ('public-profile-field','authz-church-other','Unauthorized Church','{}',?,?,?)""",
+                (field_user,self.NOW,self.NOW),
+            )
+
+        self.db.execute(
             """INSERT INTO digital_tract
                (id,title,body,public_slug,status,created_by,created_at,updated_at,updated_by)
                VALUES ('tract-audit-1','Welcome','Welcome message','welcome-tract','draft',?,?,?,?)""",
