@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(54);
+select plan(53);
 
 select has_column(
   'public', 'staff_profile', 'must_change_password',
