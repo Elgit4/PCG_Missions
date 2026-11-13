@@ -1,5 +1,5 @@
 begin;
-select plan(27);
+select plan(28);
 
 select has_table('public','ministry_report','Typed ministry report table exists');
 select has_table('public','report_review_event','Append-only report review history exists');
@@ -69,6 +69,31 @@ insert into auth.users(
 insert into public.staff_profile(id,auth_user_id,full_name,account_status,must_change_password)
 values('73000000-0000-4000-8000-000000000022','72000000-0000-4000-8000-000000000022','Unassigned Report User','active',false);
 
+-- A Team Leader with a valid active team membership but an incomplete
+-- first-login password change must not be permitted to review reports.
+insert into auth.users(
+  instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,
+  raw_app_meta_data,raw_user_meta_data,created_at,updated_at
+) values(
+  '00000000-0000-0000-0000-000000000000',
+  '72000000-0000-4000-8000-000000000023',
+  'authenticated','authenticated','report-team-reviewer@example.invalid',
+  'not-a-real-password-hash',now(),
+  '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb,now(),now()
+);
+insert into public.staff_profile(id,auth_user_id,full_name,account_status,must_change_password)
+values('73000000-0000-4000-8000-000000000023','72000000-0000-4000-8000-000000000023','Pending Team Leader','active',true);
+insert into public.team(id,branch_id,name)
+values('74000000-0000-4000-8000-000000000020','71000000-0000-4000-8000-000000000020','Report Test Team');
+insert into public.staff_role_assignment(staff_profile_id,role_id,branch_id,assigned_by)
+select '73000000-0000-4000-8000-000000000023',r.id,'71000000-0000-4000-8000-000000000020','73000000-0000-4000-8000-000000000021'
+from public.role r where r.code='team_leader';
+insert into public.staff_team_membership(
+  staff_profile_id,team_id,branch_id,membership_role,created_by
+) values
+  ('73000000-0000-4000-8000-000000000020','74000000-0000-4000-8000-000000000020','71000000-0000-4000-8000-000000000020','member','73000000-0000-4000-8000-000000000021'),
+  ('73000000-0000-4000-8000-000000000023','74000000-0000-4000-8000-000000000020','71000000-0000-4000-8000-000000000020','leader','73000000-0000-4000-8000-000000000021');
+
 select throws_ok(
   $q$ insert into public.ministry_report(branch_id,report_type,period_start,period_end,author_profile_id)
       values('71000000-0000-4000-8000-000000000020','daily_evangelism','2026-11-10','2026-11-11','73000000-0000-4000-8000-000000000020') $q$,
@@ -86,8 +111,8 @@ select throws_ok(
       values('71000000-0000-4000-8000-000000000020','event_evangelism','2026-11-10','2026-11-10','73000000-0000-4000-8000-000000000020') $q$,
   '23514', null, 'Event evangelism reports require an event reference');
 
-insert into public.ministry_report(branch_id,report_type,period_start,period_end,author_profile_id)
-values('71000000-0000-4000-8000-000000000020','daily_evangelism','2026-11-10','2026-11-10','73000000-0000-4000-8000-000000000020');
+insert into public.ministry_report(branch_id,report_type,period_start,period_end,author_profile_id,team_id)
+values('71000000-0000-4000-8000-000000000020','daily_evangelism','2026-11-10','2026-11-10','73000000-0000-4000-8000-000000000020','74000000-0000-4000-8000-000000000020');
 select is((select count(*)::integer from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),1,
   'A valid typed daily report can be stored');
 insert into public.report_review_event(report_id,reviewer_profile_id,decision,comment)
@@ -139,6 +164,14 @@ select throws_ok(
   ) $q$,
   '42501','REPORT_REVIEW_SCOPE_REQUIRED',
   'A staff member without an active report review grant is denied transactionally');
+
+select throws_ok(
+  $q$ select public.cmi_review_ministry_report(
+    (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
+    '73000000-0000-4000-8000-000000000023','approved',null
+  ) $q$,
+  '42501','REPORT_REVIEW_SCOPE_REQUIRED',
+  'A Team Leader with incomplete first-login password change cannot review through team scope');
 select lives_ok(
   $q$ select public.cmi_review_ministry_report(
     (select id from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),
