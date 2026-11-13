@@ -3274,6 +3274,76 @@ async function getScopedEventForStaff(
   `).bind(eventId,context.activeBranch.branchId,...predicate.values).first<Record<string,unknown>>();
 }
 
+async function hasEventAssignmentRole(
+  context: AuthenticatedStaffContext,
+  env: Env,
+  eventId: string,
+  staffRoles: string[],
+  teamRoles: string[],
+): Promise<boolean> {
+  if (!context.activeBranch) return false;
+  if (context.activeBranch.capabilities.some(
+    (grant) => grant.code === "events.manage" && grant.scopeMode === "branch",
+  )) return true;
+
+  const now = new Date().toISOString();
+  const values: unknown[] = [eventId, context.activeBranch.branchId];
+  const staffPredicate = staffRoles.length
+    ? (() => {
+        values.push(context.staff.userId, ...staffRoles, now, now);
+        return `EXISTS (
+          SELECT 1 FROM event_staff_assignment esa
+          WHERE esa.event_id=e.id AND esa.branch_id=e.branch_id
+            AND esa.staff_auth_user_id=?
+            AND esa.assignment_role IN (${staffRoles.map(() => "?").join(",")})
+            AND esa.revoked_at IS NULL AND esa.starts_at<=?
+            AND (esa.ends_at IS NULL OR esa.ends_at>?)
+        )`;
+      })()
+    : "0=1";
+  const teamPredicate = teamRoles.length
+    ? (() => {
+        values.push(context.staff.profileId, ...teamRoles, now, now, now, now);
+        return `EXISTS (
+          SELECT 1 FROM event_team_assignment eta
+          JOIN staff_team_membership stm
+            ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id
+          WHERE eta.event_id=e.id AND eta.branch_id=e.branch_id
+            AND stm.staff_profile_id=?
+            AND eta.assignment_role IN (${teamRoles.map(() => "?").join(",")})
+            AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL
+            AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
+            AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+        )`;
+      })()
+    : "0=1";
+  const event = await env.DB.prepare(`
+    SELECT e.id FROM event e
+    WHERE e.id=? AND e.branch_id=? AND (${staffPredicate} OR ${teamPredicate})
+    LIMIT 1
+  `).bind(...values).first<{ id: string }>();
+  return !!event;
+}
+
+async function hasEventCheckinAccess(
+  context: AuthenticatedStaffContext,
+  env: Env,
+  eventId: string,
+): Promise<boolean> {
+  if (!context.activeBranch) return false;
+  if (context.activeBranch.capabilities.some(
+    (grant) => grant.code === "events.manage" && grant.scopeMode === "branch",
+  )) return true;
+  if (!context.activeBranch.capabilities.some(
+    (grant) => grant.code === "events.checkin" || grant.code === "events.manage",
+  )) return false;
+  if (context.activeBranch.capabilities.some(
+    (grant) => grant.code === "events.checkin" && grant.scopeMode === "branch",
+  )) return true;
+  return hasEventAssignmentRole(context, env, eventId,
+    ["owner", "organizer", "checkin"], ["organizer", "ushering"]);
+}
+
 async function createEventCheckin(
   request: Request,
   env: Env,
