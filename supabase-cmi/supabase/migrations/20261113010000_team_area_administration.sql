@@ -552,7 +552,7 @@ begin
     v_area_id := (p_payload->>'area_id')::uuid;
     v_coverage_id := (p_payload->>'coverage_id')::uuid;
     update public.staff_area_coverage
-    set ends_at = v_now
+    set ends_at = greatest(clock_timestamp(), starts_at + interval '1 microsecond')
     where id = v_coverage_id and service_area_id = v_area_id
       and branch_id = v_branch_id
       and starts_at <= v_now and (ends_at is null or ends_at > v_now)
