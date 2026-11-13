@@ -12,7 +12,8 @@ import {
 } from "./validation.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
-const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
+  "";
 const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const allowedOrigins = new Set(
@@ -60,7 +61,12 @@ function fail(
   origin: string | null,
   id: string,
 ): Response {
-  return response({ error: { code, message }, request_id: id }, status, origin, id);
+  return response(
+    { error: { code, message }, request_id: id },
+    status,
+    origin,
+    id,
+  );
 }
 
 function bearerToken(request: Request): string | null {
@@ -181,7 +187,9 @@ async function hasBranchCapability(
   if (assignmentError) throw new Error("ROLE_ASSIGNMENT_LOOKUP_FAILED");
 
   const roleIds = [
-    ...new Set((assignments ?? []).map((item: { role_id: string }) => item.role_id)),
+    ...new Set(
+      (assignments ?? []).map((item: { role_id: string }) => item.role_id),
+    ),
   ];
   if (!roleIds.length) return false;
 
@@ -250,29 +258,64 @@ function rpcError(error: { code?: string; message?: string }): {
 } {
   const message = error.message ?? "";
   const code = error.code ?? "";
-  if (code === "42501" || /AUTH_REQUIRED|ACTIVE_STAFF_REQUIRED|BRANCH_CAPABILITY_REQUIRED|STAFF_NOT_ACTIVE_IN_BRANCH|TEAM_LEADER_ROLE_REQUIRED/.test(message)) {
+  if (
+    code === "42501" ||
+    /AUTH_REQUIRED|ACTIVE_STAFF_REQUIRED|BRANCH_CAPABILITY_REQUIRED|STAFF_NOT_ACTIVE_IN_BRANCH|TEAM_LEADER_ROLE_REQUIRED/
+      .test(message)
+  ) {
     if (message.includes("TEAM_LEADER_ROLE_REQUIRED")) {
-      return { code: "TEAM_LEADER_ROLE_REQUIRED", message: "Assign the Team Leader role to this staff account in this branch before making them a team leader.", status: 403 };
+      return {
+        code: "TEAM_LEADER_ROLE_REQUIRED",
+        message:
+          "Assign the Team Leader role to this staff account in this branch before making them a team leader.",
+        status: 403,
+      };
     }
     if (message.includes("STAFF_NOT_ACTIVE_IN_BRANCH")) {
-      return { code: "STAFF_NOT_ACTIVE_IN_BRANCH", message: "Only active staff assigned to this branch can be added.", status: 422 };
+      return {
+        code: "STAFF_NOT_ACTIVE_IN_BRANCH",
+        message: "Only active staff assigned to this branch can be added.",
+        status: 422,
+      };
     }
-    return { code: code || "FORBIDDEN", message: "Your account is not authorised to manage this branch.", status: 403 };
+    return {
+      code: code || "FORBIDDEN",
+      message: "Your account is not authorised to manage this branch.",
+      status: 403,
+    };
   }
-  if (code === "P0002" || /TEAM_NOT_FOUND|SERVICE_AREA_NOT_FOUND|ACTIVE_TEAM_NOT_FOUND|ACTIVE_MEMBERSHIP_NOT_FOUND|ACTIVE_SERVICE_AREA_NOT_FOUND|ACTIVE_AREA_COVERAGE_NOT_FOUND/.test(message)) {
-    return { code: "RECORD_NOT_FOUND", message: "The selected team, member or service area could not be found in this branch.", status: 404 };
+  if (
+    code === "P0002" ||
+    /TEAM_NOT_FOUND|SERVICE_AREA_NOT_FOUND|ACTIVE_TEAM_NOT_FOUND|ACTIVE_MEMBERSHIP_NOT_FOUND|ACTIVE_SERVICE_AREA_NOT_FOUND|ACTIVE_AREA_COVERAGE_NOT_FOUND/
+      .test(message)
+  ) {
+    return {
+      code: "RECORD_NOT_FOUND",
+      message:
+        "The selected team, member or service area could not be found in this branch.",
+      status: 404,
+    };
   }
   if (code === "23505") {
-    return { code: "DUPLICATE_RECORD", message: "A team, service-area code or membership with these details already exists.", status: 409 };
+    return {
+      code: "DUPLICATE_RECORD",
+      message:
+        "A team, service-area code or membership with these details already exists.",
+      status: 409,
+    };
   }
   if (code === "23P01") {
     return {
       code: "ACTIVE_ASSIGNMENT_EXISTS",
-      message: "This staff member already has an overlapping active membership or service-area coverage assignment.",
+      message:
+        "This staff member already has an overlapping active membership or service-area coverage assignment.",
       status: 409,
     };
   }
-  if (code === "23514" || /TEAM_HAS_ACTIVE_MEMBERS|AREA_HAS_ACTIVE_COVERAGE/.test(message)) {
+  if (
+    code === "23514" ||
+    /TEAM_HAS_ACTIVE_MEMBERS|AREA_HAS_ACTIVE_COVERAGE/.test(message)
+  ) {
     return {
       code: "ACTIVE_ASSIGNMENTS_EXIST",
       message: message.includes("AREA_HAS_ACTIVE_COVERAGE")
@@ -282,9 +325,17 @@ function rpcError(error: { code?: string; message?: string }): {
     };
   }
   if (code === "22023") {
-    return { code: "VALIDATION_ERROR", message: "The submitted team or service-area details are invalid.", status: 422 };
+    return {
+      code: "VALIDATION_ERROR",
+      message: "The submitted team or service-area details are invalid.",
+      status: 422,
+    };
   }
-  return { code: "TEAM_OPERATION_FAILED", message: "The team operation could not be completed.", status: 500 };
+  return {
+    code: "TEAM_OPERATION_FAILED",
+    message: "The team operation could not be completed.",
+    status: 500,
+  };
 }
 
 async function listTeams(
@@ -303,7 +354,9 @@ async function listTeams(
   const now = new Date().toISOString();
   const { data: memberships, error: memberError } = await service
     .from("staff_team_membership")
-    .select("id,team_id,staff_profile_id,membership_role,starts_at,ends_at,created_at")
+    .select(
+      "id,team_id,staff_profile_id,membership_role,starts_at,ends_at,created_at",
+    )
     .eq("branch_id", branchId)
     .lte("starts_at", now)
     .is("revoked_at", null)
@@ -311,8 +364,12 @@ async function listTeams(
     .order("created_at", { ascending: true });
   if (memberError) throw new Error("TEAM_MEMBERSHIP_LIST_FAILED");
 
-  const profileIds = [...new Set((memberships ?? []).map((item) => item.staff_profile_id))];
-  let profiles: Array<{ id: string; full_name: string; account_status: string }> = [];
+  const profileIds = [
+    ...new Set((memberships ?? []).map((item) => item.staff_profile_id)),
+  ];
+  let profiles: Array<
+    { id: string; full_name: string; account_status: string }
+  > = [];
   if (includeStaffNames && profileIds.length) {
     const result = await service
       .from("staff_profile")
@@ -358,8 +415,12 @@ async function listAreas(
     .order("starts_at", { ascending: false });
   if (coverageError) throw new Error("AREA_COVERAGE_LIST_FAILED");
 
-  const profileIds = [...new Set((coverage ?? []).map((item) => item.staff_profile_id))];
-  let profiles: Array<{ id: string; full_name: string; account_status: string }> = [];
+  const profileIds = [
+    ...new Set((coverage ?? []).map((item) => item.staff_profile_id)),
+  ];
+  let profiles: Array<
+    { id: string; full_name: string; account_status: string }
+  > = [];
   if (includeStaffNames && profileIds.length) {
     const result = await service
       .from("staff_profile")
@@ -386,7 +447,12 @@ async function performRpc(
   auth: Extract<StaffResult, { ok: true }>,
   action: string,
   payload: Record<string, unknown>,
-): Promise<{ data: unknown; error: null } | { data: null; error: { code?: string; message?: string } }> {
+): Promise<
+  { data: unknown; error: null } | {
+    data: null;
+    error: { code?: string; message?: string };
+  }
+> {
   const result = await auth.service.rpc("cmi_manage_team_operations", {
     p_actor_auth_user_id: auth.actorId,
     p_action: action,
@@ -410,7 +476,8 @@ Deno.serve(async (request: Request) => {
       headers: {
         ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
         "Access-Control-Allow-Methods": "GET, POST, PATCH, OPTIONS",
-        "Access-Control-Allow-Headers": "Authorization, apikey, Content-Type, x-client-info",
+        "Access-Control-Allow-Headers":
+          "Authorization, apikey, Content-Type, x-client-info",
         "Access-Control-Max-Age": "600",
         "Vary": "Origin",
       },
@@ -422,12 +489,24 @@ Deno.serve(async (request: Request) => {
   }
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_PUBLIC_KEY) {
-    return fail("SERVICE_NOT_CONFIGURED", "Team operations service is not configured.", 503, origin, id);
+    return fail(
+      "SERVICE_NOT_CONFIGURED",
+      "Team operations service is not configured.",
+      503,
+      origin,
+      id,
+    );
   }
 
   const token = bearerToken(request);
   if (!token) {
-    return fail("AUTH_REQUIRED", "A valid staff session is required.", 401, origin, id);
+    return fail(
+      "AUTH_REQUIRED",
+      "A valid staff session is required.",
+      401,
+      origin,
+      id,
+    );
   }
 
   try {
@@ -437,18 +516,48 @@ Deno.serve(async (request: Request) => {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
     const functionIndex = path.lastIndexOf("team-operations");
-    if (functionIndex < 0) return fail("NOT_FOUND", "The requested operation does not exist.", 404, origin, id);
+    if (functionIndex < 0) {
+      return fail(
+        "NOT_FOUND",
+        "The requested operation does not exist.",
+        404,
+        origin,
+        id,
+      );
+    }
     const segments = path.slice(functionIndex + 1);
     const resource = segments[0] ?? "";
     const branchFromQuery = branchParameter(url);
 
     if (request.method === "GET") {
-      if (segments.length !== 1 || (resource !== "teams" && resource !== "areas") || !branchFromQuery) {
-        return fail("INVALID_QUERY", "A single valid branch_id and collection path are required.", 400, origin, id);
+      if (
+        segments.length !== 1 ||
+        (resource !== "teams" && resource !== "areas") || !branchFromQuery
+      ) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id and collection path are required.",
+          400,
+          origin,
+          id,
+        );
       }
       const capability = resource === "teams" ? "team.manage" : "area.manage";
-      if (!(await hasBranchCapability(auth.service, auth.profileId, branchFromQuery, capability))) {
-        return fail("FORBIDDEN", "Your account does not have management access to this branch.", 403, origin, id);
+      if (
+        !(await hasBranchCapability(
+          auth.service,
+          auth.profileId,
+          branchFromQuery,
+          capability,
+        ))
+      ) {
+        return fail(
+          "FORBIDDEN",
+          "Your account does not have management access to this branch.",
+          403,
+          origin,
+          id,
+        );
       }
       const canReadStaffDirectory = await hasBranchCapability(
         auth.service,
@@ -462,14 +571,39 @@ Deno.serve(async (request: Request) => {
       return response({ data, request_id: id }, 200, origin, id);
     }
 
-    if (request.method === "POST" && resource === "teams" && segments.length === 1) {
-      if (url.search) return fail("INVALID_QUERY", "Do not include query parameters when creating a team.", 400, origin, id);
+    if (
+      request.method === "POST" && resource === "teams" && segments.length === 1
+    ) {
+      if (url.search) {
+        return fail(
+          "INVALID_QUERY",
+          "Do not include query parameters when creating a team.",
+          400,
+          origin,
+          id,
+        );
+      }
       const body = await readBody(request, origin, id);
       if (!body.ok) return body.response;
       const parsed = parseTeamCreate(body.value);
-      if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
-      const allowed = await hasBranchCapability(auth.service, auth.profileId, parsed.value.branch_id, "team.manage");
-      if (!allowed) return fail("FORBIDDEN", "Your account does not have team management access to this branch.", 403, origin, id);
+      if (!parsed.ok) {
+        return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      }
+      const allowed = await hasBranchCapability(
+        auth.service,
+        auth.profileId,
+        parsed.value.branch_id,
+        "team.manage",
+      );
+      if (!allowed) {
+        return fail(
+          "FORBIDDEN",
+          "Your account does not have team management access to this branch.",
+          403,
+          origin,
+          id,
+        );
+      }
       const result = await performRpc(auth, "team.create", { ...parsed.value });
       if (result.error) {
         const mapped = rpcError(result.error);
@@ -478,15 +612,45 @@ Deno.serve(async (request: Request) => {
       return response({ data: result.data, request_id: id }, 201, origin, id);
     }
 
-    if (resource === "teams" && segments.length === 2 && isUuid(segments[1]) && request.method === "PATCH") {
-      if (!branchFromQuery) return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
-      const allowed = await hasBranchCapability(auth.service, auth.profileId, branchFromQuery, "team.manage");
-      if (!allowed) return fail("FORBIDDEN", "Your account does not have team management access to this branch.", 403, origin, id);
+    if (
+      resource === "teams" && segments.length === 2 && isUuid(segments[1]) &&
+      request.method === "PATCH"
+    ) {
+      if (!branchFromQuery) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const allowed = await hasBranchCapability(
+        auth.service,
+        auth.profileId,
+        branchFromQuery,
+        "team.manage",
+      );
+      if (!allowed) {
+        return fail(
+          "FORBIDDEN",
+          "Your account does not have team management access to this branch.",
+          403,
+          origin,
+          id,
+        );
+      }
       const body = await readBody(request, origin, id);
       if (!body.ok) return body.response;
       const parsed = parseTeamPatch(body.value);
-      if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
-      const result = await performRpc(auth, "team.update", { ...parsed.value, branch_id: branchFromQuery, team_id: segments[1] });
+      if (!parsed.ok) {
+        return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      }
+      const result = await performRpc(auth, "team.update", {
+        ...parsed.value,
+        branch_id: branchFromQuery,
+        team_id: segments[1],
+      });
       if (result.error) {
         const mapped = rpcError(result.error);
         return fail(mapped.code, mapped.message, mapped.status, origin, id);
@@ -494,15 +658,45 @@ Deno.serve(async (request: Request) => {
       return response({ data: result.data, request_id: id }, 200, origin, id);
     }
 
-    if (resource === "teams" && segments.length === 3 && isUuid(segments[1]) && segments[2] === "members" && request.method === "POST") {
-      if (!branchFromQuery) return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
-      const allowed = await hasBranchCapability(auth.service, auth.profileId, branchFromQuery, "team.manage");
-      if (!allowed) return fail("FORBIDDEN", "Your account does not have team management access to this branch.", 403, origin, id);
+    if (
+      resource === "teams" && segments.length === 3 && isUuid(segments[1]) &&
+      segments[2] === "members" && request.method === "POST"
+    ) {
+      if (!branchFromQuery) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const allowed = await hasBranchCapability(
+        auth.service,
+        auth.profileId,
+        branchFromQuery,
+        "team.manage",
+      );
+      if (!allowed) {
+        return fail(
+          "FORBIDDEN",
+          "Your account does not have team management access to this branch.",
+          403,
+          origin,
+          id,
+        );
+      }
       const body = await readBody(request, origin, id);
       if (!body.ok) return body.response;
       const parsed = parseTeamMemberCreate(body.value);
-      if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
-      const result = await performRpc(auth, "team.member.add", { ...parsed.value, branch_id: branchFromQuery, team_id: segments[1] });
+      if (!parsed.ok) {
+        return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      }
+      const result = await performRpc(auth, "team.member.add", {
+        ...parsed.value,
+        branch_id: branchFromQuery,
+        team_id: segments[1],
+      });
       if (result.error) {
         const mapped = rpcError(result.error);
         return fail(mapped.code, mapped.message, mapped.status, origin, id);
@@ -510,15 +704,47 @@ Deno.serve(async (request: Request) => {
       return response({ data: result.data, request_id: id }, 201, origin, id);
     }
 
-    if (resource === "teams" && segments.length === 4 && isUuid(segments[1]) && segments[2] === "members" && isUuid(segments[3]) && request.method === "PATCH") {
-      if (!branchFromQuery) return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
-      const allowed = await hasBranchCapability(auth.service, auth.profileId, branchFromQuery, "team.manage");
-      if (!allowed) return fail("FORBIDDEN", "Your account does not have team management access to this branch.", 403, origin, id);
+    if (
+      resource === "teams" && segments.length === 4 && isUuid(segments[1]) &&
+      segments[2] === "members" && isUuid(segments[3]) &&
+      request.method === "PATCH"
+    ) {
+      if (!branchFromQuery) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const allowed = await hasBranchCapability(
+        auth.service,
+        auth.profileId,
+        branchFromQuery,
+        "team.manage",
+      );
+      if (!allowed) {
+        return fail(
+          "FORBIDDEN",
+          "Your account does not have team management access to this branch.",
+          403,
+          origin,
+          id,
+        );
+      }
       const body = await readBody(request, origin, id);
       if (!body.ok) return body.response;
       const parsed = parseTeamMemberRole(body.value);
-      if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
-      const result = await performRpc(auth, "team.member.update_role", { ...parsed.value, branch_id: branchFromQuery, team_id: segments[1], membership_id: segments[3] });
+      if (!parsed.ok) {
+        return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      }
+      const result = await performRpc(auth, "team.member.update_role", {
+        ...parsed.value,
+        branch_id: branchFromQuery,
+        team_id: segments[1],
+        membership_id: segments[3],
+      });
       if (result.error) {
         const mapped = rpcError(result.error);
         return fail(mapped.code, mapped.message, mapped.status, origin, id);
@@ -526,11 +752,40 @@ Deno.serve(async (request: Request) => {
       return response({ data: result.data, request_id: id }, 200, origin, id);
     }
 
-    if (resource === "teams" && segments.length === 5 && isUuid(segments[1]) && segments[2] === "members" && isUuid(segments[3]) && segments[4] === "revoke" && request.method === "POST") {
-      if (!branchFromQuery) return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
-      const allowed = await hasBranchCapability(auth.service, auth.profileId, branchFromQuery, "team.manage");
-      if (!allowed) return fail("FORBIDDEN", "Your account does not have team management access to this branch.", 403, origin, id);
-      const result = await performRpc(auth, "team.member.revoke", { branch_id: branchFromQuery, team_id: segments[1], membership_id: segments[3] });
+    if (
+      resource === "teams" && segments.length === 5 && isUuid(segments[1]) &&
+      segments[2] === "members" && isUuid(segments[3]) &&
+      segments[4] === "revoke" && request.method === "POST"
+    ) {
+      if (!branchFromQuery) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const allowed = await hasBranchCapability(
+        auth.service,
+        auth.profileId,
+        branchFromQuery,
+        "team.manage",
+      );
+      if (!allowed) {
+        return fail(
+          "FORBIDDEN",
+          "Your account does not have team management access to this branch.",
+          403,
+          origin,
+          id,
+        );
+      }
+      const result = await performRpc(auth, "team.member.revoke", {
+        branch_id: branchFromQuery,
+        team_id: segments[1],
+        membership_id: segments[3],
+      });
       if (result.error) {
         const mapped = rpcError(result.error);
         return fail(mapped.code, mapped.message, mapped.status, origin, id);
@@ -538,14 +793,39 @@ Deno.serve(async (request: Request) => {
       return response({ data: result.data, request_id: id }, 200, origin, id);
     }
 
-    if (request.method === "POST" && resource === "areas" && segments.length === 1) {
-      if (url.search) return fail("INVALID_QUERY", "Do not include query parameters when creating a service area.", 400, origin, id);
+    if (
+      request.method === "POST" && resource === "areas" && segments.length === 1
+    ) {
+      if (url.search) {
+        return fail(
+          "INVALID_QUERY",
+          "Do not include query parameters when creating a service area.",
+          400,
+          origin,
+          id,
+        );
+      }
       const body = await readBody(request, origin, id);
       if (!body.ok) return body.response;
       const parsed = parseServiceAreaCreate(body.value);
-      if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
-      const allowed = await hasBranchCapability(auth.service, auth.profileId, parsed.value.branch_id, "area.manage");
-      if (!allowed) return fail("FORBIDDEN", "Your account does not have service-area management access to this branch.", 403, origin, id);
+      if (!parsed.ok) {
+        return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      }
+      const allowed = await hasBranchCapability(
+        auth.service,
+        auth.profileId,
+        parsed.value.branch_id,
+        "area.manage",
+      );
+      if (!allowed) {
+        return fail(
+          "FORBIDDEN",
+          "Your account does not have service-area management access to this branch.",
+          403,
+          origin,
+          id,
+        );
+      }
       const result = await performRpc(auth, "area.create", { ...parsed.value });
       if (result.error) {
         const mapped = rpcError(result.error);
@@ -554,15 +834,45 @@ Deno.serve(async (request: Request) => {
       return response({ data: result.data, request_id: id }, 201, origin, id);
     }
 
-    if (resource === "areas" && segments.length === 2 && isUuid(segments[1]) && request.method === "PATCH") {
-      if (!branchFromQuery) return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
-      const allowed = await hasBranchCapability(auth.service, auth.profileId, branchFromQuery, "area.manage");
-      if (!allowed) return fail("FORBIDDEN", "Your account does not have service-area management access to this branch.", 403, origin, id);
+    if (
+      resource === "areas" && segments.length === 2 && isUuid(segments[1]) &&
+      request.method === "PATCH"
+    ) {
+      if (!branchFromQuery) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const allowed = await hasBranchCapability(
+        auth.service,
+        auth.profileId,
+        branchFromQuery,
+        "area.manage",
+      );
+      if (!allowed) {
+        return fail(
+          "FORBIDDEN",
+          "Your account does not have service-area management access to this branch.",
+          403,
+          origin,
+          id,
+        );
+      }
       const body = await readBody(request, origin, id);
       if (!body.ok) return body.response;
       const parsed = parseServiceAreaPatch(body.value);
-      if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
-      const result = await performRpc(auth, "area.update", { ...parsed.value, branch_id: branchFromQuery, area_id: segments[1] });
+      if (!parsed.ok) {
+        return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      }
+      const result = await performRpc(auth, "area.update", {
+        ...parsed.value,
+        branch_id: branchFromQuery,
+        area_id: segments[1],
+      });
       if (result.error) {
         const mapped = rpcError(result.error);
         return fail(mapped.code, mapped.message, mapped.status, origin, id);
@@ -570,15 +880,45 @@ Deno.serve(async (request: Request) => {
       return response({ data: result.data, request_id: id }, 200, origin, id);
     }
 
-    if (resource === "areas" && segments.length === 3 && isUuid(segments[1]) && segments[2] === "coverage" && request.method === "POST") {
-      if (!branchFromQuery) return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
-      const allowed = await hasBranchCapability(auth.service, auth.profileId, branchFromQuery, "area.manage");
-      if (!allowed) return fail("FORBIDDEN", "Your account does not have service-area management access to this branch.", 403, origin, id);
+    if (
+      resource === "areas" && segments.length === 3 && isUuid(segments[1]) &&
+      segments[2] === "coverage" && request.method === "POST"
+    ) {
+      if (!branchFromQuery) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const allowed = await hasBranchCapability(
+        auth.service,
+        auth.profileId,
+        branchFromQuery,
+        "area.manage",
+      );
+      if (!allowed) {
+        return fail(
+          "FORBIDDEN",
+          "Your account does not have service-area management access to this branch.",
+          403,
+          origin,
+          id,
+        );
+      }
       const body = await readBody(request, origin, id);
       if (!body.ok) return body.response;
       const parsed = parseAreaCoverageCreate(body.value);
-      if (!parsed.ok) return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
-      const result = await performRpc(auth, "area.coverage.add", { ...parsed.value, branch_id: branchFromQuery, area_id: segments[1] });
+      if (!parsed.ok) {
+        return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+      }
+      const result = await performRpc(auth, "area.coverage.add", {
+        ...parsed.value,
+        branch_id: branchFromQuery,
+        area_id: segments[1],
+      });
       if (result.error) {
         const mapped = rpcError(result.error);
         return fail(mapped.code, mapped.message, mapped.status, origin, id);
@@ -586,11 +926,40 @@ Deno.serve(async (request: Request) => {
       return response({ data: result.data, request_id: id }, 201, origin, id);
     }
 
-    if (resource === "areas" && segments.length === 5 && isUuid(segments[1]) && segments[2] === "coverage" && isUuid(segments[3]) && segments[4] === "revoke" && request.method === "POST") {
-      if (!branchFromQuery) return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
-      const allowed = await hasBranchCapability(auth.service, auth.profileId, branchFromQuery, "area.manage");
-      if (!allowed) return fail("FORBIDDEN", "Your account does not have service-area management access to this branch.", 403, origin, id);
-      const result = await performRpc(auth, "area.coverage.revoke", { branch_id: branchFromQuery, area_id: segments[1], coverage_id: segments[3] });
+    if (
+      resource === "areas" && segments.length === 5 && isUuid(segments[1]) &&
+      segments[2] === "coverage" && isUuid(segments[3]) &&
+      segments[4] === "revoke" && request.method === "POST"
+    ) {
+      if (!branchFromQuery) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const allowed = await hasBranchCapability(
+        auth.service,
+        auth.profileId,
+        branchFromQuery,
+        "area.manage",
+      );
+      if (!allowed) {
+        return fail(
+          "FORBIDDEN",
+          "Your account does not have service-area management access to this branch.",
+          403,
+          origin,
+          id,
+        );
+      }
+      const result = await performRpc(auth, "area.coverage.revoke", {
+        branch_id: branchFromQuery,
+        area_id: segments[1],
+        coverage_id: segments[3],
+      });
       if (result.error) {
         const mapped = rpcError(result.error);
         return fail(mapped.code, mapped.message, mapped.status, origin, id);
@@ -598,10 +967,22 @@ Deno.serve(async (request: Request) => {
       return response({ data: result.data, request_id: id }, 200, origin, id);
     }
 
-    return fail("NOT_FOUND", "The requested team or service-area operation does not exist.", 404, origin, id);
+    return fail(
+      "NOT_FOUND",
+      "The requested team or service-area operation does not exist.",
+      404,
+      origin,
+      id,
+    );
   } catch (error) {
     const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
     console.error("team-operations failure", { request_id: id, code });
-    return fail("TEAM_OPERATION_FAILED", "Unable to complete the team operation.", 500, origin, id);
+    return fail(
+      "TEAM_OPERATION_FAILED",
+      "Unable to complete the team operation.",
+      500,
+      origin,
+      id,
+    );
   }
 });
