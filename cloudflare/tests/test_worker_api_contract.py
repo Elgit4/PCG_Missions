@@ -237,9 +237,6 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertIn("REPORT_REVIEW_SCOPE_REQUIRED", self.event_report_migration)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
     def test_prayer_intake_requires_branch_capability_and_idempotency(self):
         handler = re.search(r"async function createPrayerRequest\([\s\S]*?\n\}", self.source)
         self.assertIsNotNone(handler)
@@ -315,3 +312,7 @@ if __name__ == "__main__":
         self.assertIn("personal_identifiers_included:false", code)
         self.assertNotIn("SELECT author_profile_id", code)
 
+
+
+if __name__ == "__main__":
+    unittest.main()
