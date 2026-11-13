@@ -2,7 +2,7 @@
 
 **Track:** non-production only  
 **Database jurisdiction:** EU (`eu`) — remote non-production database `pcg-missions-dev` created on 2026-11-13 (primary region `EEUR`, replication disabled)  
-**Worker:** not deployed; D1 schema applied directly to the isolated non-production database  
+**Worker:** full API Worker not deployed. A temporary read-only D1 smoke Worker (`pcg-missions-d1-smoke`) is deployed on the non-production `workers.dev` subdomain with the EU D1 binding; it exposes only `GET /health`.  
 **Production:** unchanged
 
 ## Implemented D1 schema slices
@@ -34,7 +34,7 @@ These migrations are a first porting slice from the live schema. They are not a 
 - Database contains 69 application tables and all six expected role records.
 - `PRAGMA foreign_key_check` returned no violations.
 - Wrangler migration ledger `d1_migrations` contains all 15 applied migration filenames. Migration `0015` was applied to the EU non-production database and verified through the Cloudflare D1 API.
-- This is a direct remote D1 schema test; Better Auth login, Worker request lifecycle and domain endpoints have not yet been exercised against a deployed Worker.
+- The full API Worker is not yet deployed. The diagnostic smoke Worker has its D1 binding and `workers.dev` route enabled, but its public HTTP response has not yet been independently verified from this session. Better Auth login and business endpoints have not been exercised in a deployed Worker.
 
 ## Current test coverage
 
