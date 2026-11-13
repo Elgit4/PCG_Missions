@@ -44,7 +44,7 @@ Latest verified CI run: [43454374409](https://github.com/Elgit4/PCG_Missions/act
 - Exact-origin checks, secure HttpOnly session cookies, no cookie cache, seven-day server-side sessions, Cloudflare client-IP detection and D1-persistent rate-limit counters are configured.
 - `GET /api/v1/me` resolves the session to an active staff profile and branch-valid roles/capability metadata; caller-supplied branch IDs are validated against active assignments.
 - The endpoint is context discovery, not a substitute for server-side authorization.
-- Admin/Pastor-only standard-role assignment and revocation routes are implemented with branch checks, validation, D1-batched audit writes and dual-control exclusions for Admin/Pastor changes. No ministry contact/follow-up business routes are enabled yet.
+- Admin/Pastor-only standard-role assignment/revocation routes are implemented with branch checks, validation and D1-batched audit writes. Separate Admin/Pastor elevation request/list/approve/reject routes enforce distinct requesters and reviewers through both Worker checks and database triggers. Admin/Pastor revocation remains disabled pending a dual-control revocation workflow. No ministry contact/follow-up business routes are enabled yet.
 
 ## Not implemented yet
 
