@@ -5737,7 +5737,14 @@ export default {
       try {
         const auth = createAuth(env);
         return withSecurityHeaders(await auth.handler(request), origin);
-      } catch {
+      } catch (error) {
+        if (env.APP_ENV === "non-production") {
+          console.error("BETTER_AUTH_REQUEST_FAILED", {
+            request_id: requestId,
+            name: error instanceof Error ? error.name : "UnknownError",
+            message: error instanceof Error ? error.message.slice(0, 240) : "Authentication request failed",
+          });
+        }
         return json(503, {
           ok: false,
           error: { code: "AUTH_NOT_CONFIGURED", message: "Authentication is not configured for this environment." },
