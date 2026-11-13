@@ -1,0 +1,131 @@
+import { createAuth, type AuthEnvironment } from "./auth";
+
+export interface StaffDatabase {
+  prepare(sql: string): {
+    bind(...values: unknown[]): {
+      first<T = Record<string, unknown>>(): Promise<T | null>;
+      all<T = Record<string, unknown>>(): Promise<{ results?: T[] }>;
+    };
+  };
+}
+
+export interface StaffEnvironment extends AuthEnvironment {
+  DB: StaffDatabase;
+}
+
+export interface AuthenticatedStaff {
+  userId: string;
+  profileId: string;
+  fullName: string;
+  email: string;
+  branches: Array<{ id: string; name: string; timezone: string }>;
+}
+
+export interface ActiveBranchContext {
+  branchId: string;
+  branchName: string;
+  roles: string[];
+  capabilities: Array<{ code: string; scopeMode: string; sensitivity: string }>;
+}
+
+export type StaffContextResult =
+  | { state: "unauthenticated" }
+  | { state: "staff_inactive" }
+  | { state: "staff_not_provisioned" }
+  | { state: "authenticated"; staff: AuthenticatedStaff; activeBranch: ActiveBranchContext | null };
+
+const NOW_SQL = "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+
+export async function resolveStaffContext(
+  request: Request,
+  env: StaffEnvironment,
+): Promise<StaffContextResult> {
+  const auth = createAuth(env);
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session?.user?.id) return { state: "unauthenticated" };
+
+  const profile = await env.DB.prepare(`
+    SELECT id, auth_user_id, full_name, email, account_status
+    FROM staff_profile
+    WHERE auth_user_id = ?
+    LIMIT 1
+  `).bind(session.user.id).first<{
+    id: string;
+    auth_user_id: string;
+    full_name: string;
+    email: string | null;
+    account_status: string;
+  }>();
+
+  if (!profile) return { state: "staff_not_provisioned" };
+  if (profile.account_status !== "active") return { state: "staff_inactive" };
+
+  const now = new Date().toISOString();
+  const branchRows = await env.DB.prepare(`
+    SELECT DISTINCT b.id, b.name, b.timezone
+    FROM staff_role_assignment sra
+    JOIN role r ON r.id = sra.role_id AND r.is_active = 1
+    JOIN branch b ON b.id = sra.branch_id AND b.is_active = 1
+    WHERE sra.staff_profile_id = ?
+      AND sra.revoked_at IS NULL
+      AND sra.starts_at <= ?
+      AND (sra.ends_at IS NULL OR sra.ends_at > ?)
+    ORDER BY b.name COLLATE NOCASE
+  `).bind(profile.id, now, now).all<{ id: string; name: string; timezone: string }>();
+
+  const staff: AuthenticatedStaff = {
+    userId: session.user.id,
+    profileId: profile.id,
+    fullName: profile.full_name,
+    email: profile.email ?? session.user.email,
+    branches: branchRows.results ?? [],
+  };
+
+  const requestedBranchId = request.headers.get("x-branch-id");
+  if (!requestedBranchId) {
+    return { state: "authenticated", staff, activeBranch: null };
+  }
+
+  const branch = staff.branches.find((item) => item.id === requestedBranchId);
+  if (!branch) {
+    // A caller-selected branch is accepted only after it is matched against
+    // an active, time-valid role assignment resolved above.
+    return { state: "authenticated", staff, activeBranch: null };
+  }
+
+  const grants = await env.DB.prepare(`
+    SELECT DISTINCT r.code AS role_code, c.code AS capability_code,
+           rc.scope_mode, c.sensitivity
+    FROM staff_role_assignment sra
+    JOIN role r ON r.id = sra.role_id AND r.is_active = 1
+    JOIN role_capability rc ON rc.role_id = r.id
+    JOIN capability c ON c.id = rc.capability_id AND c.is_active = 1
+    WHERE sra.staff_profile_id = ?
+      AND sra.branch_id = ?
+      AND sra.revoked_at IS NULL
+      AND sra.starts_at <= ?
+      AND (sra.ends_at IS NULL OR sra.ends_at > ?)
+    ORDER BY r.code, c.code
+  `).bind(profile.id, branch.id, now, now).all<{
+    role_code: string;
+    capability_code: string;
+    scope_mode: string;
+    sensitivity: string;
+  }>();
+
+  const rows = grants.results ?? [];
+  return {
+    state: "authenticated",
+    staff,
+    activeBranch: {
+      branchId: branch.id,
+      branchName: branch.name,
+      roles: [...new Set(rows.map((row) => row.role_code))],
+      capabilities: rows.map((row) => ({
+        code: row.capability_code,
+        scopeMode: row.scope_mode,
+        sensitivity: row.sensitivity,
+      })),
+    },
+  };
+}
