@@ -116,8 +116,8 @@ values('71000000-0000-4000-8000-000000000020','daily_evangelism','2026-11-10','2
 select is((select count(*)::integer from public.ministry_report where branch_id='71000000-0000-4000-8000-000000000020'),1,
   'A valid typed daily report can be stored');
 select throws_ok(
-  $q$ insert into public.ministry_report(branch_id,report_type,period_start,period_end,author_profile_id)
-      values('71000000-0000-4000-8000-000000000020','daily_evangelism','2026-11-10','2026-11-10','73000000-0000-4000-8000-000000000020') $q$,
+  $q$ insert into public.ministry_report(branch_id,report_type,period_start,period_end,author_profile_id,team_id)
+      values('71000000-0000-4000-8000-000000000020','daily_evangelism','2026-11-10','2026-11-10','73000000-0000-4000-8000-000000000020','74000000-0000-4000-8000-000000000020') $q$,
   '23505', null, 'Duplicate author, period and team/event report scope is rejected');
 
 insert into public.report_review_event(report_id,actor_profile_id,decision,comment)
