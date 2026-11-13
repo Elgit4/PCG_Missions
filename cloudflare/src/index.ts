@@ -88,6 +88,21 @@ const STANDARD_ASSIGNABLE_ROLES = new Set([
   "prayer_intercessor",
 ]);
 
+
+type JsonBodyResult =
+  | { ok: true; value: unknown }
+  | { ok: false; status: 400 | 413 };
+
+async function readJsonBody(request: Request, maxBytes = 8192): Promise<JsonBodyResult> {
+  const raw = await request.text();
+  if (new TextEncoder().encode(raw).byteLength > maxBytes) return { ok: false, status: 413 };
+  try {
+    return { ok: true, value: JSON.parse(raw) as unknown };
+  } catch {
+    return { ok: false, status: 400 };
+  }
+}
+
 type StaffRoleRequest = {
   target_profile_id?: unknown;
   role_code?: unknown;
@@ -126,17 +141,11 @@ async function assignStaffRole(
   const access = await authorizeRequestCapability(request, env, "staff.role.assign");
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
 
-  const contentLength = Number(request.headers.get("Content-Length") ?? "0");
-  if (contentLength > 8192) {
-    return json(413, { ok: false, error: { code: "REQUEST_TOO_LARGE" } }, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) {
+    return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
   }
-
-  let payload: StaffRoleRequest;
-  try {
-    payload = await request.json() as StaffRoleRequest;
-  } catch {
-    return json(400, { ok: false, error: { code: "INVALID_JSON" } }, requestId, origin);
-  }
+  const payload = body.value as StaffRoleRequest;
 
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return json(400, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
@@ -241,12 +250,11 @@ async function revokeStaffRole(
     return json(400, { ok: false, error: { code: "INVALID_ASSIGNMENT_ID" } }, requestId, origin);
   }
 
-  let payload: { reason?: unknown };
-  try {
-    payload = await request.json() as { reason?: unknown };
-  } catch {
-    return json(400, { ok: false, error: { code: "INVALID_JSON" } }, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) {
+    return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
   }
+  const payload = body.value as { reason?: unknown };
 
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return json(400, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
