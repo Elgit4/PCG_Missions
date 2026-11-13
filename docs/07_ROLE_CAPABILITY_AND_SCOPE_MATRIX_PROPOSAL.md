@@ -270,7 +270,7 @@ Use operation-specific policies, not one broad FOR ALL policy.
 | R-11 | Can intercessors create requests and see linked contact name/phone? | Create only through approved intake; assigned request text only; no linked phone/email projection |
 | R-12 | Which roles may export contact/report data and what masking applies? | Export disabled until dedicated audited capability, masking and release gate are implemented |
 
-The source baseline contains 58 explicit active grants as recorded in document 31. No conditional, SMS, export, capability-policy administration, prayer/care mutation or incomplete-module grants are seeded. Hosted deployment remains separate and requires the release gates in document 31.
+The original visitor/follow-up source baseline contained 58 grants. The 12 November private-draft and 13 November team/service-area amendments bring the current source baseline to 67. The latest two grants are branch-scoped and Admin/Pastor-only; production remains at 65 until PR #43 is reviewed and its migration is applied. No SMS, export, capability-policy administration, pastoral mutation or event-publication grant is seeded.
 
 ## 11. Approval record
 
