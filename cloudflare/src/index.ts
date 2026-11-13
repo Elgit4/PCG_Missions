@@ -94,8 +94,49 @@ type JsonBodyResult =
   | { ok: false; status: 400 | 413 };
 
 async function readJsonBody(request: Request, maxBytes = 8192): Promise<JsonBodyResult> {
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).byteLength > maxBytes) return { ok: false, status: 413 };
+  const contentLength = request.headers.get("Content-Length");
+  if (contentLength !== null) {
+    const declaredBytes = Number(contentLength);
+    if (!Number.isSafeInteger(declaredBytes) || declaredBytes < 0) {
+      return { ok: false, status: 400 };
+    }
+    if (declaredBytes > maxBytes) return { ok: false, status: 413 };
+  }
+
+  const reader = request.body?.getReader();
+  if (!reader) return { ok: false, status: 400 };
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel("REQUEST_TOO_LARGE");
+        return { ok: false, status: 413 };
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return { ok: false, status: 400 };
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let raw: string;
+  try {
+    raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return { ok: false, status: 400 };
+  }
   try {
     return { ok: true, value: JSON.parse(raw) as unknown };
   } catch {
