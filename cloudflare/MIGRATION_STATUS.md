@@ -53,7 +53,7 @@ These migrations are a first porting slice from the live schema. They are not a 
 ## Current test coverage
 
 The GitHub Actions workflow `Cloudflare D1 Foundation` runs the SQL migrations against an in-memory SQLite database and checks:
-- migration application through schema version 24 and non-production marker;
+- migration application through schema version 28 and non-production marker;
 - identity foreign keys;
 - temporal overlap rejection for staff role assignments, team membership, area coverage and contact assignments;
 - adjacent assignment periods;
@@ -93,11 +93,11 @@ Latest verified CI run: [43514971428](https://github.com/Elgit4/PCG_Missions/act
 
 ## Not implemented yet
 
-- Better Auth schema compatibility validation against the exact pinned package in a real local D1/Worker runtime.
+- Remote Better Auth sign-in/session lifecycle using a provisioned non-production staff identity (the local D1/Worker integration flow passes; credentialed remote acceptance remains pending).
 - Worker-level integration tests for staff invitation, account lifecycle, staff governance and the existing contact/follow-up routes.
 - Pastoral-care metadata and explicit-share narrative handlers are now implemented in Worker source. The model grants branch metadata to Admin/Pastor only; narrative read/update/interact require an active explicit share and care assignment. Remote migration 0025 is applied; authenticated runtime integration tests remain outstanding.
 - Worker-level integration tests for the new event registration, capacity, cancellation replay, transport, check-in and closeout endpoints; the handlers and D1 guards are implemented but not runtime-tested.
-- Calendar and announcement CRUD/lifecycle, in-app delivery fan-out, recipient-scoped announcement inbox/read receipts, public content CRUD/publishing, church profile management, HTTPS external links and the published-only public read projection are in Worker source. They still require current-head CI and deployed Worker integration testing.
+- Calendar and announcement CRUD/lifecycle, in-app delivery fan-out, recipient-scoped announcement inbox/read receipts, public content CRUD/publishing, church profile management, HTTPS external links and the published-only public read projection are deployed. Authenticated domain-by-domain acceptance remains outstanding.
 - Ministry report submission, branch/team review, correction/resubmission, aggregate overview, prior-period time-series comparisons and Admin/Pastor-only aggregate CSV export with append-only export audit are implemented in Worker source. Deployed Worker verification remains; migration export/import and source-to-D1 reconciliation also remain.
 - Cloudflare Pages preview binding and frontend API integration.
 - Email provider integration for invitations and password resets. SMS remains intentionally unconfigured.
