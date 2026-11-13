@@ -141,9 +141,12 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
     setSaving(true);
     setError("");
     try {
-      await api.resubmitMinistryReport(report.id, Object.fromEntries(
+      const result = await api.resubmitMinistryReport(report.id, Object.fromEntries(
         COUNT_FIELDS.map(([key]) => [key, Number(correctionCounts[key])]),
       ) as Record<CountKey, number>);
+      if (detailReport?.id === report.id) {
+        setDetailReport({ ...result.data.report, review_history: result.data.review_history });
+      }
       setNotice("Your corrected report has been resubmitted.");
       setEditingReportId(null);
       await load(true);
@@ -178,7 +181,10 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
     setSaving(true);
     setError("");
     try {
-      await api.reviewMinistryReport(report.id, { decision, comment: reviewComment.trim() || undefined });
+      const result = await api.reviewMinistryReport(report.id, { decision, comment: reviewComment.trim() || undefined });
+      if (detailReport?.id === report.id) {
+        setDetailReport({ ...result.data.report, review_history: result.data.review_history });
+      }
       setNotice(decision === "approved" ? "Report approved." : "Report returned to its author.");
       setReviewingId(null);
       setReviewComment("");
