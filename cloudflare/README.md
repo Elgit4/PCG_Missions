@@ -10,7 +10,7 @@ This is an isolated Cloudflare Workers + D1 implementation track. It is not conn
 - Remote EU D1 schema version: 24
 - Remote migration ledger: 24 applied migrations
 - Remote application tables: 77 (excluding Wrangler's migration ledger)
-- Source branch includes migration 0025 (schema version 25); it is not yet applied remotely
+- Source branch includes migrations 0025–0026 (schema version 26); they are not yet applied remotely
 - Full API Worker: not deployed
 - Diagnostic Worker: `pcg-missions-d1-smoke`, read-only `GET /health` with the EU D1 binding; public HTTP response still needs independent verification
 - Diagnostic URL: https://pcg-missions-d1-smoke.pcg-missions-nonprod.workers.dev/health
@@ -53,6 +53,7 @@ The prayer/care, events/attendance/transport and calendar/announcement/content s
 - `GET/POST /api/v1/events/{id}/transport-options`, `PATCH /api/v1/events/{id}/transport-options/{optionId}`, `GET/POST /api/v1/events/{id}/transport-reservations` and `POST /api/v1/events/{id}/transport-reservations/{reservationId}/cancel` — transport capacity and reservation lifecycle.
 - `GET/POST /api/v1/events/{id}/closeout`, `POST /api/v1/events/{id}/closeout/resubmit` and `/review` — closeout submission, resubmission and separate review capability.
 - `GET/POST /api/v1/calendar`, `GET/PATCH /api/v1/calendar/{id}` — branch/team/own/event-scoped calendar entries.
+- `POST /api/v1/calendar/series` and `POST /api/v1/calendar/series/{id}/cancel` — timezone-aware daily/weekly/monthly series with bounded occurrence generation, series-level audit and reasoned future-occurrence cancellation.
 - `GET/POST /api/v1/announcements`, `GET/PATCH /api/v1/announcements/{id}`, `POST /api/v1/announcements/{id}/publish` and `/archive` — audience-scoped announcement lifecycle.
 - `GET /api/v1/announcements/inbox` — recipient-only in-app inbox with delivery and read status.
 - `POST /api/v1/announcements/{id}/read` — idempotent read receipt for an announcement delivered to the authenticated staff member.
@@ -66,7 +67,7 @@ These are source-code routes, not a live service yet: the Cloudflare Worker has 
 
 - Pastoral-care handlers are implemented in source under migration 0025's explicit-share model; real Worker/D1 integration tests and remote migration application remain outstanding.
 - Public event registration remains disabled. Staff registration, capacity enforcement, transport reservations, check-in and closeout handlers are implemented in source but not deployed or runtime-tested; event visibility remains staff-only by default.
-- Advanced report comparisons, privacy-controlled report exports, and secure Supabase export/import reconciliation.
+- Privacy-controlled report exports and secure Supabase export/import reconciliation.
 - Public registration, public prayer intake, offline access, SMS and email notifications.
 - Invitation/password-reset email delivery. Invitation tokens are currently returned once for authorized manual delivery; password reset fails closed until a provider is configured.
 
