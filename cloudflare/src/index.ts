@@ -5672,6 +5672,108 @@ function hasScopedGrant(
   );
 }
 
+
+async function createPrayerRequest(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  if (!hasScopedGrant(context, "prayer.request.create", "branch")) {
+    return json(403, { ok: false, error: { code: "PRAYER_REQUEST_CREATE_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { request_text?: unknown; contact_id?: unknown; expires_at?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !["request_text", "contact_id", "expires_at"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_REQUEST_BODY" } }, requestId, origin);
+  }
+  const requestText = typeof payload.request_text === "string" ? payload.request_text.trim() : "";
+  const contactId = payload.contact_id === undefined || payload.contact_id === null || payload.contact_id === ""
+    ? null : typeof payload.contact_id === "string" ? payload.contact_id.trim() : "";
+  const now = new Date().toISOString();
+  const expiresAt = payload.expires_at === undefined || payload.expires_at === null || payload.expires_at === ""
+    ? null : parseIsoTimestamp(payload.expires_at, "");
+  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() ?? "";
+  if (requestText.length < 1 || requestText.length > 10000 ||
+      contactId === "" || (contactId !== null && contactId.length > 128) ||
+      (payload.expires_at !== undefined && payload.expires_at !== null && payload.expires_at !== "" &&
+        (!expiresAt || expiresAt <= now)) ||
+      idempotencyKey.length < 8 || idempotencyKey.length > 128) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_REQUEST_DETAILS" } }, requestId, origin);
+  }
+  const digest = await eventRequestDigest({ request_text: requestText, contact_id: contactId, expires_at: expiresAt });
+  const existing = await env.DB.prepare(`
+    SELECT actor_user_id, digest_hex, prayer_request_id
+    FROM prayer_request_idempotency
+    WHERE branch_id = ? AND idempotency_key = ?
+    LIMIT 1
+  `).bind(context.activeBranch.branchId, idempotencyKey).first<{
+    actor_user_id: string; digest_hex: string; prayer_request_id: string;
+  }>();
+  if (existing) {
+    if (existing.actor_user_id !== context.staff.userId || existing.digest_hex !== digest.hex) {
+      return json(409, { ok: false, error: { code: "IDEMPOTENCY_KEY_REUSED" } }, requestId, origin);
+    }
+    return json(200, { ok: true, prayer_request_id: existing.prayer_request_id, replayed: true }, requestId, origin);
+  }
+  const prayerRequestId = crypto.randomUUID();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO prayer_request
+          (id, branch_id, contact_id, created_by, request_text, status, sensitivity,
+           expires_at, answered_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'open', 'restricted', ?, NULL, ?, ?)
+      `).bind(
+        prayerRequestId, context.activeBranch.branchId, contactId, context.staff.userId,
+        requestText, expiresAt, now, now,
+      ),
+      env.DB.prepare(`
+        INSERT INTO prayer_request_idempotency
+          (id, branch_id, actor_user_id, idempotency_key, digest_hex, prayer_request_id, created_at)
+        SELECT ?, ?, ?, ?, ?, ?, ?
+        WHERE changes() = 1
+      `).bind(
+        crypto.randomUUID(), context.activeBranch.branchId, context.staff.userId,
+        idempotencyKey, digest.hex, prayerRequestId, now,
+      ),
+      env.DB.prepare(`
+        INSERT INTO prayer_access_audit
+          (id, prayer_request_id, branch_id, actor_user_id, action, reason, request_id, safe_metadata, accessed_at)
+        SELECT ?, ?, ?, ?, 'created', 'Prayer request created by authorized staff member',
+               ?, json_object('sensitivity', 'restricted'), ?
+        WHERE changes() = 1
+      `).bind(
+        crypto.randomUUID(), prayerRequestId, context.activeBranch.branchId,
+        context.staff.userId, requestId, now,
+      ),
+    ]);
+    if (results.some((result) => !result.success) ||
+        results.some((result) => (result.meta?.changes ?? 0) !== 1)) {
+      throw new Error("PRAYER_REQUEST_CREATE_FAILED");
+    }
+  } catch {
+    const replay = await env.DB.prepare(`
+      SELECT actor_user_id, digest_hex, prayer_request_id
+      FROM prayer_request_idempotency
+      WHERE branch_id = ? AND idempotency_key = ? LIMIT 1
+    `).bind(context.activeBranch.branchId, idempotencyKey).first<{
+      actor_user_id: string; digest_hex: string; prayer_request_id: string;
+    }>();
+    if (replay && replay.actor_user_id === context.staff.userId && replay.digest_hex === digest.hex) {
+      return json(200, { ok: true, prayer_request_id: replay.prayer_request_id, replayed: true }, requestId, origin);
+    }
+    if (replay) return json(409, { ok: false, error: { code: "IDEMPOTENCY_KEY_REUSED" } }, requestId, origin);
+    return json(409, { ok: false, error: { code: "PRAYER_REQUEST_CREATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, { ok: true, prayer_request_id: prayerRequestId, status: "open" }, requestId, origin);
+}
+
 async function listPrayerQueue(
   request: Request,
   env: Env,
@@ -6158,6 +6260,9 @@ async function updatePrayerRequestStatus(
 }
 
 
+    if (url.pathname === "/api/v1/pastoral/prayer/requests" && request.method === "POST") {
+      return createPrayerRequest(request, env, requestId, origin);
+    }
     if (url.pathname === "/api/v1/pastoral/prayer/queue" && request.method === "GET") {
       return listPrayerQueue(request, env, requestId, origin);
     }
