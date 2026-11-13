@@ -17,6 +17,7 @@
 | `0006_last_role_session_revocation.sql` | 0 new tables | Revokes sessions when a staff member loses their final active role across active branches; schema version 6 |
 | `0007_staff_lifecycle_and_admin_revocation.sql` | 3 new audit/workflow tables | Audited deactivate/suspend/reactivate, branch-aware last-Admin protection and two-person Admin/Pastor revocation; schema version 7 |
 | `0008_staff_invitation_onboarding.sql` | 2 new tables | One-time, expiring, hashed staff invitations; Admin/Pastor-only issuance/revocation; invitation acceptance audit; schema version 8 |
+| `0009_contacts_private_field_write.sql` | 0 new tables | Separates highly restricted contact demographic/language writes from ordinary contact updates; schema version 9 |
 
 These migrations are a first porting slice from the live schema. They are not a complete replacement for the live 50 public tables and three private application tables.
 
@@ -55,7 +56,7 @@ Latest verified CI run: [43458900432](https://github.com/Elgit4/PCG_Missions/act
 - Session revocation is enforced by D1 triggers on deactivation/suspension and loss of the final active branch role. The staff account lifecycle endpoints are implemented, but invitation issuance/acceptance and real email delivery remain outstanding.
 - Staff directory/account lifecycle, audit-read and dual-control role revocation routes still need Worker-level integration tests against local D1.
 - Better Auth schema compatibility validation against the exact pinned package in local D1 and Worker runtime.
-- Capability/record authorization integration into domain handlers; verified session resolution is now available, but protected business routes remain disabled.
+- First contact handlers are implemented for scoped list/create/read/update and interactions. Contact creation is idempotent and auto-assigns the contact to the capturing staff member. Phone/email visibility and private demographic/language field writes are separately gated. Contact notes, reassignments, follow-up task APIs and other ministry handlers remain outstanding.
 - Ministry-sensitive prayer/care domain tables and runtime access-audit enforcement (the immutable audit ledger is now defined).
 - Events, registrations, check-in, transport, calendar, announcements, public content and reports.
 - Data export/import tooling and reconciliation reports.
