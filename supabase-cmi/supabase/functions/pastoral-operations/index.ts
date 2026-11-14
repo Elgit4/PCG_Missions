@@ -132,6 +132,129 @@ Deno.serve(async (request: Request) => {
   }
 
   const requestUrl = new URL(request.url);
+  const requestPath = requestUrl.pathname.split("/").filter(Boolean);
+  const functionIndex = requestPath.lastIndexOf("pastoral-operations");
+  const pastoralRoute = functionIndex >= 0 ? requestPath.slice(functionIndex + 1) : requestPath;
+  const isPrayerCollection = pastoralRoute.length === 2 &&
+    pastoralRoute[0] === "prayer" && pastoralRoute[1] === "requests";
+
+  // Return workflow metadata only. Prayer narratives remain available solely
+  // through the audited single-record RPC below.
+  if (request.method === "GET" && isPrayerCollection) {
+    const allowedQuery = new Set(["branch_id", "limit", "offset"]);
+    const keys = [...requestUrl.searchParams.keys()];
+    if (keys.some((key) => !allowedQuery.has(key)) ||
+      new Set(keys).size !== keys.length) {
+      return fail("INVALID_QUERY", "Unsupported or duplicate query parameter.", 400, origin, id);
+    }
+    const branchId = requestUrl.searchParams.get("branch_id") ?? "";
+    const limit = Number(requestUrl.searchParams.get("limit") ?? "25");
+    const offset = Number(requestUrl.searchParams.get("offset") ?? "0");
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(branchId) ||
+      !Number.isInteger(limit) || limit < 1 || limit > 50 ||
+      !Number.isInteger(offset) || offset < 0 || offset > 5000) {
+      return fail("INVALID_QUERY", "A valid branch_id, limit (1–50), and offset (0–5000) are required.", 400, origin, id);
+    }
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_PUBLIC_KEY) {
+      return fail("SERVICE_NOT_CONFIGURED", "Pastoral operations are not configured.", 503, origin, id);
+    }
+    const token = bearerToken(request);
+    if (!token) return fail("AUTH_REQUIRED", "A valid staff session is required.", 401, origin, id);
+
+    try {
+      const authClient = createClient(SUPABASE_URL, SUPABASE_PUBLIC_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      });
+      const service = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+        global: { headers: { "X-Application-Name": "pcg-missions-pastoral-operations" } },
+      });
+      const { data: authData, error: authError } = await authClient.auth.getUser(token);
+      if (authError || !authData.user) return fail("INVALID_SESSION", "A valid staff session is required.", 401, origin, id);
+
+      const { data: staffProfile, error: profileError } = await service
+        .from("staff_profile")
+        .select("id,account_status,must_change_password")
+        .eq("auth_user_id", authData.user.id)
+        .maybeSingle();
+      if (profileError) throw new Error("STAFF_PROFILE_LOOKUP_FAILED");
+      if (!staffProfile || staffProfile.account_status !== "active") {
+        return fail("STAFF_ACCOUNT_NOT_ACTIVE", "An active staff account is required.", 403, origin, id);
+      }
+      if (staffProfile.must_change_password) {
+        return fail("PASSWORD_CHANGE_REQUIRED", "Change the temporary password before using staff operations.", 403, origin, id);
+      }
+
+      const { data: branch, error: branchError } = await service
+        .from("branch").select("id,is_active").eq("id", branchId).maybeSingle();
+      if (branchError) throw new Error("BRANCH_LOOKUP_FAILED");
+      if (!branch?.is_active) return fail("NOT_FOUND", "Branch not found.", 404, origin, id);
+
+      const now = new Date().toISOString();
+      const { data: assignments, error: assignmentError } = await service
+        .from("staff_role_assignment")
+        .select("role_id,role:role!inner(is_active)")
+        .eq("role.is_active", true)
+        .eq("staff_profile_id", staffProfile.id)
+        .eq("branch_id", branchId)
+        .lte("starts_at", now)
+        .or(`ends_at.is.null,ends_at.gt.${now}`)
+        .is("revoked_at", null);
+      if (assignmentError) throw new Error("ROLE_ASSIGNMENT_LOOKUP_FAILED");
+      const roleIds = [...new Set((assignments ?? []).map((item: { role_id: string }) => item.role_id))];
+      if (roleIds.length === 0) return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, id);
+
+      const { data: grants, error: grantError } = await service
+        .from("role_capability")
+        .select("scope_mode,capability:capability!inner(code,is_active)")
+        .in("role_id", roleIds)
+        .in("scope_mode", ["assigned", "oversight"])
+        .in("capability.code", ["prayer.request.read.assigned", "prayer.oversight.read"]);
+      if (grantError) throw new Error("CAPABILITY_LOOKUP_FAILED");
+      const scopes = (grants ?? []).flatMap((grant: {
+        scope_mode: string;
+        capability?: { code: string; is_active: boolean } | Array<{ code: string; is_active: boolean }> | null;
+      }) => {
+        const capability = Array.isArray(grant.capability) ? grant.capability[0] : grant.capability;
+        if (!capability?.is_active) return [];
+        if (grant.scope_mode === "assigned" && capability.code === "prayer.request.read.assigned") return ["assigned"];
+        if (grant.scope_mode === "oversight" && capability.code === "prayer.oversight.read") return ["oversight"];
+        return [];
+      });
+      const accessMode = scopes.includes("oversight") ? "oversight" : scopes.includes("assigned") ? "assigned" : null;
+      if (!accessMode) return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, id);
+
+      let requestIds: string[] | null = null;
+      if (accessMode === "assigned") {
+        const { data: activeAssignments, error: activeAssignmentError } = await service
+          .from("prayer_assignment")
+          .select("prayer_request_id")
+          .eq("branch_id", branchId)
+          .eq("intercessor_user_id", authData.user.id)
+          .lte("starts_at", now)
+          .or(`ends_at.is.null,ends_at.gt.${now}`)
+          .is("revoked_at", null);
+        if (activeAssignmentError) throw new Error("PRAYER_ASSIGNMENT_LOOKUP_FAILED");
+        requestIds = [...new Set((activeAssignments ?? []).map((item: { prayer_request_id: string }) => item.prayer_request_id))];
+        if (requestIds.length === 0) return jsonResponse({ data: [], access_mode: accessMode, request_id: id }, 200, origin, id);
+      }
+
+      let query = service.from("prayer_request")
+        .select("id,status,sensitivity,expires_at,answered_at,created_at,updated_at")
+        .eq("branch_id", branchId)
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+      if (requestIds) query = query.in("id", requestIds);
+      const { data, error } = await query;
+      if (error) throw new Error("PRAYER_REQUEST_LIST_FAILED");
+      return jsonResponse({ data: data ?? [], access_mode: accessMode, request_id: id }, 200, origin, id);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+      console.error("pastoral-operations list failure", { request_id: id, code });
+      return fail("PASTORAL_OPERATION_FAILED", "Unable to load prayer request metadata.", 500, origin, id);
+    }
+  }
+
   if (requestUrl.search !== "") {
     return fail(
       "INVALID_QUERY",
