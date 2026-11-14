@@ -135,7 +135,7 @@ jobs:
 
           pages_health_status=$(curl --silent --output /tmp/pages-health.json --write-out "%{http_code}" "$FRONTEND_ORIGIN/api/v1/health")
           test "$pages_health_status" = "200" || { cat /tmp/pages-health.json; echo "::error::Pages-to-Worker health proxy returned HTTP $pages_health_status; expected 200."; exit 1; }
-          node -e 'const x=require("/tmp/pages-health.json"); process.exit(x.ok===true && x.environment==="non-production" && x.schema_version===29 ? 0 : 1)' || { cat /tmp/pages-health.json; echo "::error::Pages health proxy did not confirm non-production schema 30."; exit 1; }
+          node -e 'const x=require("/tmp/pages-health.json"); process.exit(x.ok===true && x.environment==="non-production" && x.schema_version===30 ? 0 : 1)' || { cat /tmp/pages-health.json; echo "::error::Pages health proxy did not confirm non-production schema 30."; exit 1; }
 
           api_status=$(curl --silent --output /tmp/worker-me.json --write-out "%{http_code}" "$WORKER_API_URL")
           test "$api_status" = "401" || { cat /tmp/worker-me.json; echo "::error::Unauthenticated staff-context gate returned HTTP $api_status; expected 401."; exit 1; }
