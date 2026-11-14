@@ -69,6 +69,21 @@ jobs:
           test -n "$BETTER_AUTH_SECRET" || { echo "::error::Missing repository secret BETTER_AUTH_SECRET."; exit 1; }
           test "${#BETTER_AUTH_SECRET}" -ge 32 || { echo "::error::BETTER_AUTH_SECRET must contain at least 32 characters."; exit 1; }
 
+      - name: Ensure EU event-media R2 bucket exists before database changes
+        if: github.ref == 'refs/heads/migration/cloudflare-nonprod-completion' && github.event_name != 'pull_request'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -eu
+          bucket="pcg-missions-event-media-nonprod"
+          if npx wrangler r2 bucket info "$bucket" --jurisdiction eu >/dev/null 2>&1; then
+            echo "Verified existing EU event-media bucket: $bucket"
+          else
+            echo "R2 bucket is not available; attempting to create it in the EU jurisdiction."
+            npx wrangler r2 bucket create "$bucket" --jurisdiction eu
+            npx wrangler r2 bucket info "$bucket" --jurisdiction eu >/dev/null
+          fi
+
       - name: Apply pending migrations to EU non-production D1
         if: github.ref == 'refs/heads/migration/cloudflare-nonprod-completion' && github.event_name != 'pull_request'
         env:
