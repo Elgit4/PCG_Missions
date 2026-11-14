@@ -81,7 +81,7 @@ export function OperationsWorkspace({
     : section === "Calendar"
     ? hasCapability(session, "calendar.read.scoped", branchId)
     : section === "Announcements"
-    ? hasCapability(session, "announcement.read.scoped", branchId)
+    ? hasCapability(session, "announcements.read", branchId)
     : hasCapability(session, "content.manage.draft", branchId);
 
   const canManage = section === "Events"
@@ -89,7 +89,7 @@ export function OperationsWorkspace({
     : section === "Calendar"
     ? hasCapability(session, "calendar.manage.scoped", branchId)
     : section === "Announcements"
-    ? hasCapability(session, "announcement.create.scoped", branchId)
+    ? hasCapability(session, "announcements.manage", branchId)
     : hasCapability(session, "content.manage.draft", branchId);
 
   const loadRecords = useCallback(async () => {
