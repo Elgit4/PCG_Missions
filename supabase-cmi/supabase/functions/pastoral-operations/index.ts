@@ -143,10 +143,12 @@ Deno.serve(async (request: Request) => {
     : requestPath;
   const isPrayerCollection = pastoralRoute.length === 2 &&
     pastoralRoute[0] === "prayer" && pastoralRoute[1] === "requests";
+  const isCareCollection = pastoralRoute.length === 2 &&
+    pastoralRoute[0] === "care" && pastoralRoute[1] === "records";
 
   // Return workflow metadata only. Prayer narratives remain available solely
   // through the audited single-record RPC below.
-  if (request.method === "GET" && isPrayerCollection) {
+  if (request.method === "GET" && (isPrayerCollection || isCareCollection)) {
     const allowedQuery = new Set(["branch_id", "limit", "offset"]);
     const keys = [...requestUrl.searchParams.keys()];
     if (
@@ -292,15 +294,18 @@ Deno.serve(async (request: Request) => {
         );
       }
 
+      const assignedCapability = isPrayerCollection
+        ? "prayer.request.read.assigned"
+        : "care.record.read.assigned";
+      const oversightCapability = isPrayerCollection
+        ? "prayer.oversight.read"
+        : "care.oversight.read";
       const { data: grants, error: grantError } = await service
         .from("role_capability")
         .select("scope_mode,capability:capability!inner(code,is_active)")
         .in("role_id", roleIds)
         .in("scope_mode", ["assigned", "oversight"])
-        .in("capability.code", [
-          "prayer.request.read.assigned",
-          "prayer.oversight.read",
-        ]);
+        .in("capability.code", [assignedCapability, oversightCapability]);
       if (grantError) throw new Error("CAPABILITY_LOOKUP_FAILED");
       const scopes = (grants ?? []).flatMap((grant: {
         scope_mode: string;
@@ -315,11 +320,11 @@ Deno.serve(async (request: Request) => {
         if (!capability?.is_active) return [];
         if (
           grant.scope_mode === "assigned" &&
-          capability.code === "prayer.request.read.assigned"
+          capability.code === assignedCapability
         ) return ["assigned"];
         if (
           grant.scope_mode === "oversight" &&
-          capability.code === "prayer.oversight.read"
+          capability.code === oversightCapability
         ) return ["oversight"];
         return [];
       });
@@ -341,22 +346,34 @@ Deno.serve(async (request: Request) => {
       let requestIds: string[] | null = null;
       if (accessMode === "assigned") {
         const { data: activeAssignments, error: activeAssignmentError } =
-          await service
-            .from("prayer_assignment")
-            .select("prayer_request_id")
-            .eq("branch_id", branchId)
-            .eq("intercessor_user_id", authData.user.id)
-            .lte("starts_at", now)
-            .or(`ends_at.is.null,ends_at.gt.${now}`)
-            .is("revoked_at", null);
+          isPrayerCollection
+            ? await service
+              .from("prayer_assignment")
+              .select("prayer_request_id")
+              .eq("branch_id", branchId)
+              .eq("intercessor_user_id", authData.user.id)
+              .lte("starts_at", now)
+              .or(`ends_at.is.null,ends_at.gt.${now}`)
+              .is("revoked_at", null)
+            : await service
+              .from("care_assignment")
+              .select("care_record_id")
+              .eq("branch_id", branchId)
+              .eq("assignee_user_id", authData.user.id)
+              .lte("starts_at", now)
+              .or(`ends_at.is.null,ends_at.gt.${now}`)
+              .is("revoked_at", null);
         if (activeAssignmentError) {
           throw new Error("PRAYER_ASSIGNMENT_LOOKUP_FAILED");
         }
         requestIds = [
           ...new Set(
-            (activeAssignments ?? []).map(
-              (item: { prayer_request_id: string }) => item.prayer_request_id,
-            ),
+            (activeAssignments ?? []).map((item: {
+              prayer_request_id?: string;
+              care_record_id?: string;
+            }) => isPrayerCollection
+              ? item.prayer_request_id
+              : item.care_record_id).filter((value): value is string => !!value),
           ),
         ];
         if (requestIds.length === 0) {
@@ -369,10 +386,14 @@ Deno.serve(async (request: Request) => {
         }
       }
 
-      let query = service.from("prayer_request")
-        .select(
-          "id,status,sensitivity,expires_at,answered_at,created_at,updated_at",
-        )
+      const metadataTable = isPrayerCollection
+        ? "prayer_request"
+        : "care_record";
+      const metadataColumns = isPrayerCollection
+        ? "id,status,sensitivity,expires_at,answered_at,created_at,updated_at"
+        : "id,status,care_group_id,created_at,updated_at";
+      let query = (service as any).from(metadataTable)
+        .select(metadataColumns)
         .eq("branch_id", branchId)
         .order("created_at", { ascending: false })
         .range(offset, offset + limit - 1);
@@ -393,7 +414,9 @@ Deno.serve(async (request: Request) => {
       });
       return fail(
         "PASTORAL_OPERATION_FAILED",
-        "Unable to load prayer request metadata.",
+        isPrayerCollection
+          ? "Unable to load prayer request metadata."
+          : "Unable to load pastoral care metadata.",
         500,
         origin,
         id,
