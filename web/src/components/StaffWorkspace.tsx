@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Activity, ArrowRight, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, FileText, KeyRound, LockKeyhole, LogOut, Megaphone, MoreHorizontal, Network, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { Activity, ArrowRight, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, FileText, KeyRound, LockKeyhole, LogOut, Megaphone, MoreHorizontal, Network, HeartHandshake, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { OperationsWorkspace } from "./OperationsWorkspace";
 import { TeamAdministrationWorkspace } from "./TeamAdministrationWorkspace";
 import { MinistryReportsWorkspace } from "./MinistryReportsWorkspace";
@@ -8,10 +8,13 @@ import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCap
 import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 import { ThemeToggle } from "../lib/theme";
+import { ChangePasswordDialog } from "./ChangePasswordDialog";
+import { PrayerRoomWorkspace } from "./PrayerRoomWorkspace";
+import { NotificationCenter } from "./NotificationCenter";
 
-type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Reports" | "Staff" | "Access requests";
+type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Prayer" | "Content" | "Teams & Areas" | "Reports" | "Staff" | "Access requests";
 type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue";
-interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void> }
+interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void>; onChangePassword: (currentPassword: string, newPassword: string) => Promise<void> }
 
 function messageFor(error: unknown): string {
   if (error instanceof CmiApiError) {
@@ -56,6 +59,7 @@ function navigationIcon(item: Page, size = 18) {
     case "Events": return <CalendarDays size={size} strokeWidth={1.9} />;
     case "Calendar": return <CalendarClock size={size} strokeWidth={1.9} />;
     case "Announcements": return <Megaphone size={size} strokeWidth={1.9} />;
+    case "Prayer": return <HeartHandshake size={size} strokeWidth={1.9} />;
     case "Content": return <BookOpen size={size} strokeWidth={1.9} />;
     case "Teams & Areas": return <Network size={size} strokeWidth={1.9} />;
     case "Reports": return <FileText size={size} strokeWidth={1.9} />;
@@ -103,7 +107,7 @@ function WorkspaceSkeleton({ page }: { page: Page }) {
   );
 }
 
-export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps) {
+export function StaffWorkspace({ api, session, onSignOut, onChangePassword }: StaffWorkspaceProps) {
   const branchId = session.branches[0]?.id ?? "";
   const [page, setPage] = useState<Page>(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "access-requests") return "Access requests";
@@ -134,6 +138,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const contactRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
   const taskRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
 
@@ -155,10 +161,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canManageStaffAccounts = hasCapability(session, "staff.account.manage", branchId);
   const canCreateStaffAccounts = hasCapability(session, "staff.account.manage", branchId) && hasCapability(session, "access.role.assign", branchId);
   const availablePages = useMemo(() => {
-    const pages: Page[] = getAvailableStaffPages(session, branchId)
-      .filter((candidate): candidate is Exclude<Page, "Staff" | "Access requests"> =>
-        candidate !== "Prayer"
-      );
+    const pages: Page[] = getAvailableStaffPages(session, branchId);
     if (canCreateContacts && !pages.includes("Contacts")) pages.push("Contacts");
     if (canReadStaffDirectory) pages.push("Staff");
     if (canManagePasswordResets) pages.push("Access requests");
@@ -166,7 +169,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   }, [session, branchId, canCreateContacts, canManagePasswordResets, canReadStaffDirectory]);
   const navigationSections = [
     { label: "WORKSPACE", items: availablePages.filter((item) => ["Overview", "Contacts", "Follow-up"].includes(item)) },
-    { label: "MINISTRY", items: availablePages.filter((item) => ["Events", "Calendar", "Announcements", "Content", "Reports"].includes(item)) },
+    { label: "MINISTRY", items: availablePages.filter((item) => ["Events", "Calendar", "Announcements", "Prayer", "Content", "Reports"].includes(item)) },
     { label: "ADMINISTRATION", items: availablePages.filter((item) => ["Teams & Areas", "Staff", "Access requests"].includes(item)) },
   ].filter((section) => section.items.length > 0);
   const preferredMobilePages: Page[] = ["Overview", "Contacts", "Follow-up", "Calendar"];
@@ -578,6 +581,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           <div className="cmi-user-card">
             <div className="cmi-user-avatar">{session.staff.full_name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</div>
             <div><strong>{session.staff.full_name}</strong><small>{session.roles.filter((role) => role.branch_id === branchId).map((role) => role.name).join(" · ") || "Staff member"}</small></div>
+            <button className="cmi-user-password-button" aria-label="Change password" title="Change password" onClick={() => setShowChangePassword(true)}><KeyRound size={16} /></button>
             <button aria-label="Sign out" title="Sign out" onClick={() => void signOut()} disabled={signingOut}><LogOut size={16} /></button>
           </div>
         </div>
@@ -615,15 +619,19 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       <main className="cmi-main">
         <header className="cmi-topbar">
           <div className="cmi-topbar-heading">
-            <div className="cmi-mobile-brand"><img src="/logo.svg" alt="" /><span><strong>PCG Missions</strong><small>STAFF WORKSPACE</small></span></div>
+            <div className="cmi-mobile-brand">
+              <img src="/logo.svg" alt="" />
+              <span><strong>PCG Missions</strong><small>STAFF WORKSPACE</small></span>
+            </div>
             <span className="cmi-breadcrumb">PCG MISSIONS / {(activeBranch?.name ?? "NO ACTIVE BRANCH").toUpperCase()}</span>
             <h1>{page === "Follow-up" ? "Follow-up tasks" : page}</h1>
           </div>
           <div className="cmi-topbar-actions">
-            <ThemeToggle />
             <button type="button" className="cmi-icon-action" onClick={() => void refresh()} disabled={refreshing || loading} aria-label={refreshing ? "Refreshing workspace" : "Refresh workspace"} title={refreshing ? "Refreshing" : "Refresh"}>
               <RefreshCw size={17} className={refreshing ? "is-spinning" : undefined} />
             </button>
+            <NotificationCenter api={api} branchId={branchId} onOpenAnnouncements={() => setPage("Announcements")} onSessionExpired={expireSession} />
+            <ThemeToggle />
           </div>
         </header>
         <section className="cmi-content" id="cmi-content" tabIndex={-1} aria-busy={loading}>
@@ -870,6 +878,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             </div>
           </div>}
 
+          {page === "Prayer" && availablePages.includes("Prayer") && <PrayerRoomWorkspace key={branchId + ":prayer-room"} branchId={branchId} branchName={activeBranch.name} api={api} currentProfileId={session.staff.id} onSessionExpired={expireSession} />}
           {page === "Teams & Areas" && availablePages.includes("Teams & Areas") && <TeamAdministrationWorkspace key={branchId + ":teams-areas"} branchId={branchId} branchName={activeBranch.name} api={api} session={session} onSessionExpired={expireSession} />}
           {page === "Reports" && availablePages.includes("Reports") && <MinistryReportsWorkspace key={branchId + ":reports"} branchId={branchId} branchName={activeBranch.name} api={api} session={session} />}
           {page === "Events" && availablePages.includes("Events") && <OperationsWorkspace key={branchId + ":events"} section="Events" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
@@ -882,6 +891,19 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         </section>
         <footer className="cmi-footer"><span>PCG Missions · Staff operations</span><span>Powered by ElTech</span></footer>
       </main>
+      <ChangePasswordDialog
+        open={showChangePassword}
+        busy={changingPassword}
+        onClose={() => setShowChangePassword(false)}
+        onSubmit={async (currentPassword, newPassword) => {
+          setChangingPassword(true);
+          try {
+            await onChangePassword(currentPassword, newPassword);
+          } finally {
+            setChangingPassword(false);
+          }
+        }}
+      />
       {selectedContact && <ContactDetailDialog
         key={`${branchId}:${selectedContact.id}`}
         open={!!selectedContact}

@@ -1,217 +1,126 @@
 import { describe, expect, it, vi } from "vitest";
-import { PcgAuthClient } from "./auth";
+import { AuthClientError, PcgAuthClient } from "./auth";
 
-function createMemoryStorage() {
-  const values = new Map<string, string>();
-  return {
-    getItem: (key: string) => values.get(key) ?? null,
-    setItem: (key: string, value: string) => values.set(key, value),
-    removeItem: (key: string) => values.delete(key),
-    has: (key: string) => values.has(key),
-  };
-}
-
-const config = {
-  url: "https://pcg-test.supabase.co",
-  key: "sb_publishable_test",
-};
-
-function sessionPayload() {
-  return {
-    access_token: "access-test",
-    refresh_token: "refresh-test",
-    expires_in: 3600,
-    token_type: "bearer",
-    user: { id: "auth-user-1", email: "staff@example.test" },
-  };
-}
-
-describe("PcgAuthClient", () => {
-  it("signs in through Supabase Auth and stores the session in session storage", async () => {
-    const storage = createMemoryStorage();
-    const fetcher = vi.fn(async () => new Response(JSON.stringify(sessionPayload()), { status: 200 }));
-    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
-
-    const session = await client.signIn(" Staff@Example.Test ", "temporary-password");
-    expect(session.user.email).toBe("staff@example.test");
-    expect(await client.getAccessToken()).toBe("access-test");
-    expect(storage.has("pcg-missions.auth.v1")).toBe(true);
-    expect(fetcher).toHaveBeenCalledTimes(1);
-
+describe("PcgAuthClient — Better Auth cookie sessions", () => {
+  it("signs in with normalized email and relies on HttpOnly cookies", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      user: { id: "staff-user", email: "staff@example.test" },
+      session: { id: "session-1", expiresAt: "2026-11-20T00:00:00.000Z" },
+    }), { status: 200 }));
+    const client = new PcgAuthClient(fetcher as typeof fetch);
+    const result = await client.signIn(" Staff@Example.Test ", "a-strong-password");
+    expect(result.user.email).toBe("staff@example.test");
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("/api/auth?grant_type=password");
-    expect(new Headers(init.headers).get("apikey")).toBe(config.key);
-    expect(JSON.parse(String(init.body))).toEqual({
-      email: "staff@example.test",
-      password: "temporary-password",
-    });
-  });
-
-  it("completes the XHR fallback when response headers use CRLF separators", async () => {
-    const storage = createMemoryStorage();
-    const fetcher = vi.fn(async () => { throw new TypeError("Failed to fetch"); });
-
-    class FakeXMLHttpRequest {
-      status = 200;
-      statusText = "OK";
-      responseText = JSON.stringify(sessionPayload());
-      timeout = 0;
-      onload: (() => void) | null = null;
-      onerror: (() => void) | null = null;
-      ontimeout: (() => void) | null = null;
-      onabort: (() => void) | null = null;
-      open() {}
-      setRequestHeader() {}
-      getAllResponseHeaders() {
-        return "content-type: application/json\r\ncache-control: no-store\r\n";
-      }
-      send() {
-        queueMicrotask(() => this.onload?.());
-      }
-    }
-
-    vi.stubGlobal("XMLHttpRequest", FakeXMLHttpRequest);
-    try {
-      const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
-      const session = await client.signIn("staff@example.test", "temporary-password");
-      expect(session.access_token).toBe("access-test");
-      expect(await client.getAccessToken()).toBe("access-test");
-      expect(fetcher).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.unstubAllGlobals();
-    }
-  });
-
-  it("keeps the authenticated session in memory when browser storage is blocked", async () => {
-    const blockedStorage = {
-      getItem: () => { throw new DOMException("Storage disabled", "SecurityError"); },
-      setItem: () => { throw new DOMException("Storage disabled", "SecurityError"); },
-      removeItem: () => { throw new DOMException("Storage disabled", "SecurityError"); },
-    };
-    const fetcher = vi.fn(async () => new Response(JSON.stringify(sessionPayload()), { status: 200 }));
-    const client = new PcgAuthClient(config.url, config.key, blockedStorage, fetcher as typeof fetch);
-
-    const session = await client.signIn("staff@example.test", "temporary-password");
-
-    expect(session.access_token).toBe("access-test");
-    expect(await client.getAccessToken()).toBe("access-test");
-    expect(fetcher).toHaveBeenCalledTimes(1);
-  });
-
-  it("tests the browser sign-in POST without using real credentials", async () => {
-    const storage = createMemoryStorage();
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
-      code: 400,
-      error_code: "invalid_credentials",
-      msg: "Invalid login credentials",
-    }), { status: 400 }));
-    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
-
-    await expect(client.testConnection()).resolves.toContain("Connection test passed");
-    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("/api/auth?grant_type=password");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(String(init.body)).email).toBe("pcg-connection-check@invalid.example");
-    expect(storage.has("pcg-missions.auth.v1")).toBe(false);
-  });
-
-  it("falls back to the configured Supabase origin during the connection test", async () => {
-    const storage = createMemoryStorage();
-    const fetcher = vi.fn()
-      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        code: 400,
-        error_code: "invalid_credentials",
-        msg: "Invalid login credentials",
-      }), { status: 400 }));
-    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
-
-    await expect(client.testConnection()).resolves.toContain("Supabase Auth directly");
-    expect(fetcher).toHaveBeenCalledTimes(2);
-    expect(fetcher.mock.calls[1]?.[0]).toBe("https://pcg-test.supabase.co/auth/v1/token?grant_type=password");
-  });
-
-  it("refreshes an expired session and replaces its refresh token", async () => {
-    const storage = createMemoryStorage();
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        ...sessionPayload(),
-        expires_in: -1,
-      }), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        access_token: "access-refreshed",
-        refresh_token: "refresh-rotated",
-        expires_in: 3600,
-        user: { id: "auth-user-1", email: "staff@example.test" },
-      }), { status: 200 }));
-    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
-
-    await client.signIn("staff@example.test", "password");
-    expect(await client.getAccessToken()).toBe("access-refreshed");
-    expect(JSON.parse(storage.getItem("pcg-missions.auth.v1") ?? "{}").refresh_token).toBe("refresh-rotated");
-  });
-
-  it("sends a recovery request without revealing whether the email exists", async () => {
-    const storage = createMemoryStorage();
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
-      data: { accepted: true, message: "If this address belongs to an active staff account, the church administrators have been notified." },
-    }), { status: 202 }));
-    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
-
-    await expect(client.requestPasswordReset("staff@example.test")).resolves.toBeUndefined();
-    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("/api/auth?resource=request-password-reset");
+    expect(url).toBe("/api/auth/sign-in/email");
+    expect(init.credentials).toBe("include");
+    expect(JSON.parse(String(init.body))).toEqual({ email: "staff@example.test", password: "a-strong-password" });
     expect(new Headers(init.headers).has("Authorization")).toBe(false);
-    expect(JSON.parse(String(init.body))).toEqual({ email: "staff@example.test" });
   });
 
-  it("changes the Auth password and clears the forced-change gate through one authenticated server operation", async () => {
-    const storage = createMemoryStorage();
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify(sessionPayload()), { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { password_change_required: false } }), { status: 200 }));
-    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
-
-    await client.signIn("staff@example.test", "temporary-password");
-    await client.completePasswordChange("A-strong-New-Password-2026!");
-
-    const [url, init] = fetcher.mock.calls[1] as unknown as [string, RequestInit];
-    expect(url).toBe("/api/auth?resource=complete-password-change");
-    expect(init.method).toBe("POST");
-    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-test");
-    expect(JSON.parse(String(init.body))).toEqual({ password: "A-strong-New-Password-2026!" });
+  it("restores the server session without reading browser storage", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      user: { id: "staff-user", email: "staff@example.test" },
+      session: { id: "session-1", expiresAt: "2026-11-20T00:00:00.000Z" },
+    }), { status: 200 }));
+    const client = new PcgAuthClient(fetcher as typeof fetch);
+    await expect(client.getSession()).resolves.toMatchObject({ user: { id: "staff-user" } });
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/auth/get-session");
+    expect((fetcher.mock.calls[0]?.[1] as unknown as RequestInit).credentials).toBe("include");
   });
 
-  it("rejects weak passwords before making an Auth request", async () => {
-    const storage = createMemoryStorage();
-    const fetcher = vi.fn(async () => new Response(JSON.stringify(sessionPayload()), { status: 200 }));
-    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
-
-    await client.signIn("staff@example.test", "temporary-password");
-    await expect(client.completePasswordChange("password")).rejects.toMatchObject({
-      code: "WEAK_PASSWORD",
-    });
-    expect(fetcher).toHaveBeenCalledTimes(1);
+  it("returns null when there is no signed-in session", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response("null", { status: 200 }));
+    const client = new PcgAuthClient(fetcher as typeof fetch);
+    await expect(client.getSession()).resolves.toBeNull();
   });
 
-  it("clears the browser session before requesting global sign-out", async () => {
-    const storage = createMemoryStorage();
-    const fetcher = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify(sessionPayload()), { status: 200 }))
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
-    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch);
-
-    await client.signIn("staff@example.test", "password");
+  it("signs out through Better Auth", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response("{}", { status: 200 }));
+    const client = new PcgAuthClient(fetcher as typeof fetch);
     await client.signOut();
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/auth/sign-out");
+    expect((fetcher.mock.calls[0]?.[1] as unknown as RequestInit).method).toBe("POST");
+  });
 
-    expect(storage.has("pcg-missions.auth.v1")).toBe(false);
-    const [url, init] = fetcher.mock.calls[1] as unknown as [string, RequestInit];
-    expect(url).toBe("/api/auth?resource=logout");
+  it("tests API readiness without sending fake credentials", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, schema_version: 24,
+    }), { status: 200 }));
+    const client = new PcgAuthClient(fetcher as typeof fetch);
+    await expect(client.testConnection()).resolves.toContain("schema version 24");
+    expect(fetcher.mock.calls[0]?.[0]).toBe("/api/v1/health");
+  });
+
+  it("sends password rotation through the authenticated same-origin endpoint", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response("{}", { status: 200 }));
+    const client = new PcgAuthClient(fetcher as typeof fetch);
+    const currentSecret = "Current-" + "Value-" + "2026!";
+    const nextSecret = "Next-" + "Value-" + "2026!Strong";
+    await expect(client.changePassword(currentSecret, nextSecret)).resolves.toBeUndefined();
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/auth/change-password");
     expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("include");
+    expect(init.cache).toBe("no-store");
+    expect(JSON.parse(String(init.body))).toEqual({
+      currentPassword: currentSecret,
+      newPassword: nextSecret,
+      revokeOtherSessions: true,
+    });
   });
 
-  it("refuses non-HTTPS hosted Supabase endpoints", () => {
-    expect(() => new PcgAuthClient("http://pcg-test.supabase.co", config.key, createMemoryStorage()))
-      .toThrow(/HTTPS/);
+  it("rejects weak replacements before sending the request", async () => {
+    const fetcher = vi.fn() as unknown as typeof fetch;
+    const client = new PcgAuthClient(fetcher);
+    await expect(client.changePassword("Current-" + "Value-" + "2026!", "weak-only-123"))
+      .rejects.toMatchObject({ status: 400, code: "PASSWORD_POLICY_INVALID" });
+    expect(fetcher).not.toHaveBeenCalled();
   });
+
+  it("does not silently bypass the not-yet-migrated admin recovery workflow", async () => {
+    const client = new PcgAuthClient(vi.fn() as typeof fetch);
+    await expect(client.requestPasswordReset("staff@example.test")).rejects.toMatchObject({
+      code: "ADMIN_APPROVED_RECOVERY_NOT_MIGRATED",
+      status: 501,
+    });
+  });
+
+  it("reports failed sign-in responses with a stable error code", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      code: "INVALID_EMAIL_OR_PASSWORD", message: "Invalid email or password",
+    }), { status: 401 }));
+    const client = new PcgAuthClient(fetcher as typeof fetch);
+    await expect(client.signIn("staff@example.test", "wrong"))
+      .rejects.toMatchObject({ status: 401, code: "INVALID_EMAIL_OR_PASSWORD" });
+  });
+
+  it("surfaces network errors without exposing secrets", async () => {
+    const client = new PcgAuthClient(vi.fn(async (..._args: Parameters<typeof fetch>) => { throw new TypeError("offline"); }) as typeof fetch);
+    await expect(client.getSession()).rejects.toBeInstanceOf(AuthClientError);
+  });
+
+  it("accepts a valid invitation through the same-origin Worker endpoint", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, staff_profile_id: "staff-1", account_status: "active", sign_in_required: true,
+    }), { status: 201 }));
+    const client = new PcgAuthClient(fetcher as typeof fetch);
+    const token = "A".repeat(43);
+    const password = "Strong-" + "Invite-" + "2026!";
+    await expect(client.acceptInvitation(token, password)).resolves.toBeUndefined();
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/v1/staff/invitations/accept");
+    expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("include");
+    expect(JSON.parse(String(init.body))).toEqual({ invitation_token: token, password });
+  });
+
+  it("rejects invalid invitation credentials before contacting the Worker", async () => {
+    const fetcher = vi.fn() as unknown as typeof fetch;
+    const client = new PcgAuthClient(fetcher);
+    await expect(client.acceptInvitation("bad-token", "weak")).rejects.toMatchObject({
+      status: 400, code: "INVALID_INVITATION_TOKEN",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
 });

@@ -6,29 +6,18 @@ import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
 import { ThemeToggle } from "./lib/theme";
 
 export default function App() {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
-  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "";
-  const configurationError = !supabaseUrl || !publishableKey
-    ? "This portal is not connected to its secure sign-in service. Contact a church administrator."
-    : "";
+  const apiUrl = import.meta.env.VITE_CMI_API_URL ?? "";
+  const configurationError = "";
 
-  const auth = useMemo(() => {
-    if (!supabaseUrl || !publishableKey) return null;
-    try {
-      return new PcgAuthClient(supabaseUrl, publishableKey);
-    } catch {
-      return null;
-    }
-  }, [supabaseUrl, publishableKey]);
+  const auth = useMemo(() => new PcgAuthClient(), []);
 
-  const api = useMemo(() => auth
-    ? new CmiApiClient(
-      { supabaseUrl, publishableKey },
-      () => auth.getAccessToken(),
-    )
-    : null, [auth, supabaseUrl, publishableKey]);
+  const api = useMemo(() => new CmiApiClient(
+    { apiUrl },
+    () => auth.getAccessToken(),
+  ), [auth, apiUrl]);
 
   const [view, setView] = useState<StaffAuthView>("sign-in");
+  const [invitationToken, setInvitationToken] = useState("");
   const [staffSession, setStaffSession] = useState<StaffSession | null>(null);
   const [busy, setBusy] = useState(false);
   const [initializing, setInitializing] = useState(true);
@@ -46,6 +35,7 @@ export default function App() {
       if (cause.status === 403) return "Your account cannot access the staff workspace. Contact an authorised church administrator.";
       if (cause.code === "NO_ACTIVE_BRANCH") return "Your account is active, but it has no active branch assignment. Contact an authorised church administrator.";
       if (cause.status === 0) return cause.message;
+      if (cause.status === 501) return cause.message;
       if (cause.status >= 500) return "Your credentials were accepted, but the staff workspace service could not complete the request. Retry the workspace connection.";
     }
     return "We could not complete that request. Please try again.";
@@ -93,6 +83,18 @@ export default function App() {
           if (current) setError(configurationError);
           return;
         }
+        const currentUrl = new URL(window.location.href);
+        const invitation = currentUrl.searchParams.get("invite");
+        if (invitation !== null) {
+          currentUrl.searchParams.delete("invite");
+          window.history.replaceState({}, "", currentUrl.pathname + currentUrl.search + currentUrl.hash);
+          setInvitationToken(invitation);
+          setView("accept-invitation");
+          if (!/^[A-Za-z0-9_-]{43}$/.test(invitation)) {
+            setError("This invitation link is invalid or incomplete. Ask an administrator to issue a new invitation.");
+          }
+          return;
+        }
         const recovery = await auth.restoreRecoveryFromUrl();
         if (!current) return;
         if (recovery) {
@@ -105,7 +107,16 @@ export default function App() {
         await loadStaffSession();
       } catch (cause) {
         if (!current) return;
-        setError(messageFor(cause));
+        if (cause instanceof AuthClientError && cause.code === "AUTH_NETWORK_ERROR") {
+          // Session restoration is a best-effort check for returning users.
+          // A temporary network failure must not block a new sign-in attempt
+          // or present an alarming error before the user submits the form.
+          setError("");
+          setNotice("We couldn't check for an existing session. You can still sign in.");
+          console.warn("PCG Missions session restoration could not reach the auth endpoint.", cause);
+        } else {
+          setError(messageFor(cause));
+        }
         if (cause instanceof CmiApiError && cause.status === 401) {
           await clearAuthentication();
         } else if (cause instanceof CmiApiError) {
@@ -212,6 +223,28 @@ export default function App() {
     }
   };
 
+  const handleAcceptInvitation = async (token: string, password: string) => {
+    if (!auth) {
+      setError(configurationError || "The sign-in service is not configured.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("Creating your staff account…");
+    try {
+      await auth.signOut();
+      await auth.acceptInvitation(token, password);
+      setInvitationToken("");
+      setView("sign-in");
+      setNotice("Your staff account has been created. Sign in with your invited email address and the password you just chose.");
+    } catch (cause) {
+      setNotice("");
+      setError(messageFor(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSetPassword = async (password: string) => {
     if (!auth || !api) {
       setError(configurationError || "The sign-in service is not configured.");
@@ -232,6 +265,11 @@ export default function App() {
     }
   };
 
+  const handleChangePassword = async (currentPassword: string, newPassword: string) => {
+    if (!auth) throw new AuthClientError(503, "AUTH_NOT_CONFIGURED", "The secure authentication service is unavailable.");
+    await auth.changePassword(currentPassword, newPassword);
+  };
+
   const signOut = async () => {
     setBusy(true);
     await clearAuthentication();
@@ -241,25 +279,26 @@ export default function App() {
 
   if (initializing) {
     return (
-      <main className="cmi-auth-loading" role="status" aria-live="polite">
-        <div className="cmi-loading-brand">
-          <div className="cmi-loading-mark"><img src="/logo.svg" alt="" /></div>
-          <span className="cmi-loading-name">PCG MISSIONS</span>
-          <span className="cmi-loading-caption">PEOPLE · CARE · COMMUNITY</span>
-          <span className="cmi-auth-spinner" aria-hidden="true" />
+      <main className="cmi-boot-screen" role="status" aria-live="polite">
+        <div className="cmi-boot-content">
+          <div className="cmi-boot-logo"><img src="/logo.svg" alt="" /></div>
+          <span className="cmi-boot-name">PCG MISSIONS</span>
+          <span className="cmi-boot-caption">STAFF WORKSPACE</span>
+          <span className="cmi-boot-spinner" aria-hidden="true" />
+          <p>Preparing your workspace</p>
         </div>
-        <p className="cmi-loading-message">Preparing your ministry workspace</p>
       </main>
     );
   }
 
   if (staffSession && !staffSession.must_change_password && api) {
-    return <StaffWorkspace api={api} session={staffSession} onSignOut={async () => await signOut()} />;
+    return <StaffWorkspace api={api} session={staffSession} onSignOut={async () => await signOut()} onChangePassword={handleChangePassword} />;
   }
 
   return (
     <StaffLogin
       view={view}
+      invitationToken={invitationToken}
       themeToggle={<ThemeToggle />}
       configurationError={configurationError}
       error={error}
@@ -275,6 +314,7 @@ export default function App() {
       onRetryWorkspace={workspaceRetryAvailable ? handleRetryWorkspace : undefined}
       onRequestReset={handleResetRequest}
       onSetPassword={handleSetPassword}
+      onAcceptInvitation={handleAcceptInvitation}
       onTestConnection={handleConnectionTest}
     />
   );

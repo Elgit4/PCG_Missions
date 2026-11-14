@@ -1,95 +1,17 @@
 export interface AuthUser {
   id: string;
   email: string | null;
+  name?: string | null;
 }
-
 export interface AuthSession {
-  access_token: string;
-  refresh_token: string;
-  expires_at: number;
-  token_type: string;
   user: AuthUser;
+  session: { id: string; expiresAt: string };
 }
-
-interface AuthResponse {
-  access_token?: string;
-  refresh_token?: string;
-  expires_in?: number;
-  token_type?: string;
-  user?: AuthUser;
-  msg?: string;
-  message?: string;
-  error_description?: string;
-  error?: string;
-}
-
-interface StorageLike {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-  removeItem(key: string): void;
-}
-
-
-function xhrRequest(url: string, init: RequestInit): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    if (typeof XMLHttpRequest === "undefined") {
-      reject(new TypeError("XMLHttpRequest is unavailable in this browser."));
-      return;
-    }
-    const request = new XMLHttpRequest();
-    request.open(init.method ?? "GET", url, true);
-    request.timeout = 15000;
-    new Headers(init.headers).forEach((value, key) => request.setRequestHeader(key, value));
-    request.onload = () => {
-      try {
-        if (request.status === 0) {
-          reject(new TypeError("XMLHttpRequest completed without an HTTP response."));
-          return;
-        }
-        const responseHeaders = new Headers();
-        // XHR exposes response headers separated by CRLF. Split on actual
-        // line breaks, not the literal characters "\\r" and "\\n".
-        for (const line of request.getAllResponseHeaders().split(/\r?\n/)) {
-          const separator = line.indexOf(":");
-          if (separator <= 0) continue;
-          const name = line.slice(0, separator).trim();
-          const value = line.slice(separator + 1).trim();
-          if (!name) continue;
-          try {
-            responseHeaders.append(name, value);
-          } catch {
-            // Ignore browser-restricted response headers; preserve status/body.
-          }
-        }
-        resolve(new Response(request.responseText, {
-          status: request.status,
-          statusText: request.statusText,
-          headers: responseHeaders,
-        }));
-      } catch (error) {
-        reject(error instanceof Error ? error : new TypeError("Unable to read the XHR response."));
-      }
-    };
-    request.onerror = () => reject(new TypeError("XMLHttpRequest network error."));
-    request.ontimeout = () => reject(new TypeError("XMLHttpRequest timed out."));
-    request.onabort = () => reject(new TypeError("XMLHttpRequest was aborted."));
-    if (init.body === undefined || init.body === null) request.send();
-    else request.send(init.body as XMLHttpRequestBodyInit);
-  });
-}
-
-function errorDetail(error: unknown): string {
-  if (error instanceof Error) {
-    const message = error.message.replace(/[\\r\\n]+/g, " ").slice(0, 160);
-    return message ? `${error.name}: ${message}` : error.name;
-  }
-  return "Unknown network error";
-}
+interface AuthErrorPayload { message?: string; code?: string; error?: { message?: string; code?: string } }
 
 export class AuthClientError extends Error {
   readonly status: number;
   readonly code: string;
-
   constructor(status: number, code: string, message: string) {
     super(message);
     this.name = "AuthClientError";
@@ -98,440 +20,173 @@ export class AuthClientError extends Error {
   }
 }
 
-const SESSION_KEY = "pcg-missions.auth.v1";
-
-function browserStorage(): StorageLike | null {
+async function readPayload(response: Response): Promise<Record<string, unknown> | null> {
   try {
-    return typeof window === "undefined" ? null : window.sessionStorage;
-  } catch {
-    return null;
-  }
-}
-
-function parseSession(value: string | null): AuthSession | null {
-  if (!value) return null;
-  try {
-    const parsed = JSON.parse(value) as Partial<AuthSession>;
-    if (
-      typeof parsed.access_token !== "string" ||
-      typeof parsed.refresh_token !== "string" ||
-      typeof parsed.expires_at !== "number" ||
-      !parsed.user || typeof parsed.user.id !== "string"
-    ) return null;
-    return parsed as AuthSession;
-  } catch {
-    return null;
-  }
-}
-
-function safeMessage(body: AuthResponse | null, fallback: string): string {
-  const message = body?.message ?? body?.msg ?? body?.error_description ?? body?.error;
-  return typeof message === "string" && message.length < 220 ? message : fallback;
+    const value: unknown = await response.json();
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? value as Record<string, unknown>
+      : null;
+  } catch { return null; }
 }
 
 export class PcgAuthClient {
-  private readonly baseUrl: string;
-  private session: AuthSession | null = null;
-  private refreshPromise: Promise<AuthSession | null> | null = null;
+  constructor(private readonly fetcher: typeof fetch = fetch) {}
 
-  constructor(
-    supabaseUrl: string,
-    private readonly publishableKey: string,
-    private readonly storage: StorageLike | null = browserStorage(),
-    private readonly fetcher: typeof fetch = fetch,
-  ) {
-    const normalizedUrl = supabaseUrl.trim().replace(/\/+$/, "");
-    if (!normalizedUrl || !publishableKey.trim()) {
-      throw new Error("Supabase URL and publishable key are required.");
-    }
-    const parsed = new URL(normalizedUrl);
-    if (
-      parsed.protocol !== "https:" &&
-      parsed.hostname !== "localhost" &&
-      parsed.hostname !== "127.0.0.1"
-    ) throw new Error("Supabase URL must use HTTPS outside local development.");
-    this.baseUrl = normalizedUrl;
-  }
-
-  private isLocalDevelopment(): boolean {
-    return typeof window !== "undefined" &&
-      (window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1");
-  }
-
-  private async sendWithBrowserFallback(url: string, init: RequestInit): Promise<Response> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    let fetchError: unknown;
-    try {
-      return await this.fetcher(url, { ...init, signal: controller.signal });
-    } catch (error) {
-      fetchError = error;
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    // Some browsers/extensions leave fetch pending instead of rejecting it.
-    // Abort it after 10 seconds, then make one bounded XHR attempt.
-    try {
-      return await xhrRequest(url, init);
-    } catch (xhrError) {
-      throw new AuthClientError(
-        0,
-        "NETWORK_ERROR",
-        `Browser request failed or timed out. Fetch: ${errorDetail(fetchError)}; XMLHttpRequest: ${errorDetail(xhrError)}.`,
-      );
-    }
-  }
-
-  private authEndpoint(proxyQuery: string, directPath: string): string {
-    return this.isLocalDevelopment()
-      ? `${this.baseUrl}${directPath}`
-      : `/api/auth?${proxyQuery}`;
-  }
-
-  private saveSession(session: AuthSession | null): void {
-    this.session = session;
-    if (!this.storage) return;
-    try {
-      if (session) this.storage.setItem(SESSION_KEY, JSON.stringify(session));
-      else this.storage.removeItem(SESSION_KEY);
-    } catch {
-      // Keep the authenticated session in memory when browser storage is
-      // disabled by privacy settings, sandboxing, or an extension. This tab
-      // can continue securely; a page reload will simply require sign-in again.
-    }
-  }
-
-  private readSession(): AuthSession | null {
-    if (this.session) return this.session;
-    try {
-      this.session = parseSession(this.storage?.getItem(SESSION_KEY) ?? null);
-    } catch {
-      this.session = null;
-    }
-    return this.session;
-  }
-
-  private async requestAuth<T extends AuthResponse>(
-    path: string,
-    init: RequestInit,
-    fallback: string,
-  ): Promise<T> {
+  private async request(path: string, method = "GET", body?: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     let response: Response;
-    const query = path.includes("?") ? path.slice(path.indexOf("?") + 1) : "";
-    const requestInit: RequestInit = {
-      ...init,
-      headers: new Headers({
-        apikey: this.publishableKey,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-        ...(init.headers as Record<string, string> | undefined),
-      }),
-      cache: "no-store",
-    };
     try {
-      response = await this.sendWithBrowserFallback(
-        this.authEndpoint(query, `/auth/v1/${path}`),
-        requestInit,
-      );
-    } catch (proxyError) {
-      // Retry the same configured project directly only after both browser
-      // transports failed against the same-origin proxy.
-      if (this.isLocalDevelopment()) throw proxyError;
-      try {
-        response = await this.sendWithBrowserFallback(`${this.baseUrl}/auth/v1/${path}`, requestInit);
-      } catch (directError) {
-        throw new AuthClientError(
-          0,
-          "NETWORK_ERROR",
-          `Unable to reach the secure sign-in service. Proxy: ${errorDetail(proxyError)}; Supabase: ${errorDetail(directError)}.`,
-        );
-      }
-    }
-    const raw = await response.text();
-    let payload: T | null = null;
-    try {
-      payload = raw ? JSON.parse(raw) as T : null;
+      response = await this.fetcher(`/api/auth/${path.replace(/^\/+/, "")}`, {
+        method,
+        credentials: "include",
+        cache: "no-store",
+        headers: body ? { "Content-Type": "application/json", Accept: "application/json" } : { Accept: "application/json" },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
     } catch {
-      payload = null;
+      throw new AuthClientError(0, "AUTH_NETWORK_ERROR", "The secure sign-in service could not be reached. Check your connection and retry.");
     }
+    const payload = await readPayload(response);
     if (!response.ok) {
-      const code = payload?.error ?? "AUTH_REQUEST_FAILED";
-      throw new AuthClientError(response.status, code, safeMessage(payload, fallback));
+      const detail = payload as AuthErrorPayload | null;
+      throw new AuthClientError(
+        response.status,
+        detail?.code ?? detail?.error?.code ?? `AUTH_HTTP_${response.status}`,
+        detail?.message ?? detail?.error?.message ?? "The sign-in request could not be completed.",
+      );
     }
-    if (!payload) throw new AuthClientError(502, "INVALID_AUTH_RESPONSE", "The sign-in service returned an invalid response.");
     return payload;
   }
 
-  private toSession(payload: AuthResponse): AuthSession {
-    if (
-      typeof payload.access_token !== "string" ||
-      typeof payload.refresh_token !== "string" ||
-      !payload.user || typeof payload.user.id !== "string"
-    ) throw new AuthClientError(502, "INVALID_AUTH_RESPONSE", "The sign-in service returned an incomplete session.");
-    const expiresIn = typeof payload.expires_in === "number" ? payload.expires_in : 3600;
+  async signIn(email: string, password: string): Promise<AuthSession> {
+    const payload = await this.request("sign-in/email", "POST", {
+      email: email.trim().toLowerCase(),
+      password,
+    });
+    const user = payload?.user as AuthUser | undefined;
+    const session = payload?.session as AuthSession["session"] | undefined;
+    if (!user || typeof user.id !== "string") {
+      throw new AuthClientError(502, "INVALID_AUTH_RESPONSE", "The sign-in service did not return a valid staff session.");
+    }
     return {
-      access_token: payload.access_token,
-      refresh_token: payload.refresh_token,
-      expires_at: Math.floor(Date.now() / 1000) + expiresIn,
-      token_type: payload.token_type ?? "bearer",
-      user: payload.user,
+      user: { id: user.id, email: user.email ?? null, name: user.name ?? null },
+      session: session ?? { id: "cookie-session", expiresAt: "" },
     };
   }
 
-  async restoreRecoveryFromUrl(): Promise<boolean> {
-    if (typeof window === "undefined") return false;
-    const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    if (fragment.get("type") !== "recovery") return false;
-    const accessToken = fragment.get("access_token");
-    const refreshToken = fragment.get("refresh_token");
-    if (!accessToken || !refreshToken) {
-      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-      throw new AuthClientError(400, "INVALID_RECOVERY_LINK", "This password-reset link is invalid or has expired.");
-    }
-    const expiresIn = Number(fragment.get("expires_in") ?? "3600");
-    const user = await this.getUser(accessToken);
-    this.saveSession({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      expires_at: Math.floor(Date.now() / 1000) + (Number.isFinite(expiresIn) ? expiresIn : 3600),
-      token_type: fragment.get("token_type") ?? "bearer",
-      user,
-    });
-    window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
-    return true;
-  }
-
-  private async getUser(accessToken: string): Promise<AuthUser> {
+  private async workerRequest(path: string, body: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     let response: Response;
     try {
-      response = await this.sendWithBrowserFallback(this.authEndpoint("resource=user", "/auth/v1/user"), {
-        method: "GET",
-        headers: {
-          apikey: this.publishableKey,
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/json",
-        },
+      response = await this.fetcher(path, {
+        method: "POST",
+        credentials: "include",
         cache: "no-store",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(body),
       });
     } catch {
-      throw new AuthClientError(0, "NETWORK_ERROR", "Unable to validate the recovery link.");
+      throw new AuthClientError(0, "AUTH_NETWORK_ERROR", "The secure account service could not be reached. Check your connection and retry.");
     }
-    const payload = await response.json().catch(() => null) as AuthUser | null;
-    if (!response.ok || !payload || typeof payload.id !== "string") {
-      throw new AuthClientError(response.status || 502, "INVALID_RECOVERY_LINK", "This password-reset link is invalid or has expired.");
-    }
-    return { id: payload.id, email: payload.email ?? null };
-  }
-
-  async testConnection(): Promise<string> {
-    const requestInit: RequestInit = {
-      method: "POST",
-      headers: {
-        apikey: this.publishableKey,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email: "pcg-connection-check@invalid.example",
-        password: "not-a-real-password-for-connectivity-testing",
-      }),
-      cache: "no-store",
-    };
-
-    let response: Response;
-    let endpoint = "the PCG sign-in proxy";
-    try {
-      response = await this.fetcher(
-        this.authEndpoint("grant_type=password", "/auth/v1/token?grant_type=password"),
-        requestInit,
+    const payload = await readPayload(response);
+    if (!response.ok) {
+      const detail = payload as AuthErrorPayload | null;
+      throw new AuthClientError(
+        response.status,
+        detail?.code ?? detail?.error?.code ?? `AUTH_HTTP_${response.status}`,
+        detail?.message ?? detail?.error?.message ?? "The account request could not be completed.",
       );
-    } catch (proxyError) {
-      // Some browser/network configurations reject fetch() even for same-origin
-      // POST requests. Probe the exact same proxy route with XMLHttpRequest before
-      // falling back to the cross-origin Supabase endpoint.
-      try {
-        response = await xhrRequest(
-          this.authEndpoint("grant_type=password", "/auth/v1/token?grant_type=password"),
-          requestInit,
-        );
-        endpoint = "PCG sign-in proxy via XMLHttpRequest";
-      } catch (xhrError) {
-        if (this.isLocalDevelopment()) {
-          throw new AuthClientError(
-            0,
-            "AUTH_PROXY_UNREACHABLE",
-            `Browser POST transports failed. Fetch: ${errorDetail(proxyError)}; XMLHttpRequest: ${errorDetail(xhrError)}.`,
-          );
-        }
-        endpoint = "Supabase Auth directly";
-        try {
-          response = await this.fetcher(
-            `${this.baseUrl}/auth/v1/token?grant_type=password`,
-            requestInit,
-          );
-        } catch (directError) {
-          throw new AuthClientError(
-            0,
-            "AUTH_POST_UNREACHABLE",
-            `Browser could not send the sign-in POST. PCG proxy fetch: ${errorDetail(proxyError)}; PCG proxy XHR: ${errorDetail(xhrError)}; Supabase fetch: ${errorDetail(directError)}.`,
-          );
-        }
-      }
     }
-
-    const raw = await response.text().catch(() => "");
-    type DiagnosticPayload = { error_code?: string; code?: string; error?: string; msg?: string };
-    let payload: DiagnosticPayload | null = null;
-    try {
-      payload = raw ? JSON.parse(raw) as DiagnosticPayload : null;
-    } catch {
-      payload = null;
-    }
-    const errorCode = payload?.error_code ?? payload?.code ?? payload?.error ?? "";
-    const message = payload?.msg ?? "";
-    if (
-      response.status === 400 &&
-      (errorCode === "invalid_credentials" || message.toLowerCase().includes("invalid login credentials"))
-    ) {
-      return `Connection test passed: your browser reached ${endpoint}, and Supabase Auth returned the expected response to a fake test account. This test did not sign you in.`;
-    }
-    if (response.status >= 500) {
-      return `Your browser reached ${endpoint}, but the authentication service returned HTTP ${response.status}.`;
-    }
-    return `Your browser reached ${endpoint} and received HTTP ${response.status}, but it was not the expected test response. Response code: ${String(errorCode || "not provided")}.`;
+    return payload;
   }
 
-  async signIn(email: string, password: string): Promise<AuthSession> {
-    const normalizedEmail = email.trim().toLowerCase();
-    const payload = await this.requestAuth<AuthResponse>(
-      "token?grant_type=password",
-      { method: "POST", body: JSON.stringify({ email: normalizedEmail, password }) },
-      "Email or password was not accepted.",
-    );
-    const session = this.toSession(payload);
-    this.saveSession(session);
-    return session;
-  }
-
-  async refresh(): Promise<AuthSession | null> {
-    if (this.refreshPromise) return this.refreshPromise;
-    const current = this.readSession();
-    if (!current?.refresh_token) return null;
-    this.refreshPromise = (async () => {
-      try {
-        const payload = await this.requestAuth<AuthResponse>(
-          "token?grant_type=refresh_token",
-          { method: "POST", body: JSON.stringify({ refresh_token: current.refresh_token }) },
-          "Your session has expired. Sign in again.",
-        );
-        const next = this.toSession(payload);
-        this.saveSession(next);
-        return next;
-      } catch {
-        this.saveSession(null);
-        return null;
-      } finally {
-        this.refreshPromise = null;
-      }
-    })();
-    return this.refreshPromise;
-  }
-
-  async getAccessToken(): Promise<string | null> {
-    const current = this.readSession();
-    if (!current) return null;
-    if (current.expires_at <= Math.floor(Date.now() / 1000) + 60) {
-      const refreshed = await this.refresh();
-      return refreshed?.access_token ?? null;
+  async acceptInvitation(token: string, password: string): Promise<void> {
+    if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
+      throw new AuthClientError(400, "INVALID_INVITATION_TOKEN", "This invitation link is invalid. Ask an administrator to issue a new invitation.");
     }
-    return current.access_token;
-  }
-
-  async getSession(): Promise<AuthSession | null> {
-    const token = await this.getAccessToken();
-    return token ? this.readSession() : null;
-  }
-
-  async completePasswordChange(password: string): Promise<void> {
     if (
       password.length < 12 || password.length > 128 ||
       !/[a-z]/.test(password) || !/[A-Z]/.test(password) ||
       !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)
     ) {
-      throw new AuthClientError(400, "WEAK_PASSWORD", "Use 12–128 characters with uppercase and lowercase letters, a number and a symbol.");
+      throw new AuthClientError(400, "PASSWORD_POLICY_INVALID", "Use 12–128 characters with uppercase and lowercase letters, a number and a symbol.");
     }
-    const token = await this.getAccessToken();
-    if (!token) throw new AuthClientError(401, "AUTH_REQUIRED", "Sign in again before changing your password.");
-    let result: Response;
-    try {
-      result = await this.sendWithBrowserFallback(
-        this.authEndpoint("resource=complete-password-change", "/functions/v1/staff-auth/complete-password-change"),
-        {
-          method: "POST",
-          headers: {
-            apikey: this.publishableKey,
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({ password }),
-          cache: "no-store",
-        },
-      );
-    } catch {
-      throw new AuthClientError(0, "NETWORK_ERROR", "Unable to save the new password.");
-    }
-    if (!result.ok) {
-      const payload = await result.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
-      throw new AuthClientError(
-        result.status,
-        payload?.error?.code ?? "PASSWORD_CHANGE_FAILED",
-        payload?.error?.message ?? "The new password could not be saved. Please try again.",
-      );
+    const payload = await this.workerRequest("/api/v1/staff/invitations/accept", {
+      invitation_token: token,
+      password,
+    });
+    if (payload?.ok !== true || payload?.sign_in_required !== true) {
+      throw new AuthClientError(502, "INVALID_INVITATION_RESPONSE", "The invitation service did not confirm account creation. Contact an administrator before retrying.");
     }
   }
 
-  async requestPasswordReset(email: string): Promise<void> {
-    let result: Response;
-    try {
-      result = await this.sendWithBrowserFallback(
-        this.authEndpoint("resource=request-password-reset", "/functions/v1/staff-auth/request-password-reset"),
-        {
-          method: "POST",
-          headers: {
-            apikey: this.publishableKey,
-            "Content-Type": "application/json",
-            Accept: "application/json",
-          },
-          body: JSON.stringify({ email: email.trim().toLowerCase() }),
-          cache: "no-store",
-        },
-      );
-    } catch {
-      throw new AuthClientError(0, "NETWORK_ERROR", "Unable to send the password-reset request.");
-    }
-    if (!result.ok) {
-      throw new AuthClientError(result.status, "RESET_REQUEST_FAILED", "The password-reset request could not be sent. Try again later.");
-    }
+  async getSession(): Promise<AuthSession | null> {
+    const payload = await this.request("get-session");
+    if (!payload) return null;
+    const user = payload.user as AuthUser | undefined;
+    const session = payload.session as AuthSession["session"] | undefined;
+    if (!user || typeof user.id !== "string") return null;
+    return {
+      user: { id: user.id, email: user.email ?? null, name: user.name ?? null },
+      session: session ?? { id: "cookie-session", expiresAt: "" },
+    };
+  }
+
+  async getAccessToken(): Promise<string | null> {
+    // Better Auth uses an HttpOnly, Secure session cookie. The browser must
+    // never extract or persist a bearer/session token in JavaScript storage.
+    return null;
   }
 
   async signOut(): Promise<void> {
-    const token = await this.getAccessToken();
-    this.saveSession(null);
-    if (!token) return;
-    try {
-      await this.sendWithBrowserFallback(this.authEndpoint("resource=logout", "/auth/v1/logout?scope=global"), {
-        method: "POST",
-        headers: {
-          apikey: this.publishableKey,
-          Authorization: `Bearer ${token}`,
-        },
-        cache: "no-store",
-      });
-    } catch {
-      // Local tokens are already removed; server-side expiration remains authoritative.
-    }
+    try { await this.request("sign-out", "POST"); } catch { /* Cookie expiry remains server authoritative. */ }
   }
+
+  async testConnection(): Promise<string> {
+    let response: Response;
+    try {
+      response = await this.fetcher("/api/v1/health", { credentials: "include", cache: "no-store" });
+    } catch {
+      throw new AuthClientError(0, "API_UNREACHABLE", "The PCG Missions API could not be reached.");
+    }
+    const payload = await readPayload(response);
+    if (!response.ok || payload?.ok !== true) {
+      throw new AuthClientError(response.status || 503, "API_NOT_READY", "The PCG Missions API is not ready yet. Please retry later.");
+    }
+    return `Connection test passed: the PCG Missions API is reachable (schema version ${String(payload.schema_version ?? "unknown")}).`;
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    if (!currentPassword || currentPassword.length > 128) {
+      throw new AuthClientError(400, "CURRENT_PASSWORD_REQUIRED", "Enter your current password.");
+    }
+    if (
+      newPassword.length < 12 || newPassword.length > 128 ||
+      !/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword) ||
+      !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)
+    ) {
+      throw new AuthClientError(400, "PASSWORD_POLICY_INVALID", "Use 12–128 characters with uppercase and lowercase letters, a number and a symbol.");
+    }
+    await this.request("change-password", "POST", {
+      currentPassword,
+      newPassword,
+      revokeOtherSessions: true,
+    });
+  }
+
+  async requestPasswordReset(_email: string): Promise<void> {
+    throw new AuthClientError(
+      501,
+      "ADMIN_APPROVED_RECOVERY_NOT_MIGRATED",
+      "Administrator-approved password recovery is not yet available on the Cloudflare service. Contact your church administrator while this feature is being migrated.",
+    );
+  }
+
+  async completePasswordChange(_password: string): Promise<void> {
+    throw new AuthClientError(
+      501,
+      "FORCED_PASSWORD_CHANGE_NOT_MIGRATED",
+      "The forced password-change workflow has not yet been migrated to Cloudflare. Contact an administrator before continuing.",
+    );
+  }
+
+  async restoreRecoveryFromUrl(): Promise<boolean> { return false; }
 }

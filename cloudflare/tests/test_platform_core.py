@@ -370,8 +370,105 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql", "0018_event_operations_guards.sql", "0019_event_cancellation_idempotency.sql", "0020_event_assignment_privilege_guards.sql", "0021_announcement_delivery_read_receipts.sql", "0022_typed_ministry_reports.sql", "0023_prayer_request_idempotency.sql", "0024_calendar_audit_cancellation_read_receipts.sql", "0025_pastoral_care_explicit_share.sql", "0026_calendar_recurring_series.sql", "0027_ministry_report_aggregate_exports.sql", "0028_staff_password_reset_audit.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
+
+    def test_prayer_intake_idempotency_is_branch_scoped_and_unique(self):
+        tables = {row[0] for row in self.db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )}
+        self.assertIn("prayer_request_idempotency", tables)
+        indexes = {row[1] for row in self.db.execute(
+            "PRAGMA index_list(prayer_request_idempotency)"
+        )}
+        self.assertTrue(any("sqlite_autoindex_prayer_request_idempotency" in name for name in indexes))
+        columns = {row[1] for row in self.db.execute(
+            "PRAGMA table_info(prayer_request_idempotency)"
+        )}
+        self.assertTrue({"branch_id", "actor_user_id", "idempotency_key", "digest_hex", "prayer_request_id"}.issubset(columns))
+
+    def test_password_reset_audit_is_append_only_and_does_not_require_live_request_rows(self):
+        self.db.execute("""INSERT INTO staff_password_reset_audit
+            (id,request_id,branch_id,actor_profile_id,event_type,metadata,created_at)
+            VALUES ('reset-audit-1','opaque-source-request',NULL,NULL,'requested','{}',?)""",
+            ("2026-11-13T00:00:00.000Z",))
+        self.assertEqual(self.db.execute(
+            "SELECT request_id,event_type FROM staff_password_reset_audit WHERE id='reset-audit-1'"
+        ).fetchone(),("opaque-source-request","requested"))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE staff_password_reset_audit SET event_type='approved' WHERE id='reset-audit-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM staff_password_reset_audit WHERE id='reset-audit-1'")
+
+    def test_report_export_is_admin_pastor_only_and_audit_is_append_only(self):
+        self.assertIn("reports.export",self.grants("admin_pastor"))
+        for role in ("coordinator","team_leader","field_worker","follow_up_volunteer","prayer_intercessor"):
+            self.assertNotIn("reports.export",self.grants(role))
+        columns={row[1] for row in self.db.execute("PRAGMA table_info(ministry_report_export_audit)")}
+        self.assertTrue({"branch_id","actor_user_id","period_from","period_to","exported_rows",
+                         "privacy_threshold","format","created_at"}.issubset(columns))
+        triggers={row[0] for row in self.db.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+        self.assertTrue({"ministry_report_export_audit_authorize_insert",
+                         "ministry_report_export_audit_no_update",
+                         "ministry_report_export_audit_no_delete"}.issubset(triggers))
+
+    def test_calendar_recurring_series_is_branch_authorized_and_append_only(self):
+        self._lifecycle_fixture("calendar-series-branch")
+        self._lifecycle_staff("calendar-series-admin-user","calendar-series-admin","Calendar Admin","calendar-admin@example.test")
+        self._lifecycle_assignment("calendar-series-admin-assignment","calendar-series-admin","admin_pastor",
+                                   "calendar-series-branch","calendar-series-admin")
+        series_values = (
+            "calendar-series-1","calendar-series-branch","Weekly Service","service",
+            "2026-11-16T10:00:00.000Z","2026-11-16T11:00:00.000Z","Africa/Accra",
+            "branch",None,None,None,"weekly",1,4,"calendar-series-admin-user",
+            "calendar-series-admin-user","2026-11-13T00:00:00.000Z","2026-11-13T00:00:00.000Z",
+        )
+        self.db.execute("""INSERT INTO calendar_series
+            (id,branch_id,title,entry_type,starts_at,ends_at,timezone,scope_type,team_id,event_id,
+             owner_user_id,recurrence_frequency,recurrence_interval,occurrence_count,created_by,
+             updated_by,created_at,updated_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",series_values)
+        self.assertEqual(self.db.execute(
+            "SELECT action FROM calendar_series_audit WHERE series_id='calendar-series-1'"
+        ).fetchone()[0],"created")
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(calendar_entry)")}
+        self.assertIn("series_id",columns)
+        self.db.execute("""INSERT INTO calendar_entry
+            (id,branch_id,entry_type,title,starts_at,ends_at,timezone,scope_type,team_id,event_id,
+             owner_user_id,created_by,updated_by,created_at,updated_at,series_id)
+            VALUES ('calendar-series-entry-1','calendar-series-branch','service','Weekly Service',
+             '2026-11-16T10:00:00.000Z','2026-11-16T11:00:00.000Z','Africa/Accra','branch',
+             NULL,NULL,NULL,'calendar-series-admin-user','calendar-series-admin-user',
+             '2026-11-13T00:00:00.000Z','2026-11-13T00:00:00.000Z','calendar-series-1')""")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("""INSERT INTO calendar_entry
+                (id,branch_id,entry_type,title,starts_at,ends_at,timezone,scope_type,team_id,event_id,
+                 owner_user_id,created_by,updated_by,created_at,updated_at,series_id)
+                VALUES ('calendar-series-entry-duplicate','calendar-series-branch','service','Weekly Service',
+                 '2026-11-16T10:00:00.000Z','2026-11-16T11:00:00.000Z','Africa/Accra','branch',
+                 NULL,NULL,NULL,'calendar-series-admin-user','calendar-series-admin-user',
+                 '2026-11-13T00:00:00.000Z','2026-11-13T00:00:00.000Z','calendar-series-1')""")
+        self.db.execute("""UPDATE calendar_series SET status='cancelled',cancelled_at=?,cancelled_by=?,
+            cancellation_reason=?,updated_by=?,updated_at=? WHERE id='calendar-series-1'""",
+            ("2026-11-13T01:00:00.000Z","calendar-series-admin-user","Series discontinued by administrator",
+             "calendar-series-admin-user","2026-11-13T01:00:00.000Z"))
+        self.assertEqual(self.db.execute(
+            "SELECT action FROM calendar_series_audit WHERE series_id='calendar-series-1' ORDER BY created_at DESC LIMIT 1"
+        ).fetchone()[0],"cancelled")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM calendar_series WHERE id='calendar-series-1'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE calendar_series_audit SET reason='changed' WHERE series_id='calendar-series-1'")
+
+    def test_calendar_cancellation_audit_and_read_receipts_are_present(self):
+        columns = {row[1] for row in self.db.execute("PRAGMA table_info(calendar_entry)")}
+        self.assertTrue({"updated_by", "status", "cancelled_at", "cancelled_by", "cancellation_reason"}.issubset(columns))
+        tables = {row[0] for row in self.db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        self.assertTrue({"calendar_entry_change_audit", "calendar_entry_read_receipt"}.issubset(tables))
+        triggers = {row[0] for row in self.db.execute("SELECT name FROM sqlite_master WHERE type='trigger'")}
+        self.assertTrue({"calendar_entry_audit_insert", "calendar_entry_audit_update",
+                         "calendar_entry_change_audit_no_update", "calendar_entry_change_audit_no_delete",
+                         "calendar_entry_read_receipt_no_update", "calendar_entry_read_receipt_no_delete"}.issubset(triggers))
 
     def tearDown(self):
         self.db.close()
@@ -752,13 +849,24 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
             {"admin_pastor", "coordinator", "team_leader", "field_worker", "follow_up_volunteer", "prayer_intercessor"},
         )
 
-    def test_admin_gets_staff_governance_but_not_sensitive_case_access(self):
+    def test_admin_gets_staff_governance_and_only_explicitly_shared_case_access(self):
         grants = self.grants("admin_pastor")
         self.assertIn("staff.account.manage", grants)
         self.assertIn("staff.role.assign", grants)
         self.assertIn("contacts.private_fields.read", grants)
         self.assertNotIn("prayer.request.read", grants)
-        self.assertNotIn("pastoral.case.read", grants)
+        self.assertIn("pastoral.case.metadata.read", grants)
+        self.assertIn("pastoral.case.read", grants)
+        self.assertIn("pastoral.case.update", grants)
+        self.assertIn("pastoral.case.interact", grants)
+        scopes = {row[0] for row in self.db.execute(
+            """SELECT DISTINCT rc.scope_mode FROM role_capability rc
+               JOIN role r ON r.id=rc.role_id
+               JOIN capability c ON c.id=rc.capability_id
+               WHERE r.code='admin_pastor' AND c.code IN
+                 ('pastoral.case.read','pastoral.case.update','pastoral.case.interact')"""
+        )}
+        self.assertEqual(scopes, {"explicit_share"})
         self.assertNotIn("contacts.export", grants)
         self.assertNotIn("sms.dispatch", grants)
 
@@ -813,12 +921,29 @@ class StaffAuthorizationPolicyTests(unittest.TestCase):
         for role in ("coordinator", "team_leader", "field_worker", "follow_up_volunteer", "prayer_intercessor"):
             self.assertNotIn("contacts.private_fields.update", self.grants(role))
 
-    def test_no_baseline_role_gets_pastoral_case_export_or_sms_capability(self):
-        count = self.db.execute(
-            """SELECT COUNT(*) FROM role_capability rc JOIN capability c ON c.id = rc.capability_id
-               WHERE c.code IN ('pastoral.case.read','pastoral.case.update','contacts.export','sms.dispatch')"""
+    def test_only_admin_pastor_gets_explicit_share_case_grants_and_no_export_or_sms(self):
+        unauthorized = self.db.execute(
+            """SELECT COUNT(*) FROM role_capability rc
+               JOIN role r ON r.id=rc.role_id
+               JOIN capability c ON c.id=rc.capability_id
+               WHERE r.code <> 'admin_pastor'
+                 AND c.code IN ('pastoral.case.read','pastoral.case.update','pastoral.case.interact')"""
         ).fetchone()[0]
-        self.assertEqual(count, 0)
+        self.assertEqual(unauthorized, 0)
+        elevated_scope = self.db.execute(
+            """SELECT COUNT(*) FROM role_capability rc
+               JOIN role r ON r.id=rc.role_id
+               JOIN capability c ON c.id=rc.capability_id
+               WHERE r.code='admin_pastor'
+                 AND c.code IN ('pastoral.case.read','pastoral.case.update','pastoral.case.interact')
+                 AND rc.scope_mode <> 'explicit_share'"""
+        ).fetchone()[0]
+        self.assertEqual(elevated_scope, 0)
+        privileged = self.db.execute(
+            """SELECT COUNT(*) FROM role_capability rc JOIN capability c ON c.id=rc.capability_id
+               WHERE c.code IN ('contacts.export','sms.dispatch')"""
+        ).fetchone()[0]
+        self.assertEqual(privileged, 0)
 
     def test_policy_seed_is_idempotent(self):
         sql = (Path(__file__).resolve().parents[1] / "migrations" / "0003_staff_authorization_policy.sql").read_text(encoding="utf-8")
@@ -1025,7 +1150,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0016_event_lifecycle_audit.sql", "0017_public_content_management_audit.sql", "0018_event_operations_guards.sql", "0019_event_cancellation_idempotency.sql", "0020_event_assignment_privilege_guards.sql", "0021_announcement_delivery_read_receipts.sql", "0022_typed_ministry_reports.sql", "0023_prayer_request_idempotency.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
@@ -1411,16 +1536,16 @@ class AuthorizationQueryTests(unittest.TestCase):
         field_user, _ = self.staff["field"]
         self.db.execute(
             """INSERT INTO event
-               (id,branch_id,title,starts_at,ends_at,created_by,created_at,updated_at)
-               VALUES ('event-1','authz-branch','Sunday Service',?,?,?, ?, ?)""",
-            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,self.NOW,self.NOW),
+               (id,branch_id,title,starts_at,ends_at,created_by,last_modified_by,created_at,updated_at)
+               VALUES ('event-1','authz-branch','Sunday Service',?,?,?,?,?,?)""",
+            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,admin_user,self.NOW,self.NOW),
         )
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute(
                 """INSERT INTO event
-                   (id,branch_id,title,starts_at,ends_at,created_by,created_at,updated_at)
-                   VALUES ('event-field','authz-branch','Unauthorized Event',?,?,?, ?, ?)""",
-                ("2026-02-02T08:00:00.000Z","2026-02-02T11:00:00.000Z",field_user,self.NOW,self.NOW),
+                   (id,branch_id,title,starts_at,ends_at,created_by,last_modified_by,created_at,updated_at)
+                   VALUES ('event-field','authz-branch','Unauthorized Event',?,?,?,?,?,?)""",
+                ("2026-02-02T08:00:00.000Z","2026-02-02T11:00:00.000Z",field_user,field_user,self.NOW,self.NOW),
             )
 
     def test_event_checkin_requires_event_capability_and_idempotency_key(self):
@@ -1428,9 +1553,9 @@ class AuthorizationQueryTests(unittest.TestCase):
         field_user, _ = self.staff["field"]
         self.db.execute(
             """INSERT INTO event
-               (id,branch_id,title,starts_at,ends_at,created_by,created_at,updated_at)
-               VALUES ('event-checkin','authz-branch','Service',?,?,?, ?, ?)""",
-            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,self.NOW,self.NOW),
+               (id,branch_id,title,starts_at,ends_at,created_by,last_modified_by,created_at,updated_at)
+               VALUES ('event-checkin','authz-branch','Service',?,?,?,?,?,?)""",
+            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,admin_user,self.NOW,self.NOW),
         )
         self.db.execute(
             """INSERT INTO event_checkin
@@ -1451,9 +1576,10 @@ class AuthorizationQueryTests(unittest.TestCase):
         field_user, _ = self.staff["field"]
         self.db.execute(
             """INSERT INTO event
-               (id,branch_id,title,starts_at,ends_at,created_by,created_at,updated_at)
-               VALUES ('event-registration','authz-branch','Registration Event',?,?,?, ?, ?)""",
-            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,self.NOW,self.NOW),
+               (id,branch_id,title,starts_at,ends_at,registration_state,visibility,status,
+                created_by,last_modified_by,created_at,updated_at)
+               VALUES ('event-registration','authz-branch','Registration Event',?,?,'open','staff','published',?,?,?,?)""",
+            ("2026-02-01T08:00:00.000Z","2026-02-01T11:00:00.000Z",admin_user,admin_user,self.NOW,self.NOW),
         )
         self.db.execute(
             """INSERT INTO event_registration
@@ -1541,4 +1667,500 @@ class AuthorizationQueryTests(unittest.TestCase):
                    (id,label,url,created_by,created_at)
                    VALUES ('link-invalid','Invalid link','https://example.test/doc',?,?)""",
                 (admin_user,self.NOW),
+            )
+
+
+    def test_event_lifecycle_mutations_are_actor_authorized_and_audited(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, _ = self.staff["field"]
+        self.db.execute(
+            """INSERT INTO event
+               (id, branch_id, title, starts_at, ends_at, timezone, registration_state,
+                visibility, status, transport_enabled, created_by, last_modified_by,
+                created_at, updated_at)
+               VALUES ('event-audit-1', 'authz-branch', 'Sunday Service',
+                       '2026-02-01T08:00:00.000Z', '2026-02-01T11:00:00.000Z',
+                       'Africa/Accra', 'closed', 'private', 'draft', 0,
+                       ?, ?, ?, ?)""",
+            (admin_user, admin_user, self.NOW, self.NOW),
+        )
+        created = self.db.execute(
+            "SELECT actor_profile_id, action FROM event_change_audit WHERE event_id='event-audit-1'"
+        ).fetchone()
+        self.assertEqual(created, ("authz-staff-admin", "created"))
+
+        self.db.execute(
+            """UPDATE event
+               SET status='published', visibility='staff', last_modified_by=?,
+                   updated_at='2026-01-15T12:01:00.000Z'
+               WHERE id='event-audit-1' AND branch_id='authz-branch'""",
+            (admin_user,),
+        )
+        actions = self.db.execute(
+            "SELECT action FROM event_change_audit WHERE event_id='event-audit-1' ORDER BY created_at,id"
+        ).fetchall()
+        self.assertEqual(actions, [("created",), ("published",)])
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE event
+                   SET title='Unauthorized change', last_modified_by=?,
+                       updated_at='2026-01-15T12:02:00.000Z'
+                   WHERE id='event-audit-1' AND branch_id='authz-branch'""",
+                (field_user,),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE event_change_audit SET action='updated' WHERE event_id='event-audit-1'"
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM event_change_audit WHERE event_id='event-audit-1'")
+
+
+    def test_public_profile_and_external_links_are_authorized_and_audited(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, _ = self.staff["field"]
+        self.db.execute(
+            """INSERT INTO church_public_profile
+               (id,church_id,public_name,social_links,updated_by,created_at,updated_at)
+               VALUES ('public-profile-1','authz-church','Authorization Church','{}',?,?,?)""",
+            (admin_user,self.NOW,self.NOW),
+        )
+        profile_audit = self.db.execute(
+            "SELECT actor_profile_id,action FROM public_content_change_audit WHERE entity_type='church_public_profile'"
+        ).fetchone()
+        self.assertEqual(profile_audit, ("authz-staff-admin","created"))
+
+        self.db.execute(
+            "INSERT INTO church (id,name,created_at,updated_at) VALUES ('authz-church-other','Other Church',?,?)",
+            (self.NOW,self.NOW),
+        )
+        self.db.execute(
+            "INSERT INTO branch (id,church_id,name,created_at,updated_at) VALUES ('authz-branch-other','authz-church-other','Other Branch',?,?)",
+            (self.NOW,self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO church_public_profile
+                   (id,church_id,public_name,social_links,updated_by,created_at,updated_at)
+                   VALUES ('public-profile-field','authz-church-other','Unauthorized Church','{}',?,?,?)""",
+                (field_user,self.NOW,self.NOW),
+            )
+
+        self.db.execute(
+            """INSERT INTO digital_tract
+               (id,title,body,public_slug,status,created_by,created_at,updated_at,updated_by)
+               VALUES ('tract-audit-1','Welcome','Welcome message','welcome-tract','draft',?,?,?,?)""",
+            (admin_user,self.NOW,self.NOW,admin_user),
+        )
+        self.db.execute(
+            """INSERT INTO external_document_link
+               (id,digital_tract_id,label,url,created_by,created_at)
+               VALUES ('link-audit-1','tract-audit-1','Read more','https://example.test/tract',?,?)""",
+            (admin_user,self.NOW),
+        )
+        link_audit = self.db.execute(
+            "SELECT actor_profile_id,action FROM public_content_change_audit WHERE entity_type='external_document_link'"
+        ).fetchone()
+        self.assertEqual(link_audit, ("authz-staff-admin","created"))
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO external_document_link
+                   (id,digital_tract_id,label,url,created_by,created_at)
+                   VALUES ('link-field','tract-audit-1','Unauthorized','https://example.test/no',?,?)""",
+                (field_user,self.NOW),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE external_document_link SET label='Changed' WHERE id='link-audit-1'"
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "DELETE FROM external_document_link WHERE id='link-audit-1'"
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE public_content_change_audit SET action='updated' WHERE entity_type='church_public_profile'"
+            )
+
+
+
+
+
+    def test_ministry_report_d12_role_grants_and_typed_scope_constraints(self):
+        grants = self.db.execute(
+            """SELECT r.code,c.code,rc.scope_mode
+               FROM role_capability rc JOIN role r ON r.id=rc.role_id
+               JOIN capability c ON c.id=rc.capability_id
+               WHERE c.code LIKE 'report.%' ORDER BY r.code,c.code"""
+        ).fetchall()
+        grants = {(role,capability,scope) for role,capability,scope in grants}
+        self.assertIn(("admin_pastor","report.review.branch","branch"),grants)
+        self.assertIn(("coordinator","report.review.branch","branch"),grants)
+        self.assertIn(("team_leader","report.read.own","self"),grants)
+        self.assertIn(("team_leader","report.submit.own","self"),grants)
+        self.assertIn(("team_leader","report.review.team","team"),grants)
+        self.assertIn(("field_worker","report.submit.own","self"),grants)
+        self.assertIn(("follow_up_volunteer","report.submit.own","self"),grants)
+        self.assertFalse(any(role=="prayer_intercessor" for role,_,_ in grants))
+        self.assertFalse(any("export" in capability for _,capability,_ in grants))
+
+        field_user, field_profile = self.staff["field"]
+        self.db.execute(
+            """INSERT INTO staff_team_membership
+               (id,staff_profile_id,team_id,branch_id,membership_role,starts_at,created_by,created_at)
+               VALUES ('report-field-team','authz-staff-field','authz-team','authz-branch','member',?,?,?)""",
+            (self.NOW,"authz-staff-admin",self.NOW),
+        )
+        report_sql = """INSERT INTO ministry_report
+            (id,branch_id,report_type,period_start,period_end,author_profile_id,team_id,
+             contacts_captured,gospel_presentations,decisions_for_christ,
+             followup_required,followup_completed,status,submitted_at,created_at,updated_at,created_by,updated_by)
+            VALUES (?,'authz-branch','daily_evangelism','2026-01-15','2026-01-15',?,'authz-team',
+                    2,1,1,1,1,'submitted',?,?,?,?,?)"""
+        self.db.execute(report_sql,("report-valid",field_profile,self.NOW,self.NOW,self.NOW,field_user,field_user))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(report_sql,("report-duplicate",field_profile,self.NOW,self.NOW,self.NOW,field_user,field_user))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO ministry_report
+                   (id,branch_id,report_type,period_start,period_end,author_profile_id,
+                    decisions_for_christ,gospel_presentations,status,submitted_at,created_at,updated_at,created_by,updated_by)
+                   VALUES ('report-invalid-count','authz-branch','daily_evangelism','2026-01-15','2026-01-15',?,
+                           2,1,'submitted',?,?,?,?,?)""",
+                (field_profile,self.NOW,self.NOW,self.NOW,field_user,field_user),
+            )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM ministry_report WHERE status='submitted'").fetchone()[0],
+            1,
+        )
+
+
+    def test_team_leader_report_review_requires_active_team_scope_and_completed_password_setup(self):
+        field_user, field_profile = self.staff["field"]
+        leader_user, leader_profile = self.staff["leader"]
+        self.db.execute(
+            """INSERT INTO staff_team_membership
+               (id,staff_profile_id,team_id,branch_id,membership_role,starts_at,created_by,created_at)
+               VALUES ('report-field-team-review','authz-staff-field','authz-team','authz-branch','member',?,?,?)""",
+            (self.NOW,"authz-staff-admin",self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO ministry_report
+               (id,branch_id,report_type,period_start,period_end,author_profile_id,team_id,
+                contacts_captured,gospel_presentations,decisions_for_christ,
+                followup_required,followup_completed,status,submitted_at,created_at,updated_at,created_by,updated_by)
+               VALUES ('report-team-review','authz-branch','daily_evangelism','2026-01-15','2026-01-15',?,'authz-team',
+                       1,1,0,0,0,'submitted',?,?,?,?,?)""",
+            (field_profile,self.NOW,self.NOW,self.NOW,field_user,field_user),
+        )
+        self.db.execute("UPDATE staff_profile SET must_change_password=1 WHERE id='authz-staff-leader'")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE ministry_report SET status='approved',updated_at=?,updated_by=?,
+                   last_action_id='report-team-review-blocked',last_action_by=?,last_action_decision='approved',
+                   last_action_at=? WHERE id='report-team-review'""",
+                (self.NOW,leader_user,leader_user,self.NOW),
+            )
+        self.db.execute("UPDATE staff_profile SET must_change_password=0 WHERE id='authz-staff-leader'")
+        self.db.execute(
+            """UPDATE ministry_report SET status='approved',updated_at=?,updated_by=?,
+               last_action_id='report-team-review-approved',last_action_by=?,last_action_decision='approved',
+               last_action_at=? WHERE id='report-team-review'""",
+            (self.NOW,leader_user,leader_user,self.NOW),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT decision FROM report_review_event WHERE report_id='report-team-review'").fetchone()[0],
+            "approved",
+        )
+
+    def test_ministry_report_review_resubmission_and_history_are_atomic(self):
+        field_user, field_profile = self.staff["field"]
+        admin_user, admin_profile = self.staff["admin"]
+        report_id = "report-review-resubmit"
+        self.db.execute(
+            """INSERT INTO ministry_report
+               (id,branch_id,report_type,period_start,period_end,author_profile_id,
+                contacts_captured,gospel_presentations,decisions_for_christ,
+                followup_required,followup_completed,status,submitted_at,created_at,updated_at,created_by,updated_by)
+               VALUES (?,'authz-branch','daily_evangelism','2026-01-15','2026-01-15',?,
+                       2,1,1,1,1,'submitted',?,?,?,?,?)""",
+            (report_id,field_profile,self.NOW,self.NOW,self.NOW,field_user,field_user),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE ministry_report SET status='approved',updated_at=?,updated_by=?,
+                   last_action_id='report-self-review',last_action_by=?,last_action_decision='approved',
+                   last_action_at=? WHERE id=?""",
+                (self.NOW,field_user,field_user,self.NOW,report_id),
+            )
+        self.db.execute(
+            """UPDATE ministry_report SET status='returned',updated_at=?,updated_by=?,
+               last_action_id='report-return-event',last_action_by=?,last_action_decision='returned',
+               last_action_comment='Please correct the figures.',last_action_at=? WHERE id=?""",
+            (self.NOW,admin_user,admin_user,self.NOW,report_id),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT status FROM ministry_report WHERE id=?",(report_id,)).fetchone()[0],
+            "returned",
+        )
+        self.assertEqual(
+            self.db.execute("SELECT decision FROM report_review_event WHERE report_id=?",(report_id,)).fetchone()[0],
+            "returned",
+        )
+        self.db.execute(
+            """UPDATE ministry_report SET contacts_captured=4,status='submitted',
+               submitted_at=?,updated_at=?,updated_by=?,last_action_id='report-resubmit-event',
+               last_action_by=?,last_action_decision='resubmitted',last_action_comment=NULL,last_action_at=?
+               WHERE id=?""",
+            (self.NOW,self.NOW,field_user,field_user,self.NOW,report_id),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT contacts_captured FROM ministry_report WHERE id=?",(report_id,)).fetchone()[0],
+            4,
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM report_review_event WHERE report_id=?",(report_id,)).fetchone()[0],
+            2,
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE report_review_event SET decision='approved' WHERE report_id=?",
+                (report_id,),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM report_review_event WHERE report_id=?",(report_id,))
+
+    def test_announcement_delivery_and_read_receipts_are_audience_scoped_and_immutable(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, field_profile = self.staff["field"]
+        outsider_user = "authz-user-outsider"
+        outsider_profile = "authz-staff-outsider"
+        self.db.execute(
+            """INSERT INTO "user" (id,name,email,createdAt,updatedAt)
+               VALUES (?, 'Outsider', 'outsider@example.test', 1, 1)""",
+            (outsider_user,),
+        )
+        self.db.execute(
+            """INSERT INTO staff_profile
+               (id,auth_user_id,full_name,account_status,created_at,updated_at)
+               VALUES (?,?,'Outsider','active',?,?)""",
+            (outsider_profile,outsider_user,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO announcement
+               (id,branch_id,title,body,audience_type,is_public,status,published_at,
+                created_by,created_at,updated_at)
+               VALUES ('announcement-delivery','authz-branch','Branch Update','Service begins at 9',
+                       'branch',0,'published',?,?,?,?)""",
+            (self.NOW,admin_user,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO announcement_delivery
+               (id,announcement_id,channel,recipient_ref,status,attempted_at,created_at)
+               VALUES ('announcement-delivery-field','announcement-delivery','in_app',?,'delivered',?,?)""",
+            (field_profile,self.NOW,self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO announcement_delivery
+                   (id,announcement_id,channel,recipient_ref,status,attempted_at,created_at)
+                   VALUES ('announcement-delivery-outsider','announcement-delivery','in_app',?,'delivered',?,?)""",
+                (outsider_profile,self.NOW,self.NOW),
+            )
+        self.db.execute(
+            """INSERT INTO announcement_read_receipt
+               (id,announcement_id,branch_id,staff_profile_id,read_by,read_at)
+               VALUES ('announcement-read-field','announcement-delivery','authz-branch',?,?,?)""",
+            (field_profile,field_user,self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO announcement_read_receipt
+                   (id,announcement_id,branch_id,staff_profile_id,read_by,read_at)
+                   VALUES ('announcement-read-outsider','announcement-delivery','authz-branch',?,?,?)""",
+                (outsider_profile,outsider_user,self.NOW),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                "UPDATE announcement_read_receipt SET read_at=? WHERE id='announcement-read-field'",
+                ("2026-01-16T12:00:00.000Z",),
+            )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("DELETE FROM announcement_read_receipt WHERE id='announcement-read-field'")
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM announcement_read_receipt WHERE announcement_id='announcement-delivery'").fetchone()[0],
+            1,
+        )
+
+    def test_event_registration_is_limited_to_event_organizers_and_cancellation_keys_are_unique(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, _ = self.staff["field"]
+        self.db.execute(
+            """INSERT INTO event
+               (id,branch_id,title,starts_at,ends_at,timezone,registration_state,
+                visibility,status,created_by,last_modified_by,created_at,updated_at)
+               VALUES ('event-role-guard','authz-branch','Role Guard Event',
+                       '2026-02-01T08:00:00.000Z','2026-02-01T11:00:00.000Z',
+                       'Africa/Accra','open','staff','published',?,?,?,?)""",
+            (admin_user,admin_user,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO event_staff_assignment
+               (id,event_id,branch_id,staff_auth_user_id,assignment_role,assigned_by,starts_at,created_at)
+               VALUES ('event-support-assignment','event-role-guard','authz-branch',?,'support',?,?,?)""",
+            (field_user,admin_user,self.NOW,self.NOW),
+        )
+        registration_sql = """INSERT INTO event_registration
+            (id,event_id,branch_id,attendee_name_snapshot,registration_source,status,
+             registered_at,client_request_id,created_by)
+            VALUES (?,'event-role-guard','authz-branch','Attendee','staff','registered',?,?,?)"""
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(registration_sql,("registration-support","request-support",self.NOW,field_user))
+
+        self.db.execute(
+            "UPDATE event_staff_assignment SET assignment_role='organizer' WHERE id='event-support-assignment'"
+        )
+        self.db.execute(registration_sql,("registration-organizer","request-organizer",self.NOW,field_user))
+        self.db.execute(
+            """UPDATE event_registration
+               SET status='cancelled',cancelled_by=?,cancelled_at=?,cancellation_request_key=?
+               WHERE id='registration-organizer'""",
+            (field_user,self.NOW,"cancel-event-key"),
+        )
+        self.db.execute(registration_sql,("registration-second",self.NOW,"request-second",field_user))
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE event_registration
+                   SET status='cancelled',cancelled_by=?,cancelled_at=?,cancellation_request_key=?
+                   WHERE id='registration-second'""",
+                (field_user,self.NOW,"cancel-event-key"),
+            )
+
+    def test_event_registration_transport_and_closeout_guards(self):
+        admin_user, _ = self.staff["admin"]
+        field_user, _ = self.staff["field"]
+
+        def insert_event(event_id, capacity):
+            self.db.execute(
+                """INSERT INTO event
+                   (id,branch_id,title,starts_at,ends_at,timezone,capacity,
+                    registration_state,visibility,status,transport_enabled,
+                    created_by,last_modified_by,created_at,updated_at)
+                   VALUES (?, 'authz-branch', 'Community Gathering',
+                           '2026-02-01T08:00:00.000Z','2026-02-01T11:00:00.000Z',
+                           'Africa/Accra',?,'closed','private','draft',1,?,?,?,?)""",
+                (event_id,capacity,admin_user,admin_user,self.NOW,self.NOW),
+            )
+            self.db.execute(
+                """UPDATE event SET status='published',visibility='staff',registration_state='open',
+                   last_modified_by=?,updated_at='2026-01-15T12:01:00.000Z'
+                   WHERE id=? AND branch_id='authz-branch'""",
+                (admin_user,event_id),
+            )
+
+        def insert_registration(registration_id,event_id,request_id):
+            self.db.execute(
+                """INSERT INTO event_registration
+                   (id,event_id,branch_id,attendee_name_snapshot,registration_source,
+                    status,registered_at,client_request_id,created_by)
+                   VALUES (?,?,'authz-branch','Attendee','staff','registered',?,?,?)""",
+                (registration_id,event_id,self.NOW,request_id,admin_user),
+            )
+
+        insert_event("event-capacity-1",1)
+        insert_registration("registration-1","event-capacity-1","request-1")
+        with self.assertRaises(sqlite3.IntegrityError):
+            insert_registration("registration-over-capacity","event-capacity-1","request-2")
+        self.db.execute(
+            """UPDATE event_registration SET status='cancelled',cancelled_by=?,cancelled_at=?
+               WHERE id='registration-1'""",
+            (admin_user,self.NOW),
+        )
+        insert_registration("registration-2","event-capacity-1","request-2")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE event_registration SET status='cancelled',cancelled_by=?,cancelled_at=?
+                   WHERE id='registration-2'""",
+                (field_user,self.NOW),
+            )
+
+        insert_event("event-transport-1",5)
+        insert_registration("transport-registration-1","event-transport-1","transport-request-1")
+        insert_registration("transport-registration-2","event-transport-1","transport-request-2")
+        self.db.execute(
+            """INSERT INTO transport_option
+               (id,event_id,branch_id,label,capacity,is_enabled,created_at,created_by)
+               VALUES ('transport-option-1','event-transport-1','authz-branch','Main shuttle',1,1,?,?)""",
+            (self.NOW,admin_user),
+        )
+        self.db.execute(
+            """INSERT INTO transport_reservation
+               (id,registration_id,event_id,transport_option_id,branch_id,seat_count,status,
+                created_at,updated_at,created_by)
+               VALUES ('transport-reservation-1','transport-registration-1','event-transport-1',
+                       'transport-option-1','authz-branch',1,'reserved',?,?,?)""",
+            (self.NOW,self.NOW,admin_user),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO transport_reservation
+                   (id,registration_id,event_id,transport_option_id,branch_id,seat_count,status,
+                    created_at,updated_at,created_by)
+                   VALUES ('transport-reservation-over','transport-registration-2','event-transport-1',
+                           'transport-option-1','authz-branch',1,'reserved',?,?,?)""",
+                (self.NOW,self.NOW,admin_user),
+            )
+        self.db.execute(
+            """UPDATE transport_reservation
+               SET status='cancelled',updated_by=?,cancelled_by=?,cancelled_at=?,updated_at=?
+               WHERE id='transport-reservation-1'""",
+            (admin_user,admin_user,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO transport_reservation
+               (id,registration_id,event_id,transport_option_id,branch_id,seat_count,status,
+                created_at,updated_at,created_by)
+               VALUES ('transport-reservation-2','transport-registration-2','event-transport-1',
+                       'transport-option-1','authz-branch',1,'reserved',?,?,?)""",
+            (self.NOW,self.NOW,admin_user),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE transport_reservation SET status='boarded',updated_by=?,updated_at=?
+                   WHERE id='transport-reservation-2'""",
+                (field_user,self.NOW),
+            )
+
+        self.db.execute(
+            """INSERT INTO event_closeout
+               (id,event_id,branch_id,submitted_by,submitted_at,status,
+                attendee_count,registration_count,transport_seat_count,summary_notes,created_at,updated_at)
+               VALUES ('closeout-1','event-transport-1','authz-branch',?,?,'submitted',2,2,1,'Summary',?,?)""",
+            (admin_user,self.NOW,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO event_closeout_event
+               (id,closeout_id,actor_user_id,action,details,created_at)
+               VALUES ('closeout-event-submit','closeout-1',?,'submitted','{}',?)""",
+            (admin_user,self.NOW),
+        )
+        self.db.execute(
+            """UPDATE event_closeout SET status='approved',reviewed_by=?,reviewed_at=?,updated_at=?
+               WHERE id='closeout-1'""",
+            (admin_user,self.NOW,self.NOW),
+        )
+        self.db.execute(
+            """INSERT INTO event_closeout_event
+               (id,closeout_id,actor_user_id,action,details,created_at)
+               VALUES ('closeout-event-approve','closeout-1',?,'approved','{}',?)""",
+            (admin_user,self.NOW),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """INSERT INTO event_closeout_event
+                   (id,closeout_id,actor_user_id,action,details,created_at)
+                   VALUES ('closeout-event-unauthorized','closeout-1',?,'approved','{}',?)""",
+                (field_user,self.NOW),
             )

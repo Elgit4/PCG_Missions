@@ -11,10 +11,11 @@ import {
   Users,
 } from "lucide-react";
 
-export type StaffAuthView = "sign-in" | "forgot-password" | "recovery" | "change-password";
+export type StaffAuthView = "sign-in" | "forgot-password" | "recovery" | "change-password" | "accept-invitation";
 
 interface StaffLoginProps {
   view: StaffAuthView;
+  invitationToken?: string;
   themeToggle?: ReactNode;
   configurationError?: string;
   error?: string;
@@ -25,11 +26,13 @@ interface StaffLoginProps {
   onRetryWorkspace?: () => Promise<void>;
   onRequestReset: (email: string) => Promise<void>;
   onSetPassword: (password: string) => Promise<void>;
+  onAcceptInvitation: (token: string, password: string) => Promise<void>;
   onTestConnection: () => Promise<void>;
 }
 
 export function StaffLogin({
   view,
+  invitationToken = "",
   themeToggle,
   configurationError = "",
   error = "",
@@ -40,6 +43,7 @@ export function StaffLogin({
   onRetryWorkspace,
   onRequestReset,
   onSetPassword,
+  onAcceptInvitation,
   onTestConnection,
 }: StaffLoginProps) {
   const [email, setEmail] = useState("");
@@ -93,16 +97,26 @@ export function StaffLogin({
       setLocalError("The passwords do not match.");
       return;
     }
+    if (view === "accept-invitation") {
+      if (!invitationToken) {
+        setLocalError("This invitation link is incomplete. Ask an administrator to issue a new invitation.");
+        return;
+      }
+      await onAcceptInvitation(invitationToken, newPassword);
+      return;
+    }
     await onSetPassword(newPassword);
   };
 
-  const isPasswordSetup = view === "recovery" || view === "change-password";
+  const isPasswordSetup = view === "recovery" || view === "change-password" || view === "accept-invitation";
   const title = view === "sign-in"
     ? "Welcome back."
     : view === "forgot-password"
     ? "Get back into your account."
     : view === "recovery"
     ? "Choose a new password."
+    : view === "accept-invitation"
+    ? "Set up your staff account."
     : "Secure your administrator account.";
   const description = view === "sign-in"
     ? "Sign in to continue to your ministry workspace."
@@ -110,6 +124,8 @@ export function StaffLogin({
     ? "Submit your staff email. An authorised Admin/Pastor reviews the request before a temporary password is issued."
     : view === "recovery"
     ? "Your reset request has been approved. Choose a new password only you know."
+    : view === "accept-invitation"
+    ? "Your invitation is ready. Choose a private password to activate your staff account."
     : "Your temporary setup password has served its purpose. Replace it with your private password to unlock the workspace.";
 
   return (
@@ -155,7 +171,7 @@ export function StaffLogin({
 
           <header className="staff-login-heading">
             <p className="staff-login-section-label">
-              {view === "sign-in" ? "SIGN IN" : view === "forgot-password" ? "ACCOUNT RECOVERY" : "PASSWORD SECURITY"}
+              {view === "sign-in" ? "SIGN IN" : view === "forgot-password" ? "ACCOUNT RECOVERY" : view === "accept-invitation" ? "STAFF ONBOARDING" : "PASSWORD SECURITY"}
             </p>
             <h2 id="staff-login-title">{title}</h2>
             <p>{description}</p>
@@ -170,7 +186,7 @@ export function StaffLogin({
           {notice && <div className="staff-login-auth-notice" role="status">{notice}</div>}
 
           <form className="staff-login-auth-form" onSubmit={(event) => void submit(event)}>
-            {view !== "change-password" && view !== "recovery" && (
+            {view !== "change-password" && view !== "recovery" && view !== "accept-invitation" && (
               <label className="staff-login-auth-field">
                 <span>Staff email address</span>
                 <input
@@ -269,6 +285,8 @@ export function StaffLogin({
                 ? "Sign in"
                 : view === "forgot-password"
                 ? "Send reset request"
+                : view === "accept-invitation"
+                ? "Create staff account"
                 : "Save new password"}
             </button>
           </form>
@@ -320,7 +338,7 @@ export function StaffLogin({
 
           <div className="staff-login-support">
             <span>{view === "sign-in" ? "First administrator access?" : "Need help accessing the portal?"}</span>
-            <p>{view === "sign-in" ? "If you do not yet have a staff account, contact an authorised church administrator to arrange access." : "Password reset requests are reviewed and recorded by an authorised church administrator before a temporary password is issued."}</p>
+            <p>{view === "sign-in" ? "If you do not yet have a staff account, contact an authorised church administrator to arrange access." : view === "accept-invitation" ? "Your role and branch access are assigned by the invitation. If this link has expired or already been used, contact the administrator who invited you." : "Password reset requests are reviewed and recorded by an authorised church administrator before a temporary password is issued."}</p>
           </div>
         </div>
 
