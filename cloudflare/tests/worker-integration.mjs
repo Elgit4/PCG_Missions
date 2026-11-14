@@ -98,16 +98,16 @@ const pythonSeed = [
   "           ('cloudflare-test-account', user_id, 'credential', user_id, password_hash, created_at, created_at))",
   "now = datetime.now(timezone.utc).isoformat(timespec='milliseconds').replace('+00:00', 'Z')",
   "db.execute('INSERT INTO church (id,name,timezone,created_at,updated_at) VALUES (?,?,?,?,?)', ('test-church', 'Cloudflare Test Church', 'Africa/Accra', now, now))",
-  "db.execute('INSERT INTO branch (id,church_id,name,code,timezone,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)', ('test-branch', 'test-church', 'Cloudflare Test Branch', 'TEST', 'Africa/Accra', 1, now, now))",
+  "db.execute('INSERT INTO branch (id,church_id,name,code,timezone,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)', ('00000000-0000-4000-8000-000000000001', 'test-church', 'Cloudflare Test Branch', 'TEST', 'Africa/Accra', 1, now, now))",
   "db.execute('INSERT INTO staff_profile (id,auth_user_id,full_name,email,account_status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)', ('test-staff-profile', user_id, 'Cloudflare Test User', email, 'active', now, now))",
   "role_id = db.execute(\"SELECT id FROM role WHERE code='admin_pastor' AND is_active=1\").fetchone()[0]",
-  "db.execute('INSERT INTO staff_role_assignment (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at,reason) VALUES (?,?,?,?,?,?,?,?)', ('test-admin-assignment', 'test-staff-profile', role_id, 'test-branch', 'test-staff-profile', now, now, 'Automated non-production integration fixture'))",
+  "db.execute('INSERT INTO staff_role_assignment (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at,reason) VALUES (?,?,?,?,?,?,?,?)', ('test-admin-assignment', 'test-staff-profile', role_id, '00000000-0000-4000-8000-000000000001', 'test-staff-profile', now, now, 'Automated non-production integration fixture'))",
   "db.execute('INSERT INTO \"user\" (id,name,email,emailVerified,createdAt,updatedAt) VALUES (?,?,?,?,?,?)', ('cloudflare-worker-team-leader', 'Cloudflare Team Leader', 'cloudflare-team-leader@example.test', 1, created_at, created_at))",
   "db.execute('INSERT INTO account (id,accountId,providerId,userId,password,createdAt,updatedAt) VALUES (?,?,?,?,?,?,?)', ('cloudflare-team-leader-account', 'cloudflare-worker-team-leader', 'credential', 'cloudflare-worker-team-leader', password_hash, created_at, created_at))",
-  "db.execute('INSERT INTO staff_profile (id,auth_user_id,full_name,email,account_status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)', ('test-team-leader-profile', 'cloudflare-worker-team-leader', 'Cloudflare Team Leader', 'cloudflare-team-leader@example.test', 'active', now, now))",
+  "db.execute('INSERT INTO staff_profile (id,auth_user_id,full_name,email,account_status,created_at,updated_at) VALUES (?,?,?,?,?,?,?)', ('00000000-0000-4000-8000-000000000099', 'cloudflare-worker-team-leader', 'Cloudflare Team Leader', 'cloudflare-team-leader@example.test', 'active', now, now))",
   "team_leader_role_id = db.execute(\"SELECT id FROM role WHERE code='team_leader' AND is_active=1\").fetchone()[0]",
-  "db.execute('INSERT INTO staff_role_assignment (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at,reason) VALUES (?,?,?,?,?,?,?,?)', ('test-team-leader-assignment', 'test-team-leader-profile', team_leader_role_id, 'test-branch', 'test-staff-profile', now, now, 'Automated non-production team scope fixture'))",
-  "db.execute('INSERT INTO branch (id,church_id,name,code,timezone,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)', ('test-other-branch', 'test-church', 'Other Branch', 'OTHER', 'Africa/Accra', 1, now, now))",
+  "db.execute('INSERT INTO staff_role_assignment (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at,reason) VALUES (?,?,?,?,?,?,?,?)', ('test-team-leader-assignment', '00000000-0000-4000-8000-000000000099', team_leader_role_id, '00000000-0000-4000-8000-000000000001', 'test-staff-profile', now, now, 'Automated non-production team scope fixture'))",
+  "db.execute('INSERT INTO branch (id,church_id,name,code,timezone,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)', ('00000000-0000-4000-8000-000000000002', 'test-church', 'Other Branch', 'OTHER', 'Africa/Accra', 1, now, now))",
   "db.commit()",
   "version = db.execute(\"SELECT schema_version FROM app_meta WHERE id=1 AND environment='non-production'\").fetchone()",
   "if not version or version[0] != 31:",
@@ -192,12 +192,12 @@ try {
   const signedInBody = await signedInSession.text();
   assert(signedInSession.status === 200 && signedInBody.includes(testEmail),
     "Better Auth session lookup failed: " + signedInSession.status + ": " + signedInBody);
-  const me = await fetch(baseUrl + "/api/v1/me", { headers: { Cookie: cookie, "X-Branch-Id": "test-branch" } });
+  const me = await fetch(baseUrl + "/api/v1/me", { headers: { Cookie: cookie, "X-Branch-Id": "00000000-0000-4000-8000-000000000001" } });
   const meBody = await me.text();
-  assert(me.status === 200 && meBody.includes("test-branch"),
+  assert(me.status === 200 && meBody.includes("00000000-0000-4000-8000-000000000001"),
     "authenticated staff context failed: " + me.status + ": " + meBody);
 
-  const contacts = await fetch(baseUrl + "/api/v1/contacts", { headers: { Cookie: cookie, "X-Branch-Id": "test-branch" } });
+  const contacts = await fetch(baseUrl + "/api/v1/contacts", { headers: { Cookie: cookie, "X-Branch-Id": "00000000-0000-4000-8000-000000000001" } });
   const contactsBody = await contacts.text();
   assert(contacts.status === 200, "authorized branch-scoped contacts read failed: " + contacts.status + ": " + contactsBody);
 
@@ -252,7 +252,7 @@ try {
 
   const eventStart = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const eventEnd = new Date(Date.parse(eventStart) + 60 * 60 * 1000).toISOString();
-  const eventHeaders = { Cookie: currentSessionCookie, Origin: baseUrl, "X-Branch-Id": "test-branch", "Content-Type": "application/json" };
+  const eventHeaders = { Cookie: currentSessionCookie, Origin: baseUrl, "X-Branch-Id": "00000000-0000-4000-8000-000000000001", "Content-Type": "application/json" };
   const createdEventResponse = await fetch(baseUrl + "/api/v1/events", {
     method:"POST",headers:eventHeaders,
     body:JSON.stringify({title:"Flyer upload integration",starts_at:eventStart,ends_at:eventEnd,timezone:"Africa/Accra",location:"Test venue"}),
@@ -262,7 +262,7 @@ try {
     "authorized event draft creation failed: "+JSON.stringify(createdEventBody));
   const createdEventId=createdEventBody.event.id;
   const publishWithoutFlyer=await fetch(baseUrl+"/api/v1/events/"+encodeURIComponent(createdEventId)+"/publish",{
-    method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"test-branch"},
+    method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001"},
   });
   const publishWithoutFlyerBody=await publishWithoutFlyer.json();
   assert(publishWithoutFlyer.status===409 && publishWithoutFlyerBody.error?.code==="EVENT_FLYER_REQUIRED",
@@ -270,24 +270,24 @@ try {
   const flyerForm=new FormData();
   flyerForm.set("file",new Blob([new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,0,0,0,0,0])],{type:"image/png"}),"integration-flyer.png");
   const flyerUpload=await fetch(baseUrl+"/api/v1/events/"+encodeURIComponent(createdEventId)+"/flyer",{
-    method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"test-branch"},body:flyerForm,
+    method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001"},body:flyerForm,
   });
   const flyerUploadBody=await flyerUpload.json();
   assert(flyerUpload.status===200 && flyerUploadBody.flyer_url,
     "authenticated event flyer upload failed: "+JSON.stringify(flyerUploadBody));
   const flyerRead=await fetch(baseUrl+flyerUploadBody.flyer_url,{
-    headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"test-branch"},
+    headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001"},
   });
   assert(flyerRead.status===200 && flyerRead.headers.get("content-type")==="image/png",
     "uploaded event flyer could not be read back with its safe content type");
   const publishWithFlyer=await fetch(baseUrl+"/api/v1/events/"+encodeURIComponent(createdEventId)+"/publish",{
-    method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"test-branch"},
+    method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001"},
   });
   assert(publishWithFlyer.status===200,
     "event with a stored flyer should publish successfully: "+await publishWithFlyer.text());
 
-  const teamQuery="?branch_id=test-branch";
-  const adminBranchHeaders={Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"test-branch","Content-Type":"application/json"};
+  const teamQuery="?branch_id=00000000-0000-4000-8000-000000000001";
+  const adminBranchHeaders={Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001","Content-Type":"application/json"};
   const createTeamResponse=await fetch(baseUrl+"/api/v1/teams"+teamQuery,{
     method:"POST",headers:adminBranchHeaders,body:JSON.stringify({name:"Integration Team",description:"Worker acceptance team"}),
   });
@@ -297,7 +297,7 @@ try {
   const teamId=createTeamBody.data.team.id;
 
   const addMemberResponse=await fetch(baseUrl+"/api/v1/teams/"+encodeURIComponent(teamId)+"/members"+teamQuery,{
-    method:"POST",headers:adminBranchHeaders,body:JSON.stringify({staff_profile_id:"test-team-leader-profile",membership_role:"leader"}),
+    method:"POST",headers:adminBranchHeaders,body:JSON.stringify({staff_profile_id:"00000000-0000-4000-8000-000000000099",membership_role:"leader"}),
   });
   const addMemberBody=await addMemberResponse.json();
   assert(addMemberResponse.status===201&&addMemberBody.data?.id,
@@ -305,7 +305,7 @@ try {
   const membershipId=addMemberBody.data.id;
 
   const listTeamsResponse=await fetch(baseUrl+"/api/v1/teams"+teamQuery,{
-    headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"test-branch"},
+    headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001"},
   });
   const listTeamsBody=await listTeamsResponse.json();
   assert(listTeamsResponse.status===200&&listTeamsBody.data?.teams?.some(team=>
@@ -339,7 +339,7 @@ try {
   const areaId=createAreaBody.data.area.id;
 
   const addCoverageResponse=await fetch(baseUrl+"/api/v1/areas/"+encodeURIComponent(areaId)+"/coverage"+teamQuery,{
-    method:"POST",headers:adminBranchHeaders,body:JSON.stringify({staff_profile_id:"test-team-leader-profile"}),
+    method:"POST",headers:adminBranchHeaders,body:JSON.stringify({staff_profile_id:"00000000-0000-4000-8000-000000000099"}),
   });
   const addCoverageBody=await addCoverageResponse.json();
   assert(addCoverageResponse.status===201&&addCoverageBody.data?.id,
@@ -362,7 +362,7 @@ try {
     .find(value=>(value.split("=")[0]??"").includes("session_token"))??"";
   assert(teamLeaderSignIn.status===200&&teamLeaderCookie,
     "Team Leader Better Auth sign-in failed: "+teamLeaderSignIn.status);
-  const leaderHeaders={Cookie:teamLeaderCookie,Origin:baseUrl,"X-Branch-Id":"test-branch"};
+  const leaderHeaders={Cookie:teamLeaderCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001"};
   const leaderTeamsResponse=await fetch(baseUrl+"/api/v1/teams"+teamQuery,{headers:leaderHeaders});
   const leaderTeamsBody=await leaderTeamsResponse.json();
   assert(leaderTeamsResponse.status===200&&leaderTeamsBody.data?.teams?.length===1&&leaderTeamsBody.data.teams[0].id===teamId,
@@ -376,8 +376,8 @@ try {
     method:"POST",headers:{...leaderHeaders,"Content-Type":"application/json"},body:JSON.stringify({name:"Forbidden Team"}),
   });
   assert(leaderCreateTeam.status===403,"Team Leader must not receive branch-wide team management privileges");
-  const leaderOtherBranch=await fetch(baseUrl+"/api/v1/teams?branch_id=test-other-branch",{
-    headers:{Cookie:teamLeaderCookie,Origin:baseUrl,"X-Branch-Id":"test-other-branch"},
+  const leaderOtherBranch=await fetch(baseUrl+"/api/v1/teams?branch_id=00000000-0000-4000-8000-000000000002",{
+    headers:{Cookie:teamLeaderCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000002"},
   });
   assert(leaderOtherBranch.status===403,"Team Leader must not read teams from an unassigned branch");
 
