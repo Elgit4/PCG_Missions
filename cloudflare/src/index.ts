@@ -5354,6 +5354,9 @@ async function createAnnouncement(
     return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_DETAILS" } }, requestId, origin);
   }
   const branchId = access.activeBranch.branchId;
+  if (audience === "staff" && !access.activeBranch.roles.includes("admin_pastor")) {
+    return json(403, { ok: false, error: { code: "CHURCH_WIDE_ANNOUNCEMENT_REQUIRES_ADMIN_PASTOR" } }, requestId, origin);
+  }
   if (teamIds.length) {
     const found = await env.DB.prepare(
       `SELECT COUNT(*) AS count FROM team WHERE branch_id=? AND is_active=1 AND id IN (${teamIds.map(() => "?").join(",")})`,
