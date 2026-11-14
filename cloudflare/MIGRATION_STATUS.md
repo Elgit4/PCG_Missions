@@ -1,20 +1,29 @@
 # Cloudflare migration status
 
+## Latest implementation note — 2026-11-14
+
+- Fixed the Worker nullability errors in `listTeams` and `listServiceAreas` by retaining the narrowed active-branch value before aliasing the staff context.
+- Added a Worker API contract regression test for both handlers.
+- The change is committed on `migration/cloudflare-nonprod-completion`; a fresh GitHub Actions result for that exact head has not yet been retrieved, so type-check and test success are not claimed.
+- Direct read-only EU D1 inspection reconfirmed schema version 28, 28 migration-ledger entries, 81 application tables (82 user tables including the `d1_migrations` ledger), and no foreign-key violations. Migrations 0029–0031 remain pending.
+- The D1 authorization catalog still contains the six active roles. Prayer request narrative access remains explicit-share-only for Prayer Intercessors; pastoral case metadata is Admin/Pastor branch-scoped while narrative read/update/interact are explicit-share-scoped. Prayer, care and sensitive-record access audit immutability triggers are present.
+- R2 remains unavailable at account level (Cloudflare API error 10042). No bucket was created and no D1 migration or Worker deployment was performed during this implementation pass.
+
 ## Team and service-area administration — implementation update (2026-11-14)
 
 - Ported the branch-scoped Teams & Service Areas workspace API to the Cloudflare Worker: team create/update/deactivate/reactivate; add/change-role/revoke membership; service-area create/update/deactivate/reactivate; add/revoke staff coverage; and scoped listing.
 - Mutations use the authenticated Better Auth session, server-derived staff profile, selected branch and the relevant `team.manage` / `area.manage` capability. Member names and coverage names are returned only when the actor has branch-scoped `staff.directory.read`.
 - Added append-only `team_management_audit` records. Migration `0031_team_area_administration_guards.sql` adds database guards for active branch/team/area, active staff membership, Team Leader role requirements, no deactivation while assignments remain, and immutable audit history.
 - Added SQLite guard tests and Worker API contract tests, plus unauthenticated integration checks for team and service-area routes. The browser adapter no longer hard-blocks the team module with HTTP 501.
-- The migration branch now targets schema 31. The remote EU D1 database remains schema 28 until the R2 provisioning preflight succeeds and the deployment workflow applies migrations 0030–0031. No authenticated browser acceptance is claimed until an approved first Admin exists.
+- The migration branch now targets schema 31. The remote EU D1 database remains schema 28; migrations 0029–0031 are all pending until the R2 provisioning preflight succeeds and the deployment workflow applies them. No authenticated browser acceptance is claimed until an approved first Admin exists.
 
 ## Event flyer media — current non-production gate (2026-11-14)
 
 - Migration branch now contains migration `0030_event_flyer_media.sql`, the `EVENT_MEDIA` R2 binding, and the event upload/read handlers. Each event draft in the Operations workspace requires a PNG, JPEG or WebP flyer (16 bytes–5 MB); the Worker checks the actual file signature and MIME type, writes to a branch/event-scoped private object key, and only allows authorized staff to read it. Event publishing fails closed unless a flyer exists.
 - Added an integration assertion that unauthenticated POST requests to the event-flyer upload route return HTTP 401 before media is accepted. Added a deployment preflight that provisions the bucket in the EU jurisdiction before applying D1 migrations or deploying the Worker; it never enables public R2 access.
-- Corrected the Pages health smoke test to require schema version 30, matching the Worker health gate.
+- Corrected the Pages health smoke test to require schema version 31, matching the Worker health gate.
 - **External account prerequisite remains:** direct Cloudflare R2 bucket-list and creation requests currently return error 10042, “Please enable R2 through the Cloudflare Dashboard.” The bucket `pcg-missions-event-media-nonprod` therefore does not yet exist and the R2 binding cannot be deployed. Enable R2 in the Cloudflare Dashboard for this account; the workflow will then create the bucket with `--jurisdiction eu` and continue. The scoped Actions token must also include R2 bucket edit permission. No image bytes are currently stored.
-- The remote EU D1 database remains at schema 28 until the preflight succeeds; migration 0030 has not been applied remotely. The deployed Worker is therefore still the previous version without event media. Do not treat event image upload as live until the R2 bucket, schema 30 and Worker deployment gates all pass.
+- The remote EU D1 database remains at schema 28 until the preflight succeeds; migrations 0029, 0030 and 0031 have not been applied remotely. The deployed Worker is therefore still the previous version without event media. Do not treat event image upload as live until the R2 bucket, schema 30 and Worker deployment gates all pass.
 
 
 ## Current deployment gate — 2026-11-14
