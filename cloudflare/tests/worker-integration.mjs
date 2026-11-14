@@ -330,6 +330,11 @@ try {
   });
   assert(blockedTeamDeactivation.status===409,"team with active members must not be deactivated");
   
+  const unassignedTeamResponse=await fetch(baseUrl+"/api/v1/teams"+teamQuery,{
+    method:"POST",headers:adminBranchHeaders,body:JSON.stringify({name:"Unassigned Integration Team",description:null}),
+  });
+  assert(unassignedTeamResponse.status===201,"branch manager should create a second unassigned team");
+
   const createAreaResponse=await fetch(baseUrl+"/api/v1/areas"+teamQuery,{
     method:"POST",headers:adminBranchHeaders,body:JSON.stringify({name:"Integration Area",code:"TEST-AREA"}),
   });
