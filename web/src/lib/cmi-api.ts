@@ -486,9 +486,6 @@ export class CmiApiClient {
     if (service === "content-operations") {
       route = route.replace(/^\/(sermons|welcome-messages|daily-words|digital-tracts)(?=\/|$)/, "/content/$1");
     }
-    if (service === "team-operations") {
-      throw new CmiApiError(501, "TEAM_ADMINISTRATION_NOT_MIGRATED", "Team and service-area administration is not yet available on the Cloudflare Worker.", null);
-    }
     if (service === "staff-access-operations") {
       route = route.replace(/^\/staff\/([^/]+)\/accounts\/(reactivate|deactivate|suspend)$/, "/staff/$1/$2");
     }
