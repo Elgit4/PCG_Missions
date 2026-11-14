@@ -5545,7 +5545,9 @@ async function publishAnnouncement(
   const count=await env.DB.prepare(
     "SELECT COUNT(*) AS count FROM announcement_delivery WHERE announcement_id=? AND channel='in_app' AND status='delivered'",
   ).bind(announcementId).first<{count:number}>();
-  return json(200,{ok:true,announcement_id:announcementId,status:"published",delivery_count:count?.count??0},requestId,origin);
+  let pushDeliveryCount = 0;
+  try { pushDeliveryCount = await sendAnnouncementPushes(env, announcementId); } catch { /* D1 inbox delivery remains authoritative if a push service is unavailable. */ }
+  return json(200,{ok:true,announcement_id:announcementId,status:"published",delivery_count:count?.count??0,push_delivery_count:pushDeliveryCount},requestId,origin);
 }
 async function scheduleAnnouncement(request: Request, env: Env, announcementId: string, requestId: string, origin?: string): Promise<Response> {
   const access=await authorizeRequestCapability(request,env,"announcements.manage");
@@ -7214,9 +7216,9 @@ async function sendWebPush(
   env: Env,
   subscription: { id: string; endpoint: string; p256dh: string; auth_secret: string },
   payload: Record<string, unknown>,
+  keys: { publicKey: string; privateKey: CryptoKey },
 ): Promise<boolean> {
   if (!isAllowedWebPushEndpoint(subscription.endpoint)) return false;
-  const keys = await getWebPushVapidKeys(env);
   const jwt = await createWebPushVapidJwt(subscription.endpoint, keys);
   const body = await encryptWebPushPayload(subscription, payload);
   const response = await fetch(subscription.endpoint, {
@@ -7326,9 +7328,11 @@ async function sendAnnouncementPushes(env: Env, announcementId: string): Promise
     tag: "pcg-announcement-" + announcementId,
   };
   const subscriptions = rows.results ?? [];
+  if (!subscriptions.length) return 0;
+  const keys = await getWebPushVapidKeys(env);
   for (let offset = 0; offset < subscriptions.length; offset += 20) {
     const chunk = subscriptions.slice(offset, offset + 20);
-    const results = await Promise.allSettled(chunk.map((subscription) => sendWebPush(env, subscription, payload)));
+    const results = await Promise.allSettled(chunk.map((subscription) => sendWebPush(env, subscription, payload, keys)));
     delivered += results.filter((result) => result.status === "fulfilled" && result.value).length;
   }
   return delivered;
@@ -7415,6 +7419,9 @@ async function postPrayerRoomMessage(request: Request, env: Env, requestId: stri
   } }, requestId, origin);
 }
 
+    if (url.pathname === "/api/v1/notifications/push/public-key" && request.method === "GET") return getPushPublicKey(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/notifications/push/subscriptions" && request.method === "POST") return savePushSubscription(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/notifications/push/unsubscribe" && request.method === "POST") return removePushSubscription(request,env,requestId,origin);
     if (url.pathname === "/api/v1/prayer-room/messages" && request.method === "GET") return listPrayerRoomMessages(request,env,requestId,origin);
     if (url.pathname === "/api/v1/prayer-room/messages" && request.method === "POST") return postPrayerRoomMessage(request,env,requestId,origin);
     if (url.pathname === "/api/v1/pastoral/care" && request.method === "GET") return listCareRecords(request,env,requestId,origin);
