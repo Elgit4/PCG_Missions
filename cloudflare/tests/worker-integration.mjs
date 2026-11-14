@@ -244,6 +244,42 @@ try {
   assert(preservedSession.status === 200 && preservedSessionBody.includes(testEmail),
     "password change must preserve the session that initiated it: " + preservedSessionBody);
 
+  const eventStart = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const eventEnd = new Date(Date.parse(eventStart) + 60 * 60 * 1000).toISOString();
+  const eventHeaders = { Cookie: currentSessionCookie, Origin: baseUrl, "X-Branch-Id": "test-branch", "Content-Type": "application/json" };
+  const createdEventResponse = await fetch(baseUrl + "/api/v1/events", {
+    method:"POST",headers:eventHeaders,
+    body:JSON.stringify({title:"Flyer upload integration",starts_at:eventStart,ends_at:eventEnd,timezone:"Africa/Accra",location:"Test venue"}),
+  });
+  const createdEventBody = await createdEventResponse.json();
+  assert(createdEventResponse.status===201 && createdEventBody.event?.id,
+    "authorized event draft creation failed: "+JSON.stringify(createdEventBody));
+  const createdEventId=createdEventBody.event.id;
+  const publishWithoutFlyer=await fetch(baseUrl+"/api/v1/events/"+encodeURIComponent(createdEventId)+"/publish",{
+    method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"test-branch"},
+  });
+  const publishWithoutFlyerBody=await publishWithoutFlyer.json();
+  assert(publishWithoutFlyer.status===409 && publishWithoutFlyerBody.error?.code==="EVENT_FLYER_REQUIRED",
+    "event publishing must require an uploaded flyer: "+JSON.stringify(publishWithoutFlyerBody));
+  const flyerForm=new FormData();
+  flyerForm.set("file",new Blob([new Uint8Array([137,80,78,71,13,10,26,10,0,0,0,0,0,0,0,0])],{type:"image/png"}),"integration-flyer.png");
+  const flyerUpload=await fetch(baseUrl+"/api/v1/events/"+encodeURIComponent(createdEventId)+"/flyer",{
+    method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"test-branch"},body:flyerForm,
+  });
+  const flyerUploadBody=await flyerUpload.json();
+  assert(flyerUpload.status===200 && flyerUploadBody.flyer_url,
+    "authenticated event flyer upload failed: "+JSON.stringify(flyerUploadBody));
+  const flyerRead=await fetch(baseUrl+flyerUploadBody.flyer_url,{
+    headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"test-branch"},
+  });
+  assert(flyerRead.status===200 && flyerRead.headers.get("content-type")==="image/png",
+    "uploaded event flyer could not be read back with its safe content type");
+  const publishWithFlyer=await fetch(baseUrl+"/api/v1/events/"+encodeURIComponent(createdEventId)+"/publish",{
+    method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"test-branch"},
+  });
+  assert(publishWithFlyer.status===200,
+    "event with a stored flyer should publish successfully: "+await publishWithFlyer.text());
+
   const revokedOtherSession = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: secondCookie } });
   const revokedOtherSessionBody = await revokedOtherSession.text();
   assert(revokedOtherSession.status === 200 &&
