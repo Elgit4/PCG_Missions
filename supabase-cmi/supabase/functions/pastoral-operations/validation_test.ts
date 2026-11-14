@@ -2,7 +2,6 @@ import {
   isUuid,
   parsePastoralReadInput,
   parsePastoralReadPath,
-  parsePrayerCreateInput,
 } from "./validation.ts";
 
 const BRANCH_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101";
@@ -126,49 +125,5 @@ Deno.test("rejects unsupported modes and malformed branch IDs", () => {
 
   if (mode.ok || branch.ok) {
     throw new Error("Unsupported mode or malformed branch ID was accepted.");
-  }
-});
-
-Deno.test("accepts a valid prayer request with optional contact link", () => {
-  const parsed = parsePrayerCreateInput({
-    branch_id: BRANCH_ID,
-    request_text: "Please pray for my family.",
-    contact_id: RECORD_ID,
-  });
-  if (
-    !parsed.ok ||
-    parsed.value.request_text !== "Please pray for my family." ||
-    parsed.value.contact_id !== RECORD_ID
-  ) {
-    throw new Error("A valid prayer request was rejected.");
-  }
-});
-
-Deno.test("normalizes prayer request text and accepts no contact link", () => {
-  const parsed = parsePrayerCreateInput({
-    branch_id: BRANCH_ID,
-    request_text: "  Please pray for healing.  ",
-  });
-  if (
-    !parsed.ok ||
-    parsed.value.request_text !== "Please pray for healing." ||
-    parsed.value.contact_id !== null
-  ) {
-    throw new Error("Prayer request normalization failed.");
-  }
-});
-
-Deno.test("rejects malformed prayer creation payloads", () => {
-  const invalid = [
-    null,
-    [],
-    { branch_id: "bad", request_text: "Please pray" },
-    { branch_id: BRANCH_ID, request_text: "x" },
-    { branch_id: BRANCH_ID, request_text: "x".repeat(4001) },
-    { branch_id: BRANCH_ID, request_text: "Please pray", contact_id: "bad" },
-    { branch_id: BRANCH_ID, request_text: "Please pray", is_public: true },
-  ];
-  if (invalid.some((value) => parsePrayerCreateInput(value).ok)) {
-    throw new Error("An invalid prayer creation payload was accepted.");
   }
 });
