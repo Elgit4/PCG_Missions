@@ -179,6 +179,7 @@ try {
     ? signIn.headers.getSetCookie()
     : [signIn.headers.get("set-cookie") ?? ""];
   const cookie = setCookies.map((value) => value.split(";")[0]).filter(Boolean).join("; ");
+  let currentSessionCookie = cookie;
   assert(cookie.includes("session_token"), "Better Auth sign-in did not issue a session cookie");
 
   const signedInSession = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: cookie } });
@@ -230,8 +231,15 @@ try {
   const passwordChangeBody = await passwordChange.text();
   assert(passwordChange.status === 200,
     "authenticated password change failed: " + passwordChange.status + ": " + passwordChangeBody);
+  const passwordChangeCookies = typeof passwordChange.headers.getSetCookie === "function"
+    ? passwordChange.headers.getSetCookie()
+    : [passwordChange.headers.get("set-cookie") ?? ""];
+  const refreshedSessionCookie = passwordChangeCookies
+    .map((value) => value.split(";")[0])
+    .find((value) => value.startsWith("session_token="));
+  if (refreshedSessionCookie) currentSessionCookie = refreshedSessionCookie;
 
-  const preservedSession = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: cookie } });
+  const preservedSession = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: currentSessionCookie } });
   const preservedSessionBody = await preservedSession.text();
   assert(preservedSession.status === 200 && preservedSessionBody.includes(testEmail),
     "password change must preserve the session that initiated it: " + preservedSessionBody);
@@ -262,11 +270,11 @@ try {
 
   const signOut = await fetch(baseUrl + "/api/auth/sign-out", {
     method: "POST",
-    headers: { Cookie: cookie, Origin: baseUrl, "Content-Type": "application/json" },
+    headers: { Cookie: currentSessionCookie, Origin: baseUrl, "Content-Type": "application/json" },
     body: JSON.stringify({}),
   });
   assert(signOut.status === 200, "Better Auth sign-out failed: " + signOut.status);
-  const signedOutSession = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: cookie } });
+  const signedOutSession = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: currentSessionCookie } });
   const signedOutBody = await signedOutSession.text();
   assert(signedOutSession.status === 200 && (signedOutBody.trim() === "null" || signedOutBody.trim() === ""),
     "Better Auth session should be revoked after sign-out: " + signedOutBody);
