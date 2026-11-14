@@ -87,6 +87,23 @@ describe("CmiApiClient — Cloudflare Worker", () => {
     expect(result.data.announcements[0]?.announcement_id).toBe("notice-1");
   });
 
+  it("keeps announcement branch scope in the validated header, not the JSON payload", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, announcement_id: "announcement-1", status: "draft", request_id: "announcement",
+    }), { status: 201 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.createAnnouncementDraft({
+      branch_id: "branch-1", title: "Service update", body: "Service begins at 9am.", audience_type: "branch",
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/announcements");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(JSON.parse(String(init.body))).toEqual({
+      title: "Service update", body: "Service begins at 9am.", audience_type: "branch",
+    });
+  });
+
   it("posts prayer-room messages only to the dedicated branch conversation route", async () => {
     const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
       ok: true, message: { id: "message-1", body: "Praying for the team" }, request_id: "prayer-room",
