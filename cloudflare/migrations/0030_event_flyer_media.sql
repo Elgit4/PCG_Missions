@@ -9,6 +9,11 @@ BEFORE INSERT ON event
 WHEN (NEW.flyer_key IS NULL) <> (NEW.flyer_content_type IS NULL)
   OR (NEW.flyer_key IS NULL) <> (NEW.flyer_size IS NULL)
 BEGIN SELECT RAISE(ABORT,'EVENT_FLYER_METADATA_INCOMPLETE'); END;
+CREATE TRIGGER event_publish_requires_flyer
+BEFORE UPDATE OF status ON event
+WHEN NEW.status='published' AND NEW.flyer_key IS NULL
+BEGIN SELECT RAISE(ABORT,'EVENT_FLYER_REQUIRED'); END;
+
 CREATE TRIGGER event_flyer_metadata_consistency_update
 BEFORE UPDATE OF flyer_key,flyer_content_type,flyer_size ON event
 WHEN (NEW.flyer_key IS NULL) <> (NEW.flyer_content_type IS NULL)
