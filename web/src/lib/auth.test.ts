@@ -51,6 +51,32 @@ describe("PcgAuthClient — Better Auth cookie sessions", () => {
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/v1/health");
   });
 
+  it("sends password rotation through the authenticated same-origin endpoint", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response("{}", { status: 200 }));
+    const client = new PcgAuthClient(fetcher as typeof fetch);
+    const currentSecret = "Current-" + "Value-" + "2026!";
+    const nextSecret = "Next-" + "Value-" + "2026!Strong";
+    await expect(client.changePassword(currentSecret, nextSecret)).resolves.toBeUndefined();
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/auth/change-password");
+    expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("include");
+    expect(init.cache).toBe("no-store");
+    expect(JSON.parse(String(init.body))).toEqual({
+      currentPassword: currentSecret,
+      newPassword: nextSecret,
+      revokeOtherSessions: true,
+    });
+  });
+
+  it("rejects weak replacements before sending the request", async () => {
+    const fetcher = vi.fn() as unknown as typeof fetch;
+    const client = new PcgAuthClient(fetcher);
+    await expect(client.changePassword("Current-" + "Value-" + "2026!", "weak-only-123"))
+      .rejects.toMatchObject({ status: 400, code: "PASSWORD_POLICY_INVALID" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("does not silently bypass the not-yet-migrated admin recovery workflow", async () => {
     const client = new PcgAuthClient(vi.fn() as typeof fetch);
     await expect(client.requestPasswordReset("staff@example.test")).rejects.toMatchObject({
