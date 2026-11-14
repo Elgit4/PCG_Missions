@@ -86,7 +86,6 @@ BEGIN
     SELECT 1 FROM staff_team_membership stm
     WHERE stm.team_id=OLD.id AND stm.branch_id=OLD.branch_id
       AND stm.revoked_at IS NULL
-      AND stm.starts_at<=strftime('%Y-%m-%dT%H:%M:%fZ','now')
       AND (stm.ends_at IS NULL OR stm.ends_at>strftime('%Y-%m-%dT%H:%M:%fZ','now'))
   ) THEN RAISE(ABORT,'TEAM_HAS_ACTIVE_MEMBERS') END;
 END;
@@ -141,7 +140,6 @@ BEGIN
   SELECT CASE WHEN EXISTS (
     SELECT 1 FROM staff_area_coverage sac
     WHERE sac.service_area_id=OLD.id AND sac.branch_id=OLD.branch_id AND sac.revoked_at IS NULL
-      AND sac.starts_at<=strftime('%Y-%m-%dT%H:%M:%fZ','now')
       AND (sac.ends_at IS NULL OR sac.ends_at>strftime('%Y-%m-%dT%H:%M:%fZ','now'))
   ) THEN RAISE(ABORT,'AREA_HAS_ACTIVE_COVERAGE') END;
 END;
