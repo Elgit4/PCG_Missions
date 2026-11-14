@@ -105,12 +105,12 @@ const pythonSeed = [
   "db.commit()",
   "version = db.execute(\"SELECT schema_version FROM app_meta WHERE id=1 AND environment='non-production'\").fetchone()",
   "if not version or version[0] != 28:",
-  "    raise SystemExit('Expected non-production schema 28, got ' + str(version))",
+  "    raise SystemExit('Expected non-production schema 29, got ' + str(version))",
   "violations = db.execute('PRAGMA foreign_key_check').fetchall()",
   "if violations:",
   "    raise SystemExit('Foreign key violations: ' + str(len(violations)))",
   "db.close()",
-  "print('Seeded local D1 schema version 28 and one Better Auth test identity')",
+  "print('Seeded local D1 schema version 29 and one Better Auth test identity')",
 ].join("\n");
 
 await rm(stateDir, { recursive: true, force: true });
@@ -158,7 +158,7 @@ try {
   const health = await fetch(baseUrl + "/health");
   const healthBody = await health.json();
   assert(health.status === 200 && healthBody.ok === true, "Worker health endpoint failed");
-  assert(healthBody.schema_version === 28, "expected D1 schema 28, got " + healthBody.schema_version);
+  assert(healthBody.schema_version === 29, "expected D1 schema 29, got " + healthBody.schema_version);
 
   const scheduledTick = await fetch(baseUrl + "/cdn-cgi/local/scheduled");
   assert(scheduledTick.status === 200, "local scheduled announcement tick failed: " + scheduledTick.status);
