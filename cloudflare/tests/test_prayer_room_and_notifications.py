@@ -14,7 +14,8 @@ class PrayerRoomAndNotificationContractTests(unittest.TestCase):
     def test_prayer_room_is_granted_only_to_the_six_defined_staff_roles(self):
         for role in ("admin_pastor", "coordinator", "team_leader", "field_worker", "follow_up_volunteer", "prayer_intercessor"):
             self.assertIn(role, MIGRATION)
-        self.assertIn("'prayer.room.read','prayer.room.post'", MIGRATION)
+        self.assertIn("'prayer.room.read'", MIGRATION)
+        self.assertIn("'prayer.room.post'", MIGRATION)
         self.assertIn("scope_mode", MIGRATION)
 
     def test_prayer_room_message_storage_is_branch_scoped_and_append_only(self):
