@@ -7,7 +7,7 @@
 
 ## 1. Current verified baseline
 
-- EU non-production D1 exists and is on schema version 28 (81 application tables).
+- EU non-production D1 exists and is on schema version 32 (81 application tables; last remotely verified baseline). Current migration branch target is schema 32..
 - The full API Worker exists in the isolated non-production environment.
 - Local SQLite migration/security tests, Worker type-check, bundle build and local Better Auth/D1 integration tests pass on the current migration head.
 - Existing Supabase accounts use GoTrue bcrypt hashes. The current branch configures Better Auth bcrypt verification and includes legacy-hash sign-in integration coverage.
@@ -17,7 +17,7 @@
 ## 2. Release gates — non-production
 
 - [ ] Deploy the exact current migration commit with the Better Auth bcrypt compatibility change.
-- [ ] Confirm deployed Worker health reports `environment=non-production` and `schema_version=28`.
+- [ ] Confirm deployed Worker health reports `environment=non-production` and `schema_version=32`.
 - [ ] Confirm unauthenticated staff-context requests return 401; allowed frontend CORS succeeds and disallowed origins are rejected.
 - [ ] Run authenticated sign-in/session/sign-out against the deployed Worker using an approved test identity.
 - [ ] Import real staff identities only after branch, church, role and assignment mapping is reviewed and approved. Preserve source user/profile/assignment IDs where compatible; never copy plaintext credentials.
