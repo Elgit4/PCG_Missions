@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  deployments: write
 
 jobs:
   frontend:
@@ -42,10 +43,10 @@ jobs:
       - name: Deploy non-production frontend directly to Cloudflare Pages
         if: github.event_name == 'push' && github.ref == 'refs/heads/migration/cloudflare-nonprod-completion'
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PAGES_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
         run: |
-          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing repository secret CLOUDFLARE_API_TOKEN."; exit 1; }
+          test -n "$CLOUDFLARE_API_TOKEN" || { echo "::error::Missing repository secret CLOUDFLARE_PAGES_API_TOKEN. Create a Cloudflare API token with Account > Cloudflare Pages > Edit and add it as a GitHub Actions secret."; exit 1; }
           npx --yes wrangler@4.162.0 pages deploy dist \
             --project-name pcg-missions-nonprod \
             --branch migration/cloudflare-nonprod-completion \
