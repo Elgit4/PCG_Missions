@@ -18,10 +18,6 @@ interface PrayerRequestRecord {
   updated_at: string;
 }
 
-interface PrayerReadResponse {
-  request: PrayerRequestRecord;
-}
-
 interface PrayerRoomWorkspaceProps {
   api: CmiApiClient;
   branchId: string;
@@ -78,8 +74,8 @@ export function PrayerRoomWorkspace({
     setError("");
     try {
       const result = await api.listPrayerRequests(branchId, 50, 0);
-      setRequests(result.data);
-      setAccessMode(result.access_mode);
+      setRequests(result.data.data);
+      setAccessMode(result.data.access_mode);
       setSelected(null);
     } catch (cause) {
       setError(errorMessage(cause));
@@ -102,8 +98,8 @@ export function PrayerRoomWorkspace({
         requestId,
         accessMode,
         accessMode === "oversight" ? reason : undefined,
-      ) as PrayerReadResponse;
-      setSelected(result.request);
+      );
+      setSelected(result.data.request);
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
