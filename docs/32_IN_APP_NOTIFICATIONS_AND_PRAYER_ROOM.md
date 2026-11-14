@@ -17,7 +17,11 @@ Private `prayer_request` and pastoral-care narratives remain separate. Prayer-ro
 - Branch audience delivery is available to authorised announcement managers. Church-wide staff audience is restricted to the Admin/Pastor role.
 - Delivery is stored in D1 before success is returned. Each recipient is resolved server-side; caller-provided recipient IDs are not trusted.
 - The notification bell refreshes the inbox every 20 seconds while the workspace is running. Unread counts and read state remain in-app.
-- If a user grants browser notification permission, the page can display a browser alert when a newly published item arrives while the page is still running in the background. This is **not yet a guaranteed operating-system push when the browser/app is fully closed**; that requires the separate service-worker push subscription and VAPID delivery rollout.
+- The notification panel offers an explicit **Enable mobile push** action. It requests permission, registers `/sw.js`, creates a browser Push API subscription and stores its endpoint and encryption keys against the authenticated staff profile.
+- The Worker generates one stable VAPID P-256 keypair. The private JWK is encrypted at rest in D1 using an AES-GCM key derived from the existing `BETTER_AUTH_SECRET`; only the public key is returned to the browser. No extra messaging vendor or SMS/email credentials are required.
+- When an announcement is published, the Worker first persists recipient-scoped in-app delivery rows, then sends Web Push to each subscribed recipient. Stale 404/410 endpoints are removed. Push provider failures do not undo the in-app delivery.
+- Push lock-screen text is deliberately generic ("New church announcement — Open PCG Missions to read the latest update") so the announcement body is not exposed on a locked phone. The full text remains inside the authenticated inbox.
+- On iPhone/iPad, Web Push requires PCG Missions to be added to the Home Screen and notification permission granted. Apple supports Web Push for Home Screen web apps on iOS/iPadOS 16.4 and later; see the [Apple Web Push documentation](https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers).
 
 ## Prayer room API and access
 
@@ -38,4 +42,4 @@ Private `prayer_request` and pastoral-care narratives remain separate. Prayer-ro
 - append-only access audit records;
 - schema version 29.
 
-The existing announcement delivery and read-receipt tables from migration 0021 are reused. No production database or Supabase resource is modified by this feature branch.
+The existing announcement delivery and read-receipt tables from migration 0021 are reused. Migration 0029 also adds encrypted VAPID key storage and per-staff push subscriptions. No production database or Supabase resource is modified by this feature branch.
