@@ -129,14 +129,17 @@ Deno.test("rejects unsupported modes and malformed branch IDs", () => {
   }
 });
 
-
 Deno.test("accepts a valid prayer request with optional contact link", () => {
   const parsed = parsePrayerCreateInput({
     branch_id: BRANCH_ID,
     request_text: "Please pray for my family.",
     contact_id: RECORD_ID,
   });
-  if (!parsed.ok || parsed.value.request_text !== "Please pray for my family." || parsed.value.contact_id !== RECORD_ID) {
+  if (
+    !parsed.ok ||
+    parsed.value.request_text !== "Please pray for my family." ||
+    parsed.value.contact_id !== RECORD_ID
+  ) {
     throw new Error("A valid prayer request was rejected.");
   }
 });
@@ -146,7 +149,11 @@ Deno.test("normalizes prayer request text and accepts no contact link", () => {
     branch_id: BRANCH_ID,
     request_text: "  Please pray for healing.  ",
   });
-  if (!parsed.ok || parsed.value.request_text !== "Please pray for healing." || parsed.value.contact_id !== null) {
+  if (
+    !parsed.ok ||
+    parsed.value.request_text !== "Please pray for healing." ||
+    parsed.value.contact_id !== null
+  ) {
     throw new Error("Prayer request normalization failed.");
   }
 });
