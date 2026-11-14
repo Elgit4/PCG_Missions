@@ -372,3 +372,6 @@ class WorkerApiContractTests(unittest.TestCase):
             self.assertRegex(code, r"const activeBranch=context\.activeBranch;\s*if\(!activeBranch\)")
             self.assertNotIn("access.activeBranch", code)
 
+
+if __name__ == "__main__":
+    unittest.main()
