@@ -34,6 +34,7 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
     typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported",
   );
   const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushAvailable, setPushAvailable] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [pushError, setPushError] = useState("");
   const previousIds = useRef<Set<string>>(new Set());
@@ -82,6 +83,12 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
     const timer = window.setInterval(() => { if (active) void refresh(true); }, 20000);
     return () => { active = false; window.clearInterval(timer); };
   }, [refresh]);
+
+  useEffect(() => {
+    let active = true;
+    void api.getPushPublicKey(branchId).then(() => { if (active) setPushAvailable(true); }).catch(() => { if (active) setPushAvailable(false); });
+    return () => { active = false; };
+  }, [api, branchId]);
 
   useEffect(() => {
     let active = true;
@@ -195,9 +202,9 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
           )) : <div className="cmi-notification-empty"><CheckCheck size={22} /><strong>No announcements yet</strong><span>New notices from your church will appear here.</span></div>}
         </div>
         <footer>
-          <button type="button" onClick={enableDeviceAlerts} disabled={pushBusy || pushEnabled || permission === "denied" || permission === "unsupported"}>
+          {pushAvailable && <button type="button" onClick={enableDeviceAlerts} disabled={pushBusy || pushEnabled || permission === "denied" || permission === "unsupported"}>
             <Settings2 size={14} />{pushBusy ? "Enabling…" : pushEnabled ? "Mobile push enabled" : permission === "denied" ? "Push blocked in browser" : permission === "unsupported" ? "Push unavailable" : "Enable mobile push"}
-          </button>
+          </button>}
           <button type="button" onClick={() => { setOpen(false); onOpenAnnouncements(); }}>Open announcements</button>
         </footer>
         {pushError && <p className="cmi-notification-push-error" role="status">{pushError}</p>}
