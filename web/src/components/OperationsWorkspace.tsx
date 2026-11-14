@@ -111,7 +111,7 @@ export function OperationsWorkspace({
         const result = await api.listEventDrafts(branchId, { limit: 50 });
         setEvents(result.data);
       } else if (section === "Calendar") {
-        const result = await api.listCalendarEntries(branchId, { limit: 50, offset: 0 });
+        const result = await api.listCalendarEntries(branchId, { limit: 50 });
         setEntries(result.data);
       } else if (section === "Announcements") {
         const result = await api.listAnnouncementDrafts(branchId, { limit: 50, offset: 0, status: canManage ? "all" : "published" });
