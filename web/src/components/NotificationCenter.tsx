@@ -91,6 +91,12 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
   }, [api, branchId]);
 
   useEffect(() => {
+    const badgeNavigator = navigator as Navigator & { setAppBadge?: (count?: number) => Promise<void>; clearAppBadge?: () => Promise<void> };
+    if (unread > 0) void badgeNavigator.setAppBadge?.(unread).catch(() => undefined);
+    else void badgeNavigator.clearAppBadge?.().catch(() => undefined);
+  }, [unread]);
+
+  useEffect(() => {
     if (!open) return;
     const close = (event: PointerEvent) => {
       if (!panelRef.current?.contains(event.target as Node)) setOpen(false);
