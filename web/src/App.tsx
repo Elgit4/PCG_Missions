@@ -17,6 +17,7 @@ export default function App() {
   ), [auth, apiUrl]);
 
   const [view, setView] = useState<StaffAuthView>("sign-in");
+  const [invitationToken, setInvitationToken] = useState("");
   const [staffSession, setStaffSession] = useState<StaffSession | null>(null);
   const [busy, setBusy] = useState(false);
   const [initializing, setInitializing] = useState(true);
@@ -80,6 +81,18 @@ export default function App() {
       try {
         if (!auth || !api) {
           if (current) setError(configurationError);
+          return;
+        }
+        const currentUrl = new URL(window.location.href);
+        const invitation = currentUrl.searchParams.get("invite");
+        if (invitation !== null) {
+          currentUrl.searchParams.delete("invite");
+          window.history.replaceState({}, "", currentUrl.pathname + currentUrl.search + currentUrl.hash);
+          setInvitationToken(invitation);
+          setView("accept-invitation");
+          if (!/^[A-Za-z0-9_-]{43}$/.test(invitation)) {
+            setError("This invitation link is invalid or incomplete. Ask an administrator to issue a new invitation.");
+          }
           return;
         }
         const recovery = await auth.restoreRecoveryFromUrl();
@@ -210,6 +223,28 @@ export default function App() {
     }
   };
 
+  const handleAcceptInvitation = async (token: string, password: string) => {
+    if (!auth) {
+      setError(configurationError || "The sign-in service is not configured.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("Creating your staff account…");
+    try {
+      await auth.signOut();
+      await auth.acceptInvitation(token, password);
+      setInvitationToken("");
+      setView("sign-in");
+      setNotice("Your staff account has been created. Sign in with your invited email address and the password you just chose.");
+    } catch (cause) {
+      setNotice("");
+      setError(messageFor(cause));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleSetPassword = async (password: string) => {
     if (!auth || !api) {
       setError(configurationError || "The sign-in service is not configured.");
@@ -263,6 +298,7 @@ export default function App() {
   return (
     <StaffLogin
       view={view}
+      invitationToken={invitationToken}
       themeToggle={<ThemeToggle />}
       configurationError={configurationError}
       error={error}
@@ -278,6 +314,7 @@ export default function App() {
       onRetryWorkspace={workspaceRetryAvailable ? handleRetryWorkspace : undefined}
       onRequestReset={handleResetRequest}
       onSetPassword={handleSetPassword}
+      onAcceptInvitation={handleAcceptInvitation}
       onTestConnection={handleConnectionTest}
     />
   );
