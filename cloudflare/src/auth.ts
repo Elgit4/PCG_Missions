@@ -126,7 +126,7 @@ export function createAuth(env: AuthEnvironment, allowInvitationSignUp = false) 
         // hashes and newly changed passwords remain compatible with this verifier.
         hash: async (password) => bcryptHash(password, 12),
         verify: async ({ password, hash }) => {
-          if (!/^\\$2[aby]\\$\\d{2}\\$/.test(hash)) return false;
+          if (!/^\$2[aby]\$\d{2}\$/.test(hash)) return false;
           const compatibleHash = hash.startsWith("$2y$") ? "$2b$" + hash.slice(4) : hash;
           return bcryptCompare(password, compatibleHash);
         },
