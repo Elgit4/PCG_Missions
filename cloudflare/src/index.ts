@@ -6854,7 +6854,7 @@ function teamCreateBranchId(request:Request):string|null{
 }
 
 async function listTeams(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
-  const access=await authorizeRequestCapability(request,env,"team.manage");
+  const access=await authorizeRequestCapability(request,env,"team.read");
   if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
   const branchId=access.activeBranch.branchId,now=new Date().toISOString();
   const teams=await env.DB.prepare("SELECT id,branch_id,name,description,is_active,created_at,updated_at FROM team WHERE branch_id=? ORDER BY is_active DESC,name COLLATE NOCASE").bind(branchId).all<Record<string,unknown>>();
@@ -6991,7 +6991,7 @@ async function revokeTeamMember(request:Request,env:Env,teamId:string,membership
 }
 
 async function listServiceAreas(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
-  const access=await authorizeRequestCapability(request,env,"area.manage");
+  const access=await authorizeRequestCapability(request,env,"area.read");
   if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
   const branchId=access.activeBranch.branchId,now=new Date().toISOString();
   const areas=await env.DB.prepare("SELECT id,branch_id,name,code,is_active,created_at,updated_at FROM service_area WHERE branch_id=? ORDER BY is_active DESC,name COLLATE NOCASE").bind(branchId).all<Record<string,unknown>>();
