@@ -619,15 +619,18 @@ export function StaffWorkspace({ api, session, onSignOut, onChangePassword }: St
       <main className="cmi-main">
         <header className="cmi-topbar">
           <div className="cmi-topbar-heading">
-            <div className="cmi-mobile-brand"><img src="/logo.svg" alt="" /><span><strong>PCG Missions</strong><small>STAFF WORKSPACE</small></span></div>
+            <div className="cmi-mobile-brand">
+              <img src="/logo.svg" alt="" />
+              <span><strong>PCG Missions</strong><small>STAFF WORKSPACE</small></span>
+            </div>
             <span className="cmi-breadcrumb">PCG MISSIONS / {(activeBranch?.name ?? "NO ACTIVE BRANCH").toUpperCase()}</span>
             <h1>{page === "Follow-up" ? "Follow-up tasks" : page}</h1>
           </div>
           <div className="cmi-topbar-actions">
-            <ThemeToggle />
             <button type="button" className="cmi-icon-action" onClick={() => void refresh()} disabled={refreshing || loading} aria-label={refreshing ? "Refreshing workspace" : "Refresh workspace"} title={refreshing ? "Refreshing" : "Refresh"}>
               <RefreshCw size={17} className={refreshing ? "is-spinning" : undefined} />
             </button>
+            <ThemeToggle />
           </div>
         </header>
         <section className="cmi-content" id="cmi-content" tabIndex={-1} aria-busy={loading}>
