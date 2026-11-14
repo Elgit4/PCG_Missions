@@ -854,7 +854,7 @@ export class CmiApiClient {
     });
   }
 
-  listAnnouncementDrafts(branchId: string, options: { limit?: number; offset?: number; status?: "published" | "all" } = {}) {
+  listAnnouncementDrafts(_branchId: string, options: { limit?: number; offset?: number; status?: "published" | "all" } = {}) {
     return this.request<AnnouncementDraftRecord[]>("announcement-operations", "/announcements", {
       query: { limit: options.limit ?? 50, status: options.status ?? "published" },
     });
