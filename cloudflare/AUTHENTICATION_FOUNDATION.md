@@ -95,3 +95,11 @@ Admin/Pastor revocation is blocked in the standard-role endpoint and is availabl
 - Do not expose staff profile records for inactive or unprovisioned users.
 - Do not log passwords, session tokens, reset tokens, prayer narratives or pastoral-care narratives.
 - Keep all non-production routes isolated from the live Vercel/Supabase application.
+
+## First Admin/Pastor bootstrap (non-production only)
+
+The first administrator is provisioned through `POST /api/v1/bootstrap/first-admin`, guarded by the Worker secret `FIRST_ADMIN_BOOTSTRAP_TOKEN`. The handler is disabled unless `APP_ENV=non-production`, rate-limited, and bound to the approved identity (`Elvis`, `elviskwakuboateng63@gmail.com`) and the verified Presbyterian Church of Ghana / Victory Congregation tenant. It requires an empty Better Auth user table, an empty staff profile table, exactly two remaining bootstrap slots, and the active Admin/Pastor role and branch.
+
+The requester supplies their own password over HTTPS (12–128 characters); the password is never generated, stored, logged, or returned by the application. Better Auth creates the credential identity, then a D1 batch creates the active staff profile and branch-scoped `admin_pastor` assignment. The existing D1 bootstrap trigger consumes one slot and writes the access audit event. If profile/assignment provisioning fails, the orphan Better Auth user is removed. After successful provisioning, the empty-database/two-slot preconditions fail, so the endpoint cannot be replayed to create another initial account.
+
+Set `FIRST_ADMIN_BOOTSTRAP_TOKEN` as a Cloudflare Worker secret only after the endpoint code has passed CI and deployed to the isolated non-production Worker. Never place this token in source control, query strings, logs, or screenshots. The bootstrap token must be 32 random bytes encoded as base64url (43 characters), delivered only to the approved account owner, and removed from the Worker secrets after successful setup. The account then signs in through the ordinary Better Auth email/password endpoint. Do not merge this migration PR or connect production until authenticated acceptance tests pass.
