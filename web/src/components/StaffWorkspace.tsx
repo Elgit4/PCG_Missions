@@ -5,12 +5,13 @@ import { TeamAdministrationWorkspace } from "./TeamAdministrationWorkspace";
 import { MinistryReportsWorkspace } from "./MinistryReportsWorkspace";
 import { ContactDetailDialog } from "./ContactDetailDialog";
 import { PrayerRoomWorkspace } from "./PrayerRoomWorkspace";
+import { CareWorkspace } from "./CareWorkspace";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
 import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 import { ThemeToggle } from "../lib/theme";
 
-type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Prayer" | "Reports" | "Staff" | "Access requests";
+type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Prayer" | "Care" | "Reports" | "Staff" | "Access requests";
 type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue";
 interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void> }
 
@@ -59,6 +60,7 @@ function navigationIcon(item: Page, size = 18) {
     case "Announcements": return <Megaphone size={size} strokeWidth={1.9} />;
     case "Content": return <BookOpen size={size} strokeWidth={1.9} />;
     case "Prayer": return <ShieldCheck size={size} strokeWidth={1.9} />;
+    case "Care": return <ShieldCheck size={size} strokeWidth={1.9} />;
     case "Teams & Areas": return <Network size={size} strokeWidth={1.9} />;
     case "Reports": return <FileText size={size} strokeWidth={1.9} />;
     case "Staff": return <Users size={size} strokeWidth={1.9} />;
@@ -165,7 +167,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   }, [session, branchId, canCreateContacts, canManagePasswordResets, canReadStaffDirectory]);
   const navigationSections = [
     { label: "WORKSPACE", items: availablePages.filter((item) => ["Overview", "Contacts", "Follow-up"].includes(item)) },
-    { label: "MINISTRY", items: availablePages.filter((item) => ["Events", "Calendar", "Announcements", "Content", "Prayer", "Reports"].includes(item)) },
+    { label: "MINISTRY", items: availablePages.filter((item) => ["Events", "Calendar", "Announcements", "Content", "Prayer", "Care", "Reports"].includes(item)) },
     { label: "ADMINISTRATION", items: availablePages.filter((item) => ["Teams & Areas", "Staff", "Access requests"].includes(item)) },
   ].filter((section) => section.items.length > 0);
   const preferredMobilePages: Page[] = ["Overview", "Contacts", "Follow-up", "Calendar"];
@@ -687,7 +689,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                     <div className="cmi-disclosure-body cmi-restricted-list">
                       <article><strong>Events & calendar</strong><p>Private branch-scoped drafts are available to Admin/Pastor. Registration, transport, attendance and check-in are not enabled.</p></article>
                       <article><strong>Announcements & visitor content</strong><p>Admin/Pastor can prepare private drafts. Publication and delivery are not enabled.</p></article>
-                      <article><strong>Prayer & pastoral care</strong><p>Restricted workflows are not exposed in this workspace.</p></article>
+                      <article><strong>Prayer & pastoral care</strong><p>Assigned prayer and care records open through audited, restricted views. Submission, assignment changes and status updates remain unavailable until their write permissions and workflows are approved.</p></article>
                       <article><strong>Report exports</strong><p>Role-scoped report submission and review are supported; bulk export is disabled.</p></article>
                       <article><strong>SMS campaigns & automation</strong><p>Dispatch, consent and delivery tracking are not enabled.</p></article>
                       <article><strong>Offline capture & sync</strong><p>Offline mode is disabled for this release.</p></article>
@@ -872,6 +874,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           {page === "Teams & Areas" && availablePages.includes("Teams & Areas") && <TeamAdministrationWorkspace key={branchId + ":teams-areas"} branchId={branchId} branchName={activeBranch.name} api={api} session={session} onSessionExpired={expireSession} />}
           {page === "Reports" && availablePages.includes("Reports") && <MinistryReportsWorkspace key={branchId + ":reports"} branchId={branchId} branchName={activeBranch.name} api={api} session={session} />}
           {page === "Prayer" && availablePages.includes("Prayer") && <PrayerRoomWorkspace key={branchId + ":prayer"} api={api} branchId={branchId} branchName={activeBranch?.name ?? "this branch"} />}
+          {page === "Care" && availablePages.includes("Care") && <CareWorkspace key={branchId + ":care"} api={api} branchId={branchId} branchName={activeBranch?.name ?? "this branch"} />}
           {page === "Events" && availablePages.includes("Events") && <OperationsWorkspace key={branchId + ":events"} section="Events" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
           {page === "Calendar" && availablePages.includes("Calendar") && <OperationsWorkspace key={branchId + ":calendar"} section="Calendar" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
           {page === "Announcements" && availablePages.includes("Announcements") && <OperationsWorkspace key={branchId + ":announcements"} section="Announcements" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
