@@ -356,7 +356,7 @@ export function OperationsWorkspace({
             )}
             <div className="cmi-form-actions cmi-field-wide">
               <button type="button" className="cmi-button cmi-button-secondary" onClick={cancelEdit} disabled={saving}><X size={15} />Cancel</button>
-              <button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : editingId ? "Save changes" : "Save private draft"}</button>
+              <button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : editingId ? "Save changes" : section === "Announcements" ? "Save announcement draft" : "Save private draft"}</button>
             </div>
           </form>
         )}
