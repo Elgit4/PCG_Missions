@@ -3605,8 +3605,9 @@ async function createEvent(
     ).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error("EVENT_CREATE_FAILED");
   } catch (error) {
-    console.error("event_create_conflict", { requestId, detail: error instanceof Error ? error.message : "unknown" });
-    return json(409, { ok: false, error: { code: "EVENT_CREATE_CONFLICT" } }, requestId, origin);
+    const detail=error instanceof Error?error.message:"unknown";
+    console.error("event_create_conflict", { requestId, detail });
+    return json(409, { ok: false, error: { code: "EVENT_CREATE_CONFLICT", ...(env.APP_ENV==="non-production"?{detail}: {}) } }, requestId, origin);
   }
   return json(201, {
     ok: true,
