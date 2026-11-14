@@ -48,7 +48,7 @@ function jsonResponse(
   headers.set("X-Request-Id", id);
   if (origin && allowedOrigins.has(origin)) {
     headers.set("Access-Control-Allow-Origin", origin);
-    headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+    headers.set("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     headers.set(
       "Access-Control-Allow-Headers",
       "Authorization, apikey, Content-Type, x-client-info",
@@ -125,7 +125,7 @@ Deno.serve(async (request: Request) => {
 
   if (request.method === "OPTIONS") {
     const headers = new Headers({
-      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
       "Access-Control-Allow-Headers":
         "Authorization, apikey, Content-Type, x-client-info",
       "Access-Control-Max-Age": "600",
