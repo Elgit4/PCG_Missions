@@ -117,7 +117,6 @@ export function parsePastoralReadInput(
   };
 }
 
-
 export interface PrayerCreateInput {
   branch_id: string;
   request_text: string;
@@ -126,8 +125,15 @@ export interface PrayerCreateInput {
 
 export function parsePrayerCreateInput(
   value: unknown,
-): { ok: true; value: PrayerCreateInput } | { ok: false; error: string } {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+): { ok: true; value: PrayerCreateInput } | {
+  ok: false;
+  error: string;
+} {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
     return { ok: false, error: "A JSON object is required." };
   }
   const input = value as Record<string, unknown>;
@@ -143,17 +149,31 @@ export function parsePrayerCreateInput(
   }
   const requestText = input.request_text.trim();
   if (requestText.length < 3 || requestText.length > 4000) {
-    return { ok: false, error: "Prayer request must contain 3 to 4000 characters." };
+    return {
+      ok: false,
+      error: "Prayer request must contain 3 to 4000 characters.",
+    };
   }
   let contactId: string | null = null;
-  if (input.contact_id !== undefined && input.contact_id !== null && input.contact_id !== "") {
+  if (
+    input.contact_id !== undefined &&
+    input.contact_id !== null &&
+    input.contact_id !== ""
+  ) {
     if (typeof input.contact_id !== "string" || !isUuid(input.contact_id)) {
-      return { ok: false, error: "contact_id must be a valid UUID when supplied." };
+      return {
+        ok: false,
+        error: "contact_id must be a valid UUID when supplied.",
+      };
     }
     contactId = input.contact_id;
   }
   return {
     ok: true,
-    value: { branch_id: input.branch_id, request_text: requestText, contact_id: contactId },
+    value: {
+      branch_id: input.branch_id,
+      request_text: requestText,
+      contact_id: contactId,
+    },
   };
 }
