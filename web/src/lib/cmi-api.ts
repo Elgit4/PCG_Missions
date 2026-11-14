@@ -791,13 +791,14 @@ export class CmiApiClient {
     );
   }
 
-  listEventDrafts(branchId: string, options: { limit?: number; offset?: number } = {}) {
-    return this.request<EventDraftRecord[]>("event-operations", "/events", {
-      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0 },
-    });
+  listEventDrafts(branchId: string, options: { limit?: number } = {}) {
+    return this.request<{events:EventDraftRecord[]}>("event-operations", "/events", {
+      query: { branch_id: branchId, status:"draft", limit: options.limit ?? 50 },
+    }).then(result=>({...result,data:result.data.events}));
   }
   createEventDraft(input: EventDraftCreateInput) {
-    return this.request<{event:EventDraftRecord}>("event-operations", "/events", { method: "POST", body: input });
+    const {branch_id,...body}=input;
+    return this.request<{event:EventDraftRecord}>("event-operations", "/events", { method: "POST", query:{branch_id}, body });
   }
   uploadEventFlyer(branchId:string,eventId:string,file:File) {
     const url=new URL(this.workerPath("event-operations","/events/"+encodeURIComponent(eventId)+"/flyer"),this.baseUrl);
