@@ -9,6 +9,17 @@ CREATE INDEX staff_area_coverage_active_idx
   ON staff_area_coverage(branch_id,service_area_id,staff_profile_id,starts_at)
   WHERE revoked_at IS NULL;
 
+CREATE TRIGGER staff_area_coverage_revocation_actor_guard
+BEFORE UPDATE OF revoked_at,revoked_by ON staff_area_coverage
+WHEN (NEW.revoked_at IS NULL) <> (NEW.revoked_by IS NULL)
+BEGIN SELECT RAISE(ABORT,'AREA_COVERAGE_REVOCATION_ACTOR_REQUIRED'); END;
+
+CREATE TRIGGER staff_area_coverage_revocation_immutable
+BEFORE UPDATE OF revoked_at,revoked_by ON staff_area_coverage
+WHEN OLD.revoked_at IS NOT NULL
+  AND (NEW.revoked_at IS NOT OLD.revoked_at OR NEW.revoked_by IS NOT OLD.revoked_by)
+BEGIN SELECT RAISE(ABORT,'AREA_COVERAGE_REVOCATION_IMMUTABLE'); END;
+
 CREATE TABLE team_management_audit (
   id TEXT PRIMARY KEY,
   branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE RESTRICT,
