@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Activity, ArrowRight, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, FileText, KeyRound, LockKeyhole, LogOut, Megaphone, MoreHorizontal, Network, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { Activity, ArrowRight, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ChevronDown, ClipboardList, FileText, KeyRound, LockKeyhole, LogOut, Megaphone, MoreHorizontal, Network, HeartHandshake, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { OperationsWorkspace } from "./OperationsWorkspace";
 import { TeamAdministrationWorkspace } from "./TeamAdministrationWorkspace";
 import { MinistryReportsWorkspace } from "./MinistryReportsWorkspace";
@@ -9,8 +9,10 @@ import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreat
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 import { ThemeToggle } from "../lib/theme";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
+import { PrayerRoomWorkspace } from "./PrayerRoomWorkspace";
+import { NotificationCenter } from "./NotificationCenter";
 
-type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Reports" | "Staff" | "Access requests";
+type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Prayer" | "Content" | "Teams & Areas" | "Reports" | "Staff" | "Access requests";
 type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue";
 interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void>; onChangePassword: (currentPassword: string, newPassword: string) => Promise<void> }
 
@@ -57,6 +59,7 @@ function navigationIcon(item: Page, size = 18) {
     case "Events": return <CalendarDays size={size} strokeWidth={1.9} />;
     case "Calendar": return <CalendarClock size={size} strokeWidth={1.9} />;
     case "Announcements": return <Megaphone size={size} strokeWidth={1.9} />;
+    case "Prayer": return <HeartHandshake size={size} strokeWidth={1.9} />;
     case "Content": return <BookOpen size={size} strokeWidth={1.9} />;
     case "Teams & Areas": return <Network size={size} strokeWidth={1.9} />;
     case "Reports": return <FileText size={size} strokeWidth={1.9} />;
@@ -159,9 +162,7 @@ export function StaffWorkspace({ api, session, onSignOut, onChangePassword }: St
   const canCreateStaffAccounts = hasCapability(session, "staff.account.manage", branchId) && hasCapability(session, "access.role.assign", branchId);
   const availablePages = useMemo(() => {
     const pages: Page[] = getAvailableStaffPages(session, branchId)
-      .filter((candidate): candidate is Exclude<Page, "Staff" | "Access requests"> =>
-        candidate !== "Prayer"
-      );
+      .filter((candidate): candidate is Exclude<Page, "Staff" | "Access requests"> => true);
     if (canCreateContacts && !pages.includes("Contacts")) pages.push("Contacts");
     if (canReadStaffDirectory) pages.push("Staff");
     if (canManagePasswordResets) pages.push("Access requests");
@@ -169,7 +170,7 @@ export function StaffWorkspace({ api, session, onSignOut, onChangePassword }: St
   }, [session, branchId, canCreateContacts, canManagePasswordResets, canReadStaffDirectory]);
   const navigationSections = [
     { label: "WORKSPACE", items: availablePages.filter((item) => ["Overview", "Contacts", "Follow-up"].includes(item)) },
-    { label: "MINISTRY", items: availablePages.filter((item) => ["Events", "Calendar", "Announcements", "Content", "Reports"].includes(item)) },
+    { label: "MINISTRY", items: availablePages.filter((item) => ["Events", "Calendar", "Announcements", "Prayer", "Content", "Reports"].includes(item)) },
     { label: "ADMINISTRATION", items: availablePages.filter((item) => ["Teams & Areas", "Staff", "Access requests"].includes(item)) },
   ].filter((section) => section.items.length > 0);
   const preferredMobilePages: Page[] = ["Overview", "Contacts", "Follow-up", "Calendar"];
@@ -630,6 +631,7 @@ export function StaffWorkspace({ api, session, onSignOut, onChangePassword }: St
             <button type="button" className="cmi-icon-action" onClick={() => void refresh()} disabled={refreshing || loading} aria-label={refreshing ? "Refreshing workspace" : "Refresh workspace"} title={refreshing ? "Refreshing" : "Refresh"}>
               <RefreshCw size={17} className={refreshing ? "is-spinning" : undefined} />
             </button>
+            <NotificationCenter api={api} branchId={branchId} onOpenAnnouncements={() => setPage("Announcements")} onSessionExpired={expireSession} />
             <ThemeToggle />
           </div>
         </header>
@@ -877,6 +879,7 @@ export function StaffWorkspace({ api, session, onSignOut, onChangePassword }: St
             </div>
           </div>}
 
+          {page === "Prayer" && availablePages.includes("Prayer") && <PrayerRoomWorkspace key={branchId + ":prayer-room"} branchId={branchId} branchName={activeBranch.name} api={api} currentProfileId={session.staff.id} onSessionExpired={expireSession} />}
           {page === "Teams & Areas" && availablePages.includes("Teams & Areas") && <TeamAdministrationWorkspace key={branchId + ":teams-areas"} branchId={branchId} branchName={activeBranch.name} api={api} session={session} onSessionExpired={expireSession} />}
           {page === "Reports" && availablePages.includes("Reports") && <MinistryReportsWorkspace key={branchId + ":reports"} branchId={branchId} branchName={activeBranch.name} api={api} session={session} />}
           {page === "Events" && availablePages.includes("Events") && <OperationsWorkspace key={branchId + ":events"} section="Events" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
