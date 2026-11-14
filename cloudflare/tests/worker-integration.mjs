@@ -492,6 +492,14 @@ try {
     method:"POST",headers:{...leaderHeaders,"Content-Type":"application/json"},body:JSON.stringify({name:"Forbidden Team"}),
   });
   assert(leaderCreateTeam.status===403,"Team Leader must not receive branch-wide team management privileges");
+  const leaderCreateArea=await fetch(baseUrl+"/api/v1/areas"+teamQuery,{
+    method:"POST",headers:{...leaderHeaders,"Content-Type":"application/json"},body:JSON.stringify({name:"Forbidden Area",code:"NO-AREA"}),
+  });
+  assert(leaderCreateArea.status===403,"Team Leader must not receive branch-wide service-area management privileges");
+  const leaderAddCoverage=await fetch(baseUrl+"/api/v1/areas/"+encodeURIComponent(areaId)+"/coverage"+teamQuery,{
+    method:"POST",headers:{...leaderHeaders,"Content-Type":"application/json"},body:JSON.stringify({staff_profile_id:"00000000-0000-4000-8000-000000000099"}),
+  });
+  assert(leaderAddCoverage.status===403,"Team Leader must not assign service-area coverage");
   const leaderOtherBranch=await fetch(baseUrl+"/api/v1/teams?branch_id=00000000-0000-4000-8000-000000000002",{
     headers:{Cookie:teamLeaderCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000002"},
   });
