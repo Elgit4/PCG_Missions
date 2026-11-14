@@ -286,6 +286,119 @@ try {
   assert(publishWithFlyer.status===200,
     "event with a stored flyer should publish successfully: "+await publishWithFlyer.text());
 
+  const teamQuery="?branch_id=test-branch";
+  const adminBranchHeaders={Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"test-branch","Content-Type":"application/json"};
+  const createTeamResponse=await fetch(baseUrl+"/api/v1/teams"+teamQuery,{
+    method:"POST",headers:adminBranchHeaders,body:JSON.stringify({name:"Integration Team",description:"Worker acceptance team"}),
+  });
+  const createTeamBody=await createTeamResponse.json();
+  assert(createTeamResponse.status===201&&createTeamBody.data?.team?.id,
+    "branch manager should create a team: "+JSON.stringify(createTeamBody));
+  const teamId=createTeamBody.data.team.id;
+
+  const addMemberResponse=await fetch(baseUrl+"/api/v1/teams/"+encodeURIComponent(teamId)+"/members"+teamQuery,{
+    method:"POST",headers:adminBranchHeaders,body:JSON.stringify({staff_profile_id:"test-team-leader-profile",membership_role:"leader"}),
+  });
+  const addMemberBody=await addMemberResponse.json();
+  assert(addMemberResponse.status===201&&addMemberBody.data?.id,
+    "branch manager should add an eligible Team Leader: "+JSON.stringify(addMemberBody));
+  const membershipId=addMemberBody.data.id;
+
+  const listTeamsResponse=await fetch(baseUrl+"/api/v1/teams"+teamQuery,{
+    headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"test-branch"},
+  });
+  const listTeamsBody=await listTeamsResponse.json();
+  assert(listTeamsResponse.status===200&&listTeamsBody.data?.teams?.some(team=>
+    team.id===teamId&&team.members?.some(member=>member.staff?.full_name==="Cloudflare Team Leader")),
+    "branch-scoped team list should include the authorized member roster: "+JSON.stringify(listTeamsBody));
+
+  const updateMemberResponse=await fetch(baseUrl+"/api/v1/teams/"+encodeURIComponent(teamId)+"/members/"+encodeURIComponent(membershipId)+teamQuery,{
+    method:"PATCH",headers:adminBranchHeaders,body:JSON.stringify({membership_role:"member"}),
+  });
+  assert(updateMemberResponse.status===200,"team membership role update failed: "+await updateMemberResponse.text());
+  const promoteMemberResponse=await fetch(baseUrl+"/api/v1/teams/"+encodeURIComponent(teamId)+"/members/"+encodeURIComponent(membershipId)+teamQuery,{
+    method:"PATCH",headers:adminBranchHeaders,body:JSON.stringify({membership_role:"leader"}),
+  });
+  assert(promoteMemberResponse.status===200,"eligible Team Leader promotion failed: "+await promoteMemberResponse.text());
+
+  const updateTeamResponse=await fetch(baseUrl+"/api/v1/teams/"+encodeURIComponent(teamId)+teamQuery,{
+    method:"PATCH",headers:adminBranchHeaders,body:JSON.stringify({description:"Updated integration team"}),
+  });
+  assert(updateTeamResponse.status===200,"team update failed: "+await updateTeamResponse.text());
+  const blockedTeamDeactivation=await fetch(baseUrl+"/api/v1/teams/"+encodeURIComponent(teamId)+teamQuery,{
+    method:"PATCH",headers:adminBranchHeaders,body:JSON.stringify({is_active:false}),
+  });
+  assert(blockedTeamDeactivation.status===409,"team with active members must not be deactivated");
+  
+  const createAreaResponse=await fetch(baseUrl+"/api/v1/areas"+teamQuery,{
+    method:"POST",headers:adminBranchHeaders,body:JSON.stringify({name:"Integration Area",code:"TEST-AREA"}),
+  });
+  const createAreaBody=await createAreaResponse.json();
+  assert(createAreaResponse.status===201&&createAreaBody.data?.area?.id,
+    "branch manager should create a service area: "+JSON.stringify(createAreaBody));
+  const areaId=createAreaBody.data.area.id;
+
+  const addCoverageResponse=await fetch(baseUrl+"/api/v1/areas/"+encodeURIComponent(areaId)+"/coverage"+teamQuery,{
+    method:"POST",headers:adminBranchHeaders,body:JSON.stringify({staff_profile_id:"test-team-leader-profile"}),
+  });
+  const addCoverageBody=await addCoverageResponse.json();
+  assert(addCoverageResponse.status===201&&addCoverageBody.data?.id,
+    "branch manager should assign service-area coverage: "+JSON.stringify(addCoverageBody));
+  const coverageId=addCoverageBody.data.id;
+
+  const blockedAreaDeactivation=await fetch(baseUrl+"/api/v1/areas/"+encodeURIComponent(areaId)+teamQuery,{
+    method:"PATCH",headers:adminBranchHeaders,body:JSON.stringify({is_active:false}),
+  });
+  assert(blockedAreaDeactivation.status===409,"service area with active coverage must not be deactivated");
+
+  const teamLeaderSignIn=await fetch(baseUrl+"/api/auth/sign-in/email",{
+    method:"POST",headers:{"Content-Type":"application/json",Origin:baseUrl},
+    body:JSON.stringify({email:"cloudflare-team-leader@example.test",password:testPassword}),
+  });
+  const leaderSetCookies=typeof teamLeaderSignIn.headers.getSetCookie==="function"
+    ? teamLeaderSignIn.headers.getSetCookie()
+    : [teamLeaderSignIn.headers.get("set-cookie")??""];
+  const teamLeaderCookie=leaderSetCookies.map(value=>value.split(";")[0])
+    .find(value=>(value.split("=")[0]??"").includes("session_token"))??"";
+  assert(teamLeaderSignIn.status===200&&teamLeaderCookie,
+    "Team Leader Better Auth sign-in failed: "+teamLeaderSignIn.status);
+  const leaderHeaders={Cookie:teamLeaderCookie,Origin:baseUrl,"X-Branch-Id":"test-branch"};
+  const leaderTeamsResponse=await fetch(baseUrl+"/api/v1/teams"+teamQuery,{headers:leaderHeaders});
+  const leaderTeamsBody=await leaderTeamsResponse.json();
+  assert(leaderTeamsResponse.status===200&&leaderTeamsBody.data?.teams?.length===1&&leaderTeamsBody.data.teams[0].id===teamId,
+    "team-scoped Team Leader should see only their assigned team: "+JSON.stringify(leaderTeamsBody));
+  const leaderAreasResponse=await fetch(baseUrl+"/api/v1/areas"+teamQuery,{headers:leaderHeaders});
+  const leaderAreasBody=await leaderAreasResponse.json();
+  assert(leaderAreasResponse.status===200&&leaderAreasBody.data?.areas?.some(area=>
+    area.id===areaId&&area.coverage?.some(item=>item.staff?.full_name==="Cloudflare Team Leader")),
+    "team-scoped Team Leader should see their team's service-area coverage: "+JSON.stringify(leaderAreasBody));
+  const leaderCreateTeam=await fetch(baseUrl+"/api/v1/teams"+teamQuery,{
+    method:"POST",headers:{...leaderHeaders,"Content-Type":"application/json"},body:JSON.stringify({name:"Forbidden Team"}),
+  });
+  assert(leaderCreateTeam.status===403,"Team Leader must not receive branch-wide team management privileges");
+  const leaderOtherBranch=await fetch(baseUrl+"/api/v1/teams?branch_id=test-other-branch",{
+    headers:{Cookie:teamLeaderCookie,Origin:baseUrl,"X-Branch-Id":"test-other-branch"},
+  });
+  assert(leaderOtherBranch.status===403,"Team Leader must not read teams from an unassigned branch");
+
+  const revokeCoverageResponse=await fetch(baseUrl+"/api/v1/areas/"+encodeURIComponent(areaId)+"/coverage/"+encodeURIComponent(coverageId)+"/revoke"+teamQuery,{
+    method:"POST",headers:adminBranchHeaders,
+  });
+  assert(revokeCoverageResponse.status===200,"service-area coverage revocation failed: "+await revokeCoverageResponse.text());
+  const deactivateAreaResponse=await fetch(baseUrl+"/api/v1/areas/"+encodeURIComponent(areaId)+teamQuery,{
+    method:"PATCH",headers:adminBranchHeaders,body:JSON.stringify({is_active:false}),
+  });
+  assert(deactivateAreaResponse.status===200,"service area should deactivate after coverage revocation: "+await deactivateAreaResponse.text());
+
+  const revokeMemberResponse=await fetch(baseUrl+"/api/v1/teams/"+encodeURIComponent(teamId)+"/members/"+encodeURIComponent(membershipId)+"/revoke"+teamQuery,{
+    method:"POST",headers:adminBranchHeaders,
+  });
+  assert(revokeMemberResponse.status===200,"team membership revocation failed: "+await revokeMemberResponse.text());
+  const deactivateTeamResponse=await fetch(baseUrl+"/api/v1/teams/"+encodeURIComponent(teamId)+teamQuery,{
+    method:"PATCH",headers:adminBranchHeaders,body:JSON.stringify({is_active:false}),
+  });
+  assert(deactivateTeamResponse.status===200,"team should deactivate after membership revocation: "+await deactivateTeamResponse.text());
+
   const revokedOtherSession = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: secondCookie } });
   const revokedOtherSessionBody = await revokedOtherSession.text();
   assert(revokedOtherSession.status === 200 &&
