@@ -123,7 +123,7 @@ describe("capability-driven staff navigation", () => {
       ...baseSession,
       capabilities: [
         { code: "calendar.read.scoped", scope_mode: "branch", branch_id: "branch-a" },
-        { code: "announcement.create.scoped", scope_mode: "branch", branch_id: "branch-a" },
+        { code: "announcements.read", scope_mode: "branch", branch_id: "branch-a" },
         { code: "content.manage.draft", scope_mode: "branch", branch_id: "branch-a" },
       ],
     };
