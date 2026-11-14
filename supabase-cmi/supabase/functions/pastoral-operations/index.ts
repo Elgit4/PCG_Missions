@@ -329,7 +329,13 @@ Deno.serve(async (request: Request) => {
         ? "assigned"
         : null;
       if (!accessMode) {
-        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, id);
+        return fail(
+          "FORBIDDEN",
+          "The operation is not permitted.",
+          403,
+          origin,
+          id,
+        );
       }
 
       let requestIds: string[] | null = null;
