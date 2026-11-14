@@ -328,7 +328,6 @@ export function OperationsWorkspace({
                   <label>Who should receive this?
                     <select name="audience_type" defaultValue="branch">
                       <option value="branch">Everyone in {branchName}</option>
-                      {session.roles.some((role) => role.branch_id === branchId && role.code === "admin_pastor") && <option value="staff">All active staff across the church</option>}
                     </select>
                   </label>
                 ) : (
