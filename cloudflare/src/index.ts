@@ -5480,9 +5480,12 @@ async function publishAnnouncement(
     recipients(staff_profile_id) AS (
       SELECT DISTINCT sp.id
       FROM target a
-      JOIN staff_role_assignment ra ON ra.branch_id=a.branch_id
+      JOIN branch source_branch ON source_branch.id=a.branch_id AND source_branch.is_active=1
+      JOIN branch target_branch ON target_branch.is_active=1
+        AND ((a.audience_type='branch' AND target_branch.id=source_branch.id)
+          OR (a.audience_type='staff' AND target_branch.church_id=source_branch.church_id))
+      JOIN staff_role_assignment ra ON ra.branch_id=target_branch.id
       JOIN role r ON r.id=ra.role_id AND r.is_active=1
-      JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
       JOIN staff_profile sp ON sp.id=ra.staff_profile_id AND sp.account_status='active'
       WHERE a.audience_type IN ('branch','staff')
         AND ra.revoked_at IS NULL AND ra.starts_at<=?
