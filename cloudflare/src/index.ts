@@ -5460,7 +5460,8 @@ async function publishAnnouncement(
   env: Env,
   announcementId: string,
   requestId: string,
-  origin?: string,
+  origin: string | undefined,
+  ctx: { waitUntil(promise: Promise<unknown>): void },
 ): Promise<Response> {
   const access = await authorizeRequestCapability(request, env, "announcements.manage");
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
@@ -5545,9 +5546,8 @@ async function publishAnnouncement(
   const count=await env.DB.prepare(
     "SELECT COUNT(*) AS count FROM announcement_delivery WHERE announcement_id=? AND channel='in_app' AND status='delivered'",
   ).bind(announcementId).first<{count:number}>();
-  let pushDeliveryCount = 0;
-  try { pushDeliveryCount = await sendAnnouncementPushes(env, announcementId); } catch { /* D1 inbox delivery remains authoritative if a push service is unavailable. */ }
-  return json(200,{ok:true,announcement_id:announcementId,status:"published",delivery_count:count?.count??0,push_delivery_count:pushDeliveryCount},requestId,origin);
+  ctx.waitUntil(sendAnnouncementPushes(env, announcementId).catch(() => 0));
+  return json(200,{ok:true,announcement_id:announcementId,status:"published",delivery_count:count?.count??0,push_dispatch:"queued"},requestId,origin);
 }
 async function scheduleAnnouncement(request: Request, env: Env, announcementId: string, requestId: string, origin?: string): Promise<Response> {
   const access=await authorizeRequestCapability(request,env,"announcements.manage");
@@ -6403,7 +6403,7 @@ export default {
   scheduled(controller: { scheduledTime: number }, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }): void {
     ctx.waitUntil(publishDueAnnouncements(env,new Date(controller.scheduledTime).toISOString()));
   },
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }): Promise<Response> {
     const url = new URL(request.url);
     const requestId = crypto.randomUUID();
     const origin = request.headers.get("Origin") ?? undefined;
@@ -7647,7 +7647,7 @@ async function postPrayerRoomMessage(request: Request, env: Env, requestId: stri
       let announcementId: string;
       try { announcementId = decodeURIComponent(announcementActionMatch[1]); }
       catch { return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_ID" } }, requestId, origin); }
-      if (announcementActionMatch[2] === "publish") return publishAnnouncement(request, env, announcementId, requestId, origin);
+      if (announcementActionMatch[2] === "publish") return publishAnnouncement(request, env, announcementId, requestId, origin, ctx);
       return archiveAnnouncement(request, env, announcementId, requestId, origin);
     }
     if (url.pathname === "/api/v1/announcements/inbox" && request.method === "GET") {
