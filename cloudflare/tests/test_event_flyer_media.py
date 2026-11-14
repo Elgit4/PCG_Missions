@@ -12,7 +12,7 @@ class EventFlyerMediaMigrationTests(unittest.TestCase):
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.execute("CREATE TABLE app_meta (id INTEGER PRIMARY KEY, environment TEXT NOT NULL, schema_version INTEGER NOT NULL)")
         self.db.execute("INSERT INTO app_meta VALUES (1,'non-production',29)")
-        self.db.execute("CREATE TABLE event (id TEXT PRIMARY KEY, flyer_key TEXT, flyer_content_type TEXT, flyer_size INTEGER, flyer_updated_at TEXT)")
+        self.db.execute("CREATE TABLE event (id TEXT PRIMARY KEY)")
         self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
 
     def tearDown(self):
