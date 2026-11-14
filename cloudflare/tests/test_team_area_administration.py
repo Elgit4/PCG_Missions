@@ -92,6 +92,15 @@ class TeamAreaAdministrationGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(sqlite3.IntegrityError,"AREA_HAS_ACTIVE_COVERAGE"):
             self.db.execute("UPDATE service_area SET is_active=0 WHERE id='a1'")
 
+    def test_future_area_coverage_can_be_revoked_before_it_starts(self):
+        future = "2026-12-01T00:00:00.000Z"
+        self.db.execute("""INSERT INTO staff_area_coverage
+            (id,staff_profile_id,service_area_id,branch_id,starts_at,created_by,created_at)
+            VALUES('cov-future','sp1','a1','b1',?,'sp1',?)""",(future,NOW))
+        self.db.execute("UPDATE staff_area_coverage SET revoked_at=?,revoked_by='sp1' WHERE id='cov-future'",(NOW,))
+        self.db.execute("UPDATE service_area SET is_active=0 WHERE id='a1'")
+        self.assertEqual(self.db.execute("SELECT revoked_at FROM staff_area_coverage WHERE id='cov-future'").fetchone()[0],NOW)
+
     def test_area_cannot_be_deactivated_while_active_coverage_remains(self):
         self.db.execute("""INSERT INTO staff_area_coverage
             (id,staff_profile_id,service_area_id,branch_id,starts_at,created_by,created_at)
