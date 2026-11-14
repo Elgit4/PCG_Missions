@@ -49,6 +49,35 @@ BEGIN
   ) THEN RAISE(ABORT,'TEAM_LEADER_ROLE_REQUIRED') END;
 END;
 
+CREATE TRIGGER team_membership_active_parent_update_guard
+BEFORE UPDATE OF staff_profile_id,team_id,branch_id,starts_at,membership_role ON staff_team_membership
+WHEN NEW.revoked_at IS NULL
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM team t JOIN branch b ON b.id=t.branch_id
+    WHERE t.id=NEW.team_id AND t.branch_id=NEW.branch_id
+      AND t.is_active=1 AND b.is_active=1
+  ) THEN RAISE(ABORT,'ACTIVE_TEAM_NOT_FOUND') END;
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM staff_profile sp
+    WHERE sp.id=NEW.staff_profile_id AND sp.account_status='active'
+      AND sp.must_change_password=0
+      AND EXISTS (
+        SELECT 1 FROM staff_role_assignment ra JOIN role r ON r.id=ra.role_id AND r.is_active=1
+        WHERE ra.staff_profile_id=sp.id AND ra.branch_id=NEW.branch_id
+          AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.starts_at
+          AND (ra.ends_at IS NULL OR ra.ends_at>NEW.starts_at)
+      )
+  ) THEN RAISE(ABORT,'STAFF_NOT_ACTIVE_IN_BRANCH') END;
+  SELECT CASE WHEN NEW.membership_role='leader' AND NOT EXISTS (
+    SELECT 1 FROM staff_role_assignment ra JOIN role r ON r.id=ra.role_id
+    WHERE ra.staff_profile_id=NEW.staff_profile_id AND ra.branch_id=NEW.branch_id
+      AND r.code='team_leader' AND r.is_active=1
+      AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.starts_at
+      AND (ra.ends_at IS NULL OR ra.ends_at>NEW.starts_at)
+  ) THEN RAISE(ABORT,'TEAM_LEADER_ROLE_REQUIRED') END;
+END;
+
 CREATE TRIGGER team_deactivation_active_members_guard
 BEFORE UPDATE OF is_active ON team
 WHEN OLD.is_active=1 AND NEW.is_active=0
@@ -64,6 +93,28 @@ END;
 
 CREATE TRIGGER area_coverage_active_parent_guard
 BEFORE INSERT ON staff_area_coverage
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM service_area sa JOIN branch b ON b.id=sa.branch_id
+    WHERE sa.id=NEW.service_area_id AND sa.branch_id=NEW.branch_id
+      AND sa.is_active=1 AND b.is_active=1
+  ) THEN RAISE(ABORT,'ACTIVE_SERVICE_AREA_NOT_FOUND') END;
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM staff_profile sp
+    WHERE sp.id=NEW.staff_profile_id AND sp.account_status='active'
+      AND sp.must_change_password=0
+      AND EXISTS (
+        SELECT 1 FROM staff_role_assignment ra JOIN role r ON r.id=ra.role_id AND r.is_active=1
+        WHERE ra.staff_profile_id=sp.id AND ra.branch_id=NEW.branch_id
+          AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.starts_at
+          AND (ra.ends_at IS NULL OR ra.ends_at>NEW.starts_at)
+      )
+  ) THEN RAISE(ABORT,'STAFF_NOT_ACTIVE_IN_BRANCH') END;
+END;
+
+CREATE TRIGGER area_coverage_active_parent_update_guard
+BEFORE UPDATE OF staff_profile_id,service_area_id,branch_id,starts_at ON staff_area_coverage
+WHEN NEW.ends_at IS NULL OR NEW.ends_at>strftime('%Y-%m-%dT%H:%M:%fZ','now')
 BEGIN
   SELECT CASE WHEN NOT EXISTS (
     SELECT 1 FROM service_area sa JOIN branch b ON b.id=sa.branch_id
