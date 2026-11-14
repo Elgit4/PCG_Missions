@@ -368,12 +368,16 @@ Deno.serve(async (request: Request) => {
         }
         requestIds = [
           ...new Set(
-            (activeAssignments ?? []).map((item: {
-              prayer_request_id?: string;
-              care_record_id?: string;
-            }) => isPrayerCollection
-              ? item.prayer_request_id
-              : item.care_record_id).filter((value): value is string => !!value),
+            (activeAssignments ?? [])
+              .map((item: {
+                prayer_request_id?: string;
+                care_record_id?: string;
+              }) =>
+                isPrayerCollection
+                  ? item.prayer_request_id
+                  : item.care_record_id
+              )
+              .filter((value): value is string => !!value),
           ),
         ];
         if (requestIds.length === 0) {
