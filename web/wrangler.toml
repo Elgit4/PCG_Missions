@@ -1,3 +1,8 @@
-name = "pcg-missions"
+name = "pcg-missions-nonprod"
 compatibility_date = "2026-11-13"
 pages_build_output_dir = "./dist"
+
+# Keep the Pages Functions API origin in version control so Direct Upload
+# deployments always receive the same non-production backend configuration.
+[vars]
+PCG_MISSIONS_API_ORIGIN = "https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev"
