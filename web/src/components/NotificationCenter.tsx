@@ -73,8 +73,12 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
 
   const enableDeviceAlerts = async () => {
     if (!("Notification" in window)) { setPermission("unsupported"); return; }
-    const result = await Notification.requestPermission();
-    setPermission(result);
+    try {
+      const result = await Notification.requestPermission();
+      setPermission(result);
+    } catch {
+      setPermission("denied");
+    }
   };
 
   const openItem = async (item: AnnouncementInboxRecord) => {
