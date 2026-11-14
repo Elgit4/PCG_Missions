@@ -871,10 +871,10 @@ export class CmiApiClient {
     });
   }
 
-  listAnnouncementDrafts(_branchId: string, options: { limit?: number; offset?: number; status?: "published" | "all" } = {}) {
-    return this.request<AnnouncementDraftRecord[]>("announcement-operations", "/announcements", {
-      query: { limit: options.limit ?? 50, status: options.status ?? "published" },
-    });
+  listAnnouncementDrafts(branchId: string, options: { limit?: number; offset?: number; status?: "published" | "all" } = {}) {
+    return this.request<{announcements:AnnouncementDraftRecord[]}>("announcement-operations", "/announcements", {
+      query: { branch_id:branchId, limit: options.limit ?? 50, offset:options.offset??0, status: options.status ?? "published" },
+    }).then(result=>({...result,data:result.data.announcements}));
   }
   createAnnouncementDraft(input: AnnouncementDraftCreateInput) {
     const { branch_id, ...body } = input;
