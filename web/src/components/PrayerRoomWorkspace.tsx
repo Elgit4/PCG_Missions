@@ -36,23 +36,11 @@ export function PrayerRoomWorkspace({ branchId, branchName, api, currentProfileI
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
-  const lastMessageRef = useRef<string | null>(null);
 
   const loadMessages = useCallback(async (initial = false) => {
     try {
       const result = await api.listPrayerRoomMessages(branchId, 80);
-      setMessages((current) => {
-        const next = result.data.messages;
-        const newest = next[next.length - 1]?.id ?? null;
-        if (!initial && newest && lastMessageRef.current && newest !== lastMessageRef.current) {
-          const incoming = next.find((message) => message.id === newest);
-          if (incoming && incoming.author_profile_id !== currentProfileId && document.visibilityState === "visible") {
-            // The room remains in-app only; no email or SMS is dispatched.
-          }
-        }
-        lastMessageRef.current = newest;
-        return next;
-      });
+      setMessages(result.data.messages);
       setError("");
     } catch (reason) {
       if (reason instanceof CmiApiError && reason.status === 401) onSessionExpired();
@@ -83,7 +71,6 @@ export function PrayerRoomWorkspace({ branchId, branchName, api, currentProfileI
       const result = await api.postPrayerRoomMessage(branchId, body);
       setMessages((current) => [...current.filter((item) => item.id !== result.data.message.id), result.data.message]);
       setDraft("");
-      lastMessageRef.current = result.data.message.id;
     } catch (reason) {
       if (reason instanceof CmiApiError && reason.status === 401) onSessionExpired();
       else setError(reason instanceof Error ? reason.message : "Your message could not be sent.");
