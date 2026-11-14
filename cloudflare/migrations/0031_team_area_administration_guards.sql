@@ -2,11 +2,6 @@
 -- The Worker authorizes every mutation; these triggers preserve the invariants
 -- under concurrent requests and prevent direct SQL paths from bypassing them.
 
--- Event lifecycle handlers record the actor on every draft, flyer and publish update.
-ALTER TABLE event ADD COLUMN last_modified_by TEXT REFERENCES staff_profile(auth_user_id) ON DELETE RESTRICT;
-UPDATE event SET last_modified_by=created_by WHERE last_modified_by IS NULL;
-CREATE INDEX event_last_modified_by_idx ON event(last_modified_by,updated_at DESC);
-
 -- Coverage revocation is a cancellation timestamp, including for future assignments.
 ALTER TABLE staff_area_coverage ADD COLUMN revoked_at TEXT;
 ALTER TABLE staff_area_coverage ADD COLUMN revoked_by TEXT REFERENCES staff_profile(id) ON DELETE RESTRICT;
