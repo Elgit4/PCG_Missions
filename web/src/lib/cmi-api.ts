@@ -492,9 +492,7 @@ export class CmiApiClient {
     if (service === "pastoral-operations") {
       route = route.replace(/^\/care\/records(?=\/|$)/, "/care");
       route = route.replace(/^\//, "/pastoral/");
-      if (/^\/pastoral\/care\/[^/]+\/read$/.test(route)) {
-        throw new CmiApiError(501, "CARE_NARRATIVE_READ_DISABLED", "Pastoral-care narrative reads remain disabled until the explicit-share audit flow is accepted.", null);
-      }
+
     }
     if (service === "public-content") return "/api/public/content";
     if (service === "staff-auth") {
@@ -994,9 +992,11 @@ export class CmiApiClient {
       method: "POST", body: { branch_id: branchId, access_mode: accessMode, ...(reasonCode ? { reason_code: reasonCode } : {}) },
     });
   }
-  readCareRecord(branchId: string, recordId: string, accessMode: "assigned" | "oversight", reasonCode?: string) {
-    return this.request<unknown>("pastoral-operations", `/care/records/${encodeURIComponent(recordId)}/read`, {
-      method: "POST", body: { branch_id: branchId, access_mode: accessMode, ...(reasonCode ? { reason_code: reasonCode } : {}) },
+  readCareRecord(branchId: string, recordId: string) {
+    // The Worker enforces an active, record-specific care assignment and writes
+    // care_access_audit before returning the narrative or restricted interactions.
+    return this.request<unknown>("pastoral-operations", `/care/records/${encodeURIComponent(recordId)}`, {
+      query: { branch_id: branchId },
     });
   }
   getPublicContent<T = unknown>(resource: string, query: Record<string, string | number | undefined> = {}) {
