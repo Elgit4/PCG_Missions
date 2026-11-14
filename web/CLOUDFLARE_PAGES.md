@@ -6,17 +6,15 @@ The staff portal now uses the Cloudflare API Worker and Better Auth cookie sessi
 
 - Browser → same-origin `/api/auth/*` → Better Auth on the non-production Cloudflare Worker.
 - Browser → same-origin `/api/v1/*` → Cloudflare Worker API.
-- The Vercel API proxy and Cloudflare Pages Functions forward requests to the same Worker origin.
+- Cloudflare Pages Functions forward requests to the same-origin Cloudflare API Worker.
 - Authentication is an HttpOnly cookie. The frontend does not read, persist or send bearer tokens.
 - The Worker remains the authorization boundary. The selected branch is sent as `X-Branch-Id` and validated against active role assignments by the Worker.
 
 ## Preview hosting configuration
 
-For a Vercel Preview deployment, set this **server-side runtime variable**:
+For Cloudflare Pages Preview and Production, set this **server-side runtime variable** under Pages → Settings → Environment variables. It is a Pages Function runtime variable, not a `VITE_` build variable:
 
 - `PCG_MISSIONS_API_ORIGIN=https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev`
-
-For Cloudflare Pages Preview, set the same variable under Pages → Settings → Environment variables. It is a Pages Function runtime variable, not a `VITE_` build variable.
 
 For the Cloudflare Worker, configure:
 
@@ -24,7 +22,7 @@ For the Cloudflare Worker, configure:
 - `BETTER_AUTH_TRUSTED_ORIGINS`: comma-separated exact origins for the Worker and the deployed frontend preview origin(s).
 - `RESEND_API_KEY` and `EMAIL_FROM`: only after the sending domain has been verified and the provider credentials have been securely configured.
 
-The current Worker configuration includes its own workers.dev origin and the stable Vercel branch alias `https://pcg-missions-git-migration-cloudflare-nonprod-completion-eltech.vercel.app`. The Vercel project has a branch-scoped Preview variable `PCG_MISSIONS_API_ORIGIN` pointing at the non-production Worker. Do not guess or use wildcard origins. Never commit secrets or put them in `VITE_` variables.
+The non-production Worker trusts its own workers.dev origin and the Cloudflare Pages non-production origin `https://pcg-missions-nonprod.pages.dev`. Do not guess or use wildcard origins. Never commit secrets or put them in `VITE_` variables.
 
 ## Local development
 
@@ -62,4 +60,4 @@ The Worker does not yet expose every legacy frontend operation. In particular, t
 6. Verify sign-out, expired/revoked sessions, invitation acceptance and recovery.
 7. Reconcile test records and review logs before any production cutover.
 
-Production Vercel, production Supabase, DNS and live staff data remain outside this preview integration.
+Production data and live staff authentication remain outside this non-production preview integration. Cloudflare Pages is the only frontend hosting target for this migration.
