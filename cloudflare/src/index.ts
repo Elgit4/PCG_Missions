@@ -7231,6 +7231,7 @@ async function sendWebPush(
       Urgency: "normal",
     },
     body,
+    signal: AbortSignal.timeout(8000),
   });
   if (response.status === 404 || response.status === 410) {
     await env.DB.prepare("DELETE FROM staff_push_subscription WHERE id=?").bind(subscription.id).run();
