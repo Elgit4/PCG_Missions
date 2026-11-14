@@ -581,7 +581,7 @@ export function StaffWorkspace({ api, session, onSignOut, onChangePassword }: St
           <div className="cmi-user-card">
             <div className="cmi-user-avatar">{session.staff.full_name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</div>
             <div><strong>{session.staff.full_name}</strong><small>{session.roles.filter((role) => role.branch_id === branchId).map((role) => role.name).join(" · ") || "Staff member"}</small></div>
-            <button aria-label="Change password" title="Change password" onClick={() => setShowChangePassword(true)}><KeyRound size={16} /></button>
+            <button className="cmi-user-password-button" aria-label="Change password" title="Change password" onClick={() => setShowChangePassword(true)}><KeyRound size={16} /></button>
             <button aria-label="Sign out" title="Sign out" onClick={() => void signOut()} disabled={signingOut}><LogOut size={16} /></button>
           </div>
         </div>
