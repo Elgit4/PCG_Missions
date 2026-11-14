@@ -1,6 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 
-import { parsePastoralReadInput, parsePastoralReadPath } from "./validation.ts";
+import {
+  isUuid,
+  parsePastoralReadInput,
+  parsePastoralReadPath,
+} from "./validation.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
@@ -161,8 +165,7 @@ Deno.serve(async (request: Request) => {
     const limit = Number(requestUrl.searchParams.get("limit") ?? "25");
     const offset = Number(requestUrl.searchParams.get("offset") ?? "0");
     if (
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-        .test(branchId) ||
+      !isUuid(branchId) ||
       !Number.isInteger(limit) || limit < 1 || limit > 50 ||
       !Number.isInteger(offset) || offset < 0 || offset > 5000
     ) {
@@ -280,7 +283,13 @@ Deno.serve(async (request: Request) => {
         ),
       ];
       if (roleIds.length === 0) {
-        return fail("FORBIDDEN", "The operation is not permitted.", 403, origin, id);
+        return fail(
+          "FORBIDDEN",
+          "The operation is not permitted.",
+          403,
+          origin,
+          id,
+        );
       }
 
       const { data: grants, error: grantError } = await service
