@@ -13,8 +13,15 @@ interface D1Database {
   batch(statements: D1PreparedStatement[]): Promise<Array<{ success: boolean; meta?: { changes?: number } }>>;
 }
 
+interface R2ObjectBody { body: ReadableStream; }
+interface R2Bucket {
+  put(key:string,value:ArrayBuffer|ArrayBufferView|ReadableStream,options?:{httpMetadata?:{contentType?:string;cacheControl?:string};customMetadata?:Record<string,string>}):Promise<unknown>;
+  get(key:string):Promise<R2ObjectBody|null>;
+  delete(key:string):Promise<void>;
+}
 interface Env extends Omit<StaffEnvironment, "DB"> {
   DB: D1Database;
+  EVENT_MEDIA?: R2Bucket;
   APP_ENV?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
@@ -3493,7 +3500,9 @@ async function listEvents(
   const rows = await env.DB.prepare(`
     SELECT e.id, e.branch_id, e.title, e.description, e.starts_at, e.ends_at,
            e.timezone, e.location, e.capacity, e.registration_state,
-           e.visibility, e.status, e.transport_enabled, e.created_at, e.updated_at
+           e.visibility, e.status, e.transport_enabled, e.flyer_key,
+            CASE WHEN e.flyer_key IS NOT NULL THEN '/api/v1/events/' || e.id || '/flyer' ELSE NULL END AS flyer_url,
+            e.created_at, e.updated_at
     FROM event e
     WHERE e.branch_id = ?
       AND ${statusPredicate}
@@ -3530,7 +3539,9 @@ async function getEvent(
   const row = await env.DB.prepare(`
     SELECT e.id, e.branch_id, e.title, e.description, e.starts_at, e.ends_at,
            e.timezone, e.location, e.capacity, e.registration_state,
-           e.visibility, e.status, e.transport_enabled, e.created_at, e.updated_at
+           e.visibility, e.status, e.transport_enabled, e.flyer_key,
+            CASE WHEN e.flyer_key IS NOT NULL THEN '/api/v1/events/' || e.id || '/flyer' ELSE NULL END AS flyer_url,
+            e.created_at, e.updated_at
     FROM event e
     WHERE e.id = ? AND e.branch_id = ? AND (${predicate.sql})
     LIMIT 1
@@ -3702,6 +3713,57 @@ async function updateEvent(
   return json(200, { ok: true, event_id: eventId, status: "draft" }, requestId, origin);
 }
 
+async function uploadEventFlyer(request:Request,env:Env,eventId:string,requestId:string,origin?:string):Promise<Response>{
+  const access=await authorizeRequestCapability(request,env,"events.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  if(!env.EVENT_MEDIA) return json(503,{ok:false,error:{code:"EVENT_MEDIA_STORAGE_UNAVAILABLE",message:"Event image storage is not enabled yet."}},requestId,origin);
+  const event=await env.DB.prepare("SELECT id,branch_id,flyer_key FROM event WHERE id=? AND branch_id=? AND status='draft' LIMIT 1")
+    .bind(eventId,access.activeBranch.branchId).first<{id:string;branch_id:string;flyer_key:string|null}>();
+  if(!event) return json(404,{ok:false,error:{code:"DRAFT_EVENT_NOT_FOUND"}},requestId,origin);
+  const length=Number(request.headers.get("content-length")||0);
+  if(length>5*1024*1024+65536) return json(413,{ok:false,error:{code:"EVENT_FLYER_TOO_LARGE"}},requestId,origin);
+  let form:FormData;
+  try{form=await request.formData();}catch{return json(400,{ok:false,error:{code:"INVALID_EVENT_FLYER_FORM"}},requestId,origin);}
+  const file=form.get("file");
+  if(!(file instanceof File)) return json(400,{ok:false,error:{code:"EVENT_FLYER_REQUIRED"}},requestId,origin);
+  if(file.size<16||file.size>5*1024*1024) return json(413,{ok:false,error:{code:"EVENT_FLYER_SIZE_INVALID",message:"Choose an image between 16 bytes and 5 MB."}},requestId,origin);
+  const bytes=await file.arrayBuffer(),v=new Uint8Array(bytes);
+  const png=v.length>=8&&[137,80,78,71,13,10,26,10].every((n,i)=>v[i]===n);
+  const jpeg=v.length>=3&&v[0]===255&&v[1]===216&&v[2]===255;
+  const webp=v.length>=12&&String.fromCharCode(...v.slice(0,4))==="RIFF"&&String.fromCharCode(...v.slice(8,12))==="WEBP";
+  const type=png?"image/png":jpeg?"image/jpeg":webp?"image/webp":"";
+  if(!type||file.type!==type) return json(415,{ok:false,error:{code:"UNSUPPORTED_EVENT_FLYER_TYPE",message:"Use a genuine PNG, JPEG or WebP image."}},requestId,origin);
+  const ext=type==="image/png"?"png":type==="image/jpeg"?"jpg":"webp";
+  const key="events/"+event.branch_id+"/"+event.id+"/"+crypto.randomUUID()+"."+ext;
+  try{
+    await env.EVENT_MEDIA.put(key,bytes,{httpMetadata:{contentType:type,cacheControl:"private, no-store"},customMetadata:{eventId:event.id,branchId:event.branch_id}});
+    const now=new Date().toISOString();
+    const updated=await env.DB.prepare("UPDATE event SET flyer_key=?,flyer_content_type=?,flyer_size=?,flyer_updated_at=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
+      .bind(key,type,file.size,now,access.staff.userId,now,event.id,event.branch_id).run();
+    if(!updated.success||(updated.meta?.changes??0)!==1){await env.EVENT_MEDIA.delete(key);return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);}
+    if(event.flyer_key) await env.EVENT_MEDIA.delete(event.flyer_key).catch(()=>undefined);
+  }catch{
+    await env.EVENT_MEDIA.delete(key).catch(()=>undefined);
+    return json(503,{ok:false,error:{code:"EVENT_FLYER_UPLOAD_FAILED",message:"The image could not be stored. Please try again."}},requestId,origin);
+  }
+  return json(200,{ok:true,event_id:event.id,flyer_url:"/api/v1/events/"+event.id+"/flyer",content_type:type,size:file.size},requestId,origin);
+}
+
+async function getEventFlyer(request:Request,env:Env,eventId:string,requestId:string,origin?:string):Promise<Response>{
+  const context=await resolveStaffContext(request,env);
+  if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if(!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const scope=bestEventScope(context.activeBranch.capabilities.filter(g=>g.code==="events.read").map(g=>g.scopeMode));
+  if(!scope) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const now=new Date().toISOString(),predicate=eventScopePredicate(scope,"e",context.staff.profileId,context.staff.userId,now);
+  const row=await env.DB.prepare("SELECT e.flyer_key,e.flyer_content_type FROM event e WHERE e.id=? AND e.branch_id=? AND ("+predicate.sql+") LIMIT 1")
+    .bind(eventId,context.activeBranch.branchId,...predicate.values).first<{flyer_key:string|null;flyer_content_type:string|null}>();
+  if(!row?.flyer_key||!env.EVENT_MEDIA) return json(404,{ok:false,error:{code:"EVENT_FLYER_NOT_FOUND"}},requestId,origin);
+  const object=await env.EVENT_MEDIA.get(row.flyer_key);
+  if(!object) return json(404,{ok:false,error:{code:"EVENT_FLYER_NOT_FOUND"}},requestId,origin);
+  return withSecurityHeaders(new Response(object.body,{headers:{"Content-Type":row.flyer_content_type||"application/octet-stream","Content-Disposition":"inline","Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}}),origin);
+}
+
 async function publishEvent(
   request: Request,
   env: Env,
@@ -3711,6 +3773,9 @@ async function publishEvent(
 ): Promise<Response> {
   const access = await authorizeRequestCapability(request, env, "events.manage");
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const existing=await env.DB.prepare("SELECT flyer_key FROM event WHERE id=? AND branch_id=? AND status='draft' LIMIT 1").bind(eventId,access.activeBranch.branchId).first<{flyer_key:string|null}>();
+  if(!existing) return json(404,{ok:false,error:{code:"DRAFT_EVENT_NOT_FOUND"}},requestId,origin);
+  if(!existing.flyer_key) return json(409,{ok:false,error:{code:"EVENT_FLYER_REQUIRED",message:"Upload an event flyer or image before publishing this event."}},requestId,origin);
   const now = new Date().toISOString();
   try {
     const result = await env.DB.prepare(`
@@ -3718,7 +3783,7 @@ async function publishEvent(
       SET status = 'published', visibility = 'staff',
           registration_state = 'closed', last_modified_by = ?, updated_at = ?
       WHERE id = ? AND branch_id = ? AND status = 'draft'
-        AND length(trim(title)) >= 2 AND ends_at > starts_at
+        AND length(trim(title)) >= 2 AND ends_at > starts_at AND flyer_key IS NOT NULL
     `).bind(access.staff.userId, now, eventId, access.activeBranch.branchId).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) {
       return json(409, { ok: false, error: { code: "EVENT_NOT_PUBLISHABLE" } }, requestId, origin);
@@ -7724,6 +7789,12 @@ async function updatePrayerRequestStatus(
     }
     if (url.pathname === "/api/v1/events" && request.method === "POST") {
       return createEvent(request, env, requestId, origin);
+    }
+    const eventFlyerMatch=url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/flyer$/);
+    if(eventFlyerMatch){
+      let eventId:string; try{eventId=decodeURIComponent(eventFlyerMatch[1]);}catch{return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin);}
+      if(request.method==="POST") return uploadEventFlyer(request,env,eventId,requestId,origin);
+      if(request.method==="GET") return getEventFlyer(request,env,eventId,requestId,origin);
     }
     const eventRegistrationStateMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/registration\/(open|close)$/);
     if (eventRegistrationStateMatch && request.method === "POST") {
