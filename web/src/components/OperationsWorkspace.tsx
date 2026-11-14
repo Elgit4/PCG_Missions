@@ -75,6 +75,8 @@ export function OperationsWorkspace({
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [flyerPreview, setFlyerPreview] = useState("");
+  useEffect(() => { if(!flyerPreview) return; return () => URL.revokeObjectURL(flyerPreview); }, [flyerPreview]);
 
   const canRead = section === "Events"
     ? hasCapability(session, "event.read.scoped", branchId)
@@ -137,6 +139,7 @@ export function OperationsWorkspace({
   }, [loadRecords]);
 
   const beginCreate = () => {
+    setFlyerPreview("");
     setEditingId(null);
     setShowForm(true);
     setError("");
@@ -144,6 +147,7 @@ export function OperationsWorkspace({
   };
 
   const beginEdit = (id: string) => {
+    setFlyerPreview("");
     setEditingId(id);
     setShowForm(true);
     setError("");
@@ -151,6 +155,7 @@ export function OperationsWorkspace({
   };
 
   const cancelEdit = () => {
+    setFlyerPreview("");
     setEditingId(null);
     setShowForm(false);
   };
@@ -185,6 +190,9 @@ export function OperationsWorkspace({
         const end = branchLocalInputToIso(String(form.get("ends_at") ?? ""), timeZone);
         if (!start || !end) throw new Error("Enter valid start and end times in the branch time zone.");
         if (Date.parse(end) <= Date.parse(start)) throw new Error("The event end must be later than its start.");
+        const flyer=form.get("flyer");
+        if(!(flyer instanceof File)||flyer.size===0){if(!editingEvent?.flyer_url) throw new Error("Upload an event flyer or image before saving this event.");}
+        if(flyer instanceof File&&flyer.size>5*1024*1024) throw new Error("The event image must be 5 MB or smaller.");
         const input = {
           title: String(form.get("title") ?? "").trim(),
           description: String(form.get("description") ?? "").trim() || null,
@@ -193,8 +201,10 @@ export function OperationsWorkspace({
           timezone: timeZone,
           location: String(form.get("location") ?? "").trim() || null,
         };
-        if (editingId) await api.updateEventDraft(branchId, editingId, input);
-        else await api.createEventDraft({ branch_id: branchId, ...input });
+        let eventId=editingId;
+        if(editingId) await api.updateEventDraft(branchId,editingId,input);
+        else { const created=await api.createEventDraft({branch_id:branchId,...input}); eventId=created.data.event.id; }
+        if(flyer instanceof File&&flyer.size>0) await api.uploadEventFlyer(branchId,eventId!,flyer);
       } else if (section === "Calendar") {
         const start = branchLocalInputToIso(String(form.get("starts_at") ?? ""), timeZone);
         const endValue = String(form.get("ends_at") ?? "");
@@ -308,8 +318,10 @@ export function OperationsWorkspace({
                 <label>Location<input name="location" maxLength={250} defaultValue={editingEvent?.location ?? ""} placeholder="Venue or meeting point" /></label>
                 <label>Starts at ({timeZone})<input name="starts_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEvent?.starts_at, timeZone)} /></label>
                 <label>Ends at ({timeZone})<input name="ends_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEvent?.ends_at, timeZone)} /></label>
+                <label className="cmi-field-wide">Event flyer or image<input name="flyer" type="file" accept="image/png,image/jpeg,image/webp" required={!editingEvent?.flyer_url} onChange={change=>{const file=change.currentTarget.files?.[0];setFlyerPreview(file?URL.createObjectURL(file):"");}} /><small>Required for every event. PNG, JPEG or WebP · maximum 5 MB.</small></label>
+                {(flyerPreview||editingEvent?.flyer_url)&&<div className="cmi-field-wide"><img src={flyerPreview||editingEvent?.flyer_url||""} alt="Event flyer preview" style={{display:"block",width:"min(100%,360px)",maxHeight:220,objectFit:"contain",borderRadius:12,border:"1px solid var(--cmi-border, #dce4df)"}} /></div>}
                 <label className="cmi-field-wide">Description<textarea name="description" rows={3} maxLength={12000} defaultValue={editingEvent?.description ?? ""} placeholder="Purpose, audience and instructions for staff." /></label>
-                <p className="cmi-field-wide cmi-scope-note">The server saves this as a private draft with registration closed. Public registration, capacity, transport and attendance are intentionally unavailable.</p>
+                <p className="cmi-field-wide cmi-scope-note">A flyer is mandatory for every event. This record remains a private draft until the separate publishing workflow is completed.</p>
               </>
             )}
             {section === "Calendar" && (
@@ -366,7 +378,7 @@ export function OperationsWorkspace({
           <div className="cmi-task-list cmi-operations-list">
             {events.map((item) => (
               <article className="cmi-task-row" key={item.id}>
-                <div className="cmi-task-symbol"><CalendarDays size={18} /></div>
+                <div className="cmi-task-symbol">{item.flyer_url ? <img src={item.flyer_url} alt="" style={{width:52,height:52,objectFit:"cover",borderRadius:8}} /> : <CalendarDays size={18} />}</div>
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.starts_at, timeZone)} – {formatBranchDate(item.ends_at, timeZone)}{item.location ? " · " + item.location : ""}</p><small>{shortText(item.description ?? "No description added.")}</small></div>
                 <span className="cmi-task-status status-open">Private draft</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
