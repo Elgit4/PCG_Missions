@@ -6924,7 +6924,7 @@ async function updateTeam(request:Request,env:Env,teamId:string,requestId:string
   try{
     const result=await env.DB.batch([
       env.DB.prepare("UPDATE team SET "+sets.join(",")+" WHERE id=? AND branch_id=?").bind(...values,teamId,access.activeBranch.branchId),
-      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'team',?,'team.updated',?,? WHERE EXISTS(SELECT 1 FROM team WHERE id=? AND branch_id=?)").bind(crypto.randomUUID(),access.activeBranch.branchId,access.staff.profileId,teamId,JSON.stringify({changed_fields:Object.keys(body)}),now,teamId,access.activeBranch.branchId),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'team',?,?,?,? WHERE EXISTS(SELECT 1 FROM team WHERE id=? AND branch_id=?)").bind(crypto.randomUUID(),access.activeBranch.branchId,access.staff.profileId,teamId,body.is_active===false?"team.deactivated":body.is_active===true?"team.reactivated":"team.updated",JSON.stringify({changes:body}),now,teamId,access.activeBranch.branchId),
     ]);
     if((result[0]?.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"TEAM_NOT_FOUND"}},requestId,origin);
   }catch(error){return teamOperationError(error,requestId,origin);}
@@ -7103,7 +7103,7 @@ async function updateServiceArea(request:Request,env:Env,areaId:string,requestId
   try{
     const result=await env.DB.batch([
       env.DB.prepare("UPDATE service_area SET "+sets.join(",")+" WHERE id=? AND branch_id=?").bind(...values,areaId,access.activeBranch.branchId),
-      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'service_area',?,'service_area.updated',?,? WHERE EXISTS(SELECT 1 FROM service_area WHERE id=? AND branch_id=?)").bind(crypto.randomUUID(),access.activeBranch.branchId,access.staff.profileId,areaId,JSON.stringify({changed_fields:Object.keys(body)}),now,areaId,access.activeBranch.branchId),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'service_area',?,?,?,? WHERE EXISTS(SELECT 1 FROM service_area WHERE id=? AND branch_id=?)").bind(crypto.randomUUID(),access.activeBranch.branchId,access.staff.profileId,areaId,body.is_active===false?"service_area.deactivated":body.is_active===true?"service_area.reactivated":"service_area.updated",JSON.stringify({changes:body}),now,areaId,access.activeBranch.branchId),
     ]);
     if((result[0]?.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"SERVICE_AREA_NOT_FOUND"}},requestId,origin);
   }catch(error){return teamOperationError(error,requestId,origin);}
