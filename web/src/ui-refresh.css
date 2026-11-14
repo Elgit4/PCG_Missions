@@ -425,3 +425,57 @@ html[data-theme="dark"] .cmi-icon-action:hover,html[data-theme="dark"] .cmi-them
 @media(prefers-reduced-motion:reduce){.cmi-skeleton-line{animation:none;background:#edf1f5}.cmi-loading-skeleton{animation:none}}
 [data-theme="dark"] .cmi-skeleton-line,[data-theme="dark"] .cmi-skeleton-mark,[data-theme="dark"] .cmi-skeleton-row>b,[data-theme="dark"] .cmi-skeleton-row>span>i,[data-theme="dark"] .cmi-skeleton-row>em,[data-theme="dark"] .cmi-skeleton-action{background:#293747}
 [data-theme="dark"] .cmi-skeleton-search{border-color:#344355;background:#202c3a}
+
+
+/* Mobile header refinement: identity first, utility actions grouped at the edge. */
+@media(max-width:760px){
+ .cmi-topbar{
+  position:sticky;top:0;z-index:40;display:grid;grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;gap:8px 12px;min-height:76px;padding:11px 15px 12px;
+  background:rgb(255 255 255 / 97%);backdrop-filter:blur(14px);
+ }
+ .cmi-topbar-heading{display:grid;min-width:0;gap:5px}
+ .cmi-mobile-brand{display:flex;align-items:center;gap:9px;min-width:0}
+ .cmi-mobile-brand img{width:34px;height:34px;padding:2px;border:1px solid #e4eaf0;border-radius:10px;background:#fff;object-fit:contain}
+ .cmi-mobile-brand span{display:flex;min-width:0;flex-direction:column;gap:2px}
+ .cmi-mobile-brand strong{color:var(--cmi-navy);font-size:11px;font-weight:800;letter-spacing:.045em}
+ .cmi-mobile-brand small{color:#8d99a8;font-size:7px;font-weight:750;letter-spacing:.12em}
+ .cmi-topbar-heading h1{margin:0;font-size:18px;line-height:1.2;letter-spacing:-.035em}
+ .cmi-topbar-actions{width:auto;display:flex;align-items:center;justify-content:flex-end;gap:7px;padding:0}
+ .cmi-icon-action,.cmi-theme-toggle{width:38px;height:38px;border-radius:11px}
+ .cmi-followup-toolbar{justify-content:flex-end;min-height:40px;padding:8px 0}
+ .cmi-followup-toolbar>label{display:none}
+}
+@media(max-width:390px){
+ .cmi-topbar{padding-right:12px;padding-left:12px;gap:7px}
+ .cmi-mobile-brand img{width:32px;height:32px}
+ .cmi-topbar-heading h1{font-size:17px}
+ .cmi-icon-action,.cmi-theme-toggle{width:36px;height:36px}
+}
+
+/* Quiet, branded application boot state. */
+.cmi-boot-screen{
+ min-height:100svh;display:grid;place-items:center;padding:28px;
+ background:#f4f6f9;color:#17263b;
+}
+.cmi-boot-content{display:flex;align-items:center;flex-direction:column;text-align:center}
+.cmi-boot-logo{
+ display:grid;width:68px;height:68px;place-items:center;margin-bottom:17px;
+ border:1px solid #e3e9ef;border-radius:19px;background:#fff;
+ box-shadow:0 8px 26px rgb(23 46 75 / 7%);
+}
+.cmi-boot-logo img{width:47px;height:47px;object-fit:contain}
+.cmi-boot-name{color:#172e4b;font-size:12px;font-weight:850;letter-spacing:.15em}
+.cmi-boot-caption{margin-top:4px;color:#8996a5;font-size:8px;font-weight:750;letter-spacing:.17em}
+.cmi-boot-spinner{
+ width:23px;height:23px;margin-top:27px;border:2px solid #dce4ed;border-top-color:#c9233a;
+ border-radius:50%;animation:cmi-boot-rotate .8s linear infinite;
+}
+.cmi-boot-content p{margin:12px 0 0;color:#8290a1;font-size:11px;font-weight:550;letter-spacing:.01em}
+@keyframes cmi-boot-rotate{to{transform:rotate(360deg)}}
+html[data-theme="dark"] .cmi-boot-screen{background:#101722;color:#e7edf5}
+html[data-theme="dark"] .cmi-boot-logo{border-color:#2b3b4e;background:#182332;box-shadow:0 8px 28px rgb(0 0 0 / 18%)}
+html[data-theme="dark"] .cmi-boot-name{color:#edf3fa}
+html[data-theme="dark"] .cmi-boot-caption,html[data-theme="dark"] .cmi-boot-content p{color:#9aaabd}
+html[data-theme="dark"] .cmi-boot-spinner{border-color:#344458;border-top-color:#e36a7c}
+@media(prefers-reduced-motion:reduce){.cmi-boot-spinner{animation:none;border-top-color:#c9233a}}
