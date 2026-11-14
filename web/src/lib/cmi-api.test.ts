@@ -137,13 +137,30 @@ describe("CmiApiClient — Cloudflare Worker", () => {
     expect(result.data.message.id).toBe("message-1");
   });
 
-  it("fails explicitly for team administration until its Worker handlers are implemented", async () => {
-    const fetcher = vi.fn();
+  it("loads branch-scoped teams from the Cloudflare Worker", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok:true,data:{teams:[]},request_id:"teams-list",
+    }),{status:200}));
     const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
-    await expect(client.listTeams("branch-1")).rejects.toMatchObject({
-      status: 501, code: "TEAM_ADMINISTRATION_NOT_MIGRATED",
-    });
-    expect(fetcher).not.toHaveBeenCalled();
+    const result=await client.listTeams("branch-1");
+    const [url,init]=fetcher.mock.calls[0] as unknown as [URL,RequestInit];
+    expect(url.pathname).toBe("/api/v1/teams");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(result.data.teams).toEqual([]);
+  });
+
+  it("sends team creation details separately from the validated branch scope", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok:true,data:{team:{id:"team-1",branch_id:"branch-1"}},request_id:"team-create",
+    }),{status:201}));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.createTeam({branch_id:"branch-1",name:"Welcome Team",description:null});
+    const [url,init]=fetcher.mock.calls[0] as unknown as [URL,RequestInit];
+    expect(url.pathname).toBe("/api/v1/teams");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(JSON.parse(String(init.body))).toEqual({name:"Welcome Team",description:null});
   });
 
 });
