@@ -319,6 +319,57 @@ try {
   assert(replay.status===201&&replayBody.registration_id===registrationResults[winningIndex].registration_id,
     "idempotent registration retry must return the original registration: "+JSON.stringify(replayBody));
 
+  const calendarHeaders={Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001","Content-Type":"application/json"};
+  const springSeriesResponse=await fetch(baseUrl+"/api/v1/calendar/series",{
+    method:"POST",headers:calendarHeaders,body:JSON.stringify({
+      entry_type:"service",title:"DST Spring Forward Integration",starts_at:"2027-03-13T06:30:00.000Z",
+      ends_at:"2027-03-13T07:30:00.000Z",timezone:"America/New_York",scope_type:"branch",
+      recurrence:{frequency:"daily",interval:1,count:3},
+    }),
+  });
+  const springSeries=await springSeriesResponse.json();
+  assert(springSeriesResponse.status===201&&springSeries.occurrence_count===3,
+    "daily calendar series across spring DST should be created: "+JSON.stringify(springSeries));
+  const springEntriesResponse=await fetch(baseUrl+"/api/v1/calendar?from=2027-03-13T00%3A00%3A00.000Z&to=2027-03-17T00%3A00%3A00.000Z",{
+    headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001"},
+  });
+  const springEntries=(await springEntriesResponse.json()).entries?.filter(entry=>entry.series_id===springSeries.series_id)??[];
+  const localClock=(value)=>new Intl.DateTimeFormat("en-GB",{timeZone:"America/New_York",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).format(new Date(value));
+  assert(springEntriesResponse.status===200&&springEntries.length===3&&springEntries.every(entry=>localClock(entry.starts_at)==="01:30"),
+    "spring DST recurrence must preserve the 01:30 local wall-clock time: "+JSON.stringify(springEntries));
+  assert(springEntries.map(entry=>entry.starts_at).join(",")==="2027-03-13T06:30:00.000Z,2027-03-14T06:30:00.000Z,2027-03-15T05:30:00.000Z",
+    "spring DST recurrence must adjust UTC offsets without shifting local time");
+
+  const nonexistentSeries=await fetch(baseUrl+"/api/v1/calendar/series",{
+    method:"POST",headers:calendarHeaders,body:JSON.stringify({
+      entry_type:"service",title:"DST Nonexistent Time Integration",starts_at:"2027-03-13T07:30:00.000Z",
+      ends_at:"2027-03-13T08:30:00.000Z",timezone:"America/New_York",scope_type:"branch",
+      recurrence:{frequency:"daily",interval:1,count:3},
+    }),
+  });
+  const nonexistentBody=await nonexistentSeries.json();
+  assert(nonexistentSeries.status===400&&nonexistentBody.error?.code==="CALENDAR_RECURRENCE_TIME_INVALID",
+    "nonexistent local times during spring-forward must be rejected, not silently shifted");
+
+  const fallSeriesResponse=await fetch(baseUrl+"/api/v1/calendar/series",{
+    method:"POST",headers:calendarHeaders,body:JSON.stringify({
+      entry_type:"service",title:"DST Fall Back Integration",starts_at:"2027-11-06T05:30:00.000Z",
+      ends_at:"2027-11-06T06:30:00.000Z",timezone:"America/New_York",scope_type:"branch",
+      recurrence:{frequency:"daily",interval:1,count:3},
+    }),
+  });
+  const fallSeries=await fallSeriesResponse.json();
+  assert(fallSeriesResponse.status===201&&fallSeries.occurrence_count===3,
+    "daily calendar series across fall DST should be created: "+JSON.stringify(fallSeries));
+  const fallEntriesResponse=await fetch(baseUrl+"/api/v1/calendar?from=2027-11-06T00%3A00%3A00.000Z&to=2027-11-10T00%3A00%3A00.000Z",{
+    headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001"},
+  });
+  const fallEntries=(await fallEntriesResponse.json()).entries?.filter(entry=>entry.series_id===fallSeries.series_id)??[];
+  assert(fallEntriesResponse.status===200&&fallEntries.length===3&&fallEntries.every(entry=>localClock(entry.starts_at)==="01:30"),
+    "fall DST recurrence must preserve the 01:30 local wall-clock time: "+JSON.stringify(fallEntries));
+  assert(fallEntries.map(entry=>entry.starts_at).join(",")==="2027-11-06T05:30:00.000Z,2027-11-07T05:30:00.000Z,2027-11-08T06:30:00.000Z",
+    "ambiguous fall-back times must resolve deterministically and remain strictly increasing");
+
   const teamQuery="?branch_id=00000000-0000-4000-8000-000000000001";
   const adminBranchHeaders={Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001","Content-Type":"application/json"};
   const createTeamResponse=await fetch(baseUrl+"/api/v1/teams"+teamQuery,{
