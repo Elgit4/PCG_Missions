@@ -6,6 +6,7 @@ on:
       - main
       - feat/team-area-administration-mainline
       - "feat/cmi-*"
+      - feat/supabase-outstanding-features
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
@@ -17,6 +18,7 @@ on:
       - "design/cmi-*"
       - "backend/cmi-*"
       - "fix/cmi-*"
+      - feat/supabase-outstanding-features
     paths:
       - "supabase-cmi/**"
       - ".github/workflows/cmi-backend-ci.yml"
