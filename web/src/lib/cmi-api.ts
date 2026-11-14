@@ -818,13 +818,14 @@ export class CmiApiClient {
     });
   }
 
-  listCalendarEntries(branchId: string, options: { limit?: number; offset?: number } = {}) {
-    return this.request<CalendarEntryRecord[]>("calendar-operations", "/entries", {
-      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0 },
-    });
+  listCalendarEntries(branchId: string, options: { limit?: number } = {}) {
+    return this.request<{entries:CalendarEntryRecord[]}>("calendar-operations", "/entries", {
+      query: { branch_id: branchId, limit: options.limit ?? 50 },
+    }).then(result=>({...result,data:result.data.entries}));
   }
   createCalendarEntry(input: CalendarEntryCreateInput) {
-    return this.request<CalendarEntryRecord>("calendar-operations", "/entries", { method: "POST", body: input });
+    const {branch_id,...body}=input;
+    return this.request<{entry_id:string}>("calendar-operations", "/entries", { method: "POST", query:{branch_id}, body:{...body,scope_type:"branch"} });
   }
   updateCalendarEntry(branchId: string, entryId: string, input: CalendarEntryPatchInput) {
     return this.request<CalendarEntryRecord>("calendar-operations", "/entries/" + encodeURIComponent(entryId), {
