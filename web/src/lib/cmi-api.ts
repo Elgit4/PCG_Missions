@@ -487,6 +487,16 @@ export interface MinistryReportReviewResult {
   review_history: MinistryReportReviewEvent[];
 }
 
+export interface PrayerRequestMetadata {
+  id: string;
+  status: "open" | "answered" | "closed";
+  sensitivity: "restricted" | "confidential";
+  expires_at: string | null;
+  answered_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export class CmiApiClient {
   private readonly baseUrl: string;
 
@@ -921,6 +931,13 @@ export class CmiApiClient {
     });
   }
 
+  listPrayerRequests(branchId: string, limit = 25, offset = 0) {
+    return this.request<{ data: PrayerRequestMetadata[]; access_mode: "assigned" | "oversight"; request_id: string }>(
+      "pastoral-operations",
+      "/prayer/requests",
+      { method: "GET", query: { branch_id: branchId, limit, offset } },
+    );
+  }
   readPrayerRequest(branchId: string, requestId: string, accessMode: "assigned" | "oversight", reasonCode?: string) {
     return this.request<unknown>("pastoral-operations", `/prayer/requests/${encodeURIComponent(requestId)}/read`, {
       method: "POST", body: { branch_id: branchId, access_mode: accessMode, ...(reasonCode ? { reason_code: reasonCode } : {}) },
