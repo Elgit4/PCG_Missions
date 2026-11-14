@@ -581,8 +581,7 @@ Deno.serve(async (request: Request) => {
           `ends_at.is.null,ends_at.gt.${now}`,
           { referencedTable: "staff_role_assignment" },
         )
-        .is("staff_role_assignment.revoked_at", null)
-        .eq("staff_role_assignment.role.is_active", true);
+        .is("staff_role_assignment.revoked_at", null);
 
       if (search) {
         const safeSearch = search.replace(
@@ -595,7 +594,13 @@ Deno.serve(async (request: Request) => {
       const { data, error, count } = await query
         .order("full_name", { ascending: true })
         .range(offset, offset + limit - 1);
-      if (error) throw new Error("STAFF_DIRECTORY_LOOKUP_FAILED");
+      if (error) {
+        console.error("staff directory lookup failed", {
+          request_id: id,
+          code: error.code ?? "UNKNOWN_DATABASE_ERROR",
+        });
+        throw new Error("STAFF_DIRECTORY_LOOKUP_FAILED");
+      }
 
       const members = projectStaffDirectoryRows(data ?? []);
       return response(
