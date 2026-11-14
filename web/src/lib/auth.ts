@@ -73,6 +73,26 @@ export class PcgAuthClient {
     };
   }
 
+  async acceptInvitation(token: string, password: string): Promise<void> {
+    if (!/^[A-Za-z0-9_-]{43}$/.test(token)) {
+      throw new AuthClientError(400, "INVALID_INVITATION_TOKEN", "This invitation link is invalid. Ask an administrator to issue a new invitation.");
+    }
+    if (
+      password.length < 12 || password.length > 128 ||
+      !/[a-z]/.test(password) || !/[A-Z]/.test(password) ||
+      !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)
+    ) {
+      throw new AuthClientError(400, "PASSWORD_POLICY_INVALID", "Use 12–128 characters with uppercase and lowercase letters, a number and a symbol.");
+    }
+    const payload = await this.request("v1/staff/invitations/accept", "POST", {
+      invitation_token: token,
+      password,
+    });
+    if (payload?.ok !== true || payload?.sign_in_required !== true) {
+      throw new AuthClientError(502, "INVALID_INVITATION_RESPONSE", "The invitation service did not confirm account creation. Contact an administrator before retrying.");
+    }
+  }
+
   async getSession(): Promise<AuthSession | null> {
     const payload = await this.request("get-session");
     if (!payload) return null;
