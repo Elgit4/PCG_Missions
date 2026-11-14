@@ -5,6 +5,7 @@ on:
     paths:
       - "cloudflare/**"
       - ".github/workflows/cloudflare-d1-foundation.yml"
+      - "web/wrangler.toml"
   push:
     branches: [main, 'migration/**']
     paths:
@@ -104,7 +105,7 @@ jobs:
           WORKER_HEALTH_URL: https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev/health
           WORKER_API_URL: https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev/api/v1/me
           AUTH_SESSION_URL: https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev/api/auth/get-session
-          FRONTEND_ORIGIN: https://pcg-missions-git-migration-cloudflare-nonprod-completion-eltech.vercel.app
+          FRONTEND_ORIGIN: https://pcg-missions-nonprod.pages.dev
         run: |
           set -eu
           ready=0
@@ -131,10 +132,14 @@ jobs:
           grep -Fqi "content-type: application/json" /tmp/bootstrap-api.headers || { cat /tmp/bootstrap-api.headers; echo "::error::Bootstrap API error response was not JSON."; exit 1; }
           node -e 'const x=require("/tmp/bootstrap-api.json"); process.exit(x.ok===false && x.error?.code==="BOOTSTRAP_UNAVAILABLE" ? 0 : 1)' || { cat /tmp/bootstrap-api.json; echo "::error::Bootstrap API missing-token response was unexpected."; exit 1; }
 
+          pages_health_status=$(curl --silent --output /tmp/pages-health.json --write-out "%{http_code}" "$FRONTEND_ORIGIN/api/v1/health")
+          test "$pages_health_status" = "200" || { cat /tmp/pages-health.json; echo "::error::Pages-to-Worker health proxy returned HTTP $pages_health_status; expected 200."; exit 1; }
+          node -e 'const x=require("/tmp/pages-health.json"); process.exit(x.ok===true && x.environment==="non-production" && x.schema_version===28 ? 0 : 1)' || { cat /tmp/pages-health.json; echo "::error::Pages health proxy did not confirm non-production schema 28."; exit 1; }
+
           api_status=$(curl --silent --output /tmp/worker-me.json --write-out "%{http_code}" "$WORKER_API_URL")
           test "$api_status" = "401" || { cat /tmp/worker-me.json; echo "::error::Unauthenticated staff-context gate returned HTTP $api_status; expected 401."; exit 1; }
 
-          session_status=$(curl --silent --output /tmp/worker-session.json --write-out "%{http_code}" "$AUTH_SESSION_URL" -H "Origin: $FRONTEND_ORIGIN")
+          session_status=$(curl --silent --output /tmp/worker-session.json --write-out "%{http_code}" "$FRONTEND_ORIGIN/api/auth/get-session" -H "Origin: $FRONTEND_ORIGIN")
           test "$session_status" = "200" || { cat /tmp/worker-session.json; echo "::error::Better Auth session endpoint returned HTTP $session_status; expected 200 for an unauthenticated session lookup."; exit 1; }
 
           cors_status=$(curl --silent --dump-header /tmp/worker-cors.headers --output /tmp/worker-cors.body --write-out "%{http_code}" -X OPTIONS "$WORKER_API_URL" -H "Origin: $FRONTEND_ORIGIN" -H "Access-Control-Request-Method: GET" -H "Access-Control-Request-Headers: content-type,x-branch-id")
