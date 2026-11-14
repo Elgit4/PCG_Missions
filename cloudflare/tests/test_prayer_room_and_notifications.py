@@ -69,7 +69,7 @@ class PrayerRoomAndNotificationContractTests(unittest.TestCase):
         self.assertIsNotNone(handler)
         self.assertIn('audience === "staff"', handler.group(0))
         self.assertIn('roles.includes("admin_pastor")', handler.group(0))
-        publish = re.search(r"async function publishAnnouncement\\([\\s\\S]*?\\n\\}", WORKER)
+        publish = re.search(r"async function publishAnnouncement\([\s\S]*?\n\}", WORKER)
         self.assertIsNotNone(publish)
         self.assertIn("target_branch.church_id=source_branch.church_id", publish.group(0))
         self.assertIn("CHURCH_WIDE_ANNOUNCEMENT_REQUIRES_ADMIN_PASTOR", handler.group(0))
