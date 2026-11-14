@@ -827,6 +827,22 @@ export class CmiApiClient {
     });
   }
 
+  getPushPublicKey(branchId: string) {
+    return this.request<{ public_key: string }>("notification-push", "/notifications/push/public-key", {
+      query: { branch_id: branchId },
+    });
+  }
+  savePushSubscription(branchId: string, subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) {
+    return this.request<{ subscribed: boolean }>("notification-push", "/notifications/push/subscriptions", {
+      method: "POST", query: { branch_id: branchId }, body: subscription,
+    });
+  }
+  removePushSubscription(branchId: string, endpoint: string) {
+    return this.request<{ unsubscribed: boolean }>("notification-push", "/notifications/push/unsubscribe", {
+      method: "POST", query: { branch_id: branchId }, body: { endpoint },
+    });
+  }
+
   listPrayerRoomMessages(branchId: string, limit = 80) {
     return this.request<{ messages: PrayerRoomMessage[] }>("prayer-room", "/prayer-room/messages", {
       query: { branch_id: branchId, limit },
