@@ -171,7 +171,7 @@ class WorkerApiContractTests(unittest.TestCase):
 
     def test_event_cancellation_persists_the_idempotency_key_and_replays_races(self):
         for name in ("cancelEventRegistration", "cancelTransportReservation"):
-            handler = re.search(rf"async function {name}\([\s\S]*?\n\}}", self.source)
+            handler = re.search("async function " + name + r"\([\s\S]*?\n\}", self.source)
             self.assertIsNotNone(handler)
             self.assertIn("cancellation_request_key=?", handler.group(0))
             self.assertIn("findEventReceipt", handler.group(0))
@@ -190,11 +190,11 @@ class WorkerApiContractTests(unittest.TestCase):
         for name in ("listEventRegistrations", "createEventRegistration", "cancelEventRegistration",
                      "listTransportOptions", "createTransportOption", "updateTransportOption",
                      "listTransportReservations", "createTransportReservation", "cancelTransportReservation"):
-            handler = re.search(rf"async function {name}\([\s\S]*?\n\}}", self.source)
+            handler = re.search("async function " + name + r"\([\s\S]*?\n\}", self.source)
             self.assertIsNotNone(handler, name)
             self.assertIn("hasEventAssignmentRole", handler.group(0), name)
         for name in ("createEventCheckin", "listEventCheckins"):
-            handler = re.search(rf"async function {name}\([\s\S]*?\n\}}", self.source)
+            handler = re.search("async function " + name + r"\([\s\S]*?\n\}", self.source)
             self.assertIsNotNone(handler, name)
             self.assertIn("hasEventCheckinAccess", handler.group(0), name)
 
@@ -366,7 +366,7 @@ class WorkerApiContractTests(unittest.TestCase):
 
     def test_team_and_service_area_list_handlers_preserve_active_branch_narrowing(self):
         for name in ("listTeams", "listServiceAreas"):
-            handler = re.search(rf"async function {name}\([\s\S]*?\n\}}", self.source)
+            handler = re.search("async function " + name + r"\([\s\S]*?\n\}", self.source)
             self.assertIsNotNone(handler, name)
             code = handler.group(0)
             self.assertRegex(code, r"const activeBranch=context\.activeBranch;\s*if\(!activeBranch\)")
