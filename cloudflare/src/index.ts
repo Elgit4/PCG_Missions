@@ -3603,7 +3603,7 @@ async function createEvent(
       timezone, location, capacity, transportEnabled ? 1 : 0,
       access.staff.userId, access.staff.userId, now, now,
     ).run();
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error("EVENT_CREATE_FAILED");
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error(JSON.stringify({success:result.success,changes:result.meta?.changes,error:(result as unknown as {error?:unknown}).error,meta:result.meta}));
   } catch (error) {
     const detail=error instanceof Error?error.message:"unknown";
     console.error("event_create_conflict", { requestId, detail });
