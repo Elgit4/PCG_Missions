@@ -7027,7 +7027,7 @@ async function listServiceAreas(request:Request,env:Env,requestId:string,origin?
     const coverage=await env.DB.prepare(`SELECT sac.id,sac.service_area_id,sac.staff_profile_id,sac.starts_at,sac.ends_at,sac.created_at,
         sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
       FROM staff_area_coverage sac JOIN staff_profile sp ON sp.id=sac.staff_profile_id
-      WHERE sac.branch_id=? AND sac.revoked_at IS NULL AND sac.starts_at<=?
+      WHERE sac.branch_id=? AND sac.starts_at<=
         AND (sac.ends_at IS NULL OR sac.ends_at>?) ORDER BY sac.starts_at DESC`)
       .bind(branchId,now,now).all<Record<string,unknown>>();
     coverageRows=coverage.results??[];
@@ -7036,7 +7036,7 @@ async function listServiceAreas(request:Request,env:Env,requestId:string,origin?
     const coverage=await env.DB.prepare(`SELECT sac.id,sac.service_area_id,sac.staff_profile_id,sac.starts_at,sac.ends_at,sac.created_at,
         sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
       FROM staff_area_coverage sac JOIN staff_profile sp ON sp.id=sac.staff_profile_id
-      WHERE sac.branch_id=? AND sac.staff_profile_id IN (${placeholders}) AND sac.revoked_at IS NULL
+      WHERE sac.branch_id=? AND sac.staff_profile_id IN (${placeholders})
         AND sac.starts_at<=? AND (sac.ends_at IS NULL OR sac.ends_at>?) ORDER BY sac.starts_at DESC`)
       .bind(branchId,...visibleStaffIds,now,now).all<Record<string,unknown>>();
     coverageRows=coverage.results??[];
