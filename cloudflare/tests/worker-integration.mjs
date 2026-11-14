@@ -236,7 +236,7 @@ try {
     : [passwordChange.headers.get("set-cookie") ?? ""];
   const refreshedSessionCookie = passwordChangeCookies
     .map((value) => value.split(";")[0])
-    .find((value) => value.startsWith("session_token="));
+    .find((value) => (value.split("=")[0] ?? "").includes("session_token"));
   if (refreshedSessionCookie) currentSessionCookie = refreshedSessionCookie;
 
   const preservedSession = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: currentSessionCookie } });
