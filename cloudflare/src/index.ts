@@ -5268,10 +5268,12 @@ async function listAnnouncements(
   const status = url.searchParams.get("status") ?? "published";
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
+  const requestedBranchId = url.searchParams.get("branch_id");
   if (!["draft", "scheduled", "published", "archived", "all"].includes(status) ||
       (status !== "published" && !canManage) ||
       !Number.isInteger(limit) || limit < 1 || limit > 100 ||
-      [...url.searchParams.keys()].some((key) => !["status", "limit"].includes(key))) {
+      (requestedBranchId !== null && requestedBranchId !== context.activeBranch.branchId) ||
+      [...url.searchParams.keys()].some((key) => !["status", "limit", "branch_id"].includes(key))) {
     return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_QUERY" } }, requestId, origin);
   }
   const now = new Date().toISOString();
@@ -7056,8 +7058,10 @@ async function listPrayerRoomMessages(request: Request, env: Env, requestId: str
   const url = new URL(request.url);
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 80 : Number(rawLimit);
+  const requestedBranchId = url.searchParams.get("branch_id");
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
-      [...url.searchParams.keys()].some((key) => key !== "limit")) {
+      (requestedBranchId !== null && requestedBranchId !== access.activeBranch.branchId) ||
+      [...url.searchParams.keys()].some((key) => !["limit", "branch_id"].includes(key))) {
     return json(400, { ok: false, error: { code: "INVALID_PRAYER_ROOM_QUERY" } }, requestId, origin);
   }
   const now = new Date().toISOString();
