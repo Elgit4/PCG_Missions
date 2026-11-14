@@ -320,12 +320,13 @@ try {
     "unauthenticated event flyer upload must be rejected before parsing or storing media, got " + protectedFlyerUpload.status);
 
   const protectedTeamCreates = [
-    ["/api/v1/teams", { branch_id:"00000000-0000-4000-8000-000000000001", name:"Test team", description:null }],
-    ["/api/v1/areas", { branch_id:"00000000-0000-4000-8000-000000000001", name:"Test area", code:null }],
+    ["/api/v1/teams", { name:"Test team", description:null }],
+    ["/api/v1/areas", { name:"Test area", code:null }],
   ];
+  const testBranchId = "00000000-0000-4000-8000-000000000001";
   for (const [route, body] of protectedTeamCreates) {
-    const response = await fetch(baseUrl + route, {
-      method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),
+    const response = await fetch(baseUrl + route + "?branch_id=" + testBranchId, {
+      method:"POST",headers:{"Content-Type":"application/json","X-Branch-Id":testBranchId},body:JSON.stringify(body),
     });
     assert(response.status===401,"unauthenticated team/service-area create must return 401 for "+route+", got "+response.status);
   }
