@@ -7195,12 +7195,12 @@ async function encryptWebPushPayload(
     { name: "ECDH", public: clientPublicKey }, ephemeral.privateKey, 256,
   ));
   const authPrk = await webPushHmac(authSecret, sharedSecret);
-  const keyInfo = webPushConcat(new TextEncoder().encode("WebPush: info\\0"), clientPublicBytes, serverPublicBytes);
+  const keyInfo = webPushConcat(new TextEncoder().encode("WebPush: info\0"), clientPublicBytes, serverPublicBytes);
   const inputKeyMaterial = await webPushHkdfExpand(authPrk, keyInfo, 32);
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const prk = await webPushHmac(salt, inputKeyMaterial);
-  const cek = await webPushHkdfExpand(prk, new TextEncoder().encode("Content-Encoding: aes128gcm\\0"), 16);
-  const nonce = await webPushHkdfExpand(prk, new TextEncoder().encode("Content-Encoding: nonce\\0"), 12);
+  const cek = await webPushHkdfExpand(prk, new TextEncoder().encode("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await webPushHkdfExpand(prk, new TextEncoder().encode("Content-Encoding: nonce\0"), 12);
   const plaintext = webPushConcat(new TextEncoder().encode(JSON.stringify(payload)), new Uint8Array([2]));
   const aesKey = await crypto.subtle.importKey("raw", cek, { name: "AES-GCM" }, false, ["encrypt"]);
   const ciphertext = new Uint8Array(await crypto.subtle.encrypt(
