@@ -4,12 +4,13 @@ import { OperationsWorkspace } from "./OperationsWorkspace";
 import { TeamAdministrationWorkspace } from "./TeamAdministrationWorkspace";
 import { MinistryReportsWorkspace } from "./MinistryReportsWorkspace";
 import { ContactDetailDialog } from "./ContactDetailDialog";
+import { PrayerRoomWorkspace } from "./PrayerRoomWorkspace";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
 import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 import { ThemeToggle } from "../lib/theme";
 
-type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Reports" | "Staff" | "Access requests";
+type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Prayer" | "Reports" | "Staff" | "Access requests";
 type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue";
 interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void> }
 
@@ -57,6 +58,7 @@ function navigationIcon(item: Page, size = 18) {
     case "Calendar": return <CalendarClock size={size} strokeWidth={1.9} />;
     case "Announcements": return <Megaphone size={size} strokeWidth={1.9} />;
     case "Content": return <BookOpen size={size} strokeWidth={1.9} />;
+    case "Prayer": return <ShieldCheck size={size} strokeWidth={1.9} />;
     case "Teams & Areas": return <Network size={size} strokeWidth={1.9} />;
     case "Reports": return <FileText size={size} strokeWidth={1.9} />;
     case "Staff": return <Users size={size} strokeWidth={1.9} />;
@@ -156,9 +158,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canCreateStaffAccounts = hasCapability(session, "staff.account.manage", branchId) && hasCapability(session, "access.role.assign", branchId);
   const availablePages = useMemo(() => {
     const pages: Page[] = getAvailableStaffPages(session, branchId)
-      .filter((candidate): candidate is Exclude<Page, "Staff" | "Access requests"> =>
-        candidate !== "Prayer"
-      );
+      .filter((candidate): candidate is Exclude<Page, "Staff" | "Access requests"> => true);
     if (canCreateContacts && !pages.includes("Contacts")) pages.push("Contacts");
     if (canReadStaffDirectory) pages.push("Staff");
     if (canManagePasswordResets) pages.push("Access requests");
@@ -166,7 +166,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   }, [session, branchId, canCreateContacts, canManagePasswordResets, canReadStaffDirectory]);
   const navigationSections = [
     { label: "WORKSPACE", items: availablePages.filter((item) => ["Overview", "Contacts", "Follow-up"].includes(item)) },
-    { label: "MINISTRY", items: availablePages.filter((item) => ["Events", "Calendar", "Announcements", "Content", "Reports"].includes(item)) },
+    { label: "MINISTRY", items: availablePages.filter((item) => ["Events", "Calendar", "Announcements", "Content", "Prayer", "Reports"].includes(item)) },
     { label: "ADMINISTRATION", items: availablePages.filter((item) => ["Teams & Areas", "Staff", "Access requests"].includes(item)) },
   ].filter((section) => section.items.length > 0);
   const preferredMobilePages: Page[] = ["Overview", "Contacts", "Follow-up", "Calendar"];
