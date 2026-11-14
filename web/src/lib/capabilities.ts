@@ -17,7 +17,7 @@ const PAGE_CAPABILITIES: Partial<Record<StaffPage, readonly string[]>> = {
   "Follow-up": ["followup.task.read.scoped"],
   Events: ["event.read.scoped", "event.manage.scoped"],
   Calendar: ["calendar.read.scoped", "calendar.manage.scoped"],
-  Announcements: ["announcement.read.scoped", "announcement.create.scoped"],
+  Announcements: ["announcements.read"],
   Prayer: ["prayer.room.read"],
   Content: ["content.manage.draft"],
   "Teams & Areas": ["team.manage", "area.manage"],
