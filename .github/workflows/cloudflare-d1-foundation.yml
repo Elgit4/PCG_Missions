@@ -112,15 +112,15 @@ jobs:
           ready=0
           for attempt in $(seq 1 12); do
             if curl --fail --silent --show-error "$WORKER_HEALTH_URL" -o /tmp/worker-health.json; then
-              if node -e 'const x=require("/tmp/worker-health.json"); process.exit(x.ok === true && x.environment === "non-production" && x.schema_version === 29 ? 0 : 1)'; then
+              if node -e 'const x=require("/tmp/worker-health.json"); process.exit(x.ok === true && x.environment === "non-production" && x.schema_version === 30 ? 0 : 1)'; then
                 ready=1
                 break
               fi
             fi
-            echo "Worker not ready with EU D1 schema 29 yet (attempt $attempt/12)."
+            echo "Worker not ready with EU D1 schema 30 yet (attempt $attempt/12)."
             sleep 5
           done
-          test "$ready" -eq 1 || { cat /tmp/worker-health.json 2>/dev/null || true; echo "::error::Worker health did not confirm non-production D1 schema 29."; exit 1; }
+          test "$ready" -eq 1 || { cat /tmp/worker-health.json 2>/dev/null || true; echo "::error::Worker health did not confirm non-production D1 schema 30."; exit 1; }
 
           BOOTSTRAP_PAGE_URL=https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev/bootstrap
           bootstrap_page_status=$(curl --silent --dump-header /tmp/bootstrap-page.headers --output /tmp/bootstrap-page.html --write-out "%{http_code}" "$BOOTSTRAP_PAGE_URL")
@@ -135,7 +135,7 @@ jobs:
 
           pages_health_status=$(curl --silent --output /tmp/pages-health.json --write-out "%{http_code}" "$FRONTEND_ORIGIN/api/v1/health")
           test "$pages_health_status" = "200" || { cat /tmp/pages-health.json; echo "::error::Pages-to-Worker health proxy returned HTTP $pages_health_status; expected 200."; exit 1; }
-          node -e 'const x=require("/tmp/pages-health.json"); process.exit(x.ok===true && x.environment==="non-production" && x.schema_version===29 ? 0 : 1)' || { cat /tmp/pages-health.json; echo "::error::Pages health proxy did not confirm non-production schema 29."; exit 1; }
+          node -e 'const x=require("/tmp/pages-health.json"); process.exit(x.ok===true && x.environment==="non-production" && x.schema_version===29 ? 0 : 1)' || { cat /tmp/pages-health.json; echo "::error::Pages health proxy did not confirm non-production schema 30."; exit 1; }
 
           api_status=$(curl --silent --output /tmp/worker-me.json --write-out "%{http_code}" "$WORKER_API_URL")
           test "$api_status" = "401" || { cat /tmp/worker-me.json; echo "::error::Unauthenticated staff-context gate returned HTTP $api_status; expected 401."; exit 1; }
@@ -154,7 +154,7 @@ jobs:
             echo "::error::Disallowed origin received an Access-Control-Allow-Origin header."
             exit 1
           fi
-          echo "Verified Worker health, D1 schema 29, unauthenticated API denial, Better Auth session endpoint, allowed-origin CORS and disallowed-origin rejection."
+          echo "Verified Worker health, D1 schema 30, unauthenticated API denial, Better Auth session endpoint, allowed-origin CORS and disallowed-origin rejection."
 
       - name: Preserve non-production Worker bundle for deployment review
         if: always()
