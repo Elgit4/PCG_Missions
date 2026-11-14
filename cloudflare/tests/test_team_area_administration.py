@@ -54,6 +54,14 @@ class TeamAreaAdministrationGuardTests(unittest.TestCase):
                 (id,staff_profile_id,team_id,branch_id,membership_role,starts_at,created_by,created_at)
                 VALUES('m1','sp1','t1','b1','leader',?,'sp1',?)""",(NOW,NOW))
 
+    def test_team_membership_cannot_be_promoted_without_team_leader_role(self):
+        self.db.execute("""INSERT INTO staff_team_membership
+            (id,staff_profile_id,team_id,branch_id,membership_role,starts_at,created_by,created_at)
+            VALUES('m1','sp1','t1','b1','member',?,'sp1',?)""",(NOW,NOW))
+        self.db.execute("DELETE FROM staff_role_assignment WHERE id='ra-leader'")
+        with self.assertRaisesRegex(sqlite3.IntegrityError,"TEAM_LEADER_ROLE_REQUIRED"):
+            self.db.execute("UPDATE staff_team_membership SET membership_role='leader' WHERE id='m1'")
+
     def test_team_cannot_be_deactivated_while_active_members_remain(self):
         self.db.execute("""INSERT INTO staff_team_membership
             (id,staff_profile_id,team_id,branch_id,starts_at,created_by,created_at)
