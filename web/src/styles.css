@@ -2058,3 +2058,57 @@ html[data-theme="dark"] .activity-panel { background-image: none !important; }
 .cmi-staff-status-form { flex: 1 0 100%; display: grid; gap: 0.75rem; padding: 0.9rem; border: 1px solid var(--cmi-border, #dfe4ea); border-radius: 12px; background: var(--cmi-surface-muted, #f8fafc); }
 .cmi-staff-status-form label { display: grid; gap: 0.4rem; font-size: 0.875rem; font-weight: 600; }
 .cmi-staff-status-form textarea { width: 100%; min-height: 68px; resize: vertical; }
+
+
+/* Restricted Prayer Room */
+.cmi-prayer-workspace { display: grid; gap: 1rem; }
+.cmi-prayer-workspace .cmi-scope-note {
+  display: flex;
+  align-items: flex-start;
+  gap: .55rem;
+  padding: .8rem .95rem;
+  border: 1px solid var(--cmi-border, #dfe4ea);
+  border-radius: 10px;
+  color: var(--cmi-text-muted, #64748b);
+  background: var(--cmi-surface-muted, #f8fafc);
+  font-size: .82rem;
+  line-height: 1.5;
+}
+.cmi-prayer-workspace .cmi-scope-note svg { flex: 0 0 auto; margin-top: 2px; }
+.cmi-prayer-reason { display: grid; gap: .45rem; max-width: 420px; font-size: .84rem; font-weight: 650; }
+.cmi-prayer-reason select {
+  min-height: 42px;
+  width: 100%;
+  padding: 0 .75rem;
+  border: 1px solid var(--cmi-border, #dfe4ea);
+  border-radius: 9px;
+  color: var(--cmi-text, #1f2937);
+  background: var(--cmi-surface, #fff);
+  font: inherit;
+}
+.cmi-prayer-detail {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--cmi-border, #dfe4ea);
+  border-radius: 14px;
+  background: var(--cmi-surface-muted, #f8fafc);
+}
+.cmi-prayer-narrative {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--cmi-text, #1f2937);
+  font-size: .94rem;
+  line-height: 1.75;
+}
+.cmi-prayer-workspace .cmi-inline-error {
+  margin: 0;
+  color: var(--cmi-danger, #a12f3a);
+  font-size: .86rem;
+}
+@media (max-width: 620px) {
+  .cmi-prayer-workspace .cmi-task-row { align-items: flex-start; flex-wrap: wrap; }
+  .cmi-prayer-workspace .cmi-task-row > button { margin-left: 2.7rem; }
+  .cmi-prayer-detail { padding: .8rem; }
+}
