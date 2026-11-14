@@ -113,6 +113,17 @@ jobs:
           done
           test "$ready" -eq 1 || { cat /tmp/worker-health.json 2>/dev/null || true; echo "::error::Worker health did not confirm non-production D1 schema 28."; exit 1; }
 
+          BOOTSTRAP_PAGE_URL=https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev/bootstrap
+          bootstrap_page_status=$(curl --silent --dump-header /tmp/bootstrap-page.headers --output /tmp/bootstrap-page.html --write-out "%{http_code}" "$BOOTSTRAP_PAGE_URL")
+          test "$bootstrap_page_status" = "200" || { cat /tmp/bootstrap-page.html; echo "::error::Non-production bootstrap page returned HTTP $bootstrap_page_status; expected 200."; exit 1; }
+          grep -Fqi "content-type: text/html" /tmp/bootstrap-page.headers || { cat /tmp/bootstrap-page.headers; echo "::error::Bootstrap setup page did not return HTML."; exit 1; }
+          grep -Fq "Secure account setup" /tmp/bootstrap-page.html || { echo "::error::Bootstrap setup page content is missing."; exit 1; }
+
+          bootstrap_api_status=$(curl --silent --dump-header /tmp/bootstrap-api.headers --output /tmp/bootstrap-api.json --write-out "%{http_code}" -X POST "https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev/api/v1/bootstrap/first-admin" -H "Content-Type: application/json" --data '{"name":"Elvis","email":"elviskwakuboateng63@gmail.com","password":"Integration-Test-Only-Password!"}')
+          test "$bootstrap_api_status" = "404" || { cat /tmp/bootstrap-api.json; echo "::error::Bootstrap API must reject a missing token with HTTP 404; got $bootstrap_api_status."; exit 1; }
+          grep -Fqi "content-type: application/json" /tmp/bootstrap-api.headers || { cat /tmp/bootstrap-api.headers; echo "::error::Bootstrap API error response was not JSON."; exit 1; }
+          node -e 'const x=require("/tmp/bootstrap-api.json"); process.exit(x.ok===false && x.error?.code==="BOOTSTRAP_UNAVAILABLE" ? 0 : 1)' || { cat /tmp/bootstrap-api.json; echo "::error::Bootstrap API missing-token response was unexpected."; exit 1; }
+
           api_status=$(curl --silent --output /tmp/worker-me.json --write-out "%{http_code}" "$WORKER_API_URL")
           test "$api_status" = "401" || { cat /tmp/worker-me.json; echo "::error::Unauthenticated staff-context gate returned HTTP $api_status; expected 401."; exit 1; }
 
