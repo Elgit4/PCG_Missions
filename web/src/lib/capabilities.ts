@@ -51,7 +51,6 @@ export function canOpenStaffPage(
   }
   if (session.staff.account_status !== "active") return false;
   if (page === "Overview") return true;
-  if (page === "Prayer") return false;
   if (page === "Reports") {
     return hasCapability(session, "report.read.own", branchId) ||
       hasCapability(session, "report.review.branch", branchId) ||
