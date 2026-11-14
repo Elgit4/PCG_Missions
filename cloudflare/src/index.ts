@@ -6988,10 +6988,13 @@ async function revokeTeamMember(request:Request,env:Env,teamId:string,membership
   const access=await authorizeRequestCapability(request,env,"team.manage");
   if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
   const branchId=access.activeBranch.branchId,now=new Date().toISOString();
+  const existing=await env.DB.prepare("SELECT starts_at FROM staff_team_membership WHERE id=? AND team_id=? AND branch_id=? AND revoked_at IS NULL AND (ends_at IS NULL OR ends_at>?)").bind(membershipId,teamId,branchId,now).first<{starts_at:string}>();
+  if(!existing) return json(404,{ok:false,error:{code:"ACTIVE_MEMBERSHIP_NOT_FOUND"}},requestId,origin);
+  const revokedAt=new Date(Math.max(Date.now(),Date.parse(existing.starts_at))).toISOString();
   try{
     const result=await env.DB.batch([
-      env.DB.prepare("UPDATE staff_team_membership SET revoked_at=? WHERE id=? AND team_id=? AND branch_id=? AND revoked_at IS NULL AND (ends_at IS NULL OR ends_at>?)").bind(now,membershipId,teamId,branchId,now),
-      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'team_membership',?,'team.member_revoked',?,? WHERE EXISTS(SELECT 1 FROM staff_team_membership WHERE id=? AND branch_id=? AND revoked_at=?)").bind(crypto.randomUUID(),branchId,access.staff.profileId,membershipId,JSON.stringify({team_id:teamId}),now,membershipId,branchId,now),
+      env.DB.prepare("UPDATE staff_team_membership SET revoked_at=? WHERE id=? AND team_id=? AND branch_id=? AND revoked_at IS NULL AND (ends_at IS NULL OR ends_at>?)").bind(revokedAt,membershipId,teamId,branchId,now),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'team_membership',?,'team.member_revoked',?,? WHERE EXISTS(SELECT 1 FROM staff_team_membership WHERE id=? AND branch_id=? AND revoked_at=?)").bind(crypto.randomUUID(),branchId,access.staff.profileId,membershipId,JSON.stringify({team_id:teamId}),now,membershipId,branchId,revokedAt),
     ]);
     if((result[0]?.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"ACTIVE_MEMBERSHIP_NOT_FOUND"}},requestId,origin);
   }catch(error){return teamOperationError(error,requestId,origin);}
