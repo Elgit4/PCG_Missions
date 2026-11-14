@@ -1,5 +1,18 @@
 # Cloudflare migration status
 
+## Current deployment gate — 2026-11-14
+
+- Password-change PR #62 has been squash-merged into the non-production migration branch at `38fc65dd`; the migration branch is now `145b2ea7`. The production branch was not changed.
+- Signed-in staff can open the Change password dialog. The flow requires the current password, confirmation of the new password, and a 12–128 character password containing lowercase, uppercase, a number and a symbol.
+- The Worker enforces the composition policy before Better Auth handles the request; Better Auth also enforces the 12–128 length bounds. The browser client applies the same policy.
+- Local Worker/D1 acceptance passed in push workflow [43555094682](https://github.com/Elgit4/PCG_Missions/actions/runs/43555094682): weak passwords rejected, initiating session remains active after the refreshed cookie is used, other device session revoked, old password rejected and new password accepted. Worker type-check and bundle plus SQLite/security tests also passed.
+- Frontend type-check, lint, unit tests and production build passed at the UI commit `b07c418f`; the Pages deployment completed. Pages Functions are configured to proxy to the non-production Worker.
+- **Worker deployment is blocked at credential validation:** the same workflow run could not find the GitHub repository Actions secret `CLOUDFLARE_API_TOKEN`. It did not apply migrations or deploy the updated Worker. `BETTER_AUTH_SECRET` was present; the existing Pages deploy token is separate.
+- Restore `CLOUDFLARE_API_TOKEN` under the repository's Actions secrets. Scope it to this Cloudflare account and grant Workers Editor (or Workers Scripts Edit) for the existing non-production Worker plus D1 Write/Edit for the non-production migration step. Never place the token in source control or chat. Once restored, rerun the push workflow and require its remote Worker and Pages-proxy smoke checks to pass.
+- Signed-in self-service password change is implemented; forgotten-password/admin-approved reset and forced temporary-password replacement remain separate incomplete workflows. Email delivery still needs a verified sender and provider configuration.
+- Production records have not been exported or copied, and no production cutover has occurred.
+
+
 **Track:** non-production only  
 **Database jurisdiction:** EU (`eu`) — remote non-production database `pcg-missions-dev` created on 2026-11-13 (primary region `EEUR`, replication disabled)  
 **Worker:** full API Worker `pcg-missions-api-nonprod` deployed successfully on 2026-11-13 from `migration/cloudflare-nonprod-completion`; diagnostic Worker `pcg-missions-d1-smoke` remains separate. Post-deploy workflow verification passed for non-production health, D1 schema 28 and unauthenticated API denial.  
@@ -99,7 +112,7 @@ Latest verified CI run: [43514971428](https://github.com/Elgit4/PCG_Missions/act
 - Worker-level integration tests for the new event registration, capacity, cancellation replay, transport, check-in and closeout endpoints; the handlers and D1 guards are implemented but not runtime-tested.
 - Calendar and announcement CRUD/lifecycle, in-app delivery fan-out, recipient-scoped announcement inbox/read receipts, public content CRUD/publishing, church profile management, HTTPS external links and the published-only public read projection are deployed. Authenticated domain-by-domain acceptance remains outstanding.
 - Ministry report submission, branch/team review, correction/resubmission, aggregate overview, prior-period time-series comparisons and Admin/Pastor-only aggregate CSV export with append-only export audit are implemented in Worker source. Deployed Worker verification remains; migration export/import and source-to-D1 reconciliation also remain.
-- Cloudflare Pages preview binding and frontend API integration.
+- Complete authenticated browser-to-Worker acceptance after the non-production Worker deployment is updated; the Pages API proxy configuration is already committed and deployed.
 - Email provider integration for invitations and password resets. SMS remains intentionally unconfigured.
 
 ## Events, registration, transport and attendance
@@ -119,7 +132,7 @@ Latest verified CI run: [43514971428](https://github.com/Elgit4/PCG_Missions/act
 
 ## Required next steps
 
-1. Completed: the push workflow validated required secrets, reconciled migrations 0025–0028 and deployed only the non-production API Worker. Post-deploy health and unauthenticated API-gate checks passed.
+1. Restore the repository Actions secret `CLOUDFLARE_API_TOKEN` with the Workers Editor/Workers Scripts Edit and D1 Write/Edit permissions described above. The latest local Worker/D1 password acceptance run passed, but remote migrations and Worker deployment were skipped because this secret was absent.
 2. Add the real frontend origin to `BETTER_AUTH_TRUSTED_ORIGINS`, then exercise Better Auth sign-in, session refresh, sign-out, invitation acceptance/revocation and all API domains against EU D1.
 3. Add authenticated remote Worker/D1 tests for cross-branch, wrong-team, wrong-assignment, expired/revoked share, duplicate-key, capacity-race, scheduled publication and audit-failure cases.
 4. Remote schema version 28, all 28 migration ledger entries, 81 application tables and foreign-key integrity are verified. The deployed Worker health and unauthenticated API gate passed. Still verify authorization triggers, password-reset audit append-only behavior, aggregate CSV export privacy/audit and scheduled-announcement publication through authenticated Worker tests.
