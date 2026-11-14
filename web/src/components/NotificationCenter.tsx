@@ -8,6 +8,7 @@ interface NotificationCenterProps {
   onOpenAnnouncements: () => void;
   onSessionExpired: () => void;
 }
+
 function relativeTime(value: string | null): string {
   if (!value) return "Just now";
   const delta = Math.max(0, Date.now() - new Date(value).getTime());
@@ -18,6 +19,13 @@ function relativeTime(value: string | null): string {
   if (hours < 24) return `${hours}h ago`;
   return new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" }).format(new Date(value));
 }
+
+function applicationServerKey(value: string): Uint8Array {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
 export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessionExpired }: NotificationCenterProps) {
   const [items, setItems] = useState<AnnouncementInboxRecord[]>([]);
   const [open, setOpen] = useState(false);
@@ -25,6 +33,9 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
     typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported",
   );
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushError, setPushError] = useState("");
   const previousIds = useRef<Set<string>>(new Set());
   const panelRef = useRef<HTMLDivElement>(null);
   const unread = useMemo(() => items.filter((item) => !item.is_read).length, [items]);
@@ -33,7 +44,7 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
     try {
       const result = await api.listAnnouncementInbox(branchId);
       const next = result.data.announcements;
-      if (notify && previousIds.current.size) {
+      if (notify && previousIds.current.size && !pushEnabled) {
         const incoming = next.filter((item) => !previousIds.current.has(item.announcement_id));
         if (incoming.length && permission === "granted" && document.visibilityState === "hidden" && "Notification" in window) {
           const item = incoming[0];
@@ -44,7 +55,7 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
               tag: `pcg-announcement-${item.announcement_id}`,
             });
             notification.onclick = () => { window.focus(); setOpen(true); notification.close(); };
-          } catch { /* In-app inbox remains available if device notifications are unsupported. */ }
+          } catch { /* The in-app inbox remains the reliable fallback. */ }
         }
       }
       previousIds.current = new Set(next.map((item) => item.announcement_id));
@@ -52,7 +63,7 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
     } catch (error) {
       if (error instanceof CmiApiError && error.status === 401) onSessionExpired();
     }
-  }, [api, branchId, onSessionExpired, permission]);
+  }, [api, branchId, onSessionExpired, permission, pushEnabled]);
 
   useEffect(() => {
     let active = true;
@@ -61,6 +72,23 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
     const timer = window.setInterval(() => { if (active) void refresh(true); }, 20000);
     return () => { active = false; window.clearInterval(timer); };
   }, [refresh]);
+
+  useEffect(() => {
+    let active = true;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    void navigator.serviceWorker.getRegistration("/").then(async (registration) => {
+      const subscription = await registration?.pushManager.getSubscription();
+      if (!subscription) return;
+      const json = subscription.toJSON();
+      if (!json.keys?.p256dh || !json.keys.auth) return;
+      await api.savePushSubscription(branchId, {
+        endpoint: subscription.endpoint,
+        keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+      });
+      if (active) setPushEnabled(true);
+    }).catch(() => { /* A missing local subscription does not affect the in-app inbox. */ });
+    return () => { active = false; };
+  }, [api, branchId]);
 
   useEffect(() => {
     if (!open) return;
@@ -72,12 +100,45 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
   }, [open]);
 
   const enableDeviceAlerts = async () => {
-    if (!("Notification" in window)) { setPermission("unsupported"); return; }
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPermission("unsupported");
+      setPushError("This browser does not support Web Push. The in-app notification inbox will still work.");
+      return;
+    }
+    setPushBusy(true);
+    setPushError("");
     try {
       const result = await Notification.requestPermission();
       setPermission(result);
-    } catch {
-      setPermission("denied");
+      if (result !== "granted") {
+        if (result === "denied") setPushError("Notifications are blocked in browser settings. Allow them there and try again.");
+        return;
+      }
+      const keyResult = await api.getPushPublicKey(branchId);
+      const registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      await navigator.serviceWorker.ready;
+      let subscription = await registration.pushManager.getSubscription();
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: applicationServerKey(keyResult.data.public_key) as BufferSource,
+        });
+      }
+      const json = subscription.toJSON();
+      if (!json.keys?.p256dh || !json.keys.auth) throw new Error("The browser did not return valid push subscription keys.");
+      await api.savePushSubscription(branchId, {
+        endpoint: subscription.endpoint,
+        keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
+      });
+      setPushEnabled(true);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Push notifications could not be enabled.";
+      const isAppleMobile = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      setPushError(isAppleMobile
+        ? `${message} On iPhone or iPad, add PCG Missions to your Home Screen and enable notifications from the installed app.`
+        : message);
+    } finally {
+      setPushBusy(false);
     }
   };
 
@@ -118,11 +179,12 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
           )) : <div className="cmi-notification-empty"><CheckCheck size={22} /><strong>No announcements yet</strong><span>New notices from your church will appear here.</span></div>}
         </div>
         <footer>
-          <button type="button" onClick={enableDeviceAlerts} disabled={permission === "granted" || permission === "unsupported"}>
-            <Settings2 size={14} />{permission === "granted" ? "Browser alerts enabled" : permission === "denied" ? "Browser alerts blocked" : permission === "unsupported" ? "Browser alerts unavailable" : "Allow browser alerts"}
+          <button type="button" onClick={enableDeviceAlerts} disabled={pushBusy || pushEnabled || permission === "denied" || permission === "unsupported"}>
+            <Settings2 size={14} />{pushBusy ? "Enabling…" : pushEnabled ? "Mobile push enabled" : permission === "denied" ? "Push blocked in browser" : permission === "unsupported" ? "Push unavailable" : "Enable mobile push"}
           </button>
           <button type="button" onClick={() => { setOpen(false); onOpenAnnouncements(); }}>Open announcements</button>
         </footer>
+        {pushError && <p className="cmi-notification-push-error" role="status">{pushError}</p>}
       </section>}
     </div>
   );
