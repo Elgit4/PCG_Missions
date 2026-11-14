@@ -5202,13 +5202,16 @@ async function listAnnouncementInbox(
            rr.read_at,CASE WHEN rr.id IS NULL THEN 0 ELSE 1 END AS is_read
     FROM announcement_delivery d
     JOIN announcement a ON a.id=d.announcement_id
+    JOIN branch source_branch ON source_branch.id=a.branch_id AND source_branch.is_active=1
+    JOIN branch active_branch ON active_branch.id=? AND active_branch.church_id=source_branch.church_id AND active_branch.is_active=1
     LEFT JOIN announcement_read_receipt rr
       ON rr.announcement_id=a.id AND rr.staff_profile_id=d.recipient_ref
     WHERE d.channel='in_app' AND d.status='delivered'
-      AND d.recipient_ref=? AND a.branch_id=? AND a.status='published'
+      AND d.recipient_ref=? AND a.status='published'
+      AND (a.branch_id=? OR a.audience_type='staff')
     ORDER BY COALESCE(a.published_at,d.created_at) DESC,a.id DESC
     LIMIT 100
-  `).bind(context.staff.profileId,context.activeBranch.branchId).all<Record<string,unknown>>();
+  `).bind(context.activeBranch.branchId,context.staff.profileId,context.activeBranch.branchId).all<Record<string,unknown>>();
   return json(200,{ok:true,announcements:rows.results??[]},requestId,origin);
 }
 
@@ -5223,12 +5226,15 @@ async function markAnnouncementRead(
   if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
   if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
   const delivery=await env.DB.prepare(`
-    SELECT d.id FROM announcement_delivery d
+    SELECT d.id,a.branch_id FROM announcement_delivery d
     JOIN announcement a ON a.id=d.announcement_id
+    JOIN branch source_branch ON source_branch.id=a.branch_id AND source_branch.is_active=1
+    JOIN branch active_branch ON active_branch.id=? AND active_branch.church_id=source_branch.church_id AND active_branch.is_active=1
     WHERE d.announcement_id=? AND d.recipient_ref=? AND d.channel='in_app'
-      AND d.status='delivered' AND a.status='published' AND a.branch_id=?
+      AND d.status='delivered' AND a.status='published'
+      AND (a.branch_id=? OR a.audience_type='staff')
     LIMIT 1
-  `).bind(announcementId,context.staff.profileId,context.activeBranch.branchId).first<{id:string}>();
+  `).bind(context.activeBranch.branchId,announcementId,context.staff.profileId,context.activeBranch.branchId).first<{id:string;branch_id:string}>();
   if (!delivery) return json(404,{ok:false,error:{code:"ANNOUNCEMENT_NOT_IN_INBOX"}},requestId,origin);
   const now=new Date().toISOString();
   try {
@@ -5237,7 +5243,7 @@ async function markAnnouncementRead(
         (id,announcement_id,branch_id,staff_profile_id,read_by,read_at)
       VALUES (?,?,?,?,?,?)
     `).bind(
-      crypto.randomUUID(),announcementId,context.activeBranch.branchId,
+      crypto.randomUUID(),announcementId,delivery.branch_id,
       context.staff.profileId,context.staff.userId,now,
     ).run();
     if (!result.success) throw new Error("ANNOUNCEMENT_READ_RECEIPT_FAILED");
