@@ -3018,6 +3018,8 @@ async function addAreaCoverage(request:Request,env:Env,areaId:string,requestId:s
   try{await env.DB.prepare("INSERT INTO staff_area_coverage(id,staff_profile_id,service_area_id,branch_id,starts_at,created_by,created_at) VALUES(?,?,?,?,?,?,?)")
     .bind(id,staff.id,areaId,access.activeBranch.branchId,now,access.staff.profileId,now).run();}
   catch{return json(409,{ok:false,error:{code:"DUPLICATE_RECORD"}},requestId,origin);}
+  await env.DB.prepare("INSERT INTO staff_area_coverage_audit(id,branch_id,service_area_id,coverage_id,subject_profile_id,actor_profile_id,action,occurred_at) VALUES(?,?,?,?,?,?,'assigned',?)")
+    .bind(crypto.randomUUID(),access.activeBranch.branchId,areaId,id,staff.id,access.staff.profileId,now).run();
   return json(201,{ok:true,coverage_id:id,service_area_id:areaId,staff_profile_id:staff.id,starts_at:now,ends_at:null,created_at:now},requestId,origin);
 }
 
@@ -3028,6 +3030,10 @@ async function revokeAreaCoverage(request:Request,env:Env,areaId:string,coverage
   const result=await env.DB.prepare("UPDATE staff_area_coverage SET revoked_at=?,revoked_by=? WHERE id=? AND service_area_id=? AND branch_id=? AND revoked_at IS NULL")
     .bind(now,access.staff.profileId,coverageId,areaId,access.activeBranch.branchId).run();
   if(!result.success||(result.meta?.changes??0)!==1)return json(404,{ok:false,error:{code:"AREA_COVERAGE_NOT_FOUND"}},requestId,origin);
+  const subject=await env.DB.prepare("SELECT staff_profile_id FROM staff_area_coverage WHERE id=? AND service_area_id=? AND branch_id=?")
+    .bind(coverageId,areaId,access.activeBranch.branchId).first<{staff_profile_id:string}>();
+  if(subject) await env.DB.prepare("INSERT INTO staff_area_coverage_audit(id,branch_id,service_area_id,coverage_id,subject_profile_id,actor_profile_id,action,occurred_at) VALUES(?,?,?,?,?,?,'revoked',?)")
+    .bind(crypto.randomUUID(),access.activeBranch.branchId,areaId,coverageId,subject.staff_profile_id,access.staff.profileId,now).run();
   return json(200,{ok:true,coverage_id:coverageId,revoked_at:now},requestId,origin);
 }
 
