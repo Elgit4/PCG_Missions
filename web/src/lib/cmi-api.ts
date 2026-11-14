@@ -509,6 +509,34 @@ export interface PrayerRequestRecord {
   updated_at: string;
 }
 
+export interface CareRecordMetadata {
+  id: string;
+  status: "open" | "active" | "monitoring" | "resolved" | "closed";
+  care_group_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CareInteractionRecord {
+  id: string;
+  interaction_type: "call" | "visit" | "meeting" | "other";
+  outcome_code: string | null;
+  restricted_note: string | null;
+  occurred_at: string;
+}
+
+export interface CareRecordDetail {
+  record: {
+    id: string;
+    branch_id: string;
+    status: CareRecordMetadata["status"];
+    reviewed_at: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  interactions: CareInteractionRecord[];
+}
+
 export class CmiApiClient {
   private readonly baseUrl: string;
 
@@ -955,8 +983,15 @@ export class CmiApiClient {
       method: "POST", body: { branch_id: branchId, access_mode: accessMode, ...(reasonCode ? { reason_code: reasonCode } : {}) },
     });
   }
+  listCareRecords(branchId: string, limit = 25, offset = 0) {
+    return this.request<{ data: CareRecordMetadata[]; access_mode: "assigned" | "oversight"; request_id: string }>(
+      "pastoral-operations",
+      "/care/records",
+      { method: "GET", query: { branch_id: branchId, limit, offset } },
+    );
+  }
   readCareRecord(branchId: string, recordId: string, accessMode: "assigned" | "oversight", reasonCode?: string) {
-    return this.request<unknown>("pastoral-operations", `/care/records/${encodeURIComponent(recordId)}/read`, {
+    return this.request<CareRecordDetail>("pastoral-operations", `/care/records/${encodeURIComponent(recordId)}/read`, {
       method: "POST", body: { branch_id: branchId, access_mode: accessMode, ...(reasonCode ? { reason_code: reasonCode } : {}) },
     });
   }
