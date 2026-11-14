@@ -1,11 +1,47 @@
 import {
   isUuid,
+  parsePastoralListQuery,
   parsePastoralReadInput,
   parsePastoralReadPath,
 } from "./validation.ts";
 
 const BRANCH_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101";
 const RECORD_ID = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba301";
+
+Deno.test("accepts valid pastoral inbox pagination defaults and bounds", () => {
+  const defaults = parsePastoralListQuery(new URLSearchParams({
+    branch_id: BRANCH_ID,
+  }));
+  const bounded = parsePastoralListQuery(new URLSearchParams({
+    branch_id: BRANCH_ID,
+    limit: "50",
+    offset: "5000",
+  }));
+  if (
+    !defaults.ok || defaults.value.limit !== 25 ||
+    defaults.value.offset !== 0 ||
+    !bounded.ok || bounded.value.limit !== 50 ||
+    bounded.value.offset !== 5000
+  ) {
+    throw new Error("Valid pastoral inbox pagination was rejected.");
+  }
+});
+
+Deno.test("rejects malformed, duplicate and unsupported pastoral inbox query values", () => {
+  const invalid = [
+    new URLSearchParams({ branch_id: "bad" }),
+    new URLSearchParams({ branch_id: BRANCH_ID, limit: "0" }),
+    new URLSearchParams({ branch_id: BRANCH_ID, limit: "51" }),
+    new URLSearchParams({ branch_id: BRANCH_ID, limit: "1e2" }),
+    new URLSearchParams({ branch_id: BRANCH_ID, offset: "-1" }),
+    new URLSearchParams({ branch_id: BRANCH_ID, offset: "5001" }),
+    new URLSearchParams("branch_id=" + BRANCH_ID + "&branch_id=" + BRANCH_ID),
+    new URLSearchParams({ branch_id: BRANCH_ID, include_narrative: "true" }),
+  ];
+  if (invalid.some((query) => parsePastoralListQuery(query).ok)) {
+    throw new Error("An invalid pastoral inbox query was accepted.");
+  }
+});
 
 Deno.test("accepts canonical UUIDs and rejects malformed values", () => {
   if (!isUuid(BRANCH_ID) || isUuid("branch-1")) {
