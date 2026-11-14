@@ -1,5 +1,13 @@
 # Cloudflare migration status
 
+## Team and service-area administration — implementation update (2026-11-14)
+
+- Ported the branch-scoped Teams & Service Areas workspace API to the Cloudflare Worker: team create/update/deactivate/reactivate; add/change-role/revoke membership; service-area create/update/deactivate/reactivate; add/revoke staff coverage; and scoped listing.
+- Mutations use the authenticated Better Auth session, server-derived staff profile, selected branch and the relevant `team.manage` / `area.manage` capability. Member names and coverage names are returned only when the actor has branch-scoped `staff.directory.read`.
+- Added append-only `team_management_audit` records. Migration `0031_team_area_administration_guards.sql` adds database guards for active branch/team/area, active staff membership, Team Leader role requirements, no deactivation while assignments remain, and immutable audit history.
+- Added SQLite guard tests and Worker API contract tests, plus unauthenticated integration checks for team and service-area routes. The browser adapter no longer hard-blocks the team module with HTTP 501.
+- The migration branch now targets schema 31. The remote EU D1 database remains schema 28 until the R2 provisioning preflight succeeds and the deployment workflow applies migrations 0030–0031. No authenticated browser acceptance is claimed until an approved first Admin exists.
+
 ## Event flyer media — current non-production gate (2026-11-14)
 
 - Migration branch now contains migration `0030_event_flyer_media.sql`, the `EVENT_MEDIA` R2 binding, and the event upload/read handlers. Each event draft in the Operations workspace requires a PNG, JPEG or WebP flyer (16 bytes–5 MB); the Worker checks the actual file signature and MIME type, writes to a branch/event-scoped private object key, and only allows authorized staff to read it. Event publishing fails closed unless a flyer exists.
