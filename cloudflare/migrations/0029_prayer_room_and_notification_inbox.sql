@@ -72,3 +72,31 @@ BEGIN SELECT RAISE(ABORT,'PRAYER_ROOM_AUDIT_APPEND_ONLY'); END;
 
 UPDATE app_meta SET schema_version=29
 WHERE id=1 AND environment='non-production' AND schema_version=28;
+
+
+-- Church-wide staff announcements may be delivered to a recipient in another
+-- active branch of the same church. Their read receipt remains anchored to the
+-- announcement's source branch, while authorization is checked against the
+-- recipient's own active branch membership in that same church.
+DROP TRIGGER IF EXISTS announcement_read_receipt_authorize_insert;
+CREATE TRIGGER announcement_read_receipt_authorize_insert
+BEFORE INSERT ON announcement_read_receipt
+BEGIN
+ SELECT CASE WHEN NOT EXISTS (
+  SELECT 1
+  FROM announcement a
+  JOIN branch source_branch ON source_branch.id=a.branch_id AND source_branch.is_active=1
+  JOIN staff_profile reader ON reader.id=NEW.staff_profile_id
+   AND reader.auth_user_id=NEW.read_by AND reader.account_status='active'
+  JOIN announcement_delivery d ON d.announcement_id=a.id
+   AND d.recipient_ref=reader.id AND d.channel='in_app' AND d.status='delivered'
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=reader.id
+  JOIN branch reader_branch ON reader_branch.id=ra.branch_id
+   AND reader_branch.church_id=source_branch.church_id AND reader_branch.is_active=1
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  WHERE a.id=NEW.announcement_id AND a.branch_id=NEW.branch_id AND a.status='published'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.read_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.read_at)
+   AND (a.audience_type='staff' OR ra.branch_id=a.branch_id)
+ ) THEN RAISE(ABORT,'ANNOUNCEMENT_READ_NOT_AUTHORIZED') END;
+END;
