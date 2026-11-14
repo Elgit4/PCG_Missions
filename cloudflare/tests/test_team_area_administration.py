@@ -97,7 +97,11 @@ class TeamAreaAdministrationGuardTests(unittest.TestCase):
         self.db.execute("""INSERT INTO staff_area_coverage
             (id,staff_profile_id,service_area_id,branch_id,starts_at,created_by,created_at)
             VALUES('cov-future','sp1','a1','b1',?,'sp1',?)""",(future,NOW))
+        with self.assertRaisesRegex(sqlite3.IntegrityError,"AREA_COVERAGE_REVOCATION_ACTOR_REQUIRED"):
+            self.db.execute("UPDATE staff_area_coverage SET revoked_at=? WHERE id='cov-future'",(NOW,))
         self.db.execute("UPDATE staff_area_coverage SET revoked_at=?,revoked_by='sp1' WHERE id='cov-future'",(NOW,))
+        with self.assertRaisesRegex(sqlite3.IntegrityError,"AREA_COVERAGE_REVOCATION_IMMUTABLE"):
+            self.db.execute("UPDATE staff_area_coverage SET revoked_at=NULL,revoked_by=NULL WHERE id='cov-future'")
         self.db.execute("UPDATE service_area SET is_active=0 WHERE id='a1'")
         self.assertEqual(self.db.execute("SELECT revoked_at FROM staff_area_coverage WHERE id='cov-future'").fetchone()[0],NOW)
 
