@@ -84,6 +84,9 @@ export interface EventDraftRecord {
   registration_state: "closed";
   created_at: string;
   updated_at: string;
+  flyer_url: string | null;
+  flyer_content_type?: string | null;
+  flyer_size?: number | null;
 }
 export interface EventDraftCreateInput {
   branch_id: string;
@@ -794,7 +797,18 @@ export class CmiApiClient {
     });
   }
   createEventDraft(input: EventDraftCreateInput) {
-    return this.request<EventDraftRecord>("event-operations", "/events", { method: "POST", body: input });
+    return this.request<{event:EventDraftRecord}>("event-operations", "/events", { method: "POST", body: input });
+  }
+  uploadEventFlyer(branchId:string,eventId:string,file:File) {
+    const url=new URL(this.workerPath("event-operations","/events/"+encodeURIComponent(eventId)+"/flyer"),this.baseUrl);
+    const headers=new Headers({Accept:"application/json","X-Branch-Id":branchId});
+    const form=new FormData(); form.set("file",file);
+    return this.send(url,{method:"POST",headers,body:form,cache:"no-store"}).then(async response=>{
+      const payload=parseJson(await response.text()) as (ApiEnvelope<{flyer_url:string}> & ApiErrorBody & Record<string,unknown>)|null;
+      if(!response.ok||payload?.ok===false||payload?.error) throw new CmiApiError(response.status||500,payload?.error?.code??"EVENT_FLYER_UPLOAD_FAILED",payload?.error?.message??"The event image could not be uploaded.",payload?.request_id??response.headers.get("X-Request-Id"));
+      if(!payload||typeof payload!=="object") throw new CmiApiError(502,"INVALID_RESPONSE","The server returned an unexpected response.",null);
+      return {data:("data" in payload?payload.data:payload) as {flyer_url:string},request_id:payload.request_id??"worker-request"};
+    });
   }
   updateEventDraft(branchId: string, eventId: string, input: EventDraftPatchInput) {
     return this.request<EventDraftRecord>("event-operations", "/events/" + encodeURIComponent(eventId), {
