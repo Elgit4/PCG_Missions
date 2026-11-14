@@ -66,6 +66,16 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
   }, [api, branchId, onSessionExpired, permission, pushEnabled]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("notifications") === "1") {
+      setOpen(true);
+      params.delete("notifications");
+      const query = params.toString();
+      window.history.replaceState({}, "", window.location.pathname + (query ? "?" + query : "") + window.location.hash);
+    }
+  }, []);
+
+  useEffect(() => {
     let active = true;
     setLoading(true);
     void refresh(false).finally(() => { if (active) setLoading(false); });
