@@ -4964,8 +4964,8 @@ async function createCalendarSeries(request:Request,env:Env,requestId:string,ori
   ];
   try {
     const results=await env.DB.batch(statements);
-    if(results.some(result=>!result.success)||(results[0]?.meta?.changes??0)!==1||
-       results.slice(1).some(result=>(result.meta?.changes??0)!==1)) throw new Error("CALENDAR_SERIES_CREATE_FAILED");
+    if(results.some(result=>!result.success)||(results[0]?.meta?.changes??0)<1||
+       results.slice(1).some(result=>(result.meta?.changes??0)<1)) throw new Error("CALENDAR_SERIES_CREATE_FAILED");
   } catch { return json(409,{ok:false,error:{code:"CALENDAR_SERIES_CREATE_CONFLICT"}},requestId,origin); }
   return json(201,{ok:true,series_id:seriesId,occurrence_count:occurrenceStarts.length},requestId,origin);
 }
@@ -4980,6 +4980,9 @@ async function cancelCalendarSeries(request:Request,env:Env,seriesId:string,requ
   if(!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some(k=>k!=="reason")||
      reason.length<10||reason.length>300) return json(400,{ok:false,error:{code:"CALENDAR_SERIES_CANCELLATION_REASON_REQUIRED"}},requestId,origin);
   const now=new Date().toISOString();
+  const futureRows=await env.DB.prepare("SELECT COUNT(*) AS count FROM calendar_entry WHERE series_id=? AND branch_id=? AND status='active' AND starts_at>=?")
+    .bind(seriesId,access.activeBranch.branchId,now).first<{count:number}>();
+  const futureCount=Number(futureRows?.count??0);
   try {
     const results=await env.DB.batch([
       env.DB.prepare(`
@@ -4993,10 +4996,10 @@ async function cancelCalendarSeries(request:Request,env:Env,seriesId:string,requ
         WHERE series_id=? AND branch_id=? AND status='active' AND starts_at>=?
       `).bind(now,access.staff.userId,reason,access.staff.userId,now,seriesId,access.activeBranch.branchId,now),
     ]);
-    if(!results[0]?.success||(results[0].meta?.changes??0)!==1||!results[1]?.success) {
+    if(!results[0]?.success||(results[0].meta?.changes??0)<1||!results[1]?.success) {
       return json(409,{ok:false,error:{code:"CALENDAR_SERIES_NOT_CANCELLABLE"}},requestId,origin);
     }
-    return json(200,{ok:true,series_id:seriesId,status:"cancelled",future_occurrences_cancelled:results[1].meta?.changes??0},requestId,origin);
+    return json(200,{ok:true,series_id:seriesId,status:"cancelled",future_occurrences_cancelled:futureCount},requestId,origin);
   } catch { return json(409,{ok:false,error:{code:"CALENDAR_SERIES_CANCELLATION_CONFLICT"}},requestId,origin); }
 }
 
@@ -5064,7 +5067,7 @@ async function createCalendarEntry(
       timezone, scopeType, teamId, eventId, ownerUserId,
       access.staff.userId, access.staff.userId, now, now,
     ).run();
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error("CALENDAR_CREATE_FAILED");
+    if (!result.success || (result.meta?.changes ?? 0) < 1) throw new Error("CALENDAR_CREATE_FAILED");
   } catch {
     return json(409, { ok: false, error: { code: "CALENDAR_CREATE_CONFLICT" } }, requestId, origin);
   }
@@ -5098,7 +5101,7 @@ async function cancelCalendarEntry(
     WHERE id=? AND branch_id=? AND status='active'
   `).bind(now,access.staff.userId,reason,access.staff.userId,now,entryId,access.activeBranch.branchId).run();
   if (!result.success) return json(503, { ok: false, error: { code: "CALENDAR_CANCELLATION_FAILED" } }, requestId, origin);
-  if ((result.meta?.changes ?? 0) !== 1) return json(404, { ok: false, error: { code: "ACTIVE_CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
+  if ((result.meta?.changes ?? 0) < 1) return json(404, { ok: false, error: { code: "ACTIVE_CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
   return json(200, { ok: true, entry_id: entryId, status: "cancelled", cancelled_at: now }, requestId, origin);
 }
 
@@ -5192,7 +5195,7 @@ async function updateCalendarEntry(
       UPDATE calendar_entry SET ${assignments.join(",")}
       WHERE id=? AND branch_id=? AND status='active'
     `).bind(...values, entryId, access.activeBranch.branchId).run();
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "CALENDAR_ENTRY_CHANGED" } }, requestId, origin);
+    if (!result.success || (result.meta?.changes ?? 0) < 1) return json(409, { ok: false, error: { code: "CALENDAR_ENTRY_CHANGED" } }, requestId, origin);
   } catch {
     return json(409, { ok: false, error: { code: "CALENDAR_UPDATE_CONFLICT" } }, requestId, origin);
   }
