@@ -2,7 +2,7 @@ import { spawn, execFileSync } from "node:child_process";
 import { readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { hashPassword } from "better-auth/crypto";
+import { hash as bcryptHash } from "bcryptjs";
 
 const port = 8787;
 const baseUrl = "http://127.0.0.1:" + port;
@@ -13,7 +13,8 @@ const bootstrapToken = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).t
 const testEmail = "cloudflare-worker-test@example.test";
 const testUserId = "cloudflare-worker-test-user";
 const testPassword = "Worker-Test-" + crypto.randomUUID() + "-Password!";
-const passwordHash = await hashPassword(testPassword);
+// Supabase GoTrue uses bcrypt ($2a$, cost 10); exercise that exact legacy format.
+const passwordHash = await bcryptHash(testPassword, 10);
 const env = {
   ...process.env,
   APP_ENV: "non-production",
