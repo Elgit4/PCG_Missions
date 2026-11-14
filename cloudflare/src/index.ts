@@ -2939,10 +2939,14 @@ async function revokeTeamMember(request:Request,env:Env,teamId:string,membership
   const access=await authorizeRequestCapability(request,env,"team.manage");
   if(access.state!=="authorized")return mapCapabilityFailure(access.state,requestId,origin);
   const now=new Date().toISOString();
-  const result=await env.DB.prepare("UPDATE staff_team_membership SET revoked_at=? WHERE id=? AND team_id=? AND branch_id=? AND revoked_at IS NULL AND starts_at<=?")
-    .bind(now,membershipId,teamId,access.activeBranch.branchId,now).run();
-  if(!result.success||(result.meta?.changes??0)!==1)return json(404,{ok:false,error:{code:"TEAM_MEMBERSHIP_NOT_FOUND"}},requestId,origin);
-  return json(200,{ok:true,membership_id:membershipId,revoked_at:now},requestId,origin);
+  const membership=await env.DB.prepare("SELECT starts_at FROM staff_team_membership WHERE id=? AND team_id=? AND branch_id=? AND revoked_at IS NULL")
+    .bind(membershipId,teamId,access.activeBranch.branchId).first<{starts_at:string}>();
+  if(!membership)return json(404,{ok:false,error:{code:"TEAM_MEMBERSHIP_NOT_FOUND"}},requestId,origin);
+  const revokedAt=now<membership.starts_at?membership.starts_at:now;
+  const result=await env.DB.prepare("UPDATE staff_team_membership SET revoked_at=? WHERE id=? AND team_id=? AND branch_id=? AND revoked_at IS NULL")
+    .bind(revokedAt,membershipId,teamId,access.activeBranch.branchId).run();
+  if(!result.success||(result.meta?.changes??0)!==1)return json(409,{ok:false,error:{code:"TEAM_MEMBERSHIP_CHANGED"}},requestId,origin);
+  return json(200,{ok:true,membership_id:membershipId,revoked_at:revokedAt},requestId,origin);
 }
 
 async function listServiceAreas(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
