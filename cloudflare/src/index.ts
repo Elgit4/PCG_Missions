@@ -3603,11 +3603,9 @@ async function createEvent(
       timezone, location, capacity, transportEnabled ? 1 : 0,
       access.staff.userId, access.staff.userId, now, now,
     ).run();
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error(JSON.stringify({success:result.success,changes:result.meta?.changes,error:(result as unknown as {error?:unknown}).error,meta:result.meta}));
-  } catch (error) {
-    const detail=error instanceof Error?error.message:"unknown";
-    console.error("event_create_conflict", { requestId, detail });
-    return json(409, { ok: false, error: { code: "EVENT_CREATE_CONFLICT", ...(env.APP_ENV!=="production"?{detail}: {}) } }, requestId, origin);
+    if (!result.success || (result.meta?.changes ?? 0) < 1) throw new Error("EVENT_CREATE_FAILED");
+  } catch {
+    return json(409, { ok: false, error: { code: "EVENT_CREATE_CONFLICT" } }, requestId, origin);
   }
   return json(201, {
     ok: true,
@@ -3706,7 +3704,7 @@ async function updateEvent(
       UPDATE event SET ${assignments.join(", ")}
       WHERE id = ? AND branch_id = ? AND status = 'draft'
     `).bind(...values, eventId, access.activeBranch.branchId).run();
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+    if (!result.success || (result.meta?.changes ?? 0) < 1) {
       return json(409, { ok: false, error: { code: "EVENT_CHANGED" } }, requestId, origin);
     }
   } catch {
@@ -3742,7 +3740,7 @@ async function uploadEventFlyer(request:Request,env:Env,eventId:string,requestId
     const now=new Date().toISOString();
     const updated=await env.DB.prepare("UPDATE event SET flyer_key=?,flyer_content_type=?,flyer_size=?,flyer_updated_at=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
       .bind(key,type,file.size,now,access.staff.userId,now,event.id,event.branch_id).run();
-    if(!updated.success||(updated.meta?.changes??0)!==1){await env.EVENT_MEDIA.delete(key);return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);}
+    if(!updated.success||(updated.meta?.changes??0)<1){await env.EVENT_MEDIA.delete(key);return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);}
     if(event.flyer_key) await env.EVENT_MEDIA.delete(event.flyer_key).catch(()=>undefined);
   }catch{
     await env.EVENT_MEDIA.delete(key).catch(()=>undefined);
@@ -3787,7 +3785,7 @@ async function publishEvent(
       WHERE id = ? AND branch_id = ? AND status = 'draft'
         AND length(trim(title)) >= 2 AND ends_at > starts_at AND flyer_key IS NOT NULL
     `).bind(access.staff.userId, now, eventId, access.activeBranch.branchId).run();
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+    if (!result.success || (result.meta?.changes ?? 0) < 1) {
       return json(409, { ok: false, error: { code: "EVENT_NOT_PUBLISHABLE" } }, requestId, origin);
     }
   } catch {
@@ -3849,7 +3847,7 @@ async function setEventRegistrationState(
       UPDATE event SET registration_state=?,last_modified_by=?,updated_at=?
       WHERE id=? AND branch_id=? AND status='published'
     `).bind(state,access.staff.userId,now,eventId,access.activeBranch.branchId).run();
-    if (!result.success || (result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_STATE_UNAVAILABLE"}},requestId,origin);
+    if (!result.success || (result.meta?.changes??0)<1) return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_STATE_UNAVAILABLE"}},requestId,origin);
   } catch {
     return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_STATE_UPDATE_CONFLICT"}},requestId,origin);
   }
@@ -4706,7 +4704,7 @@ async function cancelEvent(
       SET status = 'cancelled', registration_state = 'closed', last_modified_by = ?, updated_at = ?
       WHERE id = ? AND branch_id = ? AND status IN ('draft','published')
     `).bind(access.staff.userId, now, eventId, access.activeBranch.branchId).run();
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+    if (!result.success || (result.meta?.changes ?? 0) < 1) {
       return json(409, { ok: false, error: { code: "EVENT_NOT_CANCELLABLE" } }, requestId, origin);
     }
   } catch {
