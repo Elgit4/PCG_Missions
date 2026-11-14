@@ -370,6 +370,33 @@ try {
   assert(fallEntries.map(entry=>entry.starts_at).join(",")==="2027-11-06T05:30:00.000Z,2027-11-07T05:30:00.000Z,2027-11-08T06:30:00.000Z",
     "ambiguous fall-back times must resolve deterministically and remain strictly increasing");
 
+  for (const series of [springSeries,fallSeries]) {
+    const cancelSeries=await fetch(baseUrl+"/api/v1/calendar/series/"+encodeURIComponent(series.series_id)+"/cancel",{
+      method:"POST",headers:calendarHeaders,body:JSON.stringify({reason:"Automated DST recurrence integration cleanup"}),
+    });
+    const cancelledSeries=await cancelSeries.json();
+    assert(cancelSeries.status===200&&cancelledSeries.future_occurrences_cancelled===3,
+      "series cancellation should audit and cancel all future occurrences: "+JSON.stringify(cancelledSeries));
+  }
+
+  const calendarEntryResponse=await fetch(baseUrl+"/api/v1/calendar",{
+    method:"POST",headers:calendarHeaders,body:JSON.stringify({
+      entry_type:"service",title:"Calendar Entry Integration",starts_at:"2027-02-01T10:00:00.000Z",
+      ends_at:"2027-02-01T11:00:00.000Z",timezone:"Africa/Accra",scope_type:"branch",
+    }),
+  });
+  const calendarEntry=await calendarEntryResponse.json();
+  assert(calendarEntryResponse.status===201&&calendarEntry.entry_id,
+    "branch manager should create a calendar entry: "+JSON.stringify(calendarEntry));
+  const updateCalendarEntry=await fetch(baseUrl+"/api/v1/calendar/"+encodeURIComponent(calendarEntry.entry_id),{
+    method:"PATCH",headers:calendarHeaders,body:JSON.stringify({title:"Updated Calendar Entry Integration"}),
+  });
+  assert(updateCalendarEntry.status===200,"calendar entry update failed: "+await updateCalendarEntry.text());
+  const cancelCalendarEntry=await fetch(baseUrl+"/api/v1/calendar/"+encodeURIComponent(calendarEntry.entry_id)+"/cancel",{
+    method:"POST",headers:calendarHeaders,body:JSON.stringify({reason:"Automated calendar entry integration cleanup"}),
+  });
+  assert(cancelCalendarEntry.status===200,"calendar entry cancellation failed: "+await cancelCalendarEntry.text());
+
   const teamQuery="?branch_id=00000000-0000-4000-8000-000000000001";
   const adminBranchHeaders={Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001","Content-Type":"application/json"};
   const createTeamResponse=await fetch(baseUrl+"/api/v1/teams"+teamQuery,{
