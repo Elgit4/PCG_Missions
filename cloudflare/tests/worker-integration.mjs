@@ -288,6 +288,8 @@ try {
     "/api/v1/pastoral/care",
     "/api/v1/events",
     "/api/v1/events/test-event/flyer",
+    "/api/v1/teams",
+    "/api/v1/areas",
     "/api/v1/calendar",
     "/api/v1/announcements",
     "/api/v1/reports",
@@ -316,6 +318,17 @@ try {
   });
   assert(protectedFlyerUpload.status === 401,
     "unauthenticated event flyer upload must be rejected before parsing or storing media, got " + protectedFlyerUpload.status);
+
+  const protectedTeamCreates = [
+    ["/api/v1/teams", { branch_id:"00000000-0000-4000-8000-000000000001", name:"Test team", description:null }],
+    ["/api/v1/areas", { branch_id:"00000000-0000-4000-8000-000000000001", name:"Test area", code:null }],
+  ];
+  for (const [route, body] of protectedTeamCreates) {
+    const response = await fetch(baseUrl + route, {
+      method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body),
+    });
+    assert(response.status===401,"unauthenticated team/service-area create must return 401 for "+route+", got "+response.status);
+  }
 
   const protectedPosts = [
     ["/api/v1/calendar/series", { title:"Weekly service", entry_type:"service", starts_at:"2026-11-16T10:00:00.000Z", timezone:"Africa/Accra", scope_type:"branch", recurrence:{frequency:"weekly",interval:1,count:4} }],
