@@ -1,50 +1,63 @@
-# Deploy PCG Missions to Cloudflare Pages
+# PCG Missions frontend — Cloudflare Worker integration
 
-The web client is a Vite application and the repository includes a Cloudflare Pages Function for the same-origin authentication proxy. Keep the existing Supabase project, database, Edge Functions, and access policies; this deployment changes only the frontend hosting layer.
+The staff portal now uses the Cloudflare API Worker and Better Auth cookie sessions. The browser no longer requires Supabase project credentials or a Supabase access token.
 
-## Cloudflare Pages project
+## Request architecture
 
-Connect the GitHub repository `Elgit4/PCG_Missions` and use:
+- Browser → same-origin `/api/auth/*` → Better Auth on the non-production Cloudflare Worker.
+- Browser → same-origin `/api/v1/*` → Cloudflare Worker API.
+- Cloudflare Pages Functions forward requests to the same-origin Cloudflare API Worker.
+- Authentication is an HttpOnly cookie. The frontend does not read, persist or send bearer tokens.
+- The Worker remains the authorization boundary. The selected branch is sent as `X-Branch-Id` and validated against active role assignments by the Worker.
 
-| Setting | Value |
-| --- | --- |
-| Production branch | `main` |
-| Root directory | `web` |
-| Build command | `npm run build` |
-| Build output directory | `dist` |
-| Node.js version | `22` (from `.node-version`) |
+## Preview hosting configuration
 
-The `web/wrangler.toml` file declares the Pages project name, compatibility date, and build output directory. The `web/functions/api/auth.ts` file is deployed automatically as the `/api/auth` Pages Function. The `web/public/_redirects` file provides a single-page-app fallback for React routes. The `web/public/_routes.json` file limits Function execution to `/api/auth`, so ordinary static page and asset requests do not invoke the auth proxy.
+For Cloudflare Pages Preview and Production, set this **server-side runtime variable** under Pages → Settings → Environment variables. It is a Pages Function runtime variable, not a `VITE_` build variable:
 
-## Environment variables
+- `PCG_MISSIONS_API_ORIGIN=https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev`
 
-Set the following **build-time** variables in Cloudflare Pages → Settings → Environment variables, for both Production and Preview as appropriate:
+For the Cloudflare Worker, configure:
 
-- `VITE_SUPABASE_URL`: the existing Supabase project URL.
-- `VITE_SUPABASE_PUBLISHABLE_KEY`: the Supabase publishable key (or legacy anon key if that is what the project currently uses).
+- `BETTER_AUTH_SECRET`: a unique random secret of at least 32 characters, stored as a Worker secret.
+- `BETTER_AUTH_TRUSTED_ORIGINS`: comma-separated exact origins for the Worker and the deployed frontend preview origin(s).
+- `RESEND_API_KEY` and `EMAIL_FROM`: only after the sending domain has been verified and the provider credentials have been securely configured.
 
-Also set these **Pages Function runtime** variables for Production and Preview:
+The non-production Worker trusts its own workers.dev origin and the Cloudflare Pages non-production origin `https://pcg-missions-nonprod.pages.dev`. Do not guess or use wildcard origins. Never commit secrets or put them in `VITE_` variables.
 
-- `SUPABASE_URL`: the same Supabase project URL.
-- `SUPABASE_PUBLISHABLE_KEY`: the same Supabase publishable key.
+## Local development
 
-The function accepts the `VITE_` names as a fallback, but using the unprefixed runtime names keeps server-side configuration separate from the browser build. These are public project connection values, not service-role credentials.
+1. Start the Worker locally from `cloudflare/` using Wrangler and a non-production/local D1 database.
+2. Start the web client from `web/` using `npm run dev`.
+3. Vite proxies `/api/*` to `http://127.0.0.1:8787` by default. Override with `CMI_DEV_API_ORIGIN` when needed.
+4. Configure the local Worker trusted origins to include the exact Vite origin, normally `http://localhost:5173`.
 
-**Never add** a Supabase service-role key, database password, SMS provider secret, webhook secret, or HMAC secret to a `VITE_` variable. Do not commit real environment values to Git.
+Do not point local development at production D1.
 
-## Supabase and application checks
+## Automated checks
 
-Before switching the production domain:
+From `web/`:
 
-1. Deploy a Preview or `pages.dev` build and confirm the build completes.
-2. Open `/api/auth?health=1`. It should return HTTP 200 and `ok: true` when the runtime variables are correct and Supabase Auth is reachable.
-3. Test sign-in, session restoration/refresh, sign-out, staff-session loading, and password-reset request flows.
-4. Open a nested React route directly and refresh it; it should return the application rather than a host-level 404.
-5. Verify the browser console and Network panel for failed API calls, CORS errors, or missing assets.
-6. Check Supabase Auth URL configuration and add the final Pages/custom domain to the allowed redirect URLs if the app's configured email flows require it.
+- `npm ci`
+- `npm run typecheck`
+- `npm test`
+- `npm run build`
 
-Only after these checks pass should the custom production domain be attached to Cloudflare Pages and its DNS changed. Keep the existing Vercel deployment available until the Cloudflare deployment is verified.
+The frontend CI workflow runs these checks for changes to the web client and the Cloudflare Worker.
 
-## Important runtime boundary
+## Current functional boundary
 
-The `/api/auth` Pages Function is a compatibility replacement for the existing Vercel auth proxy. Other application operations continue to call the existing Supabase Edge Functions directly. SMS provider configuration remains external and is not changed by this hosting migration.
+The initial frontend cutover includes Better Auth sign-in/session restoration/sign-out, Worker health checks, the staff-context projection, branch-scoped request headers, and route translation for the existing contacts, follow-up, reporting, event, calendar, announcement, content and pastoral API adapters.
+
+The Worker does not yet expose every legacy frontend operation. In particular, team/service-area administration, the previous administrator-approved password-reset request lifecycle, forced temporary-password replacement, and some legacy staff-account screens need dedicated Worker handlers and matching integration tests. The adapter deliberately reports these gaps rather than silently sending requests back to Supabase.
+
+## Acceptance sequence
+
+1. Deploy only a Preview frontend and the non-production Worker.
+2. Verify Worker health and the exact-origin cookie flow.
+3. Sign in with a provisioned non-production staff identity and confirm the staff context.
+4. Verify branch scoping and role/capability denials against at least two test branches and all six roles.
+5. Exercise contacts, follow-up, reports, events, calendar, announcements, public content and pastoral-care flows.
+6. Verify sign-out, expired/revoked sessions, invitation acceptance and recovery.
+7. Reconcile test records and review logs before any production cutover.
+
+Production data and live staff authentication remain outside this non-production preview integration. Cloudflare Pages is the only frontend hosting target for this migration.

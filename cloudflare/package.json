@@ -5,13 +5,16 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "dev": "wrangler dev --local"
+    "dev": "wrangler dev --local",
+    "build": "wrangler deploy --dry-run --outdir build",
+    "test:integration": "node tests/worker-integration.mjs"
   },
   "dependencies": {
-    "better-auth": "1.7.22"
+    "better-auth": "1.7.22",
+    "bcryptjs": "3.0.2"
   },
   "devDependencies": {
     "typescript": "5.9.3",
-    "wrangler": "4.46.0"
+    "wrangler": "4.162.0"
   }
 }

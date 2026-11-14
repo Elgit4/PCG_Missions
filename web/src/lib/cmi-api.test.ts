@@ -1,454 +1,166 @@
 import { describe, expect, it, vi } from "vitest";
 import { CmiApiClient } from "./cmi-api";
 
-const config = {
-  supabaseUrl: "https://example.supabase.co/",
-  publishableKey: "public-test-key",
+const mePayload = {
+  ok: true,
+  staff: {
+    userId: "auth-user-1",
+    profileId: "staff-1",
+    fullName: "Test Staff",
+    email: "staff@example.test",
+    branches: [{ id: "branch-1", name: "Main Branch", timezone: "Africa/Accra" }],
+  },
+  active_branch: {
+    branchId: "branch-1",
+    roles: ["coordinator"],
+    capabilities: [{ code: "contacts.read", scopeMode: "branch", sensitivity: "normal" }],
+  },
+  request_id: "request-me",
 };
 
-describe("CmiApiClient", () => {
-  it("does not send a staff request without an access token", async () => {
-    const fetcher = vi.fn();
-    const client = new CmiApiClient(config, async () => null, fetcher as typeof fetch);
-    await expect(client.getStaffSession()).rejects.toMatchObject({ status: 401, code: "AUTH_REQUIRED" });
-    expect(fetcher).not.toHaveBeenCalled();
-  });
-
-  it("sends the publishable key and bearer token to the staff session function", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: { staff: { account_status: "active" } }, request_id: "request-1" }),
-      { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+describe("CmiApiClient — Cloudflare Worker", () => {
+  it("loads the authenticated staff context using same-origin cookie credentials", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify(mePayload), { status: 200 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
     const result = await client.getStaffSession();
     const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(String(url)).toBe("https://example.supabase.co/functions/v1/staff-session");
-    expect(new Headers(init.headers).get("apikey")).toBe("public-test-key");
-    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
-    expect(result.request_id).toBe("request-1");
-    expect(new Headers(init.headers).has("Cache-Control")).toBe(false);
+    expect(url.pathname).toBe("/api/v1/me");
+    expect(init.credentials).toBe("include");
+    expect(result.data.staff.full_name).toBe("Test Staff");
+    expect(result.data.roles[0]?.code).toBe("coordinator");
+    expect(result.data.capabilities[0]?.code).toBe("contacts.read");
   });
 
-  it("preserves safe backend error codes and request IDs", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ error: { code: "FORBIDDEN", message: "The operation is not permitted." }, request_id: "request-403" }),
-      { status: 403 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await expect(client.getStaffSession()).rejects.toMatchObject({
-      status: 403, code: "FORBIDDEN", requestId: "request-403",
+  it("uses the selected branch as a server-validated header", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ data: [], request_id: "contacts" }), { status: 200 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.listContacts("branch-1", { limit: 10 });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/contacts");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(init.credentials).toBe("include");
+  });
+
+  it("maps legacy calendar operations to the Worker calendar resource", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ data: [], request_id: "calendar" }), { status: 200 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.listCalendarEntries("branch-1");
+    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/calendar");
+  });
+
+  it("preserves Worker authorization errors and request IDs", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: false,
+      error: { code: "CAPABILITY_DENIED", message: "Not permitted" },
+      request_id: "request-denied",
+    }), { status: 403 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await expect(client.listContacts("branch-1")).rejects.toMatchObject({
+      status: 403, code: "CAPABILITY_DENIED", requestId: "request-denied",
     });
   });
 
   it("rejects malformed successful responses", async () => {
-    const fetcher = vi.fn(async () => new Response("not-json", { status: 200 }));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await expect(client.getStaffSession()).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
+    const client = new CmiApiClient({}, async () => null, vi.fn(async (..._args: Parameters<typeof fetch>) => new Response("not-json", { status: 200 })) as typeof fetch);
+    await expect(client.listContacts("branch-1")).rejects.toMatchObject({ status: 502, code: "INVALID_RESPONSE" });
   });
-
-  it("requires HTTPS outside local development", () => {
-    expect(() => new CmiApiClient(
-      { supabaseUrl: "http://example.supabase.co", publishableKey: "key" },
-      async () => "token",
-    )).toThrow(/HTTPS/);
-  });
-
-  it("rejects task creation without exactly one assignment target", async () => {
-    const fetcher = vi.fn();
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    const common = {
-      branch_id: "branch", contact_id: "contact", client_request_id: "request",
-      priority: 2,
-    };
-    expect(() => client.createFollowUpTask({ ...common, assignee_user_id: "", team_id: "" } as never))
-      .toThrow(/Exactly one/);
-    expect(fetcher).not.toHaveBeenCalled();
-  });
-
-  it("rejects task reassignment with both targets", async () => {
-    const fetcher = vi.fn();
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    expect(() => client.reassignFollowUpTask("branch", "task", {
-      assignee_user_id: "user", team_id: "team",
-    } as never)).toThrow(/Exactly one/);
-    expect(fetcher).not.toHaveBeenCalled();
-  });
-
-  it("encodes record identifiers in API paths and always includes branch scope", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: [], request_id: "request-2" }), { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.listContacts("branch-a", { search: "Ama Mensah", limit: 10 });
+  it("maps staff account lifecycle actions to the Worker governance routes", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ data: { account_status: "inactive" }, request_id: "staff-status" }), { status: 200 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.setStaffAccountStatus("staff-2", "branch-1", "inactive", "No longer serving");
     const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.searchParams.get("branch_id")).toBe("branch-a");
-    expect(url.searchParams.get("search")).toBe("Ama Mensah");
-    expect(url.searchParams.get("limit")).toBe("10");
+    expect(url.pathname).toBe("/api/v1/staff/staff-2/deactivate");
   });
 
-  it("lists contact notes through the authenticated, branch-scoped staff API", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: [{ id: "note-1", body: "Called after service", created_at: "2026-11-12T10:00:00Z" }], request_id: "note-list" }),
-      { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    const result = await client.listContactNotes("branch-a", "contact/a");
+  it("loads recipient-scoped in-app announcement notifications", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, announcements: [{ announcement_id: "notice-1", title: "Service update", is_read: 0 }], request_id: "inbox",
+    }), { status: 200 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    const result = await client.listAnnouncementInbox("branch-1");
     const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/functions/v1/staff-operations/contacts/contact%2Fa/notes");
-    expect(url.searchParams.get("branch_id")).toBe("branch-a");
-    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
-    expect(result.data[0]?.body).toBe("Called after service");
+    expect(url.pathname).toBe("/api/v1/announcements/inbox");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(result.data.announcements[0]?.announcement_id).toBe("notice-1");
   });
 
-  it("creates only the note body and never accepts browser-supplied note visibility", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: { id: "note-2", body: "Will call tomorrow", created_at: "2026-11-12T11:00:00Z" }, request_id: "note-create" }),
-      { status: 201 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.createContactNote("branch-a", "contact-1", { body: "Will call tomorrow" });
-    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.searchParams.get("branch_id")).toBe("branch-a");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(String(init.body))).toEqual({ body: "Will call tomorrow" });
-  });
-
-  it("lists the scoped operational interaction history", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: [{ id: "interaction-1", interaction_type: "visit", occurred_at: "2026-11-12T09:00:00Z" }], request_id: "interaction-list" }),
-      { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    const result = await client.listContactInteractions("branch-a", "contact-2");
-    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/functions/v1/staff-operations/contacts/contact-2/interactions");
-    expect(url.searchParams.get("branch_id")).toBe("branch-a");
-    expect(result.data[0]?.interaction_type).toBe("visit");
-  });
-
-  it("lists event drafts through the authenticated branch-scoped function", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: [], request_id: "event-list" }), { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.listEventDrafts("branch-a", { limit: 20, offset: 40 });
-    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/functions/v1/event-operations/events");
-    expect(url.searchParams.get("branch_id")).toBe("branch-a");
-    expect(url.searchParams.get("limit")).toBe("20");
-    expect(url.searchParams.get("offset")).toBe("40");
-    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
-  });
-
-  it("creates only a private event draft payload through the server function", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: { id: "event-1" }, request_id: "event-create" }), { status: 201 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    const input = {
-      branch_id: "branch-a",
-      title: "Sunday outreach",
-      description: null,
-      starts_at: "2026-11-15T08:00:00.000Z",
-      ends_at: "2026-11-15T10:00:00.000Z",
-      timezone: "Africa/Accra",
-      location: null,
-    };
-    await client.createEventDraft(input);
-    const [, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(String(init.body))).toEqual(input);
-    expect(JSON.stringify(init.body)).not.toContain("visibility");
-  });
-
-  it("uses the calendar and announcement draft endpoints with branch scope", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: [], request_id: "draft-list" }), { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.listCalendarEntries("branch-a");
-    await client.listAnnouncementDrafts("branch-a");
-    const first = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    const second = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
-    expect(first[0].pathname).toBe("/functions/v1/calendar-operations/entries");
-    expect(first[0].searchParams.get("branch_id")).toBe("branch-a");
-    expect(second[0].pathname).toBe("/functions/v1/announcement-operations/announcements");
-    expect(second[0].searchParams.get("branch_id")).toBe("branch-a");
-  });
-
-  it("routes sermon and welcome-message drafts through the authenticated content function", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: [], request_id: "content-list" }), { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.listSermonDrafts("branch-a");
-    await client.listWelcomeMessageDrafts("branch-a");
-    const sermon = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    const welcome = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
-    expect(sermon[0].pathname).toBe("/functions/v1/content-operations/sermons");
-    expect(welcome[0].pathname).toBe("/functions/v1/content-operations/welcome-messages");
-    expect(sermon[0].searchParams.get("branch_id")).toBe("branch-a");
-    expect(welcome[0].searchParams.get("branch_id")).toBe("branch-a");
-  });
-
-  it("lists teams through the authenticated branch-scoped team function", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: { teams: [] }, request_id: "team-list" }), { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.listTeams("branch-a");
-    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/functions/v1/team-operations/teams");
-    expect(url.searchParams.get("branch_id")).toBe("branch-a");
-    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
-  });
-
-  it("creates teams with only client-editable fields", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: { id: "team-1" }, request_id: "team-create" }), { status: 201 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.createTeam({
-      branch_id: "branch-a",
-      name: "Welcome Team",
-      description: null,
+  it("keeps announcement branch scope in the validated header, not the JSON payload", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, announcement_id: "announcement-1", status: "draft", request_id: "announcement",
+    }), { status: 201 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.createAnnouncementDraft({
+      branch_id: "branch-1", title: "Service update", body: "Service begins at 9am.", audience_type: "branch",
     });
-    const [, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(init.method).toBe("POST");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/announcements");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
     expect(JSON.parse(String(init.body))).toEqual({
-      branch_id: "branch-a",
-      name: "Welcome Team",
-      description: null,
+      title: "Service update", body: "Service begins at 9am.", audience_type: "branch",
     });
   });
 
-  it("uses branch-scoped routes for membership assignment and revocation", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: { id: "membership-1" }, request_id: "membership-change" }), { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.addTeamMember("branch-a", "team-1", {
-      staff_profile_id: "staff-1",
-      membership_role: "leader",
-    });
-    await client.revokeTeamMember("branch-a", "team-1", "membership-1");
-    const add = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    const revoke = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
-    expect(add[0].pathname).toBe("/functions/v1/team-operations/teams/team-1/members");
-    expect(add[0].searchParams.get("branch_id")).toBe("branch-a");
-    expect(JSON.parse(String(add[1].body))).toEqual({
-      staff_profile_id: "staff-1",
-      membership_role: "leader",
-    });
-    expect(revoke[0].pathname).toBe("/functions/v1/team-operations/teams/team-1/members/membership-1/revoke");
-    expect(revoke[1].method).toBe("POST");
-  });
-
-  it("lists and assigns service-area coverage through the protected team function", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: { areas: [] }, request_id: "area-change" }), { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.listServiceAreas("branch-a");
-    await client.addAreaCoverage("branch-a", "area-1", { staff_profile_id: "staff-1" });
-    const list = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    const add = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
-    expect(list[0].pathname).toBe("/functions/v1/team-operations/areas");
-    expect(list[0].searchParams.get("branch_id")).toBe("branch-a");
-    expect(add[0].pathname).toBe("/functions/v1/team-operations/areas/area-1/coverage");
-    expect(add[0].searchParams.get("branch_id")).toBe("branch-a");
-    expect(JSON.parse(String(add[1].body))).toEqual({ staff_profile_id: "staff-1" });
-  });
-
-  it("records an allowlisted interaction payload", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: { id: "interaction-2", interaction_type: "call" }, request_id: "interaction-create" }),
-      { status: 201 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.createContactInteraction("branch-a", "contact-2", {
-      interaction_type: "call",
-      outcome_code: "answered",
-      summary: "Agreed to attend service.",
+  it("registers an authenticated browser push subscription for the selected branch", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, subscribed: true, request_id: "push-subscription",
+    }), { status: 201 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.savePushSubscription("branch-1", {
+      endpoint: "https://fcm.googleapis.com/fcm/send/test-subscription",
+      keys: { p256dh: "A".repeat(87), auth: "B".repeat(22) },
     });
     const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.searchParams.get("branch_id")).toBe("branch-a");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(String(init.body))).toEqual({
-      interaction_type: "call",
-      outcome_code: "answered",
-      summary: "Agreed to attend service.",
-    });
-  });
-
-
-  it("routes all private event, calendar, announcement and content draft CRUD operations", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: { id: "draft-1" }, request_id: "draft-operation" }),
-      { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-
-    await client.listEventDrafts("branch-a");
-    await client.createEventDraft({
-      branch_id: "branch-a", title: "Outreach", description: null,
-      starts_at: "2026-11-14T08:00:00.000Z", ends_at: "2026-11-14T10:00:00.000Z",
-      timezone: "Africa/Accra", location: null,
-    });
-    await client.updateEventDraft("branch-a", "event-1", { title: "Updated outreach" });
-
-    await client.listCalendarEntries("branch-a");
-    await client.createCalendarEntry({
-      branch_id: "branch-a", entry_type: "service", title: "Sunday service",
-      starts_at: "2026-11-15T09:00:00.000Z", ends_at: null,
-    });
-    await client.updateCalendarEntry("branch-a", "calendar-1", { title: "Updated service" });
-
-    await client.listAnnouncementDrafts("branch-a");
-    await client.createAnnouncementDraft({ branch_id: "branch-a", title: "Notice", body: "Service begins at 9." });
-    await client.updateAnnouncementDraft("branch-a", "announcement-1", { body: "Updated notice" });
-
-    await client.listSermonDrafts("branch-a");
-    await client.createSermonDraft({ branch_id: "branch-a", title: "Faith", body: "Sermon notes", public_slug: "faith" });
-    await client.updateSermonDraft("branch-a", "sermon-1", { title: "Faith renewed" });
-
-    await client.listWelcomeMessageDrafts("branch-a");
-    await client.createWelcomeMessageDraft({ branch_id: "branch-a", title: "Welcome", body: "Welcome to church", display_order: 1 });
-    await client.updateWelcomeMessageDraft("branch-a", "welcome-1", { display_order: 2 });
-
-    const calls = fetcher.mock.calls as unknown as Array<[URL, RequestInit]>;
-    expect(calls.map(([url, init]) => [url.pathname, init.method ?? "GET"])).toEqual([
-      ["/functions/v1/event-operations/events", "GET"],
-      ["/functions/v1/event-operations/events", "POST"],
-      ["/functions/v1/event-operations/events/event-1", "PATCH"],
-      ["/functions/v1/calendar-operations/entries", "GET"],
-      ["/functions/v1/calendar-operations/entries", "POST"],
-      ["/functions/v1/calendar-operations/entries/calendar-1", "PATCH"],
-      ["/functions/v1/announcement-operations/announcements", "GET"],
-      ["/functions/v1/announcement-operations/announcements", "POST"],
-      ["/functions/v1/announcement-operations/announcements/announcement-1", "PATCH"],
-      ["/functions/v1/content-operations/sermons", "GET"],
-      ["/functions/v1/content-operations/sermons", "POST"],
-      ["/functions/v1/content-operations/sermons/sermon-1", "PATCH"],
-      ["/functions/v1/content-operations/welcome-messages", "GET"],
-      ["/functions/v1/content-operations/welcome-messages", "POST"],
-      ["/functions/v1/content-operations/welcome-messages/welcome-1", "PATCH"],
-    ]);
-    for (const [url, init] of calls) {
-      expect(url.searchParams.get("branch_id") ?? JSON.parse(String(init.body ?? "{}")).branch_id).toBe("branch-a");
-      expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
-    }
-  });
-
-  it("lists ministry reports through the scoped report operations function", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: [], total: 0, request_id: "reports-list" }), { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.listMinistryReports("branch-a", { report_type: "weekly_ministry", limit: 10 });
-    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/functions/v1/report-operations/reports");
-    expect(url.searchParams.get("branch_id")).toBe("branch-a");
-    expect(url.searchParams.get("report_type")).toBe("weekly_ministry");
-    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
-  });
-
-  it("submits typed report counts without accepting actor or status fields", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: { id: "report-1", status: "submitted" }, request_id: "report-create" }),
-      { status: 201 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.createMinistryReport({
-      branch_id: "branch-a", report_type: "daily_evangelism",
-      period_start: "2026-11-13", period_end: "2026-11-13",
-      contacts_captured: 4, gospel_presentations: 3, decisions_for_christ: 1,
-    });
-    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/functions/v1/report-operations/reports");
-    expect(init.method).toBe("POST");
+    expect(url.pathname).toBe("/api/v1/notifications/push/subscriptions");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
     expect(JSON.parse(String(init.body))).toMatchObject({
-      branch_id: "branch-a", contacts_captured: 4, decisions_for_christ: 1,
+      endpoint: "https://fcm.googleapis.com/fcm/send/test-subscription",
+      keys: { p256dh: "A".repeat(87), auth: "B".repeat(22) },
     });
-    expect(JSON.stringify(init.body)).not.toContain("author_profile_id");
-    expect(JSON.stringify(init.body)).not.toContain("status");
   });
 
-  it("preserves the exact total count from paginated report lists", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: [], total: 73, request_id: "report-page" }),
-      { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    const result = await client.listMinistryReports("branch-a", { limit: 50, offset: 50 });
-    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/functions/v1/report-operations/reports");
-    expect(url.searchParams.get("limit")).toBe("50");
-    expect(url.searchParams.get("offset")).toBe("50");
-    expect(result.data).toEqual([]);
-    expect(result.total).toBe(73);
-  });
-
-  it("submits report reviews through the atomic review endpoint", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: { report: { id: "report-1" }, review_history: [] }, request_id: "report-review" }),
-      { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    const result = await client.reviewMinistryReport("report/1", {
-      decision: "returned",
-      comment: "Please verify the totals.",
-    });
-    expect(result.data.report.id).toBe("report-1");
-    expect(result.data.review_history).toEqual([]);
+  it("posts prayer-room messages only to the dedicated branch conversation route", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, message: { id: "message-1", body: "Praying for the team" }, request_id: "prayer-room",
+    }), { status: 201 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    const result = await client.postPrayerRoomMessage("branch-1", "Praying for the team");
     const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/functions/v1/report-operations/reports/report%2F1/review");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(String(init.body))).toEqual({ decision: "returned", comment: "Please verify the totals." });
+    expect(url.pathname).toBe("/api/v1/prayer-room/messages");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(JSON.parse(String(init.body))).toEqual({ body: "Praying for the team" });
+    expect(result.data.message.id).toBe("message-1");
   });
 
-  it("loads safe report team and event selectors", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: [], request_id: "report-options" }), { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    await client.listReportTeams("branch-a");
-    await client.listReportEvents("branch-a");
-    const team = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    const events = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
-    expect(team[0].pathname).toBe("/functions/v1/report-operations/teams");
-    expect(events[0].pathname).toBe("/functions/v1/report-operations/events");
+  it("loads branch-scoped teams from the Cloudflare Worker", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok:true,data:{teams:[]},request_id:"teams-list",
+    }),{status:200}));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    const result=await client.listTeams("branch-1");
+    const [url,init]=fetcher.mock.calls[0] as unknown as [URL,RequestInit];
+    expect(url.pathname).toBe("/api/v1/teams");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(result.data.teams).toEqual([]);
   });
 
-  it("resubmits a corrected returned report through the protected endpoint", async () => {
-    const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({
-        data: {
-          report: { id: "report-1", status: "submitted" },
-          review_history: [{
-            id: "history-1",
-            actor_profile_id: "author-1",
-            decision: "resubmitted",
-            comment: null,
-            created_at: "2026-11-13T09:00:00Z",
-          }],
-        },
-        request_id: "report-resubmit",
-      }),
-      { status: 200 },
-    ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
-    const result = await client.resubmitMinistryReport("report-1", {
-      contacts_captured: 4, gospel_presentations: 3, decisions_for_christ: 1,
-      followup_required: 2, followup_completed: 1, visits_completed: 1,
-      calls_completed: 0, events_supported: 0, attendance_count: 0,
-    });
-    expect(result.data.report.id).toBe("report-1");
-    expect(result.data.review_history[0]?.actor_profile_id).toBe("author-1");
-    expect(result.data.review_history[0]?.decision).toBe("resubmitted");
-    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/functions/v1/report-operations/reports/report-1/resubmit");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(String(init.body))).toHaveProperty("contacts_captured", 4);
+  it("sends team creation details separately from the validated branch scope", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok:true,data:{team:{id:"team-1",branch_id:"branch-1"}},request_id:"team-create",
+    }),{status:201}));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.createTeam({branch_id:"branch-1",name:"Welcome Team",description:null});
+    const [url,init]=fetcher.mock.calls[0] as unknown as [URL,RequestInit];
+    expect(url.pathname).toBe("/api/v1/teams");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(JSON.parse(String(init.body))).toEqual({name:"Welcome Team",description:null});
   });
+
 });

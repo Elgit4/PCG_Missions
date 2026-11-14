@@ -13,9 +13,19 @@ interface D1Database {
   batch(statements: D1PreparedStatement[]): Promise<Array<{ success: boolean; meta?: { changes?: number } }>>;
 }
 
+interface R2ObjectBody { body: ReadableStream; }
+interface R2Bucket {
+  put(key:string,value:ArrayBuffer|ArrayBufferView|ReadableStream,options?:{httpMetadata?:{contentType?:string;cacheControl?:string};customMetadata?:Record<string,string>}):Promise<unknown>;
+  get(key:string):Promise<R2ObjectBody|null>;
+  delete(key:string):Promise<void>;
+}
 interface Env extends Omit<StaffEnvironment, "DB"> {
   DB: D1Database;
+  EVENT_MEDIA?: R2Bucket;
   APP_ENV?: string;
+  RESEND_API_KEY?: string;
+  EMAIL_FROM?: string;
+  FIRST_ADMIN_BOOTSTRAP_TOKEN?: string;
 }
 
 function json(status: number, body: Record<string, unknown>, requestId: string, origin?: string): Response {
@@ -59,7 +69,7 @@ function authCorsHeaders(origin: string): Headers {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Branch-Id",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Branch-Id, Idempotency-Key",
     "Access-Control-Max-Age": "600",
     "Vary": "Origin",
   });
@@ -94,8 +104,49 @@ type JsonBodyResult =
   | { ok: false; status: 400 | 413 };
 
 async function readJsonBody(request: Request, maxBytes = 8192): Promise<JsonBodyResult> {
-  const raw = await request.text();
-  if (new TextEncoder().encode(raw).byteLength > maxBytes) return { ok: false, status: 413 };
+  const contentLength = request.headers.get("Content-Length");
+  if (contentLength !== null) {
+    const declaredBytes = Number(contentLength);
+    if (!Number.isSafeInteger(declaredBytes) || declaredBytes < 0) {
+      return { ok: false, status: 400 };
+    }
+    if (declaredBytes > maxBytes) return { ok: false, status: 413 };
+  }
+
+  const reader = request.body?.getReader();
+  if (!reader) return { ok: false, status: 400 };
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maxBytes) {
+        await reader.cancel("REQUEST_TOO_LARGE");
+        return { ok: false, status: 413 };
+      }
+      chunks.push(value);
+    }
+  } catch {
+    return { ok: false, status: 400 };
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  let raw: string;
+  try {
+    raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return { ok: false, status: 400 };
+  }
   try {
     return { ok: true, value: JSON.parse(raw) as unknown };
   } catch {
@@ -830,6 +881,110 @@ async function acceptStaffInvitation(
   }, requestId, origin);
 }
 
+
+const FIRST_ADMIN_EMAIL = "elviskwakuboateng63@gmail.com";
+const FIRST_ADMIN_NAME = "Elvis";
+const FIRST_ADMIN_BRANCH_ID = "victory-congregation-0001";
+const FIRST_ADMIN_CHURCH_NAME = "Presbyterian Church of Ghana";
+
+function constantTimeEqual(left: string, right: string): boolean {
+  if (left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < left.length; index++) mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return mismatch === 0;
+}
+
+
+function firstAdminBootstrapPage(): Response {
+  const html = '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="no-referrer"><title>PCG Missions | Secure setup</title><style>*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:22px;background:#f3f6f5;color:#172b25;font:16px system-ui,-apple-system,Segoe UI,sans-serif}.card{width:min(100%,440px);background:#fff;border:1px solid #e1e9e5;border-radius:18px;padding:30px;box-shadow:0 18px 50px #172b2512}.eyebrow{font-size:11px;font-weight:800;letter-spacing:.12em;color:#18734f;text-transform:uppercase;margin-bottom:12px}h1{font-size:25px;line-height:1.2;margin:0 0 10px}p{color:#66756e;line-height:1.55;margin:0 0 22px}label{display:block;font-size:13px;font-weight:700;margin:16px 0 7px}input{width:100%;border:1px solid #ccd8d1;border-radius:10px;padding:13px;font:inherit}button{width:100%;border:0;border-radius:10px;background:#174b39;color:white;padding:14px;font:inherit;font-weight:750;margin-top:22px}button:disabled{opacity:.55}.notice{font-size:13px;line-height:1.5;margin-top:16px;min-height:20px}.fine{font-size:12px;color:#829088;margin-top:20px}</style></head><body><main class="card"><div class="eyebrow">Non-production · First administrator</div><h1>Secure account setup</h1><p>Create a private password for the approved PCG Missions administrator account at Victory Congregation.</p><form id="setup"><label for="password">Create password</label><input id="password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><label for="confirm">Confirm password</label><input id="confirm" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><button id="submit" type="submit">Create administrator account</button></form><div id="notice" class="notice" role="status" aria-live="polite"></div><div class="fine">Use a unique password with at least 12 characters. This setup link is single-use.</div></main><script>(()=>{const token=new URLSearchParams(location.hash.slice(1)).get("token")||"";history.replaceState(null,"",location.pathname);const form=document.getElementById("setup"),button=document.getElementById("submit"),notice=document.getElementById("notice");if(!/^[A-Za-z0-9_-]{43}$/.test(token)){form.hidden=true;notice.textContent="This secure setup link is invalid or incomplete.";return;}form.addEventListener("submit",async event=>{event.preventDefault();const password=document.getElementById("password").value,confirm=document.getElementById("confirm").value;if(password.length<12||password.length>128){notice.textContent="Use a password between 12 and 128 characters.";return;}if(password!==confirm){notice.textContent="The passwords do not match.";return;}button.disabled=true;notice.textContent="Creating your account securely…";try{const response=await fetch("/api/v1/bootstrap/first-admin",{method:"POST",headers:{"Content-Type":"application/json","X-First-Admin-Token":token},body:JSON.stringify({name:"Elvis",email:"elviskwakuboateng63@gmail.com",password})});const responseText=await response.text();let result;try{result=JSON.parse(responseText);}catch{const contentType=response.headers.get("content-type")||"unknown content type";throw new Error("The setup service returned an unexpected response (HTTP "+response.status+", "+contentType+"). No account was created. Please contact the project administrator.");}if(!response.ok||!result.ok)throw new Error(result.error?.message||result.error?.code||"Setup could not be completed. The link may have expired or already been used.");form.hidden=true;notice.textContent="Administrator account created. You can now sign in with your email and the password you just created.";}catch(error){notice.textContent=error instanceof Error?error.message:"Setup failed. Please try again.";button.disabled=false;}});})();</script></body></html>';
+  return new Response(html, { status: 200, headers: {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": "no-store, max-age=0",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'",
+  }});
+}
+
+async function bootstrapFirstAdmin(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  if (env.APP_ENV !== "non-production" || !env.FIRST_ADMIN_BOOTSTRAP_TOKEN ||
+      env.FIRST_ADMIN_BOOTSTRAP_TOKEN.length < 40) {
+    return json(404, { ok: false, error: { code: "BOOTSTRAP_UNAVAILABLE" } }, requestId, origin);
+  }
+  if (!await applyInvitationAcceptRateLimit(request, env)) {
+    return json(429, { ok: false, error: { code: "BOOTSTRAP_RATE_LIMITED" } }, requestId, origin);
+  }
+  const suppliedToken = request.headers.get("X-First-Admin-Token") ?? "";
+  if (!/^[A-Za-z0-9_-]{43}$/.test(suppliedToken) ||
+      !constantTimeEqual(await sha256Hex(suppliedToken), await sha256Hex(env.FIRST_ADMIN_BOOTSTRAP_TOKEN))) {
+    return json(404, { ok: false, error: { code: "BOOTSTRAP_UNAVAILABLE" } }, requestId, origin);
+  }
+  const body = await readJsonBody(request, 2048);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { name?: unknown; email?: unknown; password?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !["name", "email", "password"].includes(key)) ||
+      payload.name !== FIRST_ADMIN_NAME || payload.email !== FIRST_ADMIN_EMAIL ||
+      typeof payload.password !== "string" || payload.password.length < 12 || payload.password.length > 128) {
+    return json(400, { ok: false, error: { code: "INVALID_BOOTSTRAP_CREDENTIALS" } }, requestId, origin);
+  }
+
+  const state = await env.DB.prepare(
+    "SELECT (SELECT COUNT(*) FROM \"user\") AS user_count, " +
+    "(SELECT COUNT(*) FROM staff_profile) AS profile_count, " +
+    "(SELECT remaining_slots FROM staff_admin_bootstrap_state WHERE id=1) AS remaining_slots, " +
+    "(SELECT COUNT(*) FROM church WHERE name=?) AS church_count, " +
+    "(SELECT COUNT(*) FROM branch b JOIN church c ON c.id=b.church_id " +
+    "WHERE b.id=? AND b.name='Victory Congregation' AND b.is_active=1 AND c.name=? AND c.is_active=1) AS branch_count, " +
+    "(SELECT id FROM role WHERE code='admin_pastor' AND is_active=1 LIMIT 1) AS role_id",
+  ).bind(FIRST_ADMIN_CHURCH_NAME, FIRST_ADMIN_BRANCH_ID, FIRST_ADMIN_CHURCH_NAME)
+    .first<{user_count:number;profile_count:number;remaining_slots:number|null;church_count:number;branch_count:number;role_id:string|null}>();
+  if (!state || state.user_count !== 0 || state.profile_count !== 0 ||
+      state.remaining_slots !== 2 || state.church_count !== 1 ||
+      state.branch_count !== 1 || !state.role_id) {
+    return json(409, { ok: false, error: { code: "BOOTSTRAP_PRECONDITIONS_NOT_MET" } }, requestId, origin);
+  }
+
+  let authUserId = "";
+  try {
+    const auth = createAuth(env, true);
+    const signup = await auth.api.signUpEmail({
+      body: { name: FIRST_ADMIN_NAME, email: FIRST_ADMIN_EMAIL, password: payload.password },
+    });
+    authUserId = signup.user.id;
+  } catch {
+    return json(409, { ok: false, error: { code: "BOOTSTRAP_ACCOUNT_CREATION_FAILED" } }, requestId, origin);
+  }
+
+  const profileId = crypto.randomUUID();
+  const assignmentId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO staff_profile (id,auth_user_id,full_name,email,account_status,created_at,updated_at,must_change_password,password_changed_at) " +
+        "VALUES (?,?,?,?, 'active',?,?,0,?)",
+      ).bind(profileId,authUserId,FIRST_ADMIN_NAME,FIRST_ADMIN_EMAIL,now,now,now),
+      env.DB.prepare(
+        "INSERT INTO staff_role_assignment (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,reason,created_at) " +
+        "VALUES (?,?,?,?,?,?,?,?)",
+      ).bind(assignmentId,profileId,state.role_id,FIRST_ADMIN_BRANCH_ID,profileId,now,
+        "Owner-approved first Admin/Pastor account bootstrap for Victory Congregation",now),
+    ]);
+    if (results.some((result) => !result.success) ||
+        results.some((result) => (result.meta?.changes ?? 0) !== 1)) {
+      throw new Error("FIRST_ADMIN_PROVISIONING_FAILED");
+    }
+  } catch {
+    try { await env.DB.prepare('DELETE FROM "user" WHERE id=?').bind(authUserId).run(); } catch {}
+    return json(409, { ok: false, error: { code: "BOOTSTRAP_PROVISIONING_FAILED" } }, requestId, origin);
+  }
+
+  return json(201, { ok: true, staff_profile_id: profileId, branch_id: FIRST_ADMIN_BRANCH_ID,
+    role_code: "admin_pastor", sign_in_required: true }, requestId, origin);
+}
+
 async function listStaffDirectory(
   request: Request,
   env: Env,
@@ -1111,6 +1266,7 @@ function bestScope(scopes: string[]): ContactScopeMode | null {
 function contactScopePredicate(
   mode: ContactScopeMode | null,
   alias: string,
+  staffProfileId: string,
   staffUserId: string,
   branchId: string,
   now: string,
@@ -1132,7 +1288,7 @@ function contactScopePredicate(
         AND ca.starts_at <= ?
         AND (ca.ends_at IS NULL OR ca.ends_at > ?)
     )`,
-    values: [staffUserId, now, now, now, now],
+    values: [staffProfileId, now, now, now, now],
   };
   if (mode === "assigned") return {
     sql: `EXISTS (
@@ -1207,9 +1363,9 @@ async function listContacts(
   const detailScope = bestScope(grants.filter((g) => g.code === "contacts.contact_details.read").map((g) => g.scopeMode));
   const privateScope = bestScope(grants.filter((g) => g.code === "contacts.private_fields.read").map((g) => g.scopeMode));
   const now = new Date().toISOString();
-  const readPredicate = contactScopePredicate(readScope, "c", context.staff.userId, context.activeBranch.branchId, now);
-  const detailPredicate = contactScopePredicate(detailScope, "c", context.staff.userId, context.activeBranch.branchId, now);
-  const privatePredicate = contactScopePredicate(privateScope, "c", context.staff.userId, context.activeBranch.branchId, now);
+  const readPredicate = contactScopePredicate(readScope, "c", context.staff.profileId, context.staff.userId, context.activeBranch.branchId, now);
+  const detailPredicate = contactScopePredicate(detailScope, "c", context.staff.profileId, context.staff.userId, context.activeBranch.branchId, now);
+  const privatePredicate = contactScopePredicate(privateScope, "c", context.staff.profileId, context.staff.userId, context.activeBranch.branchId, now);
   const url = new URL(request.url);
   const search = (url.searchParams.get("search") ?? "").trim().slice(0, 100);
   const status = url.searchParams.get("status") ?? "active";
@@ -1230,6 +1386,7 @@ async function listContacts(
            c.contact_status, c.created_at, c.updated_at
     FROM contact c
     WHERE c.branch_id = ?
+      AND c.contact_status <> 'merged'
       AND ${statusPredicate}
       AND (? = '%%' OR c.first_name LIKE ? OR COALESCE(c.last_name, '') LIKE ?)
       AND (${readPredicate.sql})
@@ -1404,7 +1561,7 @@ async function getContact(
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
   const scope = access.decision.scopeMode as ContactScopeMode;
   const now = new Date().toISOString();
-  const predicate = contactScopePredicate(scope, "c", access.staff.userId, access.activeBranch.branchId, now);
+  const predicate = contactScopePredicate(scope, "c", access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now);
   const details = await authorizeRequestCapability(request, env, "contacts.contact_details.read", {
     type: "contact", recordId: contactId, teamId: resource.teamId,
   });
@@ -1415,11 +1572,11 @@ async function getContact(
   const includePrivate = privateFields.state === "authorized";
   const privatePredicate = contactScopePredicate(
     includePrivate ? privateFields.decision.scopeMode as ContactScopeMode : null,
-    "c", access.staff.userId, access.activeBranch.branchId, now,
+    "c", access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now,
   );
   const detailPredicate = contactScopePredicate(
     includeDetails ? details.decision.scopeMode as ContactScopeMode : null,
-    "c", access.staff.userId, access.activeBranch.branchId, now,
+    "c", access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now,
   );
   const row = await env.DB.prepare(`
     SELECT c.id, c.first_name, c.last_name, c.preferred_name,
@@ -1519,13 +1676,13 @@ async function updateContact(
   const assignments = Object.keys(values).map((key) => `${key} = ?`);
   const now = new Date().toISOString();
   assignments.push("updated_at = ?");
-  const predicate = contactScopePredicate(access.decision.scopeMode as ContactScopeMode, "contact", access.staff.userId, access.activeBranch.branchId, now);
+  const predicate = contactScopePredicate(access.decision.scopeMode as ContactScopeMode, "contact", access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now);
   const additionalPredicates: string[] = [];
   const additionalValues: unknown[] = [];
   if (privateFieldAccess?.state === "authorized") {
     const privatePredicate = contactScopePredicate(
       privateFieldAccess.decision.scopeMode as ContactScopeMode, "contact",
-      access.staff.userId, access.activeBranch.branchId, now,
+      access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now,
     );
     additionalPredicates.push(privatePredicate.sql);
     additionalValues.push(...privatePredicate.values);
@@ -1533,7 +1690,7 @@ async function updateContact(
   if (detailFieldAccess?.state === "authorized") {
     const detailPredicate = contactScopePredicate(
       detailFieldAccess.decision.scopeMode as ContactScopeMode, "contact",
-      access.staff.userId, access.activeBranch.branchId, now,
+      access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now,
     );
     additionalPredicates.push(detailPredicate.sql);
     additionalValues.push(...detailPredicate.values);
@@ -1662,6 +1819,59 @@ async function assignContact(
   }, requestId, origin);
 }
 
+async function listContactInteractions(
+  request: Request,
+  env: Env,
+  contactId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const resource = await contactResourceContext(request, env, contactId);
+  if (!resource.ok) return resource.response;
+  const access = await authorizeRequestCapability(request, env, "contacts.read", {
+    type: "contact", recordId: contactId, teamId: resource.teamId,
+  });
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+
+  const now = new Date().toISOString();
+  const predicate = contactScopePredicate(
+    access.decision.scopeMode as ContactScopeMode,
+    "c",
+    access.staff.profileId,
+    access.staff.userId,
+    access.activeBranch.branchId,
+    now,
+  );
+  const rows = await env.DB.prepare(`
+    SELECT i.id, i.interaction_type, i.occurred_at, i.outcome_code,
+           i.summary, i.next_action_at, i.actor_user_id,
+           actor.full_name AS actor_name, i.created_at
+    FROM contact_interaction i
+    JOIN contact c ON c.id = i.contact_id AND c.branch_id = i.branch_id
+    LEFT JOIN staff_profile actor ON actor.auth_user_id = i.actor_user_id
+    WHERE i.contact_id = ? AND i.branch_id = ?
+      AND c.contact_status <> 'merged'
+      AND (${predicate.sql})
+    ORDER BY i.occurred_at DESC, i.id DESC
+    LIMIT 100
+  `).bind(
+    contactId,
+    access.activeBranch.branchId,
+    ...predicate.values,
+  ).all<{
+    id: string;
+    interaction_type: string;
+    occurred_at: string;
+    outcome_code: string | null;
+    summary: string | null;
+    next_action_at: string | null;
+    actor_user_id: string;
+    actor_name: string | null;
+    created_at: string;
+  }>();
+  return json(200, { ok: true, interactions: rows.results ?? [] }, requestId, origin);
+}
+
 async function createContactInteraction(
   request: Request,
   env: Env,
@@ -1704,7 +1914,7 @@ async function createContactInteraction(
   }
   const interactionId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const predicate = contactScopePredicate(access.decision.scopeMode as ContactScopeMode, "c", access.staff.userId, access.activeBranch.branchId, now);
+  const predicate = contactScopePredicate(access.decision.scopeMode as ContactScopeMode, "c", access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now);
   const result = await env.DB.prepare(`
     INSERT INTO contact_interaction
       (id, contact_id, branch_id, actor_user_id, interaction_type, occurred_at,
@@ -1746,7 +1956,7 @@ async function listContactNotes(
     JOIN contact c ON c.id = n.contact_id AND c.branch_id = n.branch_id
     JOIN staff_profile author ON author.auth_user_id = n.author_user_id
     WHERE n.contact_id = ? AND n.branch_id = ? AND (${contactScopePredicate(
-      access.decision.scopeMode as ContactScopeMode, "c", access.staff.userId,
+      access.decision.scopeMode as ContactScopeMode, "c", access.staff.profileId, access.staff.userId,
       access.activeBranch.branchId, now,
     ).sql})
       AND (
@@ -1770,7 +1980,7 @@ async function listContactNotes(
   `).bind(
     contactId, access.activeBranch.branchId,
     ...contactScopePredicate(
-      access.decision.scopeMode as ContactScopeMode, "c", access.staff.userId,
+      access.decision.scopeMode as ContactScopeMode, "c", access.staff.profileId, access.staff.userId,
       access.activeBranch.branchId, now,
     ).values,
     access.staff.userId, scope,
@@ -1823,7 +2033,7 @@ async function createContactNote(
   }
   const noteId = crypto.randomUUID();
   const now = new Date().toISOString();
-  const predicate = contactScopePredicate(scope as ContactScopeMode, "c", access.staff.userId, access.activeBranch.branchId, now);
+  const predicate = contactScopePredicate(scope as ContactScopeMode, "c", access.staff.profileId, access.staff.userId, access.activeBranch.branchId, now);
   const result = await env.DB.prepare(`
     INSERT INTO contact_note
       (id, contact_id, branch_id, author_user_id, body, visibility, team_id, created_at, updated_at)
@@ -2103,7 +2313,7 @@ async function createFollowupTask(
   const eventId = crypto.randomUUID();
   const digestBytes = new Uint8Array(digestHex.match(/.{2}/g)!.map((pair) => parseInt(pair, 16)));
   const contactPredicate = contactScopePredicate(
-    createScope, "c", context.staff.userId, context.activeBranch.branchId, now,
+    createScope, "c", context.staff.profileId, context.staff.userId, context.activeBranch.branchId, now,
   );
   const targetPredicate = assigneeUserId !== null
     ? `EXISTS (
@@ -2622,12 +2832,4374 @@ async function listStaffAudit(
   }, requestId, origin);
 }
 
+type EventScopeMode = "branch" | "team" | "assigned";
+
+function bestEventScope(scopes: string[]): EventScopeMode | null {
+  if (scopes.includes("branch")) return "branch";
+  if (scopes.includes("team")) return "team";
+  if (scopes.includes("assigned")) return "assigned";
+  return null;
+}
+
+function eventScopePredicate(
+  mode: EventScopeMode,
+  alias: string,
+  staffProfileId: string,
+  staffUserId: string,
+  now: string,
+): { sql: string; values: unknown[] } {
+  if (mode === "branch") return { sql: "1 = 1", values: [] };
+  if (mode === "assigned") return {
+    sql: `EXISTS (
+      SELECT 1 FROM event_staff_assignment esa
+      WHERE esa.event_id = ${alias}.id
+        AND esa.branch_id = ${alias}.branch_id
+        AND esa.staff_auth_user_id = ?
+        AND esa.revoked_at IS NULL
+        AND esa.starts_at <= ?
+        AND (esa.ends_at IS NULL OR esa.ends_at > ?)
+    )`,
+    values: [staffUserId, now, now],
+  };
+  return {
+    sql: `EXISTS (
+      SELECT 1
+      FROM event_team_assignment eta
+      JOIN staff_team_membership tm
+        ON tm.team_id = eta.team_id AND tm.branch_id = eta.branch_id
+      WHERE eta.event_id = ${alias}.id
+        AND eta.branch_id = ${alias}.branch_id
+        AND tm.staff_profile_id = ?
+        AND eta.revoked_at IS NULL
+        AND eta.starts_at <= ?
+        AND (eta.ends_at IS NULL OR eta.ends_at > ?)
+        AND tm.revoked_at IS NULL
+        AND tm.starts_at <= ?
+        AND (tm.ends_at IS NULL OR tm.ends_at > ?)
+    )`,
+    values: [staffProfileId, now, now, now, now],
+  };
+}
+
+function isValidTimezone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const REPORT_COUNT_FIELDS = [
+  "contacts_captured","gospel_presentations","decisions_for_christ",
+  "followup_required","followup_completed","visits_completed",
+  "calls_completed","events_supported","attendance_count",
+] as const;
+type ReportCountField = typeof REPORT_COUNT_FIELDS[number];
+type ReportType = "daily_evangelism" | "event_evangelism" | "weekly_ministry";
+type ReportCounts = Record<ReportCountField,number>;
+type ParsedReportCreate = {
+  branch_id:string;report_type:ReportType;period_start:string;period_end:string;
+  team_id:string|null;event_id:string|null;
+} & ReportCounts;
+
+function isUuidValue(value: unknown): value is string {
+  return typeof value==="string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isPlainRecord(value: unknown): value is Record<string,unknown> {
+  return value!==null && typeof value==="object" && !Array.isArray(value);
+}
+
+function isReportDate(value: unknown): value is string {
+  if (typeof value!=="string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed=new Date(value+"T00:00:00.000Z");
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0,10)===value;
+}
+
+function parseReportCounts(value:Record<string,unknown>,allowDefaults:boolean):{ok:true;counts:ReportCounts}|{ok:false;error:string} {
+  const counts={} as ReportCounts;
+  for (const field of REPORT_COUNT_FIELDS) {
+    const raw=value[field]===undefined&&allowDefaults?0:value[field];
+    if (typeof raw!=="number" || !Number.isSafeInteger(raw) || raw<0 || raw>100000) {
+      return {ok:false,error:`${field} must be a whole number from 0 to 100000.`};
+    }
+    counts[field]=raw;
+  }
+  if (counts.decisions_for_christ>counts.gospel_presentations) return {ok:false,error:"Decisions for Christ cannot exceed gospel presentations."};
+  if (counts.followup_completed>counts.followup_required) return {ok:false,error:"Completed follow-ups cannot exceed follow-ups required."};
+  return {ok:true,counts};
+}
+
+function parseMinistryReportCreate(value:unknown):{ok:true;value:ParsedReportCreate}|{ok:false;error:string} {
+  if (!isPlainRecord(value)) return {ok:false,error:"A JSON object is required."};
+  const allowed=new Set(["branch_id","report_type","period_start","period_end","team_id","event_id",...REPORT_COUNT_FIELDS]);
+  if (Object.keys(value).some((key)=>!allowed.has(key))) return {ok:false,error:"Unsupported report field."};
+  if (!isUuidValue(value.branch_id)) return {ok:false,error:"Invalid branch_id."};
+  if (!["daily_evangelism","event_evangelism","weekly_ministry"].includes(String(value.report_type))) return {ok:false,error:"Invalid report_type."};
+  if (!isReportDate(value.period_start)||!isReportDate(value.period_end)) return {ok:false,error:"Report dates must be valid YYYY-MM-DD dates."};
+  const span=(Date.parse(value.period_end+"T00:00:00.000Z")-Date.parse(value.period_start+"T00:00:00.000Z"))/86400000;
+  if (span<0 || (value.report_type!=="weekly_ministry"&&span!==0) || (value.report_type==="weekly_ministry"&&span!==6)) {
+    return {ok:false,error:"Daily and event reports cover one day; weekly reports cover seven days."};
+  }
+  const teamId=value.team_id===undefined||value.team_id===null||value.team_id===""?null:value.team_id;
+  const eventId=value.event_id===undefined||value.event_id===null||value.event_id===""?null:value.event_id;
+  if (teamId!==null&&!isUuidValue(teamId)) return {ok:false,error:"Invalid team_id."};
+  if (eventId!==null&&!isUuidValue(eventId)) return {ok:false,error:"Invalid event_id."};
+  if ((value.report_type==="event_evangelism")!==(eventId!==null)) return {ok:false,error:"Event evangelism requires an event; other report types must not include one."};
+  const parsedCounts=parseReportCounts(value,true);
+  if (!parsedCounts.ok) return parsedCounts;
+  return {ok:true,value:{
+    branch_id:value.branch_id,report_type:value.report_type as ReportType,
+    period_start:value.period_start,period_end:value.period_end,
+    team_id:teamId as string|null,event_id:eventId as string|null,...parsedCounts.counts,
+  }};
+}
+
+function parseMinistryReportList(url:URL):{ok:true;value:{branch_id:string;report_type:ReportType|null;status:string|null;limit:number;offset:number}}|{ok:false;error:string} {
+  const allowed=new Set(["branch_id","report_type","status","limit","offset"]),seen=new Set<string>();
+  for (const [key] of url.searchParams) {
+    if (!allowed.has(key)) return {ok:false,error:"Unsupported query parameter."};
+    if (seen.has(key)) return {ok:false,error:"Duplicate query parameter."};
+    seen.add(key);
+  }
+  const branchId=url.searchParams.get("branch_id")??"";
+  if (!isUuidValue(branchId)) return {ok:false,error:"Invalid branch_id."};
+  const type=url.searchParams.get("report_type");
+  if (type!==null&&!["daily_evangelism","event_evangelism","weekly_ministry"].includes(type)) return {ok:false,error:"Invalid report_type."};
+  const status=url.searchParams.get("status");
+  if (status!==null&&!["submitted","returned","approved"].includes(status)) return {ok:false,error:"Invalid report status."};
+  const limit=url.searchParams.has("limit")?Number(url.searchParams.get("limit")):25;
+  const offset=url.searchParams.has("offset")?Number(url.searchParams.get("offset")):0;
+  if (!Number.isInteger(limit)||limit<1||limit>50) return {ok:false,error:"Limit must be an integer from 1 to 50."};
+  if (!Number.isInteger(offset)||offset<0||offset>5000) return {ok:false,error:"Offset must be an integer from 0 to 5000."};
+  return {ok:true,value:{branch_id:branchId,report_type:type as ReportType|null,status,limit,offset}};
+}
+
+function parseMinistryReportReview(value:unknown):{ok:true;value:{decision:"approved"|"returned"|"comment";comment:string|null}}|{ok:false;error:string} {
+  if (!isPlainRecord(value)) return {ok:false,error:"A JSON object is required."};
+  if (Object.keys(value).some((key)=>!["decision","comment"].includes(key))) return {ok:false,error:"Unsupported review field."};
+  if (!["approved","returned","comment"].includes(String(value.decision))) return {ok:false,error:"Invalid review decision."};
+  let comment:string|null=null;
+  if (value.comment!==undefined&&value.comment!==null) {
+    if (typeof value.comment!=="string"||value.comment.trim().length>2000) return {ok:false,error:"Review comment must be 2000 characters or fewer."};
+    comment=value.comment.trim()||null;
+  }
+  if (value.decision==="returned"&&!comment) return {ok:false,error:"A reason is required when returning a report."};
+  return {ok:true,value:{decision:value.decision as "approved"|"returned"|"comment",comment}};
+}
+
+function parseMinistryReportCorrection(value:unknown):{ok:true;counts:ReportCounts}|{ok:false;error:string} {
+  if (!isPlainRecord(value)) return {ok:false,error:"A JSON object is required."};
+  if (Object.keys(value).length!==REPORT_COUNT_FIELDS.length||Object.keys(value).some((key)=>!(REPORT_COUNT_FIELDS as readonly string[]).includes(key))) {
+    return {ok:false,error:"All report count fields are required; other fields are not editable."};
+  }
+  return parseReportCounts(value,false);
+}
+
+function hasReportScope(context:AuthenticatedStaffContext,code:string,scope:string):boolean {
+  return !!context.activeBranch?.capabilities.some((grant)=>grant.code===code&&grant.scopeMode===scope);
+}
+
+async function activeReportTeamIds(env:Env,profileId:string,branchId:string,now:string):Promise<string[]> {
+  const rows=await env.DB.prepare(`
+    SELECT stm.team_id FROM staff_team_membership stm
+    JOIN team t ON t.id=stm.team_id AND t.branch_id=stm.branch_id AND t.is_active=1
+    WHERE stm.staff_profile_id=? AND stm.branch_id=? AND stm.revoked_at IS NULL
+      AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+    ORDER BY stm.team_id
+  `).bind(profileId,branchId,now,now).all<{team_id:string}>();
+  return [...new Set((rows.results??[]).map((row)=>row.team_id))];
+}
+
+function canReadMinistryReport(
+  context:AuthenticatedStaffContext,
+  report:{author_profile_id:string;team_id:string|null},
+  teamIds:string[],
+):boolean {
+  return hasReportScope(context,"report.review.branch","branch")
+    || (hasReportScope(context,"report.read.own","self")&&report.author_profile_id===context.staff.profileId)
+    || (hasReportScope(context,"report.review.team","team")&&!!report.team_id&&teamIds.includes(report.team_id));
+}
+
+function canReviewMinistryReport(
+  context:AuthenticatedStaffContext,
+  report:{author_profile_id:string;team_id:string|null},
+  teamIds:string[],
+):boolean {
+  if (report.author_profile_id===context.staff.profileId) return false;
+  return hasReportScope(context,"report.review.branch","branch")
+    || (hasReportScope(context,"report.review.team","team")&&!!report.team_id&&teamIds.includes(report.team_id));
+}
+
+const MINISTRY_REPORT_COLUMNS=`id,branch_id,report_type,period_start,period_end,author_profile_id,team_id,event_id,
+  contacts_captured,gospel_presentations,decisions_for_christ,followup_required,followup_completed,
+  visits_completed,calls_completed,events_supported,attendance_count,status,submitted_at,created_at,updated_at`;
+
+async function reportQueryBranch(
+  request:Request,
+  context:AuthenticatedStaffContext,
+  requestId:string,
+  origin?:string,
+):Promise<{branchId:string}|Response> {
+  const url=new URL(request.url);
+  const values=url.searchParams.getAll("branch_id");
+  if (values.length!==1||[...url.searchParams.keys()].some((key)=>key!=="branch_id")||!isUuidValue(values[0])) {
+    return json(400,{ok:false,error:{code:"INVALID_QUERY",message:"A single valid branch_id is required."}},requestId,origin);
+  }
+  if (!context.activeBranch||values[0]!==context.activeBranch.branchId) {
+    return json(403,{ok:false,error:{code:"BRANCH_SCOPE_REQUIRED"}},requestId,origin);
+  }
+  return {branchId:values[0]};
+}
+
+async function listReportTeams(request:Request,env:Env,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const branch=await reportQueryBranch(request,context,requestId,origin);
+  if (branch instanceof Response) return branch;
+  if (!hasReportScope(context,"report.submit.own","self")
+      &&!hasReportScope(context,"report.review.team","team")
+      &&!hasReportScope(context,"report.review.branch","branch")) {
+    return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  }
+  const now=new Date().toISOString();
+  const teamIds=await activeReportTeamIds(env,context.staff.profileId,branch.branchId,now);
+  if (!teamIds.length) return json(200,{ok:true,data:[]},requestId,origin);
+  const slots=teamIds.map(()=>"?").join(",");
+  const rows=await env.DB.prepare(
+    "SELECT id,name FROM team WHERE branch_id=? AND is_active=1 AND id IN ("+slots+") ORDER BY name ASC",
+  ).bind(branch.branchId,...teamIds).all<{id:string;name:string}>();
+  return json(200,{ok:true,data:rows.results??[]},requestId,origin);
+}
+
+async function listReportEvents(request:Request,env:Env,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const branch=await reportQueryBranch(request,context,requestId,origin);
+  if (branch instanceof Response) return branch;
+  if (!hasReportScope(context,"report.submit.own","self")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const now=new Date().toISOString();
+  const teamIds=await activeReportTeamIds(env,context.staff.profileId,branch.branchId,now);
+  const teamSql=teamIds.length
+    ? "EXISTS (SELECT 1 FROM event_team_assignment eta JOIN staff_team_membership stm ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id WHERE eta.event_id=e.id AND eta.branch_id=e.branch_id AND eta.team_id IN ("+teamIds.map(()=>"?").join(",")+") AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?) AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?))"
+    : "0=1";
+  const values:unknown[]=[branch.branchId,context.staff.userId,now,now];
+  if (teamIds.length) values.push(...teamIds,now,now,now,now);
+  const rows=await env.DB.prepare(
+    "SELECT DISTINCT e.id,e.title,e.starts_at FROM event e WHERE e.branch_id=? AND ("+
+    "EXISTS (SELECT 1 FROM event_staff_assignment esa WHERE esa.event_id=e.id AND esa.branch_id=e.branch_id AND esa.staff_auth_user_id=? AND esa.revoked_at IS NULL AND esa.starts_at<=? AND (esa.ends_at IS NULL OR esa.ends_at>?)) OR "+teamSql+") ORDER BY e.starts_at DESC LIMIT 100",
+  ).bind(...values).all<{id:string;title:string;starts_at:string}>();
+  return json(200,{ok:true,data:rows.results??[]},requestId,origin);
+}
+
+async function listMinistryReports(request:Request,env:Env,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const parsed=parseMinistryReportList(new URL(request.url));
+  if (!parsed.ok) return json(400,{ok:false,error:{code:"INVALID_QUERY",message:parsed.error}},requestId,origin);
+  if (parsed.value.branch_id!==context.activeBranch.branchId) return json(403,{ok:false,error:{code:"BRANCH_SCOPE_REQUIRED"}},requestId,origin);
+  const canReadOwn=hasReportScope(context,"report.read.own","self");
+  const canReviewBranch=hasReportScope(context,"report.review.branch","branch");
+  const canReviewTeam=hasReportScope(context,"report.review.team","team");
+  if (!canReadOwn&&!canReviewBranch&&!canReviewTeam) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const now=new Date().toISOString();
+  const teamIds=canReviewTeam?await activeReportTeamIds(env,context.staff.profileId,parsed.value.branch_id,now):[];
+  const where=["branch_id=?"];const values:unknown[]=[parsed.value.branch_id];
+  if (parsed.value.report_type) {where.push("report_type=?");values.push(parsed.value.report_type);}
+  if (parsed.value.status) {where.push("status=?");values.push(parsed.value.status);}
+  if (!canReviewBranch) {
+    if (canReadOwn&&teamIds.length) {
+      where.push("(author_profile_id=? OR team_id IN ("+teamIds.map(()=>"?").join(",")+"))");
+      values.push(context.staff.profileId,...teamIds);
+    } else if (canReadOwn) {
+      where.push("author_profile_id=?");values.push(context.staff.profileId);
+    } else if (teamIds.length) {
+      where.push("team_id IN ("+teamIds.map(()=>"?").join(",")+")");values.push(...teamIds);
+    } else {
+      return json(200,{ok:true,data:[],total:0},requestId,origin);
+    }
+  }
+  const clause=where.join(" AND ");
+  const count=await env.DB.prepare("SELECT COUNT(*) AS total FROM ministry_report WHERE "+clause)
+    .bind(...values).first<{total:number}>();
+  const rows=await env.DB.prepare(
+    "SELECT "+MINISTRY_REPORT_COLUMNS+" FROM ministry_report WHERE "+clause+
+    " ORDER BY period_start DESC,created_at DESC LIMIT ? OFFSET ?",
+  ).bind(...values,parsed.value.limit,parsed.value.offset).all<Record<string,unknown>>();
+  return json(200,{ok:true,data:rows.results??[],total:count?.total??0},requestId,origin);
+}
+
+async function getMinistryReport(request:Request,env:Env,reportId:string,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const branch=await reportQueryBranch(request,context,requestId,origin);
+  if (branch instanceof Response) return branch;
+  if (!isUuidValue(reportId)) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  const report=await env.DB.prepare(
+    "SELECT "+MINISTRY_REPORT_COLUMNS+" FROM ministry_report WHERE id=? AND branch_id=? LIMIT 1",
+  ).bind(reportId,branch.branchId).first<Record<string,unknown>&{author_profile_id:string;team_id:string|null}>();
+  if (!report) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  const now=new Date().toISOString();
+  const teamIds=hasReportScope(context,"report.review.team","team")
+    ?await activeReportTeamIds(env,context.staff.profileId,branch.branchId,now):[];
+  if (!canReadMinistryReport(context,report,teamIds)) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  const history=await env.DB.prepare(
+    "SELECT id,actor_profile_id,decision,comment,created_at FROM report_review_event WHERE report_id=? ORDER BY created_at ASC,id ASC",
+  ).bind(reportId).all<Record<string,unknown>>();
+  return json(200,{ok:true,data:{...report,review_history:history.results??[]}},requestId,origin);
+}
+
+async function createMinistryReport(request:Request,env:Env,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const parsed=parseMinistryReportCreate(body.value);
+  if (!parsed.ok) return json(400,{ok:false,error:{code:"INVALID_REPORT",message:parsed.error}},requestId,origin);
+  const value=parsed.value;
+  if (value.branch_id!==context.activeBranch.branchId) return json(403,{ok:false,error:{code:"BRANCH_SCOPE_REQUIRED"}},requestId,origin);
+  if (!hasReportScope(context,"report.submit.own","self")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const now=new Date().toISOString();
+  const teamIds=value.team_id?await activeReportTeamIds(env,context.staff.profileId,value.branch_id,now):[];
+  if (value.team_id&&!teamIds.includes(value.team_id)) return json(403,{ok:false,error:{code:"TEAM_SCOPE_REQUIRED"}},requestId,origin);
+  if (value.event_id) {
+    const direct=await env.DB.prepare(
+      "SELECT id FROM event_staff_assignment WHERE branch_id=? AND event_id=? AND staff_auth_user_id=? AND revoked_at IS NULL AND starts_at<=? AND (ends_at IS NULL OR ends_at>?) LIMIT 1",
+    ).bind(value.branch_id,value.event_id,context.staff.userId,now,now).first<{id:string}>();
+    let teamAssigned=false;
+    if (!direct&&teamIds.length) {
+      const teamAssignment=await env.DB.prepare(
+        "SELECT eta.id FROM event_team_assignment eta JOIN staff_team_membership stm ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id WHERE eta.branch_id=? AND eta.event_id=? AND eta.team_id IN ("+teamIds.map(()=>"?").join(",")+") AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?) AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?) LIMIT 1",
+      ).bind(value.branch_id,value.event_id,...teamIds,now,now,now,now).first<{id:string}>();
+      teamAssigned=!!teamAssignment;
+    }
+    if (!direct&&!teamAssigned) return json(403,{ok:false,error:{code:"EVENT_SCOPE_REQUIRED"}},requestId,origin);
+  }
+  const id=crypto.randomUUID();
+  const columns=["id","branch_id","report_type","period_start","period_end","author_profile_id","team_id","event_id",
+    ...REPORT_COUNT_FIELDS,"status","submitted_at","created_at","updated_at","created_by","updated_by"];
+  const values:unknown[]=[id,value.branch_id,value.report_type,value.period_start,value.period_end,
+    context.staff.profileId,value.team_id,value.event_id,...REPORT_COUNT_FIELDS.map((field)=>value[field]),
+    "submitted",now,now,now,context.staff.userId,context.staff.userId];
+  try {
+    const result=await env.DB.prepare(
+      "INSERT INTO ministry_report ("+columns.join(",")+") VALUES ("+columns.map(()=>"?").join(",")+")",
+    ).bind(...values).run();
+    if (!result.success||(result.meta?.changes??0)!==1) throw new Error("REPORT_CREATE_FAILED");
+  } catch (error) {
+    const message=String(error);
+    if (message.includes("UNIQUE constraint failed")) return json(409,{ok:false,error:{code:"REPORT_ALREADY_EXISTS"}},requestId,origin);
+    if (message.includes("REPORT_TEAM_SCOPE_REQUIRED")) return json(403,{ok:false,error:{code:"TEAM_SCOPE_REQUIRED"}},requestId,origin);
+    if (message.includes("REPORT_EVENT_SCOPE_REQUIRED")) return json(403,{ok:false,error:{code:"EVENT_SCOPE_REQUIRED"}},requestId,origin);
+    if (message.includes("REPORT_SUBMIT_SCOPE_REQUIRED")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    if (message.includes("REPORT_TEAM_BRANCH_MISMATCH")||message.includes("REPORT_EVENT_BRANCH_MISMATCH")) return json(400,{ok:false,error:{code:"INVALID_REPORT_SCOPE"}},requestId,origin);
+    return json(409,{ok:false,error:{code:"REPORT_CREATE_CONFLICT"}},requestId,origin);
+  }
+  const report=await env.DB.prepare("SELECT "+MINISTRY_REPORT_COLUMNS+" FROM ministry_report WHERE id=?").bind(id).first<Record<string,unknown>>();
+  return json(201,{ok:true,data:report},requestId,origin);
+}
+
+async function reviewMinistryReport(request:Request,env:Env,reportId:string,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if ([...new URL(request.url).searchParams.keys()].length) return json(400,{ok:false,error:{code:"INVALID_QUERY"}},requestId,origin);
+  if (!isUuidValue(reportId)) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const parsed=parseMinistryReportReview(body.value);
+  if (!parsed.ok) return json(400,{ok:false,error:{code:"INVALID_REVIEW",message:parsed.error}},requestId,origin);
+  const report=await env.DB.prepare(
+    "SELECT id,branch_id,author_profile_id,team_id,status FROM ministry_report WHERE id=? AND branch_id=? LIMIT 1",
+  ).bind(reportId,context.activeBranch.branchId).first<{id:string;branch_id:string;author_profile_id:string;team_id:string|null;status:string}>();
+  if (!report) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  if (report.author_profile_id===context.staff.profileId) return json(403,{ok:false,error:{code:"SELF_REVIEW_FORBIDDEN"}},requestId,origin);
+  const now=new Date().toISOString();
+  const teamIds=hasReportScope(context,"report.review.team","team")
+    ?await activeReportTeamIds(env,context.staff.profileId,report.branch_id,now):[];
+  if (!canReviewMinistryReport(context,report,teamIds)) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  if (report.status!=="submitted") return json(409,{ok:false,error:{code:"REPORT_NOT_SUBMITTED"}},requestId,origin);
+  const decision=parsed.value.decision;
+  const status=decision==="comment"?"submitted":decision;
+  try {
+    const result=await env.DB.prepare(
+      "UPDATE ministry_report SET status=?,updated_at=?,updated_by=?,last_action_id=?,last_action_by=?,last_action_decision=?,last_action_comment=?,last_action_at=? WHERE id=? AND branch_id=? AND status='submitted'",
+    ).bind(status,now,context.staff.userId,crypto.randomUUID(),context.staff.userId,decision,parsed.value.comment,now,reportId,report.branch_id).run();
+    if (!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"REPORT_NOT_SUBMITTED"}},requestId,origin);
+  } catch (error) {
+    const message=String(error);
+    if (message.includes("REPORT_SELF_REVIEW_FORBIDDEN")) return json(403,{ok:false,error:{code:"SELF_REVIEW_FORBIDDEN"}},requestId,origin);
+    if (message.includes("REPORT_REVIEW_SCOPE_REQUIRED")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    return json(409,{ok:false,error:{code:"REPORT_REVIEW_CONFLICT"}},requestId,origin);
+  }
+  const updated=await env.DB.prepare("SELECT "+MINISTRY_REPORT_COLUMNS+" FROM ministry_report WHERE id=?").bind(reportId).first<Record<string,unknown>>();
+  const history=await env.DB.prepare("SELECT id,actor_profile_id,decision,comment,created_at FROM report_review_event WHERE report_id=? ORDER BY created_at ASC,id ASC")
+    .bind(reportId).all<Record<string,unknown>>();
+  return json(200,{ok:true,data:{report:updated,review_history:history.results??[]}},requestId,origin);
+}
+
+async function resubmitMinistryReport(request:Request,env:Env,reportId:string,requestId:string,origin?:string):Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if ([...new URL(request.url).searchParams.keys()].length) return json(400,{ok:false,error:{code:"INVALID_QUERY"}},requestId,origin);
+  if (!isUuidValue(reportId)) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const parsed=parseMinistryReportCorrection(body.value);
+  if (!parsed.ok) return json(400,{ok:false,error:{code:"INVALID_REPORT_CORRECTION",message:parsed.error}},requestId,origin);
+  const report=await env.DB.prepare(
+    "SELECT id,branch_id,author_profile_id,status FROM ministry_report WHERE id=? AND branch_id=? LIMIT 1",
+  ).bind(reportId,context.activeBranch.branchId).first<{id:string;branch_id:string;author_profile_id:string;status:string}>();
+  if (!report||report.author_profile_id!==context.staff.profileId) return json(404,{ok:false,error:{code:"REPORT_NOT_FOUND"}},requestId,origin);
+  if (!hasReportScope(context,"report.submit.own","self")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  if (report.status!=="returned") return json(409,{ok:false,error:{code:"REPORT_NOT_RETURNED"}},requestId,origin);
+  const now=new Date().toISOString();
+  const setCounts=REPORT_COUNT_FIELDS.map((field)=>field+"=?").join(",");
+  const values:unknown[]=[...REPORT_COUNT_FIELDS.map((field)=>parsed.counts[field]),"submitted",now,now,context.staff.userId,
+    crypto.randomUUID(),context.staff.userId,"resubmitted",null,now,reportId,report.branch_id,context.staff.profileId];
+  try {
+    const result=await env.DB.prepare(
+      "UPDATE ministry_report SET "+setCounts+",status=?,submitted_at=?,updated_at=?,updated_by=?,last_action_id=?,last_action_by=?,last_action_decision=?,last_action_comment=?,last_action_at=? WHERE id=? AND branch_id=? AND status='returned' AND author_profile_id=?",
+    ).bind(...values).run();
+    if (!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"REPORT_NOT_RETURNED"}},requestId,origin);
+  } catch (error) {
+    if (String(error).includes("REPORT_SUBMIT_SCOPE_REQUIRED")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    return json(409,{ok:false,error:{code:"REPORT_RESUBMIT_CONFLICT"}},requestId,origin);
+  }
+  const updated=await env.DB.prepare("SELECT "+MINISTRY_REPORT_COLUMNS+" FROM ministry_report WHERE id=?").bind(reportId).first<Record<string,unknown>>();
+  const history=await env.DB.prepare("SELECT id,actor_profile_id,decision,comment,created_at FROM report_review_event WHERE report_id=? ORDER BY created_at ASC,id ASC")
+    .bind(reportId).all<Record<string,unknown>>();
+  return json(200,{ok:true,data:{report:updated,review_history:history.results??[]}},requestId,origin);
+}
+
+async function getReportsOverview(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"reports.read");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const url=new URL(request.url);
+  if ([...url.searchParams.keys()].some((key)=>!["from","to"].includes(key))) {
+    return json(400,{ok:false,error:{code:"INVALID_REPORT_QUERY"}},requestId,origin);
+  }
+  const now=new Date();
+  const toDefault=now.toISOString().slice(0,10);
+  const fromDefault=new Date(now.getTime()-29*24*60*60*1000).toISOString().slice(0,10);
+  const from=url.searchParams.get("from")??fromDefault;
+  const to=url.searchParams.get("to")??toDefault;
+  const validDate=(value:string)=>/^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(value+"T00:00:00.000Z"))
+    && new Date(value+"T00:00:00.000Z").toISOString().slice(0,10)===value;
+  if (!validDate(from)||!validDate(to)||from>to) {
+    return json(400,{ok:false,error:{code:"INVALID_REPORT_DATE_RANGE"}},requestId,origin);
+  }
+  const fromMs=Date.parse(from+"T00:00:00.000Z");
+  const toMs=Date.parse(to+"T00:00:00.000Z");
+  if (toMs-fromMs>366*24*60*60*1000) {
+    return json(400,{ok:false,error:{code:"REPORT_RANGE_TOO_LARGE"}},requestId,origin);
+  }
+  const fromAt=from+"T00:00:00.000Z";
+  const toExclusive=new Date(toMs+24*60*60*1000).toISOString();
+  const branchId=access.activeBranch.branchId;
+  const row=await env.DB.prepare(`
+    WITH p AS (
+      SELECT ? AS branch_id,? AS from_at,? AS to_at,? AS now_at
+    )
+    SELECT
+      (SELECT COUNT(*) FROM contact c,p
+       WHERE c.branch_id=p.branch_id AND c.merged_into_contact_id IS NULL
+         AND c.created_at>=p.from_at AND c.created_at<p.to_at) AS contacts_created,
+      (SELECT COUNT(*) FROM contact c,p
+       WHERE c.branch_id=p.branch_id AND c.merged_into_contact_id IS NULL) AS contacts_total,
+      (SELECT COUNT(*) FROM followup_task f,p
+       WHERE f.branch_id=p.branch_id AND f.created_at>=p.from_at AND f.created_at<p.to_at) AS followups_created,
+      (SELECT COUNT(*) FROM followup_task f,p
+       WHERE f.branch_id=p.branch_id AND f.status='completed'
+         AND f.completed_at>=p.from_at AND f.completed_at<p.to_at) AS followups_completed,
+      (SELECT COUNT(*) FROM followup_task f,p
+       WHERE f.branch_id=p.branch_id AND f.status NOT IN ('completed','cancelled')
+         AND f.due_at IS NOT NULL AND f.due_at<p.now_at) AS followups_overdue,
+      (SELECT COUNT(*) FROM event e,p
+       WHERE e.branch_id=p.branch_id AND e.status='published'
+         AND e.starts_at>=p.from_at AND e.starts_at<p.to_at) AS events_published,
+      (SELECT COUNT(*) FROM event_registration er,p
+       WHERE er.branch_id=p.branch_id AND er.registered_at>=p.from_at
+         AND er.registered_at<p.to_at AND er.status IN ('registered','attended')) AS event_registrations,
+      (SELECT COUNT(*) FROM event_registration er,p
+       WHERE er.branch_id=p.branch_id AND er.registered_at>=p.from_at
+         AND er.registered_at<p.to_at AND er.status='attended') AS event_attended,
+      (SELECT COUNT(*) FROM event_checkin ec,p
+       WHERE ec.branch_id=p.branch_id AND ec.checked_in_at>=p.from_at
+         AND ec.checked_in_at<p.to_at) AS event_checkins,
+      (SELECT COUNT(*) FROM prayer_request pr,p
+       WHERE pr.branch_id=p.branch_id AND pr.created_at>=p.from_at
+         AND pr.created_at<p.to_at) AS prayer_requests_created,
+      (SELECT COUNT(*) FROM prayer_request pr,p
+       WHERE pr.branch_id=p.branch_id AND pr.answered_at>=p.from_at
+         AND pr.answered_at<p.to_at) AS prayer_requests_answered,
+      (SELECT COUNT(*) FROM announcement a,p
+       WHERE a.branch_id=p.branch_id AND a.status='published'
+         AND a.published_at>=p.from_at AND a.published_at<p.to_at) AS announcements_published,
+      (SELECT COUNT(*) FROM calendar_entry ce,p
+       WHERE ce.branch_id=p.branch_id AND ce.starts_at>=p.from_at
+         AND ce.starts_at<p.to_at) AS calendar_entries
+  `).bind(branchId,fromAt,toExclusive,now.toISOString()).first<Record<string,number>>();
+  const seriesSql=`
+    SELECT period_start AS period, report_type,
+           COUNT(*) AS report_count,
+           SUM(contacts_captured) AS contacts_captured,
+           SUM(gospel_presentations) AS gospel_presentations,
+           SUM(decisions_for_christ) AS decisions_for_christ,
+           SUM(followup_completed) AS followup_completed,
+           SUM(visits_completed) AS visits_completed,
+           SUM(calls_completed) AS calls_completed,
+           SUM(events_supported) AS events_supported,
+           SUM(attendance_count) AS attendance_count
+    FROM ministry_report
+    WHERE branch_id=? AND period_start>=? AND period_start<=?
+      AND status IN ('submitted','approved','returned')
+    GROUP BY period_start,report_type
+    HAVING COUNT(DISTINCT author_profile_id)>=3
+    ORDER BY period_start ASC,report_type ASC
+    LIMIT 1100
+  `;
+  const periodDays=Math.floor((toMs-fromMs)/(24*60*60*1000))+1;
+  const previousTo=new Date(fromMs-24*60*60*1000).toISOString().slice(0,10);
+  const previousFrom=new Date(fromMs-periodDays*24*60*60*1000).toISOString().slice(0,10);
+  const [series,previousSeries]=await Promise.all([
+    env.DB.prepare(seriesSql).bind(branchId,from,to).all<Record<string,unknown>>(),
+    env.DB.prepare(seriesSql).bind(branchId,previousFrom,previousTo).all<Record<string,unknown>>(),
+  ]);
+  return json(200,{
+    ok:true,
+    period:{from,to,timezone:"UTC"},
+    metrics:row??{},
+    time_series:series.results??[],
+    comparison:{
+      period:{from:previousFrom,to:previousTo},
+      time_series:previousSeries.results??[],
+      privacy_threshold_distinct_authors:3,
+    },
+    privacy:{aggregate_only:true,prayer_request_content_included:false,personal_identifiers_included:false},
+  },requestId,origin);
+}
+
+async function exportReportsCsv(request:Request,env:Env,requestId:string,origin?:string):Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"reports.export");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const url=new URL(request.url);
+  if([...url.searchParams.keys()].some(key=>!["from","to"].includes(key))) return json(400,{ok:false,error:{code:"INVALID_REPORT_QUERY"}},requestId,origin);
+  const today=new Date();
+  const toDefault=today.toISOString().slice(0,10);
+  const fromDefault=new Date(today.getTime()-29*86400000).toISOString().slice(0,10);
+  const from=url.searchParams.get("from")??fromDefault;
+  const to=url.searchParams.get("to")??toDefault;
+  const validDate=(value:string)=>/^\d{4}-\d{2}-\d{2}$/.test(value)&&
+    Number.isFinite(Date.parse(value+"T00:00:00.000Z"))&&
+    new Date(value+"T00:00:00.000Z").toISOString().slice(0,10)===value;
+  if(!validDate(from)||!validDate(to)||from>to) return json(400,{ok:false,error:{code:"INVALID_REPORT_DATE_RANGE"}},requestId,origin);
+  const fromMs=Date.parse(from+"T00:00:00.000Z"),toMs=Date.parse(to+"T00:00:00.000Z");
+  if(toMs-fromMs>366*86400000) return json(400,{ok:false,error:{code:"REPORT_RANGE_TOO_LARGE"}},requestId,origin);
+  const fromAt=from+"T00:00:00.000Z",toExclusive=new Date(toMs+86400000).toISOString();
+  const branchId=access.activeBranch.branchId,now=new Date().toISOString();
+  const metrics=await env.DB.prepare(`
+    WITH p AS (SELECT ? AS branch_id,? AS from_at,? AS to_at,? AS now_at)
+    SELECT
+      (SELECT COUNT(*) FROM contact c,p WHERE c.branch_id=p.branch_id AND c.merged_into_contact_id IS NULL AND c.created_at>=p.from_at AND c.created_at<p.to_at) AS contacts_created,
+      (SELECT COUNT(*) FROM contact c,p WHERE c.branch_id=p.branch_id AND c.merged_into_contact_id IS NULL) AS contacts_total,
+      (SELECT COUNT(*) FROM followup_task f,p WHERE f.branch_id=p.branch_id AND f.created_at>=p.from_at AND f.created_at<p.to_at) AS followups_created,
+      (SELECT COUNT(*) FROM followup_task f,p WHERE f.branch_id=p.branch_id AND f.status='completed' AND f.completed_at>=p.from_at AND f.completed_at<p.to_at) AS followups_completed,
+      (SELECT COUNT(*) FROM followup_task f,p WHERE f.branch_id=p.branch_id AND f.status NOT IN ('completed','cancelled') AND f.due_at IS NOT NULL AND f.due_at<p.now_at) AS followups_overdue,
+      (SELECT COUNT(*) FROM event e,p WHERE e.branch_id=p.branch_id AND e.status='published' AND e.starts_at>=p.from_at AND e.starts_at<p.to_at) AS events_published,
+      (SELECT COUNT(*) FROM event_registration er,p WHERE er.branch_id=p.branch_id AND er.registered_at>=p.from_at AND er.registered_at<p.to_at AND er.status IN ('registered','attended')) AS event_registrations,
+      (SELECT COUNT(*) FROM event_registration er,p WHERE er.branch_id=p.branch_id AND er.registered_at>=p.from_at AND er.registered_at<p.to_at AND er.status='attended') AS event_attended,
+      (SELECT COUNT(*) FROM event_checkin ec,p WHERE ec.branch_id=p.branch_id AND ec.checked_in_at>=p.from_at AND ec.checked_in_at<p.to_at) AS event_checkins,
+      (SELECT COUNT(*) FROM prayer_request pr,p WHERE pr.branch_id=p.branch_id AND pr.created_at>=p.from_at AND pr.created_at<p.to_at) AS prayer_requests_created,
+      (SELECT COUNT(*) FROM prayer_request pr,p WHERE pr.branch_id=p.branch_id AND pr.answered_at>=p.from_at AND pr.answered_at<p.to_at) AS prayer_requests_answered,
+      (SELECT COUNT(*) FROM announcement a,p WHERE a.branch_id=p.branch_id AND a.status='published' AND a.published_at>=p.from_at AND a.published_at<p.to_at) AS announcements_published,
+      (SELECT COUNT(*) FROM calendar_entry ce,p WHERE ce.branch_id=p.branch_id AND ce.starts_at>=p.from_at AND ce.starts_at<p.to_at) AS calendar_entries
+  `).bind(branchId,fromAt,toExclusive,now).first<Record<string,number>>();
+  const seriesSql=`
+    SELECT period_start AS period,report_type,COUNT(*) AS report_count,
+      SUM(contacts_captured) AS contacts_captured,SUM(gospel_presentations) AS gospel_presentations,
+      SUM(decisions_for_christ) AS decisions_for_christ,SUM(followup_completed) AS followup_completed,
+      SUM(visits_completed) AS visits_completed,SUM(calls_completed) AS calls_completed,
+      SUM(events_supported) AS events_supported,SUM(attendance_count) AS attendance_count
+    FROM ministry_report WHERE branch_id=? AND period_start>=? AND period_start<=?
+      AND status IN ('submitted','approved','returned')
+    GROUP BY period_start,report_type
+    HAVING COUNT(DISTINCT author_profile_id)>=3
+    ORDER BY period_start ASC,report_type ASC LIMIT 1100
+  `;
+  const periodDays=Math.floor((toMs-fromMs)/86400000)+1;
+  const previousTo=new Date(fromMs-86400000).toISOString().slice(0,10);
+  const previousFrom=new Date(fromMs-periodDays*86400000).toISOString().slice(0,10);
+  const [currentSeries,previousSeries]=await Promise.all([
+    env.DB.prepare(seriesSql).bind(branchId,from,to).all<Record<string,unknown>>(),
+    env.DB.prepare(seriesSql).bind(branchId,previousFrom,previousTo).all<Record<string,unknown>>(),
+  ]);
+  const rows:(string|number)[][]=[["section","period","report_type","metric","value","report_count","contacts_captured","gospel_presentations","decisions_for_christ","followup_completed","visits_completed","calls_completed","events_supported","attendance_count"]];
+  for(const [key,value] of Object.entries(metrics??{})) rows.push(["branch_metric",from+".."+to,"",key,Number(value??0),"","","","","","","","",""]);
+  for(const item of currentSeries.results??[]) rows.push(["current_period",String(item.period),String(item.report_type),"","",Number(item.report_count??0),Number(item.contacts_captured??0),Number(item.gospel_presentations??0),Number(item.decisions_for_christ??0),Number(item.followup_completed??0),Number(item.visits_completed??0),Number(item.calls_completed??0),Number(item.events_supported??0),Number(item.attendance_count??0)]);
+  for(const item of previousSeries.results??[]) rows.push(["previous_period",String(item.period),String(item.report_type),"","",Number(item.report_count??0),Number(item.contacts_captured??0),Number(item.gospel_presentations??0),Number(item.decisions_for_christ??0),Number(item.followup_completed??0),Number(item.visits_completed??0),Number(item.calls_completed??0),Number(item.events_supported??0),Number(item.attendance_count??0)]);
+  const csvCell=(value:string|number)=>{const raw=String(value??"");const safe=/^[=+\-@]/.test(raw)?"'"+raw:raw;return '"'+safe.replace(/"/g,'""')+'"';};
+  const csv=rows.map(row=>row.map(csvCell).join(",")).join("\r\n")+"\r\n";
+  try {
+    const audit=await env.DB.prepare(`
+      INSERT INTO ministry_report_export_audit
+        (id,branch_id,actor_user_id,period_from,period_to,exported_rows,privacy_threshold,format,created_at)
+      VALUES(?,?,?,?,?,?,3,'csv',?)
+    `).bind(crypto.randomUUID(),branchId,access.staff.userId,from,to,rows.length-1,now).run();
+    if(!audit.success||(audit.meta?.changes??0)!==1) throw new Error("REPORT_EXPORT_AUDIT_FAILED");
+  } catch { return json(503,{ok:false,error:{code:"REPORT_EXPORT_AUDIT_FAILED"}},requestId,origin); }
+  const response=new Response(csv,{status:200,headers:{
+    "Content-Type":"text/csv; charset=utf-8",
+    "Content-Disposition":'attachment; filename="pcg-missions-report-'+from+'-'+to+'.csv"',
+    "X-Request-ID":requestId,
+  }});
+  return withSecurityHeaders(response,origin);
+}
+
+async function listEvents(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestEventScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "events.read")
+    .map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status") ?? "all";
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 50 : Number(rawLimit);
+  if (!["draft", "published", "cancelled", "completed", "all"].includes(status) ||
+      !Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      [...url.searchParams.keys()].some((key) => !["status", "limit"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_EVENT_QUERY" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const predicate = eventScopePredicate(
+    scope, "e", context.staff.profileId, context.staff.userId, now,
+  );
+  const statusPredicate = status === "all" ? "1 = 1" : "e.status = ?";
+  const rows = await env.DB.prepare(`
+    SELECT e.id, e.branch_id, e.title, e.description, e.starts_at, e.ends_at,
+           e.timezone, e.location, e.capacity, e.registration_state,
+           e.visibility, e.status, e.transport_enabled, e.flyer_key,
+            CASE WHEN e.flyer_key IS NOT NULL THEN '/api/v1/events/' || e.id || '/flyer' ELSE NULL END AS flyer_url,
+            e.created_at, e.updated_at
+    FROM event e
+    WHERE e.branch_id = ?
+      AND ${statusPredicate}
+      AND (${predicate.sql})
+    ORDER BY e.starts_at DESC, e.id DESC
+    LIMIT ?
+  `).bind(
+    context.activeBranch.branchId,
+    ...(status === "all" ? [] : [status]),
+    ...predicate.values,
+    limit,
+  ).all<Record<string, unknown>>();
+  return json(200, { ok: true, events: rows.results ?? [] }, requestId, origin);
+}
+
+async function getEvent(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestEventScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "events.read")
+    .map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const now = new Date().toISOString();
+  const predicate = eventScopePredicate(
+    scope, "e", context.staff.profileId, context.staff.userId, now,
+  );
+  const row = await env.DB.prepare(`
+    SELECT e.id, e.branch_id, e.title, e.description, e.starts_at, e.ends_at,
+           e.timezone, e.location, e.capacity, e.registration_state,
+           e.visibility, e.status, e.transport_enabled, e.flyer_key,
+            CASE WHEN e.flyer_key IS NOT NULL THEN '/api/v1/events/' || e.id || '/flyer' ELSE NULL END AS flyer_url,
+            e.created_at, e.updated_at
+    FROM event e
+    WHERE e.id = ? AND e.branch_id = ? AND (${predicate.sql})
+    LIMIT 1
+  `).bind(eventId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
+  if (!row) return json(404, { ok: false, error: { code: "EVENT_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, event: row }, requestId, origin);
+}
+
+async function createEvent(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["title", "description", "starts_at", "ends_at", "timezone", "location", "capacity", "transport_enabled"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_EVENT_BODY" } }, requestId, origin);
+  }
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  const description = payload.description === undefined || payload.description === null
+    ? null : typeof payload.description === "string" ? payload.description.trim() || null : "";
+  const startsAt = parseIsoTimestamp(payload.starts_at, "");
+  const endsAt = parseIsoTimestamp(payload.ends_at, "");
+  const timezone = payload.timezone === undefined ? "Africa/Accra" :
+    typeof payload.timezone === "string" ? payload.timezone.trim() : "";
+  const location = payload.location === undefined || payload.location === null
+    ? null : typeof payload.location === "string" ? payload.location.trim() || null : "";
+  const capacity = payload.capacity === undefined || payload.capacity === null || payload.capacity === ""
+    ? null : payload.capacity;
+  const transportEnabled = payload.transport_enabled === undefined ? false : payload.transport_enabled;
+  if (
+    title.length < 2 || title.length > 180 ||
+    (description !== null && (typeof description !== "string" || description.length > 5000)) ||
+    !startsAt || !endsAt || endsAt <= startsAt ||
+    timezone.length < 3 || timezone.length > 64 || !isValidTimezone(timezone) ||
+    (location !== null && (typeof location !== "string" || location.length > 200)) ||
+    (capacity !== null && (typeof capacity !== "number" || !Number.isInteger(capacity) || capacity < 1 || capacity > 100000)) ||
+    typeof transportEnabled !== "boolean"
+  ) {
+    return json(400, { ok: false, error: { code: "INVALID_EVENT_DETAILS" } }, requestId, origin);
+  }
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(`
+      INSERT INTO event
+        (id, branch_id, title, description, starts_at, ends_at, timezone,
+         location, capacity, registration_state, visibility, status,
+         transport_enabled, created_by, last_modified_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'closed', 'private', 'draft', ?, ?, ?, ?, ?)
+    `).bind(
+      id, access.activeBranch.branchId, title, description, startsAt, endsAt,
+      timezone, location, capacity, transportEnabled ? 1 : 0,
+      access.staff.userId, access.staff.userId, now, now,
+    ).run();
+    if (!result.success || (result.meta?.changes ?? 0) < 1) throw new Error("EVENT_CREATE_FAILED");
+  } catch {
+    return json(409, { ok: false, error: { code: "EVENT_CREATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, {
+    ok: true,
+    event: {
+      id, branch_id: access.activeBranch.branchId, title, starts_at: startsAt,
+      ends_at: endsAt, timezone, capacity, registration_state: "closed",
+      visibility: "private", status: "draft", transport_enabled: transportEnabled,
+    },
+  }, requestId, origin);
+}
+
+async function updateEvent(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["title", "description", "starts_at", "ends_at", "timezone", "location", "capacity", "transport_enabled"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length === 0 || Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_EVENT_UPDATE" } }, requestId, origin);
+  }
+  const existing = await env.DB.prepare(`
+    SELECT id, starts_at, ends_at FROM event
+    WHERE id = ? AND branch_id = ? AND status = 'draft'
+    LIMIT 1
+  `).bind(eventId, access.activeBranch.branchId).first<{
+    id: string; starts_at: string; ends_at: string;
+  }>();
+  if (!existing) return json(404, { ok: false, error: { code: "DRAFT_EVENT_NOT_FOUND" } }, requestId, origin);
+
+  const values: unknown[] = [];
+  const assignments: string[] = [];
+  const title = payload.title;
+  if (title !== undefined) {
+    if (typeof title !== "string" || title.trim().length < 2 || title.trim().length > 180) {
+      return json(400, { ok: false, error: { code: "INVALID_EVENT_TITLE" } }, requestId, origin);
+    }
+    assignments.push("title = ?"); values.push(title.trim());
+  }
+  if (payload.description !== undefined) {
+    if (payload.description !== null && (typeof payload.description !== "string" || payload.description.length > 5000)) {
+      return json(400, { ok: false, error: { code: "INVALID_EVENT_DESCRIPTION" } }, requestId, origin);
+    }
+    assignments.push("description = ?"); values.push(typeof payload.description === "string" ? payload.description.trim() || null : null);
+  }
+  if (payload.starts_at !== undefined) {
+    const value = parseIsoTimestamp(payload.starts_at, "");
+    if (!value) return json(400, { ok: false, error: { code: "INVALID_EVENT_START" } }, requestId, origin);
+    assignments.push("starts_at = ?"); values.push(value);
+  }
+  if (payload.ends_at !== undefined) {
+    const value = parseIsoTimestamp(payload.ends_at, "");
+    if (!value) return json(400, { ok: false, error: { code: "INVALID_EVENT_END" } }, requestId, origin);
+    assignments.push("ends_at = ?"); values.push(value);
+  }
+  if (payload.timezone !== undefined) {
+    if (typeof payload.timezone !== "string" || payload.timezone.length > 64 || !isValidTimezone(payload.timezone)) {
+      return json(400, { ok: false, error: { code: "INVALID_EVENT_TIMEZONE" } }, requestId, origin);
+    }
+    assignments.push("timezone = ?"); values.push(payload.timezone);
+  }
+  if (payload.location !== undefined) {
+    if (payload.location !== null && (typeof payload.location !== "string" || payload.location.length > 200)) {
+      return json(400, { ok: false, error: { code: "INVALID_EVENT_LOCATION" } }, requestId, origin);
+    }
+    assignments.push("location = ?"); values.push(typeof payload.location === "string" ? payload.location.trim() || null : null);
+  }
+  if (payload.capacity !== undefined) {
+    if (payload.capacity !== null && (typeof payload.capacity !== "number" || !Number.isInteger(payload.capacity) || payload.capacity < 1 || payload.capacity > 100000)) {
+      return json(400, { ok: false, error: { code: "INVALID_EVENT_CAPACITY" } }, requestId, origin);
+    }
+    assignments.push("capacity = ?"); values.push(payload.capacity);
+  }
+  if (payload.transport_enabled !== undefined) {
+    if (typeof payload.transport_enabled !== "boolean") {
+      return json(400, { ok: false, error: { code: "INVALID_TRANSPORT_SETTING" } }, requestId, origin);
+    }
+    assignments.push("transport_enabled = ?"); values.push(payload.transport_enabled ? 1 : 0);
+  }
+  const nextStart = typeof payload.starts_at === "string" ? parseIsoTimestamp(payload.starts_at, "")! : existing.starts_at;
+  const nextEnd = typeof payload.ends_at === "string" ? parseIsoTimestamp(payload.ends_at, "")! : existing.ends_at;
+  if (nextEnd <= nextStart) return json(400, { ok: false, error: { code: "EVENT_END_MUST_FOLLOW_START" } }, requestId, origin);
+  assignments.push("last_modified_by = ?");
+  values.push(access.staff.userId);
+  assignments.push("updated_at = ?");
+  values.push(new Date().toISOString());
+  try {
+    const result = await env.DB.prepare(`
+      UPDATE event SET ${assignments.join(", ")}
+      WHERE id = ? AND branch_id = ? AND status = 'draft'
+    `).bind(...values, eventId, access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes ?? 0) < 1) {
+      return json(409, { ok: false, error: { code: "EVENT_CHANGED" } }, requestId, origin);
+    }
+  } catch {
+    return json(409, { ok: false, error: { code: "EVENT_UPDATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, event_id: eventId, status: "draft" }, requestId, origin);
+}
+
+async function uploadEventFlyer(request:Request,env:Env,eventId:string,requestId:string,origin?:string):Promise<Response>{
+  const access=await authorizeRequestCapability(request,env,"events.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  if(!env.EVENT_MEDIA) return json(503,{ok:false,error:{code:"EVENT_MEDIA_STORAGE_UNAVAILABLE",message:"Event image storage is not enabled yet."}},requestId,origin);
+  const event=await env.DB.prepare("SELECT id,branch_id,flyer_key FROM event WHERE id=? AND branch_id=? AND status='draft' LIMIT 1")
+    .bind(eventId,access.activeBranch.branchId).first<{id:string;branch_id:string;flyer_key:string|null}>();
+  if(!event) return json(404,{ok:false,error:{code:"DRAFT_EVENT_NOT_FOUND"}},requestId,origin);
+  const length=Number(request.headers.get("content-length")||0);
+  if(length>5*1024*1024+65536) return json(413,{ok:false,error:{code:"EVENT_FLYER_TOO_LARGE"}},requestId,origin);
+  let form:FormData;
+  try{form=await request.formData();}catch{return json(400,{ok:false,error:{code:"INVALID_EVENT_FLYER_FORM"}},requestId,origin);}
+  const file=form.get("file");
+  if(!(file instanceof File)) return json(400,{ok:false,error:{code:"EVENT_FLYER_REQUIRED"}},requestId,origin);
+  if(file.size<16||file.size>5*1024*1024) return json(413,{ok:false,error:{code:"EVENT_FLYER_SIZE_INVALID",message:"Choose an image between 16 bytes and 5 MB."}},requestId,origin);
+  const bytes=await file.arrayBuffer(),v=new Uint8Array(bytes);
+  const png=v.length>=8&&[137,80,78,71,13,10,26,10].every((n,i)=>v[i]===n);
+  const jpeg=v.length>=3&&v[0]===255&&v[1]===216&&v[2]===255;
+  const webp=v.length>=12&&String.fromCharCode(...v.slice(0,4))==="RIFF"&&String.fromCharCode(...v.slice(8,12))==="WEBP";
+  const type=png?"image/png":jpeg?"image/jpeg":webp?"image/webp":"";
+  if(!type||file.type!==type) return json(415,{ok:false,error:{code:"UNSUPPORTED_EVENT_FLYER_TYPE",message:"Use a genuine PNG, JPEG or WebP image."}},requestId,origin);
+  const ext=type==="image/png"?"png":type==="image/jpeg"?"jpg":"webp";
+  const key="events/"+event.branch_id+"/"+event.id+"/"+crypto.randomUUID()+"."+ext;
+  try{
+    await env.EVENT_MEDIA.put(key,bytes,{httpMetadata:{contentType:type,cacheControl:"private, no-store"},customMetadata:{eventId:event.id,branchId:event.branch_id}});
+    const now=new Date().toISOString();
+    const updated=await env.DB.prepare("UPDATE event SET flyer_key=?,flyer_content_type=?,flyer_size=?,flyer_updated_at=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
+      .bind(key,type,file.size,now,access.staff.userId,now,event.id,event.branch_id).run();
+    if(!updated.success||(updated.meta?.changes??0)<1){await env.EVENT_MEDIA.delete(key);return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);}
+    if(event.flyer_key) await env.EVENT_MEDIA.delete(event.flyer_key).catch(()=>undefined);
+  }catch{
+    await env.EVENT_MEDIA.delete(key).catch(()=>undefined);
+    return json(503,{ok:false,error:{code:"EVENT_FLYER_UPLOAD_FAILED",message:"The image could not be stored. Please try again."}},requestId,origin);
+  }
+  return json(200,{ok:true,event_id:event.id,flyer_url:"/api/v1/events/"+event.id+"/flyer",content_type:type,size:file.size},requestId,origin);
+}
+
+async function getEventFlyer(request:Request,env:Env,eventId:string,requestId:string,origin?:string):Promise<Response>{
+  const context=await resolveStaffContext(request,env);
+  if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if(!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const scope=bestEventScope(context.activeBranch.capabilities.filter(g=>g.code==="events.read").map(g=>g.scopeMode));
+  if(!scope) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const now=new Date().toISOString(),predicate=eventScopePredicate(scope,"e",context.staff.profileId,context.staff.userId,now);
+  const row=await env.DB.prepare("SELECT e.flyer_key,e.flyer_content_type FROM event e WHERE e.id=? AND e.branch_id=? AND ("+predicate.sql+") LIMIT 1")
+    .bind(eventId,context.activeBranch.branchId,...predicate.values).first<{flyer_key:string|null;flyer_content_type:string|null}>();
+  if(!row?.flyer_key||!env.EVENT_MEDIA) return json(404,{ok:false,error:{code:"EVENT_FLYER_NOT_FOUND"}},requestId,origin);
+  const object=await env.EVENT_MEDIA.get(row.flyer_key);
+  if(!object) return json(404,{ok:false,error:{code:"EVENT_FLYER_NOT_FOUND"}},requestId,origin);
+  return withSecurityHeaders(new Response(object.body,{headers:{"Content-Type":row.flyer_content_type||"application/octet-stream","Content-Disposition":"inline","Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff"}}),origin);
+}
+
+async function publishEvent(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const existing=await env.DB.prepare("SELECT flyer_key FROM event WHERE id=? AND branch_id=? AND status='draft' LIMIT 1").bind(eventId,access.activeBranch.branchId).first<{flyer_key:string|null}>();
+  if(!existing) return json(404,{ok:false,error:{code:"DRAFT_EVENT_NOT_FOUND"}},requestId,origin);
+  if(!existing.flyer_key) return json(409,{ok:false,error:{code:"EVENT_FLYER_REQUIRED",message:"Upload an event flyer or image before publishing this event."}},requestId,origin);
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(`
+      UPDATE event
+      SET status = 'published', visibility = 'staff',
+          registration_state = 'closed', last_modified_by = ?, updated_at = ?
+      WHERE id = ? AND branch_id = ? AND status = 'draft'
+        AND length(trim(title)) >= 2 AND ends_at > starts_at AND flyer_key IS NOT NULL
+    `).bind(access.staff.userId, now, eventId, access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes ?? 0) < 1) {
+      return json(409, { ok: false, error: { code: "EVENT_NOT_PUBLISHABLE" } }, requestId, origin);
+    }
+  } catch {
+    return json(409, { ok: false, error: { code: "EVENT_PUBLISH_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, event_id: eventId, status: "published", visibility: "staff" }, requestId, origin);
+}
+
+async function eventRequestDigest(payload: unknown): Promise<{ bytes: Uint8Array; hex: string }> {
+  const bytes = new Uint8Array(await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify(payload)),
+  ));
+  const hex = Array.from(bytes).map((value) => value.toString(16).padStart(2,"0")).join("");
+  return { bytes, hex };
+}
+
+async function findEventReceipt(
+  env: Env,
+  eventId: string,
+  operation: string,
+  idempotencyKey: string,
+  actorUserId: string,
+  digestHex: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response | null> {
+  const receipt = await env.DB.prepare(`
+    SELECT actor_user_id,hex(request_digest) AS digest_hex,resource_type,resource_id,response_status
+    FROM event_idempotency_receipt
+    WHERE event_id=? AND operation=? AND idempotency_key=? LIMIT 1
+  `).bind(eventId,operation,idempotencyKey).first<{
+    actor_user_id: string; digest_hex: string; resource_type: string;
+    resource_id: string; response_status: number;
+  }>();
+  if (!receipt) return null;
+  if (receipt.actor_user_id !== actorUserId || receipt.digest_hex.toLowerCase() !== digestHex) {
+    return json(409,{ok:false,error:{code:"IDEMPOTENCY_KEY_REUSED"}},requestId,origin);
+  }
+  const key = receipt.resource_type === "event_registration" ? "registration_id" :
+    receipt.resource_type === "transport_reservation" ? "reservation_id" :
+    receipt.resource_type === "event_checkin" ? "checkin_id" : "closeout_id";
+  return json(receipt.response_status,{ok:true,[key]:receipt.resource_id,idempotent_replay:true},requestId,origin);
+}
+
+async function setEventRegistrationState(
+  request: Request,
+  env: Env,
+  eventId: string,
+  state: "open" | "closed",
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request,env,"events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(`
+      UPDATE event SET registration_state=?,last_modified_by=?,updated_at=?
+      WHERE id=? AND branch_id=? AND status='published'
+    `).bind(state,access.staff.userId,now,eventId,access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes??0)<1) return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_STATE_UNAVAILABLE"}},requestId,origin);
+  } catch {
+    return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_STATE_UPDATE_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,event_id:eventId,registration_state:state},requestId,origin);
+}
+
+async function listEventRegistrations(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request,env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if (!await hasEventAssignmentRole(context,env,eventId,["owner","organizer"],["organizer","ushering"])) {
+    return json(403,{ok:false,error:{code:"EVENT_REGISTRATION_ASSIGNMENT_REQUIRED"}},requestId,origin);
+  }
+  const event = await env.DB.prepare(
+    "SELECT id FROM event WHERE id=? AND branch_id=? LIMIT 1",
+  ).bind(eventId,context.activeBranch.branchId).first<{id:string}>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  const rows = await env.DB.prepare(`
+    SELECT id,event_id,contact_id,attendee_name_snapshot,attendee_phone_snapshot,
+           attendee_email_snapshot,registration_source,status,registered_at,created_by,
+           cancelled_by,cancelled_at
+    FROM event_registration
+    WHERE event_id=? AND branch_id=?
+    ORDER BY registered_at DESC,id DESC LIMIT 200
+  `).bind(eventId,context.activeBranch.branchId).all<Record<string,unknown>>();
+  return json(200,{ok:true,registrations:rows.results??[]},requestId,origin);
+}
+
+async function createEventRegistration(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if (!await hasEventAssignmentRole(context,env,eventId,["owner","organizer"],["organizer","ushering"])) {
+    return json(403,{ok:false,error:{code:"EVENT_REGISTRATION_ASSIGNMENT_REQUIRED"}},requestId,origin);
+  }
+  const idempotencyKey=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (idempotencyKey.length<8 || idempotencyKey.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["attendee_name","attendee_phone","attendee_email"]);
+  if (!payload || typeof payload!=="object" || Array.isArray(payload) || Object.keys(payload).some((key)=>!allowed.has(key))) {
+    return json(400,{ok:false,error:{code:"INVALID_REGISTRATION_BODY"}},requestId,origin);
+  }
+  const attendeeName=typeof payload.attendee_name==="string"?payload.attendee_name.trim():"";
+  const attendeePhone=payload.attendee_phone===undefined||payload.attendee_phone===null||payload.attendee_phone===""?null:
+    typeof payload.attendee_phone==="string"?payload.attendee_phone.trim():"";
+  const attendeeEmail=payload.attendee_email===undefined||payload.attendee_email===null||payload.attendee_email===""?null:
+    typeof payload.attendee_email==="string"?payload.attendee_email.trim().toLowerCase():"";
+  if (attendeeName.length<2 || attendeeName.length>180 ||
+      (attendeePhone!==null && (typeof attendeePhone!=="string" || !/^\+[1-9]\d{7,14}$/.test(attendeePhone))) ||
+      (attendeeEmail!==null && (typeof attendeeEmail!=="string" || attendeeEmail.length>254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(attendeeEmail)))) {
+    return json(400,{ok:false,error:{code:"INVALID_ATTENDEE_DETAILS"}},requestId,origin);
+  }
+  const scope=bestEventScope(context.activeBranch.capabilities.filter((grant)=>grant.code==="events.read").map((grant)=>grant.scopeMode));
+  if (!scope) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const now=new Date().toISOString();
+  const predicate=eventScopePredicate(scope,"e",context.staff.profileId,context.staff.userId,now);
+  const event=await env.DB.prepare(`
+    SELECT e.id,e.status,e.registration_state,e.capacity
+    FROM event e WHERE e.id=? AND e.branch_id=? AND (${predicate.sql}) LIMIT 1
+  `).bind(eventId,context.activeBranch.branchId,...predicate.values).first<{
+    id:string;status:string;registration_state:string;capacity:number|null;
+  }>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  const digest=await eventRequestDigest({attendee_name:attendeeName,attendee_phone:attendeePhone,attendee_email:attendeeEmail});
+  const replay=await findEventReceipt(env,eventId,"staff_registration",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  if (event.status!=="published" || event.registration_state!=="open") return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_CLOSED"}},requestId,origin);
+  const registrationId=crypto.randomUUID();
+  const receiptId=crypto.randomUUID();
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO event_registration
+          (id,event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,
+           attendee_email_snapshot,registration_source,status,registered_at,client_request_id,created_by)
+        VALUES (?,?,?,?,?,?,'staff','registered',?,?,?)
+      `).bind(
+        registrationId,eventId,context.activeBranch.branchId,attendeeName,
+        attendeePhone,attendeeEmail,now,idempotencyKey,context.staff.userId,
+      ),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES (?,?,?,'staff_registration','staff',?,?,1,?,'event_registration',?,201,?)
+      `).bind(
+        receiptId,eventId,context.activeBranch.branchId,context.staff.userId,
+        idempotencyKey,digest.bytes,registrationId,now,
+      ),
+    ]);
+    if (results.some((result)=>!result.success || (result.meta?.changes??0)!==1)) throw new Error("EVENT_REGISTRATION_BATCH_FAILED");
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"staff_registration",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    const count=await env.DB.prepare(
+      "SELECT COUNT(*) AS count FROM event_registration WHERE event_id=? AND branch_id=? AND status IN ('registered','attended')",
+    ).bind(eventId,context.activeBranch.branchId).first<{count:number}>();
+    if (event.capacity!==null && (count?.count??0)>=event.capacity) return json(409,{ok:false,error:{code:"EVENT_CAPACITY_REACHED"}},requestId,origin);
+    return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,registration_id:registrationId},requestId,origin);
+}
+
+async function cancelEventRegistration(
+  request: Request,
+  env: Env,
+  eventId: string,
+  registrationId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if (!await hasEventAssignmentRole(context,env,eventId,["owner","organizer"],["organizer","ushering"])) {
+    return json(403,{ok:false,error:{code:"EVENT_REGISTRATION_ASSIGNMENT_REQUIRED"}},requestId,origin);
+  }
+  const idempotencyKey=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (idempotencyKey.length<8 || idempotencyKey.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const digest=await eventRequestDigest({registration_id:registrationId,action:"cancel"});
+  const replay=await findEventReceipt(env,eventId,"registration_cancel",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  const now=new Date().toISOString();
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE event_registration SET status='cancelled',cancelled_by=?,cancelled_at=?,cancellation_request_key=?
+        WHERE id=? AND event_id=? AND branch_id=? AND status='registered' AND cancellation_request_key IS NULL
+      `).bind(context.staff.userId,now,idempotencyKey,registrationId,eventId,context.activeBranch.branchId),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        SELECT ?,?,?, 'registration_cancel','staff',?,?,1,?,'event_registration',?,200,?
+        WHERE EXISTS (
+          SELECT 1 FROM event_registration
+          WHERE id=? AND event_id=? AND status='cancelled' AND cancelled_by=? AND cancelled_at=? AND cancellation_request_key=?
+        )
+      `).bind(
+        crypto.randomUUID(),eventId,context.activeBranch.branchId,context.staff.userId,
+        idempotencyKey,digest.bytes,registrationId,now,
+        registrationId,eventId,context.staff.userId,now,idempotencyKey,
+      ),
+    ]);
+    if (results.some((result)=>!result.success || (result.meta?.changes??0)!==1)) {
+      const raced=await findEventReceipt(env,eventId,"registration_cancel",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+      if (raced) return raced;
+      return json(409,{ok:false,error:{code:"EVENT_CANCELLATION_IDEMPOTENCY_CONFLICT"}},requestId,origin);
+    }
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"registration_cancel",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    return json(409,{ok:false,error:{code:"REGISTRATION_CANCEL_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,registration_id:registrationId,status:"cancelled"},requestId,origin);
+}
+
+async function hasEventAssignmentRole(
+  context: AuthenticatedStaffContext,
+  env: Env,
+  eventId: string,
+  staffRoles: string[],
+  teamRoles: string[],
+): Promise<boolean> {
+  if (!context.activeBranch) return false;
+  if (context.activeBranch.capabilities.some(
+    (grant) => grant.code === "events.manage" && grant.scopeMode === "branch",
+  )) return true;
+
+  const now = new Date().toISOString();
+  const values: unknown[] = [eventId, context.activeBranch.branchId];
+  const staffPredicate = staffRoles.length
+    ? (() => {
+        values.push(context.staff.userId, ...staffRoles, now, now);
+        return `EXISTS (
+          SELECT 1 FROM event_staff_assignment esa
+          WHERE esa.event_id=e.id AND esa.branch_id=e.branch_id
+            AND esa.staff_auth_user_id=?
+            AND esa.assignment_role IN (${staffRoles.map(() => "?").join(",")})
+            AND esa.revoked_at IS NULL AND esa.starts_at<=?
+            AND (esa.ends_at IS NULL OR esa.ends_at>?)
+        )`;
+      })()
+    : "0=1";
+  const teamPredicate = teamRoles.length
+    ? (() => {
+        values.push(context.staff.profileId, ...teamRoles, now, now, now, now);
+        return `EXISTS (
+          SELECT 1 FROM event_team_assignment eta
+          JOIN staff_team_membership stm
+            ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id
+          WHERE eta.event_id=e.id AND eta.branch_id=e.branch_id
+            AND stm.staff_profile_id=?
+            AND eta.assignment_role IN (${teamRoles.map(() => "?").join(",")})
+            AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL
+            AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
+            AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+        )`;
+      })()
+    : "0=1";
+  const event = await env.DB.prepare(`
+    SELECT e.id FROM event e
+    WHERE e.id=? AND e.branch_id=? AND (${staffPredicate} OR ${teamPredicate})
+    LIMIT 1
+  `).bind(...values).first<{ id: string }>();
+  return !!event;
+}
+
+async function hasEventCheckinAccess(
+  context: AuthenticatedStaffContext,
+  env: Env,
+  eventId: string,
+): Promise<boolean> {
+  if (!context.activeBranch) return false;
+  if (context.activeBranch.capabilities.some(
+    (grant) => grant.code === "events.manage" && grant.scopeMode === "branch",
+  )) return true;
+  if (!context.activeBranch.capabilities.some(
+    (grant) => grant.code === "events.checkin" || grant.code === "events.manage",
+  )) return false;
+  if (context.activeBranch.capabilities.some(
+    (grant) => grant.code === "events.checkin" && grant.scopeMode === "branch",
+  )) return true;
+  return hasEventAssignmentRole(context, env, eventId,
+    ["owner", "organizer", "checkin"], ["organizer", "ushering"]);
+}
+
+async function createEventCheckin(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if (!context.activeBranch.capabilities.some((grant)=>grant.code==="events.checkin"||grant.code==="events.manage")) {
+    return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  }
+  if (!await hasEventCheckinAccess(context,env,eventId)) return json(403,{ok:false,error:{code:"EVENT_CHECKIN_ASSIGNMENT_REQUIRED"}},requestId,origin);
+  const idempotencyKey=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (idempotencyKey.length<8||idempotencyKey.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["registration_id","attendee_name_snapshot"]);
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some((key)=>!allowed.has(key))) {
+    return json(400,{ok:false,error:{code:"INVALID_CHECKIN_BODY"}},requestId,origin);
+  }
+  const registrationId=typeof payload.registration_id==="string"?payload.registration_id:null;
+  const attendeeName=typeof payload.attendee_name_snapshot==="string"?payload.attendee_name_snapshot.trim():null;
+  if ((registrationId!==null)===(attendeeName!==null) || (attendeeName!==null&&(attendeeName.length<2||attendeeName.length>180))) {
+    return json(400,{ok:false,error:{code:"CHECKIN_REQUIRES_REGISTRATION_OR_NAME"}},requestId,origin);
+  }
+  const event=await env.DB.prepare("SELECT id,status FROM event WHERE id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,context.activeBranch.branchId).first<{id:string;status:string}>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  const digest=await eventRequestDigest({registration_id:registrationId,attendee_name_snapshot:attendeeName});
+  const replay=await findEventReceipt(env,eventId,"event_checkin",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  if (event.status!=="published") return json(409,{ok:false,error:{code:"EVENT_NOT_CHECKIN_READY"}},requestId,origin);
+  if (registrationId) {
+    const registration=await env.DB.prepare(
+      "SELECT id FROM event_registration WHERE id=? AND event_id=? AND branch_id=? AND status='registered' LIMIT 1",
+    ).bind(registrationId,eventId,context.activeBranch.branchId).first<{id:string}>();
+    if (!registration) return json(404,{ok:false,error:{code:"ACTIVE_REGISTRATION_NOT_FOUND"}},requestId,origin);
+  }
+  const checkinId=crypto.randomUUID(),receiptId=crypto.randomUUID(),now=new Date().toISOString();
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO event_checkin
+          (id,event_id,branch_id,registration_id,attendee_name_snapshot,checked_in_at,
+           recorded_by,source,client_request_id)
+        VALUES (?,?,?,?,?,? ,?,'staff',?)
+      `).bind(checkinId,eventId,context.activeBranch.branchId,registrationId,attendeeName,now,context.staff.userId,idempotencyKey),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES (?,?,?,'event_checkin','staff',?,?,1,?,'event_checkin',?,201,?)
+      `).bind(receiptId,eventId,context.activeBranch.branchId,context.staff.userId,idempotencyKey,digest.bytes,checkinId,now),
+    ]);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) throw new Error("EVENT_CHECKIN_BATCH_FAILED");
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"event_checkin",idempotencyKey,context.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    return json(409,{ok:false,error:{code:"EVENT_CHECKIN_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,checkin_id:checkinId},requestId,origin);
+}
+
+async function listEventCheckins(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if (!await hasEventCheckinAccess(context,env,eventId)) return json(403,{ok:false,error:{code:"EVENT_CHECKIN_ASSIGNMENT_REQUIRED"}},requestId,origin);
+  const event=await env.DB.prepare("SELECT id FROM event WHERE id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,context.activeBranch.branchId).first<{id:string}>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  const rows=await env.DB.prepare(`
+    SELECT id,event_id,registration_id,contact_id,attendee_name_snapshot,checked_in_at,recorded_by,source
+    FROM event_checkin WHERE event_id=? AND branch_id=?
+    ORDER BY checked_in_at DESC,id DESC LIMIT 300
+  `).bind(eventId,context.activeBranch.branchId).all<Record<string,unknown>>();
+  return json(200,{ok:true,checkins:rows.results??[]},requestId,origin);
+}
+
+async function listTransportOptions(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if (!await hasEventAssignmentRole(context,env,eventId,["owner","organizer","transport"],["organizer","transport"])) {
+    return json(403,{ok:false,error:{code:"EVENT_TRANSPORT_ASSIGNMENT_REQUIRED"}},requestId,origin);
+  }
+  const event=await env.DB.prepare("SELECT id FROM event WHERE id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,context.activeBranch.branchId).first<{id:string}>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  const rows=await env.DB.prepare(`
+    SELECT id,event_id,branch_id,label,capacity,is_enabled,created_at,created_by,updated_by,updated_at
+    FROM transport_option WHERE event_id=? AND branch_id=? ORDER BY label,id
+  `).bind(eventId,context.activeBranch.branchId).all<Record<string,unknown>>();
+  return json(200,{ok:true,transport_options:rows.results??[]},requestId,origin);
+}
+
+async function createTransportOption(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if (!await hasEventAssignmentRole(context,env,eventId,["owner","organizer","transport"],["organizer","transport"])) {
+    return json(403,{ok:false,error:{code:"EVENT_TRANSPORT_ASSIGNMENT_REQUIRED"}},requestId,origin);
+  }
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["label","capacity"]);
+  const label=typeof payload?.label==="string"?payload.label.trim():"";
+  const capacity=payload?.capacity===undefined||payload.capacity===null?null:payload.capacity;
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some((key)=>!allowed.has(key))||
+      label.length<2||label.length>160||(capacity!==null&&(typeof capacity!=="number"||!Number.isInteger(capacity)||capacity<1||capacity>10000))) {
+    return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_OPTION"}},requestId,origin);
+  }
+  const event=await env.DB.prepare("SELECT id,transport_enabled FROM event WHERE id=? AND branch_id=? AND status='published' LIMIT 1")
+    .bind(eventId,context.activeBranch.branchId).first<{id:string;transport_enabled:number}>();
+  if (!event||event.transport_enabled!==1) return json(409,{ok:false,error:{code:"EVENT_TRANSPORT_DISABLED"}},requestId,origin);
+  const id=crypto.randomUUID(),now=new Date().toISOString();
+  try {
+    const result=await env.DB.prepare(`
+      INSERT INTO transport_option
+        (id,event_id,branch_id,label,capacity,is_enabled,created_at,created_by,updated_by,updated_at)
+      VALUES (?,?,?,?,?,1,?,?,?,?)
+    `).bind(id,eventId,context.activeBranch.branchId,label,capacity,now,context.staff.userId,context.staff.userId,now).run();
+    if (!result.success||(result.meta?.changes??0)!==1) throw new Error("TRANSPORT_OPTION_CREATE_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"TRANSPORT_OPTION_CREATE_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,transport_option_id:id},requestId,origin);
+}
+
+async function updateTransportOption(
+  request: Request,
+  env: Env,
+  eventId: string,
+  optionId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if (!await hasEventAssignmentRole(context,env,eventId,["owner","organizer","transport"],["organizer","transport"])) {
+    return json(403,{ok:false,error:{code:"EVENT_TRANSPORT_ASSIGNMENT_REQUIRED"}},requestId,origin);
+  }
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["label","capacity","is_enabled"]);
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).length===0||Object.keys(payload).some((key)=>!allowed.has(key))) {
+    return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_OPTION_UPDATE"}},requestId,origin);
+  }
+  const assignments:string[]=[],values:unknown[]=[];
+  if (payload.label!==undefined) {
+    if (typeof payload.label!=="string"||payload.label.trim().length<2||payload.label.trim().length>160) return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_LABEL"}},requestId,origin);
+    assignments.push("label=?");values.push(payload.label.trim());
+  }
+  if (payload.capacity!==undefined) {
+    if (payload.capacity!==null&&(typeof payload.capacity!=="number"||!Number.isInteger(payload.capacity)||payload.capacity<1||payload.capacity>10000)) return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_CAPACITY"}},requestId,origin);
+    assignments.push("capacity=?");values.push(payload.capacity);
+  }
+  if (payload.is_enabled!==undefined) {
+    if (typeof payload.is_enabled!=="boolean") return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_ENABLED_STATE"}},requestId,origin);
+    assignments.push("is_enabled=?");values.push(payload.is_enabled?1:0);
+  }
+  const now=new Date().toISOString();
+  assignments.push("updated_by=?");values.push(context.staff.userId);
+  assignments.push("updated_at=?");values.push(now);
+  try {
+    const result=await env.DB.prepare(`
+      UPDATE transport_option SET ${assignments.join(",")}
+      WHERE id=? AND event_id=? AND branch_id=?
+    `).bind(...values,optionId,eventId,context.activeBranch.branchId).run();
+    if (!result.success||(result.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"TRANSPORT_OPTION_NOT_FOUND"}},requestId,origin);
+  } catch {
+    return json(409,{ok:false,error:{code:"TRANSPORT_OPTION_UPDATE_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,transport_option_id:optionId},requestId,origin);
+}
+
+async function listTransportReservations(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if (!await hasEventAssignmentRole(context,env,eventId,["owner","organizer","transport"],["organizer","transport"])) {
+    return json(403,{ok:false,error:{code:"EVENT_TRANSPORT_ASSIGNMENT_REQUIRED"}},requestId,origin);
+  }
+  const event=await env.DB.prepare("SELECT id FROM event WHERE id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,context.activeBranch.branchId).first<{id:string}>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  const rows=await env.DB.prepare(`
+    SELECT tr.id,tr.event_id,tr.registration_id,tr.transport_option_id,tr.pickup_area,
+           tr.seat_count,tr.status,tr.notes,tr.created_at,tr.updated_at,
+           er.attendee_name_snapshot,er.attendee_phone_snapshot
+    FROM transport_reservation tr
+    JOIN event_registration er ON er.id=tr.registration_id AND er.event_id=tr.event_id AND er.branch_id=tr.branch_id
+    WHERE tr.event_id=? AND tr.branch_id=?
+    ORDER BY tr.created_at DESC,tr.id DESC LIMIT 200
+  `).bind(eventId,context.activeBranch.branchId).all<Record<string,unknown>>();
+  return json(200,{ok:true,reservations:rows.results??[]},requestId,origin);
+}
+
+async function createTransportReservation(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if (!await hasEventAssignmentRole(context,env,eventId,["owner","organizer","transport"],["organizer","transport"])) {
+    return json(403,{ok:false,error:{code:"EVENT_TRANSPORT_ASSIGNMENT_REQUIRED"}},requestId,origin);
+  }
+  const key=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (key.length<8||key.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["registration_id","transport_option_id","seat_count","pickup_area","notes"]);
+  const registrationId=typeof payload?.registration_id==="string"?payload.registration_id:"";
+  const optionId=typeof payload?.transport_option_id==="string"?payload.transport_option_id:"";
+  const seatCount=payload?.seat_count===undefined?1:payload.seat_count;
+  const pickupArea=payload?.pickup_area===undefined||payload.pickup_area===null||payload.pickup_area===""?null:typeof payload.pickup_area==="string"?payload.pickup_area.trim():"";
+  const notes=payload?.notes===undefined||payload.notes===null?null:typeof payload.notes==="string"?payload.notes.trim():"";
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some((key)=>!allowed.has(key))||
+      !registrationId||!optionId||typeof seatCount!=="number"||!Number.isInteger(seatCount)||seatCount<1||seatCount>20||
+      (payload.pickup_area!==undefined&&payload.pickup_area!==null&&payload.pickup_area!==""&&typeof payload.pickup_area!=="string")||
+      (payload.notes!==undefined&&payload.notes!==null&&typeof payload.notes!=="string")||
+      (pickupArea!==null&&pickupArea.length>180)||(notes!==null&&notes.length>1000)) {
+    return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_RESERVATION"}},requestId,origin);
+  }
+  const event=await env.DB.prepare("SELECT id,status,transport_enabled FROM event WHERE id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,context.activeBranch.branchId).first<{id:string;status:string;transport_enabled:number}>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  const digest=await eventRequestDigest({registration_id:registrationId,transport_option_id:optionId,seat_count:seatCount,pickup_area:pickupArea,notes});
+  const replay=await findEventReceipt(env,eventId,"transport_reservation",key,context.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  if (event.status!=="published"||event.transport_enabled!==1) return json(409,{ok:false,error:{code:"EVENT_TRANSPORT_NOT_AVAILABLE"}},requestId,origin);
+  const registration=await env.DB.prepare(
+    "SELECT id FROM event_registration WHERE id=? AND event_id=? AND branch_id=? AND status='registered' LIMIT 1",
+  ).bind(registrationId,eventId,context.activeBranch.branchId).first<{id:string}>();
+  const option=await env.DB.prepare(
+    "SELECT id FROM transport_option WHERE id=? AND event_id=? AND branch_id=? AND is_enabled=1 LIMIT 1",
+  ).bind(optionId,eventId,context.activeBranch.branchId).first<{id:string}>();
+  if (!registration||!option) return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_TARGET"}},requestId,origin);
+  const reservationId=crypto.randomUUID(),receiptId=crypto.randomUUID(),now=new Date().toISOString();
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO transport_reservation
+          (id,registration_id,event_id,transport_option_id,branch_id,pickup_area,seat_count,status,
+           notes,created_at,updated_at,created_by,updated_by)
+        VALUES (?,?,?,?,?,?,?,'reserved',?,?,?,?,?)
+      `).bind(reservationId,registrationId,eventId,optionId,context.activeBranch.branchId,pickupArea,seatCount,notes,now,now,context.staff.userId,context.staff.userId),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES (?,?,?,'transport_reservation','staff',?,?,1,?,'transport_reservation',?,201,?)
+      `).bind(receiptId,eventId,context.activeBranch.branchId,context.staff.userId,key,digest.bytes,reservationId,now),
+    ]);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) throw new Error("TRANSPORT_RESERVATION_BATCH_FAILED");
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"transport_reservation",key,context.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    const capacity=await env.DB.prepare(
+      "SELECT capacity,(SELECT COALESCE(SUM(seat_count),0) FROM transport_reservation WHERE transport_option_id=? AND status IN ('reserved','boarded')) AS reserved FROM transport_option WHERE id=?",
+    ).bind(optionId,optionId).first<{capacity:number|null;reserved:number}>();
+    if (capacity?.capacity!==null&&capacity&&capacity.reserved+seatCount>capacity.capacity) return json(409,{ok:false,error:{code:"TRANSPORT_CAPACITY_REACHED"}},requestId,origin);
+    return json(409,{ok:false,error:{code:"TRANSPORT_RESERVATION_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,reservation_id:reservationId},requestId,origin);
+}
+
+async function cancelTransportReservation(
+  request: Request,
+  env: Env,
+  eventId: string,
+  reservationId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  if (!await hasEventAssignmentRole(context,env,eventId,["owner","organizer","transport"],["organizer","transport"])) {
+    return json(403,{ok:false,error:{code:"EVENT_TRANSPORT_ASSIGNMENT_REQUIRED"}},requestId,origin);
+  }
+  const key=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (key.length<8||key.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const digest=await eventRequestDigest({reservation_id:reservationId,action:"cancel"});
+  const replay=await findEventReceipt(env,eventId,"transport_cancel",key,context.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  const now=new Date().toISOString();
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE transport_reservation
+        SET status='cancelled',updated_by=?,cancelled_by=?,cancelled_at=?,updated_at=?,cancellation_request_key=?
+        WHERE id=? AND event_id=? AND branch_id=? AND status='reserved' AND cancellation_request_key IS NULL
+      `).bind(context.staff.userId,context.staff.userId,now,now,key,reservationId,eventId,context.activeBranch.branchId),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        SELECT ?,?,?, 'transport_cancel','staff',?,?,1,?,'transport_reservation',?,200,?
+        WHERE EXISTS (
+          SELECT 1 FROM transport_reservation
+          WHERE id=? AND event_id=? AND status='cancelled' AND cancelled_by=? AND cancelled_at=? AND cancellation_request_key=?
+        )
+      `).bind(
+        crypto.randomUUID(),eventId,context.activeBranch.branchId,context.staff.userId,
+        key,digest.bytes,reservationId,now,reservationId,eventId,context.staff.userId,now,key,
+      ),
+    ]);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) {
+      const raced=await findEventReceipt(env,eventId,"transport_cancel",key,context.staff.userId,digest.hex,requestId,origin);
+      if (raced) return raced;
+      return json(409,{ok:false,error:{code:"EVENT_CANCELLATION_IDEMPOTENCY_CONFLICT"}},requestId,origin);
+    }
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"transport_cancel",key,context.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    return json(409,{ok:false,error:{code:"TRANSPORT_CANCEL_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,reservation_id:reservationId,status:"cancelled"},requestId,origin);
+}
+
+async function eventCloseoutCounts(
+  env: Env,
+  eventId: string,
+  branchId: string,
+): Promise<{ attendeeCount: number; registrationCount: number; transportSeatCount: number }> {
+  const [attendees,registrations,transport]=await Promise.all([
+    env.DB.prepare("SELECT COUNT(*) AS count FROM event_checkin WHERE event_id=? AND branch_id=?").bind(eventId,branchId).first<{count:number}>(),
+    env.DB.prepare("SELECT COUNT(*) AS count FROM event_registration WHERE event_id=? AND branch_id=? AND status IN ('registered','attended','no_show')").bind(eventId,branchId).first<{count:number}>(),
+    env.DB.prepare("SELECT COALESCE(SUM(seat_count),0) AS count FROM transport_reservation WHERE event_id=? AND branch_id=? AND status IN ('reserved','boarded')").bind(eventId,branchId).first<{count:number}>(),
+  ]);
+  return {
+    attendeeCount:attendees?.count??0,
+    registrationCount:registrations?.count??0,
+    transportSeatCount:transport?.count??0,
+  };
+}
+
+async function getEventCloseout(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const allowed=context.activeBranch.capabilities.some((grant)=>grant.code==="events.manage"||grant.code==="events.closeout.review");
+  if (!allowed) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const closeout=await env.DB.prepare(
+    "SELECT * FROM event_closeout WHERE event_id=? AND branch_id=? LIMIT 1",
+  ).bind(eventId,context.activeBranch.branchId).first<Record<string,unknown>>();
+  if (!closeout) return json(404,{ok:false,error:{code:"EVENT_CLOSEOUT_NOT_FOUND"}},requestId,origin);
+  const history=await env.DB.prepare(`
+    SELECT ce.id,ce.actor_user_id,sp.full_name AS actor_name,ce.action,ce.details,ce.created_at
+    FROM event_closeout_event ce JOIN staff_profile sp ON sp.auth_user_id=ce.actor_user_id
+    WHERE ce.closeout_id=? ORDER BY ce.created_at ASC,ce.id ASC
+  `).bind(closeout.id).all<Record<string,unknown>>();
+  return json(200,{ok:true,closeout,history:history.results??[]},requestId,origin);
+}
+
+async function submitEventCloseout(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"events.manage");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const key=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (key.length<8||key.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||
+      Object.keys(payload).some((field)=>field!=="summary_notes")) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_BODY"}},requestId,origin);
+  const summary=payload.summary_notes===undefined||payload.summary_notes===null?null:
+    typeof payload.summary_notes==="string"?payload.summary_notes.trim():"";
+  if (summary!==null&&(typeof summary!=="string"||summary.length>5000)) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_NOTES"}},requestId,origin);
+  const digest=await eventRequestDigest({event_id:eventId,summary_notes:summary});
+  const replay=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  const event=await env.DB.prepare("SELECT id FROM event WHERE id=? AND branch_id=? AND status='published' LIMIT 1")
+    .bind(eventId,access.activeBranch.branchId).first<{id:string}>();
+  if (!event) return json(404,{ok:false,error:{code:"EVENT_NOT_CLOSEOUT_READY"}},requestId,origin);
+  const counts=await eventCloseoutCounts(env,eventId,access.activeBranch.branchId);
+  const existing=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,access.activeBranch.branchId).first<{id:string;status:string}>();
+  if (existing) return json(409,{ok:false,error:{code:existing.status==="returned"?"CLOSEOUT_RESUBMIT_REQUIRED":"CLOSEOUT_ALREADY_EXISTS"}},requestId,origin);
+  const id=crypto.randomUUID(),now=new Date().toISOString();
+  const details=JSON.stringify({attendee_count:counts.attendeeCount,registration_count:counts.registrationCount,transport_seat_count:counts.transportSeatCount});
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO event_closeout
+          (id,event_id,branch_id,submitted_by,submitted_at,status,attendee_count,
+           registration_count,transport_seat_count,summary_notes,created_at,updated_at)
+        VALUES (?,?,?,?,?,'submitted',?,?,?,?,?,?)
+      `).bind(id,eventId,access.activeBranch.branchId,access.staff.userId,now,
+        counts.attendeeCount,counts.registrationCount,counts.transportSeatCount,summary,now,now),
+      env.DB.prepare(`
+        INSERT INTO event_closeout_event (id,closeout_id,actor_user_id,action,details,created_at)
+        VALUES (?,?,?,'submitted',?,?)
+      `).bind(crypto.randomUUID(),id,access.staff.userId,details,now),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES (?,?,?,'closeout_submit','staff',?,?,1,?,'event_closeout',?,201,?)
+      `).bind(crypto.randomUUID(),eventId,access.activeBranch.branchId,access.staff.userId,key,digest.bytes,id,now),
+    ]);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) throw new Error("CLOSEOUT_SUBMIT_BATCH_FAILED");
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    return json(409,{ok:false,error:{code:"CLOSEOUT_SUBMIT_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,closeout_id:id,status:"submitted",...counts},requestId,origin);
+}
+
+async function resubmitEventCloseout(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"events.manage");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const key=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (key.length<8||key.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some((field)=>field!=="summary_notes")) {
+    return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_BODY"}},requestId,origin);
+  }
+  const summary=payload.summary_notes===undefined||payload.summary_notes===null?null:
+    typeof payload.summary_notes==="string"?payload.summary_notes.trim():"";
+  if (summary!==null&&(typeof summary!=="string"||summary.length>5000)) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_NOTES"}},requestId,origin);
+  const existing=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,access.activeBranch.branchId).first<{id:string;status:string}>();
+  if (!existing) return json(404,{ok:false,error:{code:"EVENT_CLOSEOUT_NOT_FOUND"}},requestId,origin);
+  const counts=await eventCloseoutCounts(env,eventId,access.activeBranch.branchId);
+  const digest=await eventRequestDigest({event_id:eventId,resubmission:true,summary_notes:summary});
+  const replay=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  if (existing.status!=="returned") return json(409,{ok:false,error:{code:"CLOSEOUT_NOT_RESUBMITTABLE"}},requestId,origin);
+  const now=new Date().toISOString();
+  const details=JSON.stringify({resubmitted:true,attendee_count:counts.attendeeCount,registration_count:counts.registrationCount,transport_seat_count:counts.transportSeatCount});
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE event_closeout
+        SET status='submitted',submitted_by=?,submitted_at=?,reviewed_by=NULL,reviewed_at=NULL,
+            attendee_count=?,registration_count=?,transport_seat_count=?,summary_notes=?,updated_at=?
+        WHERE id=? AND event_id=? AND branch_id=? AND status='returned'
+      `).bind(access.staff.userId,now,counts.attendeeCount,counts.registrationCount,counts.transportSeatCount,summary,now,existing.id,eventId,access.activeBranch.branchId),
+      env.DB.prepare(`
+        INSERT INTO event_closeout_event (id,closeout_id,actor_user_id,action,details,created_at)
+        SELECT ?,?,?, 'submitted',?,?
+        WHERE EXISTS (SELECT 1 FROM event_closeout WHERE id=? AND status='submitted' AND submitted_by=? AND submitted_at=?)
+      `).bind(crypto.randomUUID(),existing.id,access.staff.userId,details,now,existing.id,access.staff.userId,now),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        SELECT ?,?,?, 'closeout_submit','staff',?,?,1,?,'event_closeout',?,200,?
+        WHERE EXISTS (SELECT 1 FROM event_closeout WHERE id=? AND status='submitted' AND submitted_by=? AND submitted_at=?)
+      `).bind(crypto.randomUUID(),eventId,access.activeBranch.branchId,access.staff.userId,key,digest.bytes,existing.id,now,existing.id,access.staff.userId,now),
+    ]);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) return json(409,{ok:false,error:{code:"CLOSEOUT_RESUBMIT_CONFLICT"}},requestId,origin);
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"closeout_submit",key,access.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    return json(409,{ok:false,error:{code:"CLOSEOUT_RESUBMIT_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,closeout_id:existing.id,status:"submitted",...counts},requestId,origin);
+}
+
+async function reviewEventCloseout(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"events.closeout.review");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const key=request.headers.get("Idempotency-Key")?.trim()??"";
+  if (key.length<8||key.length>128) return json(400,{ok:false,error:{code:"IDEMPOTENCY_KEY_REQUIRED"}},requestId,origin);
+  const body=await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["decision","notes"]);
+  if (!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some((field)=>!allowed.has(field))) {
+    return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_REVIEW_BODY"}},requestId,origin);
+  }
+  const decision=payload.decision==="approve"?"approved":payload.decision==="return"?"returned":null;
+  const notes=payload.notes===undefined||payload.notes===null?null:typeof payload.notes==="string"?payload.notes.trim():"";
+  if (!decision||(notes!==null&&(typeof notes!=="string"||notes.length>2000))) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_REVIEW_DECISION"}},requestId,origin);
+  const closeout=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,access.activeBranch.branchId).first<{id:string;status:string}>();
+  if (!closeout) return json(404,{ok:false,error:{code:"EVENT_CLOSEOUT_NOT_FOUND"}},requestId,origin);
+  const digest=await eventRequestDigest({closeout_id:closeout.id,decision,notes});
+  const replay=await findEventReceipt(env,eventId,"closeout_review",key,access.staff.userId,digest.hex,requestId,origin);
+  if (replay) return replay;
+  if (closeout.status!=="submitted") return json(409,{ok:false,error:{code:"CLOSEOUT_NOT_REVIEWABLE"}},requestId,origin);
+  const now=new Date().toISOString();
+  const details=JSON.stringify({notes});
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE event_closeout SET status=?,reviewed_by=?,reviewed_at=?,updated_at=?
+        WHERE id=? AND event_id=? AND branch_id=? AND status='submitted'
+      `).bind(decision,access.staff.userId,now,now,closeout.id,eventId,access.activeBranch.branchId),
+      env.DB.prepare(`
+        INSERT INTO event_closeout_event (id,closeout_id,actor_user_id,action,details,created_at)
+        SELECT ?,?,?,?, ?,?
+        WHERE EXISTS (SELECT 1 FROM event_closeout WHERE id=? AND status=? AND reviewed_by=? AND reviewed_at=?)
+      `).bind(crypto.randomUUID(),closeout.id,access.staff.userId,decision,details,now,closeout.id,decision,access.staff.userId,now),
+      env.DB.prepare(`
+        INSERT INTO event_idempotency_receipt
+          (id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,
+           digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        SELECT ?,?,?, 'closeout_review','staff',?,?,1,?,'event_closeout',?,200,?
+        WHERE EXISTS (SELECT 1 FROM event_closeout WHERE id=? AND status=? AND reviewed_by=? AND reviewed_at=?)
+      `).bind(crypto.randomUUID(),eventId,access.activeBranch.branchId,access.staff.userId,key,digest.bytes,closeout.id,now,closeout.id,decision,access.staff.userId,now),
+    ]);
+    if (results.some((result)=>!result.success||(result.meta?.changes??0)!==1)) return json(409,{ok:false,error:{code:"CLOSEOUT_REVIEW_CONFLICT"}},requestId,origin);
+  } catch {
+    const raced=await findEventReceipt(env,eventId,"closeout_review",key,access.staff.userId,digest.hex,requestId,origin);
+    if (raced) return raced;
+    return json(409,{ok:false,error:{code:"CLOSEOUT_REVIEW_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,closeout_id:closeout.id,status:decision},requestId,origin);
+}
+
+async function listEventAudit(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const event = await env.DB.prepare(
+    "SELECT id FROM event WHERE id=? AND branch_id=? LIMIT 1",
+  ).bind(eventId, access.activeBranch.branchId).first<{ id: string }>();
+  if (!event) return json(404, { ok: false, error: { code: "EVENT_NOT_FOUND" } }, requestId, origin);
+  const rows = await env.DB.prepare(`
+    SELECT a.id,a.action,a.before_state,a.after_state,a.actor_user_id,
+           sp.full_name AS actor_name,a.created_at
+    FROM event_change_audit a
+    JOIN staff_profile sp ON sp.auth_user_id=a.actor_user_id
+    WHERE a.event_id=? AND a.branch_id=?
+    ORDER BY a.created_at DESC,a.id DESC LIMIT 100
+  `).bind(eventId, access.activeBranch.branchId).all<Record<string, unknown>>();
+  return json(200, { ok: true, audit: rows.results ?? [] }, requestId, origin);
+}
+
+async function cancelEvent(
+  request: Request,
+  env: Env,
+  eventId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "events.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(`
+      UPDATE event
+      SET status = 'cancelled', registration_state = 'closed', last_modified_by = ?, updated_at = ?
+      WHERE id = ? AND branch_id = ? AND status IN ('draft','published')
+    `).bind(access.staff.userId, now, eventId, access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes ?? 0) < 1) {
+      return json(409, { ok: false, error: { code: "EVENT_NOT_CANCELLABLE" } }, requestId, origin);
+    }
+  } catch {
+    return json(409, { ok: false, error: { code: "EVENT_CANCEL_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, event_id: eventId, status: "cancelled" }, requestId, origin);
+}
+
+type CalendarScopeMode = "branch" | "team" | "assigned";
+
+function bestCalendarScope(scopes: string[]): CalendarScopeMode | null {
+  if (scopes.includes("branch")) return "branch";
+  if (scopes.includes("team")) return "team";
+  if (scopes.includes("assigned")) return "assigned";
+  return null;
+}
+
+function calendarScopePredicate(
+  mode: CalendarScopeMode,
+  alias: string,
+  staffProfileId: string,
+  staffUserId: string,
+  now: string,
+): { sql: string; values: unknown[] } {
+  if (mode === "branch") return { sql: "1 = 1", values: [] };
+  if (mode === "assigned") return {
+    sql: `(
+      (${alias}.scope_type='own' AND ${alias}.owner_user_id=?)
+      OR (${alias}.scope_type='event' AND EXISTS (
+        SELECT 1 FROM event_staff_assignment esa
+        WHERE esa.event_id=${alias}.event_id AND esa.branch_id=${alias}.branch_id
+          AND esa.staff_auth_user_id=? AND esa.revoked_at IS NULL
+          AND esa.starts_at<=? AND (esa.ends_at IS NULL OR esa.ends_at>?)
+      ))
+    )`,
+    values: [staffUserId, staffUserId, now, now],
+  };
+  return {
+    sql: `(
+      (${alias}.scope_type='team' AND EXISTS (
+        SELECT 1 FROM staff_team_membership tm
+        WHERE tm.team_id=${alias}.team_id AND tm.branch_id=${alias}.branch_id
+          AND tm.staff_profile_id=? AND tm.revoked_at IS NULL
+          AND tm.starts_at<=? AND (tm.ends_at IS NULL OR tm.ends_at>?)
+      ))
+      OR (${alias}.scope_type='event' AND EXISTS (
+        SELECT 1 FROM event_team_assignment eta
+        JOIN staff_team_membership tm ON tm.team_id=eta.team_id AND tm.branch_id=eta.branch_id
+        WHERE eta.event_id=${alias}.event_id AND eta.branch_id=${alias}.branch_id
+          AND tm.staff_profile_id=? AND eta.revoked_at IS NULL AND tm.revoked_at IS NULL
+          AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
+          AND tm.starts_at<=? AND (tm.ends_at IS NULL OR tm.ends_at>?)
+      ))
+    )`,
+    values: [staffProfileId, now, now, staffProfileId, now, now, now, now],
+  };
+}
+
+async function listCalendarEntries(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestCalendarScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "calendar.read")
+    .map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+
+  const url = new URL(request.url);
+  const fromRaw = url.searchParams.get("from");
+  const toRaw = url.searchParams.get("to");
+  const from = fromRaw ? parseIsoTimestamp(fromRaw, "") : new Date(Date.now() - 30 * 86400000).toISOString();
+  const to = toRaw ? parseIsoTimestamp(toRaw, "") : new Date(Date.now() + 180 * 86400000).toISOString();
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 100 : Number(rawLimit);
+  if (!from || !to || to <= from || !Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      [...url.searchParams.keys()].some((key) => !["from", "to", "limit"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_QUERY" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const predicate = calendarScopePredicate(scope, "ce", context.staff.profileId, context.staff.userId, now);
+  const rows = await env.DB.prepare(`
+    SELECT ce.id, ce.branch_id, ce.entry_type, ce.title, ce.starts_at, ce.ends_at,
+           ce.timezone, ce.scope_type, ce.team_id, ce.event_id, ce.owner_user_id,
+           ce.created_by, ce.created_at, ce.updated_at, ce.series_id
+    FROM calendar_entry ce
+    WHERE ce.branch_id = ? AND ce.status = 'active'
+      AND ce.starts_at < ?
+      AND (ce.ends_at IS NULL OR ce.ends_at >= ?)
+      AND (${predicate.sql})
+    ORDER BY ce.starts_at ASC, ce.id ASC
+    LIMIT ?
+  `).bind(
+    context.activeBranch.branchId, to, from, ...predicate.values, limit,
+  ).all<Record<string, unknown>>();
+  return json(200, { ok: true, entries: rows.results ?? [] }, requestId, origin);
+}
+
+async function getCalendarEntry(
+  request: Request,
+  env: Env,
+  entryId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestCalendarScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "calendar.read")
+    .map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const now = new Date().toISOString();
+  const predicate = calendarScopePredicate(scope, "ce", context.staff.profileId, context.staff.userId, now);
+  const row = await env.DB.prepare(`
+    SELECT ce.id, ce.branch_id, ce.entry_type, ce.title, ce.starts_at, ce.ends_at,
+           ce.timezone, ce.scope_type, ce.team_id, ce.event_id, ce.owner_user_id,
+           ce.created_by, ce.created_at, ce.updated_at, ce.series_id
+    FROM calendar_entry ce
+    WHERE ce.id=? AND ce.branch_id=? AND ce.status='active' AND (${predicate.sql})
+    LIMIT 1
+  `).bind(entryId, context.activeBranch.branchId, ...predicate.values).first<Record<string, unknown>>();
+  if (!row) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, entry: row }, requestId, origin);
+}
+
+interface ZonedCalendarParts { year:number; month:number; day:number; hour:number; minute:number; second:number; }
+
+function zonedCalendarParts(date: Date, timezone: string): ZonedCalendarParts {
+  const parts=new Intl.DateTimeFormat("en-US",{
+    timeZone:timezone,year:"numeric",month:"2-digit",day:"2-digit",
+    hour:"2-digit",minute:"2-digit",second:"2-digit",hourCycle:"h23",
+  }).formatToParts(date);
+  const part=(name:string)=>Number(parts.find(item=>item.type===name)?.value??"0");
+  return {year:part("year"),month:part("month"),day:part("day"),
+    hour:part("hour"),minute:part("minute"),second:part("second")};
+}
+
+function zonedCalendarLocalToUtc(parts: ZonedCalendarParts, timezone: string): string {
+  const desired=Date.UTC(parts.year,parts.month-1,parts.day,parts.hour,parts.minute,parts.second);
+  let guess=desired;
+  for(let i=0;i<5;i++) {
+    const actual=zonedCalendarParts(new Date(guess),timezone);
+    const actualAsUtc=Date.UTC(actual.year,actual.month-1,actual.day,actual.hour,actual.minute,actual.second);
+    guess=desired-(actualAsUtc-guess);
+  }
+  const final=zonedCalendarParts(new Date(guess),timezone);
+  if(final.year!==parts.year||final.month!==parts.month||final.day!==parts.day||
+     final.hour!==parts.hour||final.minute!==parts.minute||final.second!==parts.second) {
+    throw new Error("NONEXISTENT_LOCAL_CALENDAR_TIME");
+  }
+  return new Date(guess).toISOString();
+}
+
+function buildCalendarOccurrenceStarts(
+  startsAt:string,timezone:string,frequency:"daily"|"weekly"|"monthly",interval:number,count:number,
+):string[] {
+  const base=zonedCalendarParts(new Date(startsAt),timezone);
+  const milliseconds=Date.parse(startsAt)%1000;
+  const result=[new Date(startsAt).toISOString()];
+  for(let index=1;index<count;index++) {
+    let next:ZonedCalendarParts;
+    if(frequency==="monthly") {
+      const monthIndex=base.year*12+(base.month-1)+index*interval;
+      const year=Math.floor(monthIndex/12),month=(monthIndex%12)+1;
+      const lastDay=new Date(Date.UTC(year,month,0)).getUTCDate();
+      next={...base,year,month,day:Math.min(base.day,lastDay)};
+    } else {
+      const days=index*interval*(frequency==="weekly"?7:1);
+      const date=new Date(Date.UTC(base.year,base.month-1,base.day+days));
+      next={...base,year:date.getUTCFullYear(),month:date.getUTCMonth()+1,day:date.getUTCDate()};
+    }
+    const value=Date.parse(zonedCalendarLocalToUtc(next,timezone))+milliseconds;
+    if(!Number.isFinite(value)||value<=Date.parse(result[result.length-1])) throw new Error("INVALID_CALENDAR_RECURRENCE");
+    result.push(new Date(value).toISOString());
+  }
+  return result;
+}
+
+async function createCalendarSeries(request:Request,env:Env,requestId:string,origin?:string):Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"calendar.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as Record<string,unknown>;
+  const allowed=new Set(["entry_type","title","starts_at","ends_at","timezone","scope_type","team_id","event_id","recurrence"]);
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some(k=>!allowed.has(k))) {
+    return json(400,{ok:false,error:{code:"INVALID_CALENDAR_SERIES_BODY"}},requestId,origin);
+  }
+  const entryType=typeof payload.entry_type==="string"?payload.entry_type:"";
+  const title=typeof payload.title==="string"?payload.title.trim():"";
+  const startsAt=parseIsoTimestamp(payload.starts_at,"");
+  const endsAt=payload.ends_at===undefined||payload.ends_at===null||payload.ends_at===""?null:parseIsoTimestamp(payload.ends_at,"");
+  const timezone=payload.timezone===undefined?"Africa/Accra":typeof payload.timezone==="string"?payload.timezone.trim():"";
+  const scopeType=typeof payload.scope_type==="string"?payload.scope_type:"";
+  const teamId=typeof payload.team_id==="string"?payload.team_id.trim()||null:null;
+  const eventId=typeof payload.event_id==="string"?payload.event_id.trim()||null:null;
+  const recurrence=payload.recurrence as {frequency?:unknown;interval?:unknown;count?:unknown} | null;
+  const frequency=recurrence?.frequency;
+  const interval=recurrence?.interval;
+  const count=recurrence?.count;
+  if((payload.team_id!==undefined&&payload.team_id!==null&&typeof payload.team_id!=="string")||
+     (payload.event_id!==undefined&&payload.event_id!==null&&typeof payload.event_id!=="string")||
+     !["service","event","followup","prayer_schedule","other"].includes(entryType)||
+     title.length<2||title.length>180||!startsAt||
+     (payload.ends_at!==undefined&&payload.ends_at!==null&&payload.ends_at!==""&&!endsAt)||
+     (endsAt!==null&&endsAt<=startsAt)||timezone.length<3||timezone.length>64||!isValidTimezone(timezone)||
+     !["branch","team","event","own"].includes(scopeType)||
+     (scopeType==="team"&&!teamId)||(scopeType!=="team"&&teamId!==null)||
+     (scopeType==="event"&&!eventId)||(scopeType!=="event"&&eventId!==null)||
+     !recurrence||typeof recurrence!=="object"||Array.isArray(recurrence)||
+     !["daily","weekly","monthly"].includes(String(frequency))||
+     typeof interval!=="number"||!Number.isInteger(interval)||interval<1||interval>12||
+     typeof count!=="number"||!Number.isInteger(count)||count<2||count>52||
+     (frequency==="monthly"&&Number(count)>24)) {
+    return json(400,{ok:false,error:{code:"INVALID_CALENDAR_SERIES_DETAILS"}},requestId,origin);
+  }
+  if(teamId) {
+    const team=await env.DB.prepare("SELECT id FROM team WHERE id=? AND branch_id=? AND is_active=1 LIMIT 1")
+      .bind(teamId,access.activeBranch.branchId).first<{id:string}>();
+    if(!team) return json(400,{ok:false,error:{code:"TEAM_NOT_ACTIVE_IN_BRANCH"}},requestId,origin);
+  }
+  if(eventId) {
+    const event=await env.DB.prepare("SELECT id FROM event WHERE id=? AND branch_id=? AND status<>'cancelled' LIMIT 1")
+      .bind(eventId,access.activeBranch.branchId).first<{id:string}>();
+    if(!event) return json(400,{ok:false,error:{code:"EVENT_NOT_AVAILABLE_IN_BRANCH"}},requestId,origin);
+  }
+  let occurrenceStarts:string[];
+  try { occurrenceStarts=buildCalendarOccurrenceStarts(startsAt,timezone,frequency as "daily"|"weekly"|"monthly",Number(interval),Number(count)); }
+  catch { return json(400,{ok:false,error:{code:"CALENDAR_RECURRENCE_TIME_INVALID"}},requestId,origin); }
+  const duration=endsAt===null?null:Date.parse(endsAt)-Date.parse(startsAt);
+  const seriesId=crypto.randomUUID(),now=new Date().toISOString();
+  const ownerUserId=scopeType==="own"?access.staff.userId:null;
+  const statements=[
+    env.DB.prepare(`
+      INSERT INTO calendar_series
+        (id,branch_id,title,entry_type,starts_at,ends_at,timezone,scope_type,team_id,event_id,
+         owner_user_id,recurrence_frequency,recurrence_interval,occurrence_count,status,
+         created_by,updated_by,created_at,updated_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'active',?,?,?,?)
+    `).bind(seriesId,access.activeBranch.branchId,title,entryType,occurrenceStarts[0],
+      duration===null?null:new Date(Date.parse(occurrenceStarts[0])+duration).toISOString(),
+      timezone,scopeType,teamId,eventId,ownerUserId,frequency,Number(interval),Number(count),
+      access.staff.userId,access.staff.userId,now,now),
+    ...occurrenceStarts.map((start,index)=>env.DB.prepare(`
+      INSERT INTO calendar_entry
+        (id,branch_id,entry_type,title,starts_at,ends_at,timezone,scope_type,team_id,event_id,
+         owner_user_id,created_by,updated_by,created_at,updated_at,series_id)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).bind(crypto.randomUUID(),access.activeBranch.branchId,entryType,title,start,
+      duration===null?null:new Date(Date.parse(start)+duration).toISOString(),timezone,scopeType,
+      teamId,eventId,ownerUserId,access.staff.userId,access.staff.userId,now,now,seriesId)),
+  ];
+  try {
+    const results=await env.DB.batch(statements);
+    if(results.some(result=>!result.success)||(results[0]?.meta?.changes??0)<1||
+       results.slice(1).some(result=>(result.meta?.changes??0)<1)) throw new Error("CALENDAR_SERIES_CREATE_FAILED");
+  } catch { return json(409,{ok:false,error:{code:"CALENDAR_SERIES_CREATE_CONFLICT"}},requestId,origin); }
+  return json(201,{ok:true,series_id:seriesId,occurrence_count:occurrenceStarts.length},requestId,origin);
+}
+
+async function cancelCalendarSeries(request:Request,env:Env,seriesId:string,requestId:string,origin?:string):Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"calendar.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as {reason?:unknown};
+  const reason=typeof payload?.reason==="string"?payload.reason.trim():"";
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some(k=>k!=="reason")||
+     reason.length<10||reason.length>300) return json(400,{ok:false,error:{code:"CALENDAR_SERIES_CANCELLATION_REASON_REQUIRED"}},requestId,origin);
+  const now=new Date().toISOString();
+  const futureRows=await env.DB.prepare("SELECT COUNT(*) AS count FROM calendar_entry WHERE series_id=? AND branch_id=? AND status='active' AND starts_at>=?")
+    .bind(seriesId,access.activeBranch.branchId,now).first<{count:number}>();
+  const futureCount=Number(futureRows?.count??0);
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE calendar_series SET status='cancelled',cancelled_at=?,cancelled_by=?,
+          cancellation_reason=?,updated_by=?,updated_at=?
+        WHERE id=? AND branch_id=? AND status='active'
+      `).bind(now,access.staff.userId,reason,access.staff.userId,now,seriesId,access.activeBranch.branchId),
+      env.DB.prepare(`
+        UPDATE calendar_entry SET status='cancelled',cancelled_at=?,cancelled_by=?,
+          cancellation_reason=?,updated_by=?,updated_at=?
+        WHERE series_id=? AND branch_id=? AND status='active' AND starts_at>=?
+      `).bind(now,access.staff.userId,reason,access.staff.userId,now,seriesId,access.activeBranch.branchId,now),
+    ]);
+    if(!results[0]?.success||(results[0].meta?.changes??0)<1||!results[1]?.success) {
+      return json(409,{ok:false,error:{code:"CALENDAR_SERIES_NOT_CANCELLABLE"}},requestId,origin);
+    }
+    return json(200,{ok:true,series_id:seriesId,status:"cancelled",future_occurrences_cancelled:futureCount},requestId,origin);
+  } catch { return json(409,{ok:false,error:{code:"CALENDAR_SERIES_CANCELLATION_CONFLICT"}},requestId,origin); }
+}
+
+async function createCalendarEntry(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "calendar.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["entry_type", "title", "starts_at", "ends_at", "timezone", "scope_type", "team_id", "event_id"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_BODY" } }, requestId, origin);
+  }
+  const entryType = typeof payload.entry_type === "string" ? payload.entry_type : "";
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  const startsAt = parseIsoTimestamp(payload.starts_at, "");
+  const endsAt = payload.ends_at === undefined || payload.ends_at === null || payload.ends_at === ""
+    ? null : parseIsoTimestamp(payload.ends_at, "");
+  const timezone = payload.timezone === undefined ? "Africa/Accra" :
+    typeof payload.timezone === "string" ? payload.timezone.trim() : "";
+  const scopeType = typeof payload.scope_type === "string" ? payload.scope_type : "";
+  const teamId = typeof payload.team_id === "string" ? payload.team_id.trim() || null : null;
+  const eventId = typeof payload.event_id === "string" ? payload.event_id.trim() || null : null;
+  if ((payload.team_id !== undefined && payload.team_id !== null && typeof payload.team_id !== "string") ||
+      (payload.event_id !== undefined && payload.event_id !== null && typeof payload.event_id !== "string") ||
+      !["service", "event", "followup", "prayer_schedule", "other"].includes(entryType) ||
+      title.length < 2 || title.length > 180 || !startsAt ||
+      (payload.ends_at !== undefined && payload.ends_at !== null && payload.ends_at !== "" && !endsAt) ||
+      (endsAt !== null && endsAt <= startsAt) ||
+      timezone.length < 3 || timezone.length > 64 || !isValidTimezone(timezone) ||
+      !["branch", "team", "event", "own"].includes(scopeType) ||
+      (scopeType === "team" && !teamId) || (scopeType !== "team" && teamId !== null) ||
+      (scopeType === "event" && !eventId) || (scopeType !== "event" && eventId !== null)) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_DETAILS" } }, requestId, origin);
+  }
+  if (teamId) {
+    const team = await env.DB.prepare(
+      "SELECT id FROM team WHERE id=? AND branch_id=? AND is_active=1 LIMIT 1",
+    ).bind(teamId, access.activeBranch.branchId).first<{ id: string }>();
+    if (!team) return json(400, { ok: false, error: { code: "TEAM_NOT_ACTIVE_IN_BRANCH" } }, requestId, origin);
+  }
+  if (eventId) {
+    const event = await env.DB.prepare(
+      "SELECT id FROM event WHERE id=? AND branch_id=? AND status<>'cancelled' LIMIT 1",
+    ).bind(eventId, access.activeBranch.branchId).first<{ id: string }>();
+    if (!event) return json(400, { ok: false, error: { code: "EVENT_NOT_AVAILABLE_IN_BRANCH" } }, requestId, origin);
+  }
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const ownerUserId = scopeType === "own" ? access.staff.userId : null;
+  try {
+    const result = await env.DB.prepare(`
+      INSERT INTO calendar_entry
+        (id,branch_id,entry_type,title,starts_at,ends_at,timezone,scope_type,
+         team_id,event_id,owner_user_id,created_by,updated_by,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `).bind(
+      id, access.activeBranch.branchId, entryType, title, startsAt, endsAt,
+      timezone, scopeType, teamId, eventId, ownerUserId,
+      access.staff.userId, access.staff.userId, now, now,
+    ).run();
+    if (!result.success || (result.meta?.changes ?? 0) < 1) throw new Error("CALENDAR_CREATE_FAILED");
+  } catch {
+    return json(409, { ok: false, error: { code: "CALENDAR_CREATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, { ok: true, entry_id: id }, requestId, origin);
+}
+
+
+async function cancelCalendarEntry(
+  request: Request,
+  env: Env,
+  entryId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "calendar.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { reason?: unknown };
+  const reason = payload && typeof payload === "object" && !Array.isArray(payload) &&
+    typeof payload.reason === "string" ? payload.reason.trim() : "";
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length !== 1 || reason.length < 10 || reason.length > 300) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_CANCELLATION" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare(`
+    UPDATE calendar_entry
+    SET status='cancelled',cancelled_at=?,cancelled_by=?,cancellation_reason=?,
+        updated_by=?,updated_at=?
+    WHERE id=? AND branch_id=? AND status='active'
+  `).bind(now,access.staff.userId,reason,access.staff.userId,now,entryId,access.activeBranch.branchId).run();
+  if (!result.success) return json(503, { ok: false, error: { code: "CALENDAR_CANCELLATION_FAILED" } }, requestId, origin);
+  if ((result.meta?.changes ?? 0) < 1) return json(404, { ok: false, error: { code: "ACTIVE_CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, entry_id: entryId, status: "cancelled", cancelled_at: now }, requestId, origin);
+}
+
+async function markCalendarEntryRead(
+  request: Request,
+  env: Env,
+  entryId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestCalendarScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "calendar.read").map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const now = new Date().toISOString();
+  const predicate = calendarScopePredicate(scope, "ce", context.staff.profileId, context.staff.userId, now);
+  const result = await env.DB.prepare(`
+    INSERT OR IGNORE INTO calendar_entry_read_receipt
+      (id,entry_id,branch_id,staff_user_id,read_at)
+    SELECT ?,ce.id,ce.branch_id,?,?
+    FROM calendar_entry ce
+    WHERE ce.id=? AND ce.branch_id=? AND ce.status='active'
+      AND (${predicate.sql})
+  `).bind(crypto.randomUUID(),context.staff.userId,now,entryId,context.activeBranch.branchId,...predicate.values).run();
+  if (!result.success) return json(503, { ok: false, error: { code: "CALENDAR_READ_RECEIPT_FAILED" } }, requestId, origin);
+  const receipt = await env.DB.prepare(`
+    SELECT read_at FROM calendar_entry_read_receipt
+    WHERE entry_id=? AND branch_id=? AND staff_user_id=? LIMIT 1
+  `).bind(entryId,context.activeBranch.branchId,context.staff.userId).first<{read_at:string}>();
+  if (!receipt) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, entry_id: entryId, read_at: receipt.read_at, replayed: (result.meta?.changes ?? 0) === 0 }, requestId, origin);
+}
+
+async function updateCalendarEntry(
+  request: Request,
+  env: Env,
+  entryId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "calendar.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["title", "starts_at", "ends_at", "timezone"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length === 0 || Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_UPDATE" } }, requestId, origin);
+  }
+  const existing = await env.DB.prepare(
+    "SELECT id,starts_at,ends_at,status FROM calendar_entry WHERE id=? AND branch_id=? LIMIT 1",
+  ).bind(entryId, access.activeBranch.branchId).first<{ id: string; starts_at: string; ends_at: string | null; status: string }>();
+  if (!existing || existing.status !== "active") return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  if (payload.title !== undefined) {
+    if (typeof payload.title !== "string" || payload.title.trim().length < 2 || payload.title.trim().length > 180) {
+      return json(400, { ok: false, error: { code: "INVALID_CALENDAR_TITLE" } }, requestId, origin);
+    }
+    assignments.push("title=?"); values.push(payload.title.trim());
+  }
+  if (payload.starts_at !== undefined) {
+    const value = parseIsoTimestamp(payload.starts_at, "");
+    if (!value) return json(400, { ok: false, error: { code: "INVALID_CALENDAR_START" } }, requestId, origin);
+    assignments.push("starts_at=?"); values.push(value);
+  }
+  if (payload.ends_at !== undefined) {
+    const value = payload.ends_at === null || payload.ends_at === "" ? null : parseIsoTimestamp(payload.ends_at, "");
+    if (payload.ends_at !== null && payload.ends_at !== "" && !value) return json(400, { ok: false, error: { code: "INVALID_CALENDAR_END" } }, requestId, origin);
+    assignments.push("ends_at=?"); values.push(value);
+  }
+  if (payload.timezone !== undefined) {
+    if (typeof payload.timezone !== "string" || payload.timezone.length > 64 || !isValidTimezone(payload.timezone)) {
+      return json(400, { ok: false, error: { code: "INVALID_CALENDAR_TIMEZONE" } }, requestId, origin);
+    }
+    assignments.push("timezone=?"); values.push(payload.timezone);
+  }
+  const nextStart = typeof payload.starts_at === "string" ? parseIsoTimestamp(payload.starts_at, "")! : existing.starts_at;
+  const nextEnd = payload.ends_at === undefined ? existing.ends_at :
+    payload.ends_at === null || payload.ends_at === "" ? null : parseIsoTimestamp(payload.ends_at, "");
+  if (nextEnd !== null && nextEnd <= nextStart) {
+    return json(400, { ok: false, error: { code: "CALENDAR_END_MUST_FOLLOW_START" } }, requestId, origin);
+  }
+  assignments.push("updated_by=?"); values.push(access.staff.userId);
+  assignments.push("updated_at=?"); values.push(new Date().toISOString());
+  try {
+    const result = await env.DB.prepare(`
+      UPDATE calendar_entry SET ${assignments.join(",")}
+      WHERE id=? AND branch_id=? AND status='active'
+    `).bind(...values, entryId, access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes ?? 0) < 1) return json(409, { ok: false, error: { code: "CALENDAR_ENTRY_CHANGED" } }, requestId, origin);
+  } catch {
+    return json(409, { ok: false, error: { code: "CALENDAR_UPDATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, entry_id: entryId }, requestId, origin);
+}
+
+type AnnouncementScopeMode = "branch" | "team" | "assigned";
+
+function bestAnnouncementScope(scopes: string[]): AnnouncementScopeMode | null {
+  if (scopes.includes("branch")) return "branch";
+  if (scopes.includes("team")) return "team";
+  if (scopes.includes("assigned")) return "assigned";
+  return null;
+}
+
+function announcementScopePredicate(
+  mode: AnnouncementScopeMode,
+  alias: string,
+  staffProfileId: string,
+  staffUserId: string,
+  now: string,
+): { sql: string; values: unknown[] } {
+  if (mode === "branch") return { sql: "1 = 1", values: [] };
+  const base = `(${alias}.audience_type IN ('branch','staff') OR (${alias}.audience_type='public' AND ${alias}.is_public=1))`;
+  const team = `(${alias}.audience_type='team' AND EXISTS (
+    SELECT 1 FROM announcement_team_audience ata
+    JOIN staff_team_membership tm ON tm.team_id=ata.team_id AND tm.branch_id=ata.branch_id
+    WHERE ata.announcement_id=${alias}.id AND ata.branch_id=${alias}.branch_id
+      AND tm.staff_profile_id=? AND tm.revoked_at IS NULL
+      AND tm.starts_at<=? AND (tm.ends_at IS NULL OR tm.ends_at>?)
+  ))`;
+  const eventTeam = `(${alias}.audience_type='event' AND EXISTS (
+    SELECT 1 FROM announcement_event_audience aea
+    JOIN event_team_assignment eta ON eta.event_id=aea.event_id AND eta.branch_id=aea.branch_id
+    JOIN staff_team_membership tm ON tm.team_id=eta.team_id AND tm.branch_id=eta.branch_id
+    WHERE aea.announcement_id=${alias}.id AND aea.branch_id=${alias}.branch_id
+      AND tm.staff_profile_id=? AND eta.revoked_at IS NULL AND tm.revoked_at IS NULL
+      AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
+      AND tm.starts_at<=? AND (tm.ends_at IS NULL OR tm.ends_at>?)
+  ))`;
+  if (mode === "team") {
+    return {
+      sql: `(${base} OR ${team} OR ${eventTeam})`,
+      values: [staffProfileId, now, now, staffProfileId, now, now, now, now],
+    };
+  }
+  const eventStaff = `(${alias}.audience_type='event' AND EXISTS (
+    SELECT 1 FROM announcement_event_audience aea
+    JOIN event_staff_assignment esa ON esa.event_id=aea.event_id AND esa.branch_id=aea.branch_id
+    WHERE aea.announcement_id=${alias}.id AND aea.branch_id=${alias}.branch_id
+      AND esa.staff_auth_user_id=? AND esa.revoked_at IS NULL
+      AND esa.starts_at<=? AND (esa.ends_at IS NULL OR esa.ends_at>?)
+  ))`;
+  return {
+    sql: `(${base} OR ${team} OR ${eventTeam} OR ${eventStaff})`,
+    values: [staffProfileId, now, now, staffProfileId, now, now, now, now, staffUserId, now, now],
+  };
+}
+
+async function listAnnouncementInbox(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const rows=await env.DB.prepare(`
+    SELECT d.id AS delivery_id,a.id AS announcement_id,a.branch_id,a.title,a.body,
+           a.audience_type,a.published_at,d.attempted_at AS delivered_at,
+           rr.read_at,CASE WHEN rr.id IS NULL THEN 0 ELSE 1 END AS is_read
+    FROM announcement_delivery d
+    JOIN announcement a ON a.id=d.announcement_id
+    JOIN branch source_branch ON source_branch.id=a.branch_id AND source_branch.is_active=1
+    JOIN branch active_branch ON active_branch.id=? AND active_branch.church_id=source_branch.church_id AND active_branch.is_active=1
+    LEFT JOIN announcement_read_receipt rr
+      ON rr.announcement_id=a.id AND rr.staff_profile_id=d.recipient_ref
+    WHERE d.channel='in_app' AND d.status='delivered'
+      AND d.recipient_ref=? AND a.status='published'
+      AND (a.branch_id=? OR a.audience_type='staff')
+    ORDER BY COALESCE(a.published_at,d.created_at) DESC,a.id DESC
+    LIMIT 100
+  `).bind(context.activeBranch.branchId,context.staff.profileId,context.activeBranch.branchId).all<Record<string,unknown>>();
+  return json(200,{ok:true,announcements:rows.results??[]},requestId,origin);
+}
+
+async function markAnnouncementRead(
+  request: Request,
+  env: Env,
+  announcementId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context=await resolveStaffContext(request,env);
+  if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const delivery=await env.DB.prepare(`
+    SELECT d.id,a.branch_id FROM announcement_delivery d
+    JOIN announcement a ON a.id=d.announcement_id
+    JOIN branch source_branch ON source_branch.id=a.branch_id AND source_branch.is_active=1
+    JOIN branch active_branch ON active_branch.id=? AND active_branch.church_id=source_branch.church_id AND active_branch.is_active=1
+    WHERE d.announcement_id=? AND d.recipient_ref=? AND d.channel='in_app'
+      AND d.status='delivered' AND a.status='published'
+      AND (a.branch_id=? OR a.audience_type='staff')
+    LIMIT 1
+  `).bind(context.activeBranch.branchId,announcementId,context.staff.profileId,context.activeBranch.branchId).first<{id:string;branch_id:string}>();
+  if (!delivery) return json(404,{ok:false,error:{code:"ANNOUNCEMENT_NOT_IN_INBOX"}},requestId,origin);
+  const now=new Date().toISOString();
+  try {
+    const result=await env.DB.prepare(`
+      INSERT OR IGNORE INTO announcement_read_receipt
+        (id,announcement_id,branch_id,staff_profile_id,read_by,read_at)
+      VALUES (?,?,?,?,?,?)
+    `).bind(
+      crypto.randomUUID(),announcementId,delivery.branch_id,
+      context.staff.profileId,context.staff.userId,now,
+    ).run();
+    if (!result.success) throw new Error("ANNOUNCEMENT_READ_RECEIPT_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"ANNOUNCEMENT_READ_CONFLICT"}},requestId,origin);
+  }
+  const receipt=await env.DB.prepare(
+    "SELECT read_at FROM announcement_read_receipt WHERE announcement_id=? AND staff_profile_id=? LIMIT 1",
+  ).bind(announcementId,context.staff.profileId).first<{read_at:string}>();
+  return json(200,{ok:true,announcement_id:announcementId,read:true,read_at:receipt?.read_at??now},requestId,origin);
+}
+
+async function listAnnouncements(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestAnnouncementScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "announcements.read")
+    .map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const canManage = context.activeBranch.capabilities.some((grant) => grant.code === "announcements.manage" && grant.scopeMode === "branch");
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status") ?? "published";
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 50 : Number(rawLimit);
+  const rawOffset = url.searchParams.get("offset");
+  const offset = rawOffset === null ? 0 : Number(rawOffset);
+  const requestedBranchId = url.searchParams.get("branch_id");
+  if (!["draft", "scheduled", "published", "archived", "all"].includes(status) ||
+      (status !== "published" && !canManage) ||
+      !Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      !Number.isInteger(offset) || offset < 0 || offset > 10000 ||
+      (requestedBranchId !== null && requestedBranchId !== context.activeBranch.branchId) ||
+      [...url.searchParams.keys()].some((key) => !["status", "limit", "offset", "branch_id"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_QUERY" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const predicate = announcementScopePredicate(scope, "a", context.staff.profileId, context.staff.userId, now);
+  const statusPredicate = status === "all" ? "1=1" : "a.status=?";
+  const rows = await env.DB.prepare(`
+    SELECT a.id,a.branch_id,a.title,a.body,a.audience_type,a.is_public,a.status,
+           a.publish_at,a.published_at,a.created_by,a.created_at,a.updated_at
+    FROM announcement a
+    WHERE a.branch_id=? AND ${statusPredicate} AND (${predicate.sql})
+    ORDER BY COALESCE(a.published_at,a.created_at) DESC,a.id DESC
+    LIMIT ? OFFSET ?
+  `).bind(
+    context.activeBranch.branchId,
+    ...(status === "all" ? [] : [status]),
+    ...predicate.values,
+    limit,
+    offset,
+  ).all<Record<string, unknown>>();
+  return json(200, { ok: true, announcements: rows.results ?? [] }, requestId, origin);
+}
+
+async function getAnnouncement(
+  request: Request,
+  env: Env,
+  announcementId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const scope = bestAnnouncementScope(context.activeBranch.capabilities
+    .filter((grant) => grant.code === "announcements.read")
+    .map((grant) => grant.scopeMode));
+  if (!scope) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const canManage = context.activeBranch.capabilities.some((grant) => grant.code === "announcements.manage" && grant.scopeMode === "branch");
+  const now = new Date().toISOString();
+  const predicate = announcementScopePredicate(scope, "a", context.staff.profileId, context.staff.userId, now);
+  const row = await env.DB.prepare(`
+    SELECT a.id,a.branch_id,a.title,a.body,a.audience_type,a.is_public,a.status,
+           a.publish_at,a.published_at,a.created_by,a.created_at,a.updated_at
+    FROM announcement a
+    WHERE a.id=? AND a.branch_id=? AND (?=1 OR a.status='published') AND (${predicate.sql})
+    LIMIT 1
+  `).bind(announcementId, context.activeBranch.branchId, canManage ? 1 : 0, ...predicate.values).first<Record<string, unknown>>();
+  if (!row) return json(404, { ok: false, error: { code: "ANNOUNCEMENT_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, announcement: row }, requestId, origin);
+}
+
+async function createAnnouncement(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "announcements.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["title", "body", "audience_type", "team_ids", "event_ids"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_BODY" } }, requestId, origin);
+  }
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  const message = typeof payload.body === "string" ? payload.body.trim() : "";
+  const audience = typeof payload.audience_type === "string" ? payload.audience_type : "";
+  const teamIds = payload.team_ids === undefined ? [] : payload.team_ids;
+  const eventIds = payload.event_ids === undefined ? [] : payload.event_ids;
+  if (title.length < 2 || title.length > 180 || message.length < 1 || message.length > 20000 ||
+      !["public", "branch", "team", "event", "staff"].includes(audience) ||
+      !Array.isArray(teamIds) || !Array.isArray(eventIds) ||
+      teamIds.length > 20 || eventIds.length > 20 ||
+      teamIds.some((id) => typeof id !== "string" || id.length > 128) ||
+      eventIds.some((id) => typeof id !== "string" || id.length > 128) ||
+      new Set(teamIds).size !== teamIds.length || new Set(eventIds).size !== eventIds.length ||
+      (audience === "team" ? teamIds.length === 0 || eventIds.length !== 0 : teamIds.length !== 0) ||
+      (audience === "event" ? eventIds.length === 0 : eventIds.length !== 0)) {
+    return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_DETAILS" } }, requestId, origin);
+  }
+  const branchId = access.activeBranch.branchId;
+  if (audience === "staff" && !access.activeBranch.roles.includes("admin_pastor")) {
+    return json(403, { ok: false, error: { code: "CHURCH_WIDE_ANNOUNCEMENT_REQUIRES_ADMIN_PASTOR" } }, requestId, origin);
+  }
+  if (teamIds.length) {
+    const found = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM team WHERE branch_id=? AND is_active=1 AND id IN (${teamIds.map(() => "?").join(",")})`,
+    ).bind(branchId, ...teamIds).first<{ count: number }>();
+    if ((found?.count ?? 0) !== teamIds.length) return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_TEAM_AUDIENCE" } }, requestId, origin);
+  }
+  if (eventIds.length) {
+    const found = await env.DB.prepare(
+      `SELECT COUNT(*) AS count FROM event WHERE branch_id=? AND status<>'cancelled' AND id IN (${eventIds.map(() => "?").join(",")})`,
+    ).bind(branchId, ...eventIds).first<{ count: number }>();
+    if ((found?.count ?? 0) !== eventIds.length) return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_EVENT_AUDIENCE" } }, requestId, origin);
+  }
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const statements = [
+    env.DB.prepare(`
+      INSERT INTO announcement
+        (id,branch_id,title,body,audience_type,is_public,status,publish_at,published_at,
+         created_by,updated_by,created_at,updated_at)
+      VALUES (?,?,?,?,?,?, 'draft',NULL,NULL,?,?,?,?)
+    `).bind(
+      id, branchId, title, message, audience, audience === "public" ? 1 : 0,
+      access.staff.userId, access.staff.userId, now, now,
+    ),
+  ];
+  for (const teamId of teamIds as string[]) {
+    statements.push(env.DB.prepare(
+      "INSERT INTO announcement_team_audience (announcement_id,branch_id,team_id,created_at,created_by) VALUES (?,?,?,?,?)",
+    ).bind(id, branchId, teamId, now, access.staff.userId));
+  }
+  for (const eventId of eventIds as string[]) {
+    statements.push(env.DB.prepare(
+      "INSERT INTO announcement_event_audience (announcement_id,branch_id,event_id,created_at,created_by) VALUES (?,?,?,?,?)",
+    ).bind(id, branchId, eventId, now, access.staff.userId));
+  }
+  try {
+    const results = await env.DB.batch(statements);
+    if (results.some((result) => !result.success || (result.meta?.changes ?? 0) !== 1)) throw new Error("ANNOUNCEMENT_BATCH_FAILED");
+  } catch {
+    return json(409, { ok: false, error: { code: "ANNOUNCEMENT_CREATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, { ok: true, announcement_id: id, status: "draft" }, requestId, origin);
+}
+
+async function updateAnnouncement(
+  request: Request,
+  env: Env,
+  announcementId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "announcements.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  const allowed = new Set(["title", "body"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length === 0 || Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_UPDATE" } }, requestId, origin);
+  }
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  if (payload.title !== undefined) {
+    if (typeof payload.title !== "string" || payload.title.trim().length < 2 || payload.title.trim().length > 180) {
+      return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_TITLE" } }, requestId, origin);
+    }
+    assignments.push("title=?"); values.push(payload.title.trim());
+  }
+  if (payload.body !== undefined) {
+    if (typeof payload.body !== "string" || payload.body.trim().length < 1 || payload.body.length > 20000) {
+      return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_TEXT" } }, requestId, origin);
+    }
+    assignments.push("body=?"); values.push(payload.body.trim());
+  }
+  const now = new Date().toISOString();
+  assignments.push("updated_by=?"); values.push(access.staff.userId);
+  assignments.push("updated_at=?"); values.push(now);
+  try {
+    const result = await env.DB.prepare(`
+      UPDATE announcement SET ${assignments.join(",")}
+      WHERE id=? AND branch_id=? AND status='draft'
+    `).bind(...values, announcementId, access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "ANNOUNCEMENT_NOT_EDITABLE" } }, requestId, origin);
+  } catch {
+    return json(409, { ok: false, error: { code: "ANNOUNCEMENT_UPDATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, announcement_id: announcementId }, requestId, origin);
+}
+
+async function publishAnnouncement(
+  request: Request,
+  env: Env,
+  announcementId: string,
+  requestId: string,
+  origin: string | undefined,
+  ctx: { waitUntil(promise: Promise<unknown>): void },
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "announcements.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const branchId=access.activeBranch.branchId;
+  const current=await env.DB.prepare(
+    "SELECT id,audience_type FROM announcement WHERE id=? AND branch_id=? AND status='draft' LIMIT 1",
+  ).bind(announcementId,branchId).first<{id:string;audience_type:string}>();
+  if (!current) return json(409,{ok:false,error:{code:"ANNOUNCEMENT_NOT_PUBLISHABLE"}},requestId,origin);
+
+  const now=new Date().toISOString();
+  const deliverySql=`
+    WITH target AS (
+      SELECT id,branch_id,audience_type FROM announcement
+      WHERE id=? AND branch_id=? AND status='published'
+    ),
+    recipients(staff_profile_id) AS (
+      SELECT DISTINCT sp.id
+      FROM target a
+      JOIN branch source_branch ON source_branch.id=a.branch_id AND source_branch.is_active=1
+      JOIN branch target_branch ON target_branch.is_active=1
+        AND ((a.audience_type='branch' AND target_branch.id=source_branch.id)
+          OR (a.audience_type='staff' AND target_branch.church_id=source_branch.church_id))
+      JOIN staff_role_assignment ra ON ra.branch_id=target_branch.id
+      JOIN role r ON r.id=ra.role_id AND r.is_active=1
+      JOIN staff_profile sp ON sp.id=ra.staff_profile_id AND sp.account_status='active'
+      WHERE a.audience_type IN ('branch','staff')
+        AND ra.revoked_at IS NULL AND ra.starts_at<=?
+        AND (ra.ends_at IS NULL OR ra.ends_at>?)
+      UNION
+      SELECT DISTINCT sp.id
+      FROM target a
+      JOIN announcement_team_audience ata ON ata.announcement_id=a.id AND ata.branch_id=a.branch_id
+      JOIN staff_team_membership stm ON stm.team_id=ata.team_id AND stm.branch_id=ata.branch_id
+      JOIN staff_profile sp ON sp.id=stm.staff_profile_id AND sp.account_status='active'
+      WHERE a.audience_type='team' AND stm.revoked_at IS NULL
+        AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+      UNION
+      SELECT DISTINCT sp.id
+      FROM target a
+      JOIN announcement_event_audience aea ON aea.announcement_id=a.id AND aea.branch_id=a.branch_id
+      JOIN event_staff_assignment esa ON esa.event_id=aea.event_id AND esa.branch_id=aea.branch_id
+      JOIN staff_profile sp ON sp.auth_user_id=esa.staff_auth_user_id AND sp.account_status='active'
+      WHERE a.audience_type='event' AND esa.revoked_at IS NULL
+        AND esa.starts_at<=? AND (esa.ends_at IS NULL OR esa.ends_at>?)
+      UNION
+      SELECT DISTINCT sp.id
+      FROM target a
+      JOIN announcement_event_audience aea ON aea.announcement_id=a.id AND aea.branch_id=a.branch_id
+      JOIN event_team_assignment eta ON eta.event_id=aea.event_id AND eta.branch_id=aea.branch_id
+      JOIN staff_team_membership stm ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id
+      JOIN staff_profile sp ON sp.id=stm.staff_profile_id AND sp.account_status='active'
+      WHERE a.audience_type='event' AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL
+        AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
+        AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+    )
+    INSERT OR IGNORE INTO announcement_delivery
+      (id,announcement_id,channel,recipient_ref,status,attempted_at,safe_error_code,created_at)
+    SELECT 'announcement-delivery-'||lower(hex(randomblob(16))),a.id,'in_app',
+           recipients.staff_profile_id,'delivered',?,NULL,?
+    FROM target a JOIN recipients ON 1=1
+  `;
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`
+        UPDATE announcement
+        SET status='published',published_at=?,updated_at=?,updated_by=?
+        WHERE id=? AND branch_id=? AND status='draft'
+          AND (publish_at IS NULL OR publish_at<=?)
+      `).bind(now,now,access.staff.userId,announcementId,branchId,now),
+      env.DB.prepare(deliverySql).bind(
+        announcementId,branchId,
+        now,now,
+        now,now,
+        now,now,
+        now,now,now,now,
+        now,now,
+      ),
+    ]);
+    if (!results[0]?.success || (results[0].meta?.changes??0)!==1) {
+      return json(409,{ok:false,error:{code:"ANNOUNCEMENT_NOT_PUBLISHABLE"}},requestId,origin);
+    }
+  } catch {
+    return json(409,{ok:false,error:{code:"ANNOUNCEMENT_PUBLISH_CONFLICT"}},requestId,origin);
+  }
+  const count=await env.DB.prepare(
+    "SELECT COUNT(*) AS count FROM announcement_delivery WHERE announcement_id=? AND channel='in_app' AND status='delivered'",
+  ).bind(announcementId).first<{count:number}>();
+  ctx.waitUntil(sendAnnouncementPushes(env, announcementId).catch(() => 0));
+  return json(200,{ok:true,announcement_id:announcementId,status:"published",delivery_count:count?.count??0,push_dispatch:"queued"},requestId,origin);
+}
+async function scheduleAnnouncement(request: Request, env: Env, announcementId: string, requestId: string, origin?: string): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"announcements.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as {publish_at?:unknown};
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).length!==1||!Object.prototype.hasOwnProperty.call(payload,"publish_at")) return json(400,{ok:false,error:{code:"INVALID_ANNOUNCEMENT_SCHEDULE"}},requestId,origin);
+  const now=new Date().toISOString(), publishAt=parseIsoTimestamp(payload.publish_at,"");
+  if(!publishAt||Date.parse(publishAt)<Date.now()+300000||Date.parse(publishAt)>Date.now()+365*86400000) return json(400,{ok:false,error:{code:"ANNOUNCEMENT_SCHEDULE_OUT_OF_RANGE"}},requestId,origin);
+  try {
+    const result=await env.DB.prepare(`
+      UPDATE announcement SET status='scheduled',publish_at=?,updated_by=?,updated_at=?
+      WHERE id=? AND branch_id=? AND status IN ('draft','scheduled')
+    `).bind(publishAt,access.staff.userId,now,announcementId,access.activeBranch.branchId).run();
+    if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"ANNOUNCEMENT_NOT_SCHEDULABLE"}},requestId,origin);
+  } catch { return json(409,{ok:false,error:{code:"ANNOUNCEMENT_SCHEDULE_CONFLICT"}},requestId,origin); }
+  return json(200,{ok:true,announcement_id:announcementId,status:"scheduled",publish_at:publishAt},requestId,origin);
+}
+
+async function publishDueAnnouncements(env: Env, now: string): Promise<void> {
+  const due=await env.DB.prepare(`
+    SELECT a.id,a.branch_id,a.updated_by FROM announcement a
+    WHERE a.status='scheduled' AND a.publish_at IS NOT NULL AND a.publish_at<=?
+      AND EXISTS(SELECT 1 FROM staff_profile sp
+        JOIN staff_role_assignment ra ON ra.staff_profile_id=sp.id AND ra.branch_id=a.branch_id
+        JOIN role r ON r.id=ra.role_id AND r.is_active=1
+        JOIN role_capability rc ON rc.role_id=r.id AND rc.scope_mode='branch'
+        JOIN capability c ON c.id=rc.capability_id AND c.code='announcements.manage' AND c.is_active=1
+        WHERE sp.auth_user_id=a.updated_by AND sp.account_status='active'
+          AND ra.revoked_at IS NULL AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?))
+    ORDER BY a.publish_at ASC,a.id ASC LIMIT 50
+  `).bind(now,now,now).all<{id:string;branch_id:string;updated_by:string}>();
+  const deliverySql=`
+    WITH target AS (SELECT id,branch_id,audience_type FROM announcement WHERE id=? AND branch_id=? AND status='published'),
+    recipients(staff_profile_id) AS (
+      SELECT DISTINCT sp.id FROM target a JOIN staff_role_assignment ra ON ra.branch_id=a.branch_id
+      JOIN role r ON r.id=ra.role_id AND r.is_active=1 JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
+      JOIN staff_profile sp ON sp.id=ra.staff_profile_id AND sp.account_status='active'
+      WHERE a.audience_type IN ('branch','staff') AND ra.revoked_at IS NULL AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?)
+      UNION
+      SELECT DISTINCT sp.id FROM target a JOIN announcement_team_audience ata ON ata.announcement_id=a.id AND ata.branch_id=a.branch_id
+      JOIN staff_team_membership stm ON stm.team_id=ata.team_id AND stm.branch_id=ata.branch_id
+      JOIN staff_profile sp ON sp.id=stm.staff_profile_id AND sp.account_status='active'
+      WHERE a.audience_type='team' AND stm.revoked_at IS NULL AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+      UNION
+      SELECT DISTINCT sp.id FROM target a JOIN announcement_event_audience aea ON aea.announcement_id=a.id AND aea.branch_id=a.branch_id
+      JOIN event_staff_assignment esa ON esa.event_id=aea.event_id AND esa.branch_id=aea.branch_id
+      JOIN staff_profile sp ON sp.auth_user_id=esa.staff_auth_user_id AND sp.account_status='active'
+      WHERE a.audience_type='event' AND esa.revoked_at IS NULL AND esa.starts_at<=? AND (esa.ends_at IS NULL OR esa.ends_at>?)
+      UNION
+      SELECT DISTINCT sp.id FROM target a JOIN announcement_event_audience aea ON aea.announcement_id=a.id AND aea.branch_id=a.branch_id
+      JOIN event_team_assignment eta ON eta.event_id=aea.event_id AND eta.branch_id=aea.branch_id
+      JOIN staff_team_membership stm ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id
+      JOIN staff_profile sp ON sp.id=stm.staff_profile_id AND sp.account_status='active'
+      WHERE a.audience_type='event' AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL
+        AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
+        AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+    )
+    INSERT OR IGNORE INTO announcement_delivery(id,announcement_id,channel,recipient_ref,status,attempted_at,safe_error_code,created_at)
+    SELECT 'announcement-delivery-'||lower(hex(randomblob(16))),a.id,'in_app',recipients.staff_profile_id,'delivered',?,NULL,?
+    FROM target a JOIN recipients ON 1=1
+  `;
+  for(const item of due.results??[]) {
+    try {
+      await env.DB.batch([
+        env.DB.prepare(`
+          UPDATE announcement SET status='published',published_at=?,updated_at=?
+          WHERE id=? AND branch_id=? AND status='scheduled' AND publish_at<=? AND updated_by=?
+            AND EXISTS(SELECT 1 FROM staff_profile sp
+              JOIN staff_role_assignment ra ON ra.staff_profile_id=sp.id AND ra.branch_id=announcement.branch_id
+              JOIN role r ON r.id=ra.role_id AND r.is_active=1 JOIN role_capability rc ON rc.role_id=r.id AND rc.scope_mode='branch'
+              JOIN capability c ON c.id=rc.capability_id AND c.code='announcements.manage' AND c.is_active=1
+              WHERE sp.auth_user_id=announcement.updated_by AND sp.account_status='active'
+                AND ra.revoked_at IS NULL AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?))
+        `).bind(now,now,item.id,item.branch_id,now,item.updated_by,now,now),
+        env.DB.prepare(deliverySql).bind(item.id,item.branch_id,now,now,now,now,now,now,now,now,now,now,now,now),
+      ]);
+    } catch { /* retry on the next cron tick; no record data is logged */ }
+  }
+}
+
+async function archiveAnnouncement(
+  request: Request,
+  env: Env,
+  announcementId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "announcements.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const now = new Date().toISOString();
+  try {
+    const result = await env.DB.prepare(`
+      UPDATE announcement
+      SET status='archived',updated_at=?,updated_by=?
+      WHERE id=? AND branch_id=? AND status IN ('draft','published','scheduled')
+    `).bind(now, access.staff.userId, announcementId, access.activeBranch.branchId).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "ANNOUNCEMENT_NOT_ARCHIVABLE" } }, requestId, origin);
+  } catch {
+    return json(409, { ok: false, error: { code: "ANNOUNCEMENT_ARCHIVE_CONFLICT" } }, requestId, origin);
+  }
+  return json(200, { ok: true, announcement_id: announcementId, status: "archived" }, requestId, origin);
+}
+
+async function listCareRecords(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "pastoral.case.metadata.read");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status");
+  if ([...url.searchParams.keys()].some((key) => key !== "status") ||
+      (status && !["open","active","monitoring","resolved","closed"].includes(status))) {
+    return json(400, { ok:false, error:{code:"INVALID_CARE_QUERY"} }, requestId, origin);
+  }
+  const rows = await env.DB.prepare(`
+    SELECT cr.id,cr.status,cr.contact_id,cr.care_group_id,cr.created_at,cr.updated_at
+    FROM care_record cr
+    WHERE cr.branch_id=? AND (? IS NULL OR cr.status=?)
+    ORDER BY cr.updated_at DESC LIMIT 100
+  `).bind(access.activeBranch.branchId,status,status).all<Record<string,unknown>>();
+  const now=new Date().toISOString();
+  try {
+    const audit=(rows.results??[]).map(row=>env.DB.prepare(`
+      INSERT INTO care_access_audit(id,care_record_id,branch_id,actor_user_id,action,reason,request_id,safe_metadata,accessed_at)
+      VALUES(?,?,?,?,'read','Authorized branch-scoped care metadata listing',?,'{}',?)
+    `).bind(crypto.randomUUID(),String(row.id),access.activeBranch.branchId,access.staff.userId,requestId,now));
+    if(audit.length) await env.DB.batch(audit);
+  } catch { return json(503,{ok:false,error:{code:"CARE_METADATA_AUDIT_FAILED"}},requestId,origin); }
+  return json(200,{ok:true,care_records:rows.results??[]},requestId,origin);
+}
+
+async function createCareRecord(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "pastoral.case.create");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload = body.value as {contact_id?:unknown;care_group_id?:unknown};
+  if (!payload || typeof payload!=="object" || Array.isArray(payload) ||
+      Object.keys(payload).some(k=>!["contact_id","care_group_id"].includes(k))) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_BODY"}},requestId,origin);
+  }
+  const contactId = typeof payload.contact_id==="string" ? payload.contact_id.trim() : "";
+  const careGroupId = payload.care_group_id===undefined || payload.care_group_id===null || payload.care_group_id==="" ? null :
+    typeof payload.care_group_id==="string" ? payload.care_group_id.trim() : "";
+  if (!contactId || contactId.length>128 || careGroupId==="" || (careGroupId && careGroupId.length>128)) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_DETAILS"}},requestId,origin);
+  }
+  const now=new Date().toISOString(), id=crypto.randomUUID();
+  try {
+    const result=await env.DB.prepare(`
+      INSERT INTO care_record(id,branch_id,contact_id,care_group_id,status,created_by,created_at,updated_at)
+      VALUES(?,?,?,?,'open',?,?,?)
+    `).bind(id,access.activeBranch.branchId,contactId,careGroupId,access.staff.userId,now,now).run();
+    if (!result.success) throw new Error("CARE_CREATE_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"CARE_RECORD_CREATE_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,care_record_id:id,status:"open"},requestId,origin);
+}
+
+async function assignCareRecord(request: Request, env: Env, careId: string, requestId: string, origin?: string): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"pastoral.case.share");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as {assignee_profile_id?:unknown;purpose?:unknown;starts_at?:unknown;ends_at?:unknown};
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+     Object.keys(payload).some(k=>!["assignee_profile_id","purpose","starts_at","ends_at"].includes(k))) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_ASSIGNMENT_BODY"}},requestId,origin);
+  }
+  const targetProfileId=typeof payload.assignee_profile_id==="string"?payload.assignee_profile_id.trim():"";
+  const purpose=typeof payload.purpose==="string"?payload.purpose.trim():"";
+  const now=new Date().toISOString();
+  const startsAt=parseIsoTimestamp(payload.starts_at,now);
+  const endsAt=payload.ends_at===undefined||payload.ends_at===null||payload.ends_at===""?null:parseIsoTimestamp(payload.ends_at,"");
+  if(!targetProfileId||targetProfileId.length>128||purpose.length<10||purpose.length>300||
+     !startsAt||(endsAt!==null&&(!endsAt||endsAt<=startsAt))) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_ASSIGNMENT_DETAILS"}},requestId,origin);
+  }
+  const target=await env.DB.prepare(`
+    SELECT sp.id,sp.auth_user_id FROM staff_profile sp
+    JOIN staff_role_assignment ra ON ra.staff_profile_id=sp.id AND ra.branch_id=?
+    JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
+    WHERE sp.id=? AND sp.account_status='active' AND ra.revoked_at IS NULL
+      AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?) LIMIT 1
+  `).bind(access.activeBranch.branchId,targetProfileId,now,now).first<{id:string;auth_user_id:string}>();
+  if(!target) return json(404,{ok:false,error:{code:"CARE_ASSIGNEE_NOT_FOUND"}},requestId,origin);
+  const record=await env.DB.prepare("SELECT id FROM care_record WHERE id=? AND branch_id=? LIMIT 1")
+    .bind(careId,access.activeBranch.branchId).first<{id:string}>();
+  if(!record) return json(404,{ok:false,error:{code:"CARE_RECORD_NOT_FOUND"}},requestId,origin);
+  const assignmentId=crypto.randomUUID(),shareId=crypto.randomUUID();
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`INSERT INTO staff_record_share
+        (id,branch_id,record_type,record_id,staff_profile_id,granted_by,purpose,starts_at,ends_at,created_at)
+        VALUES(?,?,'pastoral_case',?,?,?,?,?,?,?)`)
+        .bind(shareId,access.activeBranch.branchId,careId,target.id,access.staff.profileId,purpose,startsAt,endsAt,now),
+      env.DB.prepare(`INSERT INTO care_assignment
+        (id,care_record_id,branch_id,assignee_user_id,assigned_by,starts_at,ends_at,created_at,assignment_reason)
+        VALUES(?,?,?,?,?,?,?,?,?)`)
+        .bind(assignmentId,careId,access.activeBranch.branchId,target.auth_user_id,access.staff.userId,startsAt,endsAt,now,purpose),
+    ]);
+    if(results.some(r=>!r.success)) throw new Error("CARE_ASSIGNMENT_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"CARE_ASSIGNMENT_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,assignment_id:assignmentId,share_id:shareId},requestId,origin);
+}
+
+async function getCareRecord(request: Request, env: Env, careId: string, requestId: string, origin?: string): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"pastoral.case.read",{type:"pastoral_case",recordId:careId});
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const now=new Date().toISOString();
+  const record=await env.DB.prepare(`
+    SELECT cr.id,cr.status,cr.contact_id,cr.care_group_id,cr.created_at,cr.updated_at
+    FROM care_record cr
+    WHERE cr.id=? AND cr.branch_id=? AND EXISTS(
+      SELECT 1 FROM care_assignment ca WHERE ca.care_record_id=cr.id AND ca.branch_id=cr.branch_id
+      AND ca.assignee_user_id=? AND ca.revoked_at IS NULL AND ca.starts_at<=?
+      AND (ca.ends_at IS NULL OR ca.ends_at>?)
+    ) LIMIT 1
+  `).bind(careId,access.activeBranch.branchId,access.staff.userId,now,now).first<Record<string,unknown>>();
+  if(!record) return json(404,{ok:false,error:{code:"CARE_RECORD_NOT_FOUND"}},requestId,origin);
+  try {
+    const audit=await env.DB.prepare(`
+      INSERT INTO care_access_audit
+        (id,care_record_id,branch_id,actor_user_id,action,reason,request_id,safe_metadata,accessed_at)
+      SELECT ?,?,?,?,'read','Authorized explicit-share pastoral case read',?,'{}',?
+      WHERE EXISTS(SELECT 1 FROM care_assignment ca
+        WHERE ca.care_record_id=? AND ca.branch_id=? AND ca.assignee_user_id=?
+          AND ca.revoked_at IS NULL AND ca.starts_at<=? AND (ca.ends_at IS NULL OR ca.ends_at>?))
+    `).bind(crypto.randomUUID(),careId,access.activeBranch.branchId,access.staff.userId,requestId,now,
+      careId,access.activeBranch.branchId,access.staff.userId,now,now).run();
+    if(!audit.success||(audit.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"CARE_RECORD_NOT_FOUND"}},requestId,origin);
+  } catch { return json(503,{ok:false,error:{code:"CARE_ACCESS_AUDIT_FAILED"}},requestId,origin); }
+  const interactions=await env.DB.prepare(`
+    SELECT ci.id,ci.interaction_type,ci.outcome_code,ci.restricted_note,ci.occurred_at,ci.created_at
+    FROM care_interaction ci WHERE ci.care_record_id=? AND EXISTS(
+      SELECT 1 FROM care_assignment ca WHERE ca.care_record_id=ci.care_record_id
+        AND ca.branch_id=? AND ca.assignee_user_id=? AND ca.revoked_at IS NULL
+        AND ca.starts_at<=? AND (ca.ends_at IS NULL OR ca.ends_at>?)
+    ) ORDER BY ci.occurred_at DESC LIMIT 100
+  `).bind(careId,access.activeBranch.branchId,access.staff.userId,now,now).all<Record<string,unknown>>();
+  return json(200,{ok:true,care_record:record,interactions:interactions.results??[]},requestId,origin);
+}
+
+async function createCareInteraction(request: Request, env: Env, careId: string, requestId: string, origin?: string): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"pastoral.case.interact",{type:"pastoral_case",recordId:careId});
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as {interaction_type?:unknown;outcome_code?:unknown;restricted_note?:unknown;occurred_at?:unknown};
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+     Object.keys(payload).some(k=>!["interaction_type","outcome_code","restricted_note","occurred_at"].includes(k))) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_INTERACTION_BODY"}},requestId,origin);
+  }
+  const type=payload.interaction_type;
+  const outcome=payload.outcome_code===undefined||payload.outcome_code===null||payload.outcome_code===""?null:
+    typeof payload.outcome_code==="string"?payload.outcome_code.trim():"";
+  const note=typeof payload.restricted_note==="string"?payload.restricted_note.trim():"";
+  const occurredAt=parseIsoTimestamp(payload.occurred_at,new Date().toISOString());
+  if(!["call","visit","meeting","other"].includes(String(type))||outcome===""||note.length>5000||!occurredAt) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_INTERACTION_DETAILS"}},requestId,origin);
+  }
+  const now=new Date().toISOString(),id=crypto.randomUUID();
+  try {
+    const result=await env.DB.prepare(`INSERT INTO care_interaction
+      (id,care_record_id,actor_user_id,interaction_type,outcome_code,restricted_note,occurred_at,created_at)
+      VALUES(?,?,?,?,?,?,?,?)`)
+      .bind(id,careId,access.staff.userId,type,outcome,note||null,occurredAt,now).run();
+    if(!result.success) throw new Error("CARE_INTERACTION_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"CARE_INTERACTION_NOT_AUTHORIZED_OR_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,interaction_id:id},requestId,origin);
+}
+
+async function updateCareRecord(request: Request, env: Env, careId: string, requestId: string, origin?: string): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"pastoral.case.update",{type:"pastoral_case",recordId:careId});
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as {status?:unknown};
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||
+     Object.keys(payload).length!==1||!["open","active","monitoring","resolved","closed"].includes(String(payload.status))) {
+    return json(400,{ok:false,error:{code:"INVALID_CARE_STATUS"}},requestId,origin);
+  }
+  const now=new Date().toISOString();
+  try {
+    const result=await env.DB.prepare(`UPDATE care_record SET status=?,updated_by=?,updated_at=?
+      WHERE id=? AND branch_id=? AND EXISTS(
+        SELECT 1 FROM care_assignment ca WHERE ca.care_record_id=care_record.id
+        AND ca.branch_id=care_record.branch_id AND ca.assignee_user_id=?
+        AND ca.revoked_at IS NULL AND ca.starts_at<=? AND (ca.ends_at IS NULL OR ca.ends_at>?)
+      )`).bind(payload.status,access.staff.userId,now,careId,access.activeBranch.branchId,access.staff.userId,now,now).run();
+    if(!result.success||(result.meta?.changes??0)!==1) throw new Error("CARE_UPDATE_FAILED");
+  } catch { return json(409,{ok:false,error:{code:"CARE_RECORD_UPDATE_CONFLICT"}},requestId,origin); }
+  return json(200,{ok:true,care_record_id:careId,status:payload.status},requestId,origin);
+}
+
+async function revokeCareAssignment(request: Request, env: Env, careId: string, assignmentId: string, requestId: string, origin?: string): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"pastoral.case.share");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const body=await readJsonBody(request);
+  if(!body.ok) return json(body.status,{ok:false,error:{code:body.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload=body.value as {reason?:unknown};
+  const reason=typeof payload?.reason==="string"?payload.reason.trim():"";
+  if(!payload||typeof payload!=="object"||Array.isArray(payload)||Object.keys(payload).some(k=>k!=="reason")||reason.length<10||reason.length>300) {
+    return json(400,{ok:false,error:{code:"CARE_REVOCATION_REASON_REQUIRED"}},requestId,origin);
+  }
+  const now=new Date().toISOString();
+  const assignment=await env.DB.prepare(`SELECT assignee_user_id FROM care_assignment
+    WHERE id=? AND care_record_id=? AND branch_id=? AND revoked_at IS NULL LIMIT 1`)
+    .bind(assignmentId,careId,access.activeBranch.branchId).first<{assignee_user_id:string}>();
+  if(!assignment) return json(404,{ok:false,error:{code:"CARE_ASSIGNMENT_NOT_FOUND"}},requestId,origin);
+  const target=await env.DB.prepare("SELECT id FROM staff_profile WHERE auth_user_id=? LIMIT 1")
+    .bind(assignment.assignee_user_id).first<{id:string}>();
+  if(!target) return json(409,{ok:false,error:{code:"CARE_ASSIGNEE_PROFILE_NOT_FOUND"}},requestId,origin);
+  try {
+    const results=await env.DB.batch([
+      env.DB.prepare(`UPDATE care_assignment SET revoked_at=?,revoked_by=?,revocation_reason=?
+        WHERE id=? AND care_record_id=? AND branch_id=? AND revoked_at IS NULL`)
+        .bind(now,access.staff.userId,reason,assignmentId,careId,access.activeBranch.branchId),
+      env.DB.prepare(`UPDATE staff_record_share SET revoked_at=?,revoked_by=?
+        WHERE record_type='pastoral_case' AND record_id=? AND branch_id=? AND staff_profile_id=? AND revoked_at IS NULL`)
+        .bind(now,access.staff.profileId,careId,access.activeBranch.branchId,target.id),
+    ]);
+    if(results.some(r=>!r.success)||(results[0]?.meta?.changes??0)!==1||(results[1]?.meta?.changes??0)<1) throw new Error("CARE_REVOKE_FAILED");
+  } catch { return json(409,{ok:false,error:{code:"CARE_ASSIGNMENT_REVOCATION_CONFLICT"}},requestId,origin); }
+  return json(200,{ok:true,assignment_id:assignmentId,revoked_at:now},requestId,origin);
+}
+
+async function getPublicContent(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const branchId = url.searchParams.get("branch_id") ?? "";
+  if (!branchId || branchId.length > 128 || [...url.searchParams.keys()].some((key) => key !== "branch_id")) {
+    return json(400, { ok: false, error: { code: "PUBLIC_BRANCH_REQUIRED" } }, requestId, origin);
+  }
+  const branch = await env.DB.prepare(
+    "SELECT b.id,b.church_id FROM branch b WHERE b.id=? AND b.is_active=1 LIMIT 1",
+  ).bind(branchId).first<{ id: string; church_id: string }>();
+  if (!branch) return json(404, { ok: false, error: { code: "PUBLIC_BRANCH_NOT_FOUND" } }, requestId, origin);
+  const [profile,welcome,sermons,dailyWord,tracts,announcements,events,links] = await Promise.all([
+    env.DB.prepare(`
+      SELECT public_name,welcome_content,public_phone,public_email,address_text,website_url,social_links
+      FROM church_public_profile WHERE church_id=? LIMIT 1
+    `).bind(branch.church_id).first<Record<string, unknown>>(),
+    env.DB.prepare(`
+      SELECT id,title,body,display_order,published_at
+      FROM welcome_message WHERE status='published' AND (branch_id IS NULL OR branch_id=?)
+      ORDER BY display_order ASC,published_at DESC LIMIT 20
+    `).bind(branchId).all<Record<string, unknown>>(),
+    env.DB.prepare(`
+      SELECT id,title,body,public_slug,published_at
+      FROM sermon WHERE status='published' AND (branch_id IS NULL OR branch_id=?)
+      ORDER BY published_at DESC LIMIT 20
+    `).bind(branchId).all<Record<string, unknown>>(),
+    env.DB.prepare(`
+      SELECT id,title,body,publication_date,public_slug,published_at
+      FROM daily_word WHERE status='published'
+      ORDER BY publication_date DESC LIMIT 10
+    `).all<Record<string, unknown>>(),
+    env.DB.prepare(`
+      SELECT id,title,body,public_slug,published_at
+      FROM digital_tract WHERE status='published'
+      ORDER BY published_at DESC LIMIT 30
+    `).all<Record<string, unknown>>(),
+    env.DB.prepare(`
+      SELECT id,title,body,published_at FROM announcement
+      WHERE branch_id=? AND is_public=1 AND audience_type='public' AND status='published'
+      ORDER BY published_at DESC LIMIT 20
+    `).bind(branchId).all<Record<string, unknown>>(),
+    env.DB.prepare(`
+      SELECT id,title,description,starts_at,ends_at,timezone,location,capacity
+      FROM event WHERE branch_id=? AND visibility='public' AND status='published'
+      ORDER BY starts_at ASC LIMIT 20
+    `).bind(branchId).all<Record<string, unknown>>(),
+    env.DB.prepare(`
+      SELECT l.id,l.label,l.url,l.digital_tract_id,l.sermon_id
+      FROM external_document_link l
+      WHERE (l.digital_tract_id IN (SELECT id FROM digital_tract WHERE status='published')
+         OR l.sermon_id IN (SELECT id FROM sermon WHERE status='published' AND (branch_id IS NULL OR branch_id=?)))
+      ORDER BY l.created_at DESC LIMIT 100
+    `).bind(branchId).all<Record<string, unknown>>(),
+  ]);
+  return json(200, {
+    ok: true,
+    branch_id: branchId,
+    profile: profile ?? null,
+    welcome_messages: welcome.results ?? [],
+    sermons: sermons.results ?? [],
+    daily_word: dailyWord.results ?? [],
+    digital_tracts: tracts.results ?? [],
+    announcements: announcements.results ?? [],
+    events: events.results ?? [],
+    external_links: links.results ?? [],
+  }, requestId, origin);
+}
+
+type ContentKind = "welcome-messages" | "sermons" | "daily-words" | "digital-tracts";
+
+interface ContentKindConfig {
+  table: string;
+  branchScoped: boolean;
+  hasSlug: boolean;
+  hasPublicationDate: boolean;
+  hasDisplayOrder: boolean;
+  bodyNullable: boolean;
+}
+
+function contentKindConfig(kind: string): ContentKindConfig | null {
+  const config: Record<ContentKind, ContentKindConfig> = {
+    "welcome-messages": { table: "welcome_message", branchScoped: true, hasSlug: false, hasPublicationDate: false, hasDisplayOrder: true, bodyNullable: false },
+    "sermons": { table: "sermon", branchScoped: true, hasSlug: true, hasPublicationDate: false, hasDisplayOrder: false, bodyNullable: false },
+    "daily-words": { table: "daily_word", branchScoped: false, hasSlug: true, hasPublicationDate: true, hasDisplayOrder: false, bodyNullable: false },
+    "digital-tracts": { table: "digital_tract", branchScoped: false, hasSlug: true, hasPublicationDate: false, hasDisplayOrder: false, bodyNullable: true },
+  };
+  return Object.prototype.hasOwnProperty.call(config, kind) ? config[kind as ContentKind] : null;
+}
+
+function isValidPublicSlug(value: unknown): value is string {
+  return typeof value === "string" && value.length >= 2 && value.length <= 180 &&
+    /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value);
+}
+
+function isValidDateOnly(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value + "T00:00:00.000Z");
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+type AuthenticatedStaffContext = {
+  staff: { profileId: string; userId: string };
+  activeBranch: { branchId: string; capabilities: Array<{ code: string; scopeMode: string }> } | null;
+};
+
+type ContentCapabilityContext = {
+  activeBranch: { capabilities: Array<{ code: string; scopeMode: string }> } | null;
+};
+
+function hasContentRead(context: ContentCapabilityContext): boolean {
+  return !!context.activeBranch?.capabilities.some((grant) => grant.code === "content.read");
+}
+
+function hasContentManage(context: ContentCapabilityContext): boolean {
+  return !!context.activeBranch?.capabilities.some((grant) => grant.code === "content.manage" && grant.scopeMode === "branch");
+}
+
+async function listContent(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  if (!hasContentRead(context)) return json(403, { ok: false, error: { code: "CAPABILITY_DENIED" } }, requestId, origin);
+  const canManage = hasContentManage(context);
+  const url = new URL(request.url);
+  const status = url.searchParams.get("status") ?? "published";
+  if (!["published", "draft", "archived", "all"].includes(status) ||
+      (status !== "published" && !canManage) ||
+      [...url.searchParams.keys()].some((key) => key !== "status")) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTENT_QUERY" } }, requestId, origin);
+  }
+  const statusClause = status === "all" ? "1=1" : "status=?";
+  const branchId = context.activeBranch.branchId;
+  const content: Record<string, unknown[]> = {};
+  for (const kind of ["welcome-messages", "sermons", "daily-words", "digital-tracts"] as ContentKind[]) {
+    const config = contentKindConfig(kind)!;
+    const branchClause = config.branchScoped ? "AND (branch_id IS NULL OR branch_id=?)" : "";
+    const sql = `SELECT * FROM ${config.table} WHERE ${statusClause} ${branchClause}
+      ORDER BY COALESCE(published_at,created_at) DESC,id DESC LIMIT 100`;
+    const params = status === "all" ? (config.branchScoped ? [branchId] : []) :
+      (config.branchScoped ? [status, branchId] : [status]);
+    const rows = await env.DB.prepare(sql).bind(...params).all<Record<string, unknown>>();
+    content[kind] = rows.results ?? [];
+  }
+  const branch = await env.DB.prepare(
+    "SELECT church_id FROM branch WHERE id=? AND is_active=1 LIMIT 1",
+  ).bind(branchId).first<{ church_id: string }>();
+  const profile = branch ? await env.DB.prepare(
+    "SELECT id,church_id,public_name,welcome_content,public_phone,public_email,address_text,website_url,social_links,updated_by,updated_at FROM church_public_profile WHERE church_id=? LIMIT 1",
+  ).bind(branch.church_id).first<Record<string, unknown>>() : null;
+  return json(200, { ok: true, status, content, profile: profile ?? null }, requestId, origin);
+}
+
+async function createContent(
+  request: Request,
+  env: Env,
+  kind: ContentKind,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "content.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const config = contentKindConfig(kind)!;
+  const bodyResult = await readJsonBody(request);
+  if (!bodyResult.ok) return json(bodyResult.status, { ok: false, error: { code: bodyResult.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = bodyResult.value as Record<string, unknown>;
+  const allowed = new Set(["title", "body", "public_slug", "publication_date", "display_order"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTENT_BODY" } }, requestId, origin);
+  }
+  const title = typeof payload.title === "string" ? payload.title.trim() : "";
+  const body = payload.body === undefined || payload.body === null
+    ? null : typeof payload.body === "string" ? payload.body.trim() : "";
+  const slug = config.hasSlug ? payload.public_slug : null;
+  const publicationDate = config.hasPublicationDate ? payload.publication_date : null;
+  const displayOrder = config.hasDisplayOrder ? (payload.display_order === undefined ? 0 : payload.display_order) : null;
+  if (title.length < 2 || title.length > 180 ||
+      (payload.body !== undefined && payload.body !== null && typeof payload.body !== "string") ||
+      (!config.bodyNullable && (typeof body !== "string" || body.length < 1 || body.length > 30000)) ||
+      (config.bodyNullable && body !== null && (typeof body !== "string" || body.length > 30000)) ||
+      (config.hasSlug && !isValidPublicSlug(slug)) ||
+      (config.hasPublicationDate && !isValidDateOnly(publicationDate)) ||
+      (config.hasDisplayOrder && (typeof displayOrder !== "number" || !Number.isInteger(displayOrder) || displayOrder < 0 || displayOrder > 10000))) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTENT_DETAILS" } }, requestId, origin);
+  }
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const columns = ["id"];
+  const values: unknown[] = [id];
+  if (config.branchScoped) { columns.push("branch_id"); values.push(access.activeBranch.branchId); }
+  columns.push("title","body"); values.push(title,body);
+  if (config.hasSlug) { columns.push("public_slug"); values.push(slug); }
+  if (config.hasPublicationDate) { columns.push("publication_date"); values.push(publicationDate); }
+  if (config.hasDisplayOrder) { columns.push("display_order"); values.push(displayOrder); }
+  columns.push("status","published_at","created_by","updated_by","created_at","updated_at");
+  values.push("draft",null,access.staff.userId,access.staff.userId,now,now);
+  try {
+    const result = await env.DB.prepare(
+      `INSERT INTO ${config.table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`,
+    ).bind(...values).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error("CONTENT_CREATE_FAILED");
+  } catch {
+    return json(409, { ok: false, error: { code: "CONTENT_CREATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, { ok: true, kind, content_id: id, status: "draft" }, requestId, origin);
+}
+
+async function updateContent(
+  request: Request,
+  env: Env,
+  kind: ContentKind,
+  contentId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "content.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const config = contentKindConfig(kind)!;
+  const bodyResult = await readJsonBody(request);
+  if (!bodyResult.ok) return json(bodyResult.status, { ok: false, error: { code: bodyResult.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = bodyResult.value as Record<string, unknown>;
+  const allowed = new Set(["title","body","public_slug","publication_date","display_order"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length === 0 || Object.keys(payload).some((key) => !allowed.has(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTENT_UPDATE" } }, requestId, origin);
+  }
+  const branchClause = config.branchScoped ? "AND branch_id=?" : "";
+  const existing = await env.DB.prepare(
+    `SELECT id,status FROM ${config.table} WHERE id=? ${branchClause} LIMIT 1`,
+  ).bind(...(config.branchScoped ? [contentId,access.activeBranch.branchId] : [contentId])).first<{id:string;status:string}>();
+  if (!existing || existing.status !== "draft") return json(404, { ok: false, error: { code: "DRAFT_CONTENT_NOT_FOUND" } }, requestId, origin);
+
+  const assignments: string[] = [];
+  const values: unknown[] = [];
+  if (payload.title !== undefined) {
+    if (typeof payload.title !== "string" || payload.title.trim().length < 2 || payload.title.trim().length > 180) return json(400,{ok:false,error:{code:"INVALID_CONTENT_TITLE"}},requestId,origin);
+    assignments.push("title=?"); values.push(payload.title.trim());
+  }
+  if (payload.body !== undefined) {
+    if (payload.body !== null && (typeof payload.body !== "string" || payload.body.length > 30000)) return json(400,{ok:false,error:{code:"INVALID_CONTENT_BODY"}},requestId,origin);
+    if (!config.bodyNullable && (typeof payload.body !== "string" || payload.body.trim().length === 0)) return json(400,{ok:false,error:{code:"CONTENT_BODY_REQUIRED"}},requestId,origin);
+    assignments.push("body=?"); values.push(typeof payload.body === "string" ? payload.body.trim() || null : null);
+  }
+  if (payload.public_slug !== undefined) {
+    if (!config.hasSlug || !isValidPublicSlug(payload.public_slug)) return json(400,{ok:false,error:{code:"INVALID_PUBLIC_SLUG"}},requestId,origin);
+    assignments.push("public_slug=?"); values.push(payload.public_slug);
+  }
+  if (payload.publication_date !== undefined) {
+    if (!config.hasPublicationDate || typeof payload.publication_date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(payload.publication_date)) return json(400,{ok:false,error:{code:"INVALID_PUBLICATION_DATE"}},requestId,origin);
+    const date = new Date(payload.publication_date + "T00:00:00.000Z");
+    if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== payload.publication_date) return json(400,{ok:false,error:{code:"INVALID_PUBLICATION_DATE"}},requestId,origin);
+    assignments.push("publication_date=?"); values.push(payload.publication_date);
+  }
+  if (payload.display_order !== undefined) {
+    if (!config.hasDisplayOrder || typeof payload.display_order !== "number" || !Number.isInteger(payload.display_order) || payload.display_order < 0 || payload.display_order > 10000) return json(400,{ok:false,error:{code:"INVALID_DISPLAY_ORDER"}},requestId,origin);
+    assignments.push("display_order=?"); values.push(payload.display_order);
+  }
+  assignments.push("updated_by=?"); values.push(access.staff.userId);
+  assignments.push("updated_at=?"); values.push(new Date().toISOString());
+  try {
+    const result = await env.DB.prepare(
+      `UPDATE ${config.table} SET ${assignments.join(",")} WHERE id=? AND status='draft' ${branchClause}`,
+    ).bind(...values,contentId,...(config.branchScoped ? [access.activeBranch.branchId] : [])).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409,{ok:false,error:{code:"CONTENT_CHANGED"}},requestId,origin);
+  } catch {
+    return json(409,{ok:false,error:{code:"CONTENT_UPDATE_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,kind,content_id:contentId,status:"draft"},requestId,origin);
+}
+
+async function publishContent(
+  request: Request,
+  env: Env,
+  kind: ContentKind,
+  contentId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "content.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const config = contentKindConfig(kind)!;
+  const branchClause = config.branchScoped ? "AND branch_id=?" : "";
+  const values: unknown[] = [new Date().toISOString(),access.staff.userId,new Date().toISOString(),contentId];
+  if (config.branchScoped) values.push(access.activeBranch.branchId);
+  try {
+    const result = await env.DB.prepare(
+      `UPDATE ${config.table} SET status='published',published_at=?,updated_by=?,updated_at=? WHERE id=? AND status='draft' ${branchClause}`,
+    ).bind(...values).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409,{ok:false,error:{code:"CONTENT_NOT_PUBLISHABLE"}},requestId,origin);
+  } catch {
+    return json(409,{ok:false,error:{code:"CONTENT_PUBLISH_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,kind,content_id:contentId,status:"published"},requestId,origin);
+}
+
+async function archiveContent(
+  request: Request,
+  env: Env,
+  kind: ContentKind,
+  contentId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "content.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const config = contentKindConfig(kind)!;
+  const branchClause = config.branchScoped ? "AND branch_id=?" : "";
+  const values: unknown[] = [access.staff.userId,new Date().toISOString(),contentId];
+  if (config.branchScoped) values.push(access.activeBranch.branchId);
+  try {
+    const result = await env.DB.prepare(
+      `UPDATE ${config.table} SET status='archived',updated_by=?,updated_at=? WHERE id=? AND status IN ('draft','published') ${branchClause}`,
+    ).bind(...values).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) return json(409,{ok:false,error:{code:"CONTENT_NOT_ARCHIVABLE"}},requestId,origin);
+  } catch {
+    return json(409,{ok:false,error:{code:"CONTENT_ARCHIVE_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,kind,content_id:contentId,status:"archived"},requestId,origin);
+}
+
+async function getContentProfile(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  if (!hasContentRead(context)) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const branch = await env.DB.prepare(
+    "SELECT church_id FROM branch WHERE id=? AND is_active=1 LIMIT 1",
+  ).bind(context.activeBranch.branchId).first<{church_id:string}>();
+  if (!branch) return json(404,{ok:false,error:{code:"CHURCH_NOT_FOUND"}},requestId,origin);
+  const profile = await env.DB.prepare(
+    "SELECT id,church_id,public_name,welcome_content,public_phone,public_email,address_text,website_url,social_links,updated_by,updated_at FROM church_public_profile WHERE church_id=? LIMIT 1",
+  ).bind(branch.church_id).first<Record<string,unknown>>();
+  return json(200,{ok:true,profile:profile??null},requestId,origin);
+}
+
+async function updateContentProfile(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request,env,"content.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const bodyResult = await readJsonBody(request);
+  if (!bodyResult.ok) return json(bodyResult.status,{ok:false,error:{code:bodyResult.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload = bodyResult.value as Record<string,unknown>;
+  const allowed = new Set(["public_name","welcome_content","public_phone","public_email","address_text","website_url","social_links"]);
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length===0 || Object.keys(payload).some((key)=>!allowed.has(key))) {
+    return json(400,{ok:false,error:{code:"INVALID_PUBLIC_PROFILE_BODY"}},requestId,origin);
+  }
+  const branch = await env.DB.prepare(
+    "SELECT church_id FROM branch WHERE id=? AND is_active=1 LIMIT 1",
+  ).bind(access.activeBranch.branchId).first<{church_id:string}>();
+  if (!branch) return json(404,{ok:false,error:{code:"CHURCH_NOT_FOUND"}},requestId,origin);
+  const existing = await env.DB.prepare(
+    "SELECT * FROM church_public_profile WHERE church_id=? LIMIT 1",
+  ).bind(branch.church_id).first<Record<string,unknown>>();
+  const publicName = payload.public_name===undefined ? existing?.public_name : payload.public_name;
+  const welcome = payload.welcome_content===undefined ? existing?.welcome_content??null : payload.welcome_content;
+  const phone = payload.public_phone===undefined ? existing?.public_phone??null : payload.public_phone;
+  const email = payload.public_email===undefined ? existing?.public_email??null : payload.public_email;
+  const address = payload.address_text===undefined ? existing?.address_text??null : payload.address_text;
+  const website = payload.website_url===undefined ? existing?.website_url??null : payload.website_url;
+  let socialLinks: unknown = payload.social_links;
+  if (socialLinks===undefined) {
+    try { socialLinks = existing ? JSON.parse(String(existing.social_links)) : {}; }
+    catch { socialLinks = {}; }
+  }
+  const validOptionalText = (value: unknown, max: number) => value===null || (typeof value==="string" && value.length<=max);
+  const validHttps = (value: unknown) => {
+    if (value===null) return true;
+    if (typeof value!=="string" || value.length>2048) return false;
+    try { return new URL(value).protocol==="https:"; } catch { return false; }
+  };
+  if (typeof publicName!=="string" || publicName.trim().length<2 || publicName.trim().length>180 ||
+      !validOptionalText(welcome,10000) || !validOptionalText(phone,40) ||
+      !validOptionalText(email,254) || (typeof email==="string" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) ||
+      !validOptionalText(address,500) || !validHttps(website) ||
+      !socialLinks || typeof socialLinks!=="object" || Array.isArray(socialLinks)) {
+    return json(400,{ok:false,error:{code:"INVALID_PUBLIC_PROFILE_DETAILS"}},requestId,origin);
+  }
+  const social = socialLinks as Record<string,unknown>;
+  const socialKeys = new Set(["facebook","instagram","youtube","tiktok","whatsapp","x","linkedin"]);
+  if (Object.keys(social).some((key)=>!socialKeys.has(key)) ||
+      Object.values(social).some((value)=>typeof value!=="string" || !validHttps(value))) {
+    return json(400,{ok:false,error:{code:"INVALID_SOCIAL_LINKS"}},requestId,origin);
+  }
+  const now = new Date().toISOString();
+  const id = typeof existing?.id==="string" ? existing.id : crypto.randomUUID();
+  try {
+    const result = await env.DB.prepare(`
+      INSERT INTO church_public_profile
+        (id,church_id,public_name,welcome_content,public_phone,public_email,address_text,
+         website_url,social_links,updated_by,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+      ON CONFLICT(church_id) DO UPDATE SET
+        public_name=excluded.public_name,welcome_content=excluded.welcome_content,
+        public_phone=excluded.public_phone,public_email=excluded.public_email,
+        address_text=excluded.address_text,website_url=excluded.website_url,
+        social_links=excluded.social_links,updated_by=excluded.updated_by,updated_at=excluded.updated_at
+    `).bind(
+      id,branch.church_id,publicName.trim(),welcome,phone,email,address,website,
+      JSON.stringify(social),access.staff.userId,existing?.created_at??now,now,
+    ).run();
+    if (!result.success || (result.meta?.changes??0)<1) throw new Error("PUBLIC_PROFILE_UPSERT_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"PUBLIC_PROFILE_SAVE_CONFLICT"}},requestId,origin);
+  }
+  return json(200,{ok:true,profile_id:id},requestId,origin);
+}
+
+async function createExternalDocumentLink(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request,env,"content.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const bodyResult = await readJsonBody(request);
+  if (!bodyResult.ok) return json(bodyResult.status,{ok:false,error:{code:bodyResult.status===413?"REQUEST_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  const payload = bodyResult.value as Record<string,unknown>;
+  const allowed = new Set(["label","url","sermon_id","digital_tract_id"]);
+  if (!payload || typeof payload!=="object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key)=>!allowed.has(key))) {
+    return json(400,{ok:false,error:{code:"INVALID_EXTERNAL_LINK_BODY"}},requestId,origin);
+  }
+  const label = typeof payload.label==="string" ? payload.label.trim() : "";
+  const url = typeof payload.url==="string" ? payload.url.trim() : "";
+  const sermonId = typeof payload.sermon_id==="string" ? payload.sermon_id : null;
+  const tractId = typeof payload.digital_tract_id==="string" ? payload.digital_tract_id : null;
+  let validUrl=false;
+  try { validUrl = new URL(url).protocol==="https:"; } catch { validUrl=false; }
+  if (label.length<2 || label.length>180 || url.length>2048 || !validUrl ||
+      ((sermonId!==null)===(tractId!==null))) {
+    return json(400,{ok:false,error:{code:"INVALID_EXTERNAL_LINK_DETAILS"}},requestId,origin);
+  }
+  if (sermonId) {
+    const target=await env.DB.prepare("SELECT id FROM sermon WHERE id=? AND (branch_id IS NULL OR branch_id=?) LIMIT 1")
+      .bind(sermonId,access.activeBranch.branchId).first<{id:string}>();
+    if (!target) return json(400,{ok:false,error:{code:"SERMON_LINK_TARGET_NOT_FOUND"}},requestId,origin);
+  }
+  if (tractId) {
+    const target=await env.DB.prepare("SELECT id FROM digital_tract WHERE id=? LIMIT 1")
+      .bind(tractId).first<{id:string}>();
+    if (!target) return json(400,{ok:false,error:{code:"TRACT_LINK_TARGET_NOT_FOUND"}},requestId,origin);
+  }
+  const id=crypto.randomUUID(), now=new Date().toISOString();
+  try {
+    const result=await env.DB.prepare(
+      "INSERT INTO external_document_link (id,digital_tract_id,sermon_id,label,url,created_by,created_at) VALUES (?,?,?,?,?,?,?)",
+    ).bind(id,tractId,sermonId,label,url,access.staff.userId,now).run();
+    if (!result.success || (result.meta?.changes??0)!==1) throw new Error("EXTERNAL_LINK_CREATE_FAILED");
+  } catch {
+    return json(409,{ok:false,error:{code:"EXTERNAL_LINK_CREATE_CONFLICT"}},requestId,origin);
+  }
+  return json(201,{ok:true,link_id:id},requestId,origin);
+}
+
+async function listContentAudit(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access=await authorizeRequestCapability(request,env,"content.manage");
+  if (access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const branch=await env.DB.prepare("SELECT church_id FROM branch WHERE id=? LIMIT 1")
+    .bind(access.activeBranch.branchId).first<{church_id:string}>();
+  const rows=await env.DB.prepare(`
+    SELECT a.id,a.entity_type,a.entity_id,a.branch_id,a.church_id,a.actor_user_id,
+           sp.full_name AS actor_name,a.action,a.before_state,a.after_state,a.created_at
+    FROM public_content_change_audit a
+    JOIN staff_profile sp ON sp.id=a.actor_profile_id
+    WHERE a.branch_id=? OR a.church_id=? OR
+      (a.branch_id IS NULL AND a.church_id IS NULL AND EXISTS (
+        SELECT 1 FROM staff_role_assignment ra
+        JOIN role r ON r.id=ra.role_id
+        JOIN role_capability rc ON rc.role_id=r.id
+        JOIN capability cap ON cap.id=rc.capability_id
+        WHERE ra.staff_profile_id=a.actor_profile_id AND ra.branch_id=?
+          AND r.is_active=1 AND cap.code='content.manage' AND cap.is_active=1
+          AND rc.scope_mode='branch'
+      ))
+    ORDER BY a.created_at DESC,a.id DESC LIMIT 100
+  `).bind(
+    access.activeBranch.branchId,branch?.church_id??"",access.activeBranch.branchId,
+  ).all<Record<string,unknown>>();
+  return json(200,{ok:true,audit:rows.results??[]},requestId,origin);
+}
+
 function isAuthPath(pathname: string): boolean {
   return pathname === "/api/auth" || pathname.startsWith("/api/auth/");
 }
 
+function meetsPasswordPolicy(value: unknown): value is string {
+  return typeof value === "string" &&
+    value.length >= 12 && value.length <= 128 &&
+    /[a-z]/.test(value) &&
+    /[A-Z]/.test(value) &&
+    /[0-9]/.test(value) &&
+    /[^A-Za-z0-9]/.test(value);
+}
+
+function webPushBase64UrlEncode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function webPushBase64UrlDecode(value: string): Uint8Array {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function webPushArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
+function webPushConcat(...parts: Uint8Array[]): Uint8Array {
+  const output = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+  let offset = 0;
+  for (const part of parts) { output.set(part, offset); offset += part.length; }
+  return output;
+}
+
+async function webPushHmac(keyBytes: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey("raw", webPushArrayBuffer(keyBytes), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", key, webPushArrayBuffer(data)));
+}
+
+async function webPushHkdfExpand(prk: Uint8Array, info: Uint8Array, length: number): Promise<Uint8Array> {
+  let output: Uint8Array = new Uint8Array(0);
+  let previous: Uint8Array = new Uint8Array(0);
+  let counter = 1;
+  while (output.length < length) {
+    previous = await webPushHmac(prk, webPushConcat(previous, info, new Uint8Array([counter])));
+    output = webPushConcat(output, previous);
+    counter += 1;
+  }
+  return output.slice(0, length);
+}
+
+async function webPushEncryptionKey(env: Env): Promise<CryptoKey> {
+  if (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32) throw new Error("WEB_PUSH_KEY_ENCRYPTION_UNAVAILABLE");
+  const material = await crypto.subtle.importKey("raw", webPushArrayBuffer(new TextEncoder().encode(env.BETTER_AUTH_SECRET)), "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({
+    name: "HKDF", hash: "SHA-256",
+    salt: webPushArrayBuffer(new TextEncoder().encode("pcg-missions-web-push-v1")),
+    info: webPushArrayBuffer(new TextEncoder().encode("vapid-private-key-at-rest")),
+  }, material, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+
+async function getWebPushVapidKeys(env: Env): Promise<{ publicKey: string; privateKey: CryptoKey }> {
+  let row = await env.DB.prepare("SELECT public_key,private_key_ciphertext,iv FROM web_push_vapid_key WHERE id=1")
+    .first<{ public_key: string; private_key_ciphertext: string; iv: string }>();
+  if (!row) {
+    const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]) as CryptoKeyPair;
+    const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+    const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+    if (!publicJwk.x || !publicJwk.y) throw new Error("WEB_PUSH_PUBLIC_KEY_EXPORT_FAILED");
+    const rawPublic = webPushConcat(new Uint8Array([4]), webPushBase64UrlDecode(publicJwk.x), webPushBase64UrlDecode(publicJwk.y));
+    const publicKey = webPushBase64UrlEncode(rawPublic);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encryptionKey = await webPushEncryptionKey(env);
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: webPushArrayBuffer(iv) },
+      encryptionKey,
+      webPushArrayBuffer(new TextEncoder().encode(JSON.stringify(privateJwk))),
+    );
+    await env.DB.prepare(`
+      INSERT OR IGNORE INTO web_push_vapid_key (id,public_key,private_key_ciphertext,iv,created_at)
+      VALUES (1,?,?,?,?)
+    `).bind(
+      publicKey,
+      webPushBase64UrlEncode(new Uint8Array(ciphertext)),
+      webPushBase64UrlEncode(iv),
+      new Date().toISOString(),
+    ).run();
+    row = await env.DB.prepare("SELECT public_key,private_key_ciphertext,iv FROM web_push_vapid_key WHERE id=1")
+      .first<{ public_key: string; private_key_ciphertext: string; iv: string }>();
+  }
+  if (!row) throw new Error("WEB_PUSH_VAPID_KEY_UNAVAILABLE");
+  const encryptionKey = await webPushEncryptionKey(env);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: webPushArrayBuffer(webPushBase64UrlDecode(row.iv)) },
+    encryptionKey,
+    webPushArrayBuffer(webPushBase64UrlDecode(row.private_key_ciphertext)),
+  );
+  const privateJwk = JSON.parse(new TextDecoder().decode(decrypted)) as JsonWebKey;
+  const privateKey = await crypto.subtle.importKey(
+    "jwk", privateJwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"],
+  );
+  return { publicKey: row.public_key, privateKey };
+}
+
+function isAllowedWebPushEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol !== "https:" || url.username || url.password || url.port) return false;
+    const host = url.hostname.toLowerCase();
+    return host === "fcm.googleapis.com" ||
+      host === "updates.push.services.mozilla.com" ||
+      host.endsWith(".push.services.mozilla.com") ||
+      host === "web.push.apple.com" ||
+      host.endsWith(".push.apple.com") ||
+      host.endsWith(".notify.windows.com");
+  } catch { return false; }
+}
+
+async function createWebPushVapidJwt(endpoint: string, keys: { publicKey: string; privateKey: CryptoKey }): Promise<string> {
+  const encoder = new TextEncoder();
+  const header = webPushBase64UrlEncode(encoder.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const payload = webPushBase64UrlEncode(encoder.encode(JSON.stringify({
+    aud: new URL(endpoint).origin,
+    exp: Math.floor(Date.now() / 1000) + 12 * 60 * 60,
+    sub: "mailto:elviskwakuboateng63@gmail.com",
+  })));
+  const unsigned = header + "." + payload;
+  const signature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    keys.privateKey,
+    webPushArrayBuffer(encoder.encode(unsigned)),
+  );
+  return unsigned + "." + webPushBase64UrlEncode(new Uint8Array(signature));
+}
+
+async function encryptWebPushPayload(
+  subscription: { p256dh: string; auth_secret: string },
+  payload: Record<string, unknown>,
+): Promise<Uint8Array> {
+  const clientPublicBytes = webPushBase64UrlDecode(subscription.p256dh);
+  const authSecret = webPushBase64UrlDecode(subscription.auth_secret);
+  if (clientPublicBytes.length !== 65 || authSecret.length !== 16) throw new Error("WEB_PUSH_SUBSCRIPTION_KEYS_INVALID");
+  const clientPublicKey = await crypto.subtle.importKey(
+    "raw", webPushArrayBuffer(clientPublicBytes), { name: "ECDH", namedCurve: "P-256" }, false, [],
+  );
+  const ephemeral = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]) as CryptoKeyPair;
+  const serverPublicBytes = new Uint8Array(await crypto.subtle.exportKey("raw", ephemeral.publicKey));
+  const sharedSecret = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: "ECDH", public: clientPublicKey }, ephemeral.privateKey, 256,
+  ));
+  const authPrk = await webPushHmac(authSecret, sharedSecret);
+  const keyInfo = webPushConcat(new TextEncoder().encode("WebPush: info\0"), clientPublicBytes, serverPublicBytes);
+  const inputKeyMaterial = await webPushHkdfExpand(authPrk, keyInfo, 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const prk = await webPushHmac(salt, inputKeyMaterial);
+  const cek = await webPushHkdfExpand(prk, new TextEncoder().encode("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await webPushHkdfExpand(prk, new TextEncoder().encode("Content-Encoding: nonce\0"), 12);
+  const plaintext = webPushConcat(new TextEncoder().encode(JSON.stringify(payload)), new Uint8Array([2]));
+  const aesKey = await crypto.subtle.importKey("raw", webPushArrayBuffer(cek), { name: "AES-GCM" }, false, ["encrypt"]);
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: webPushArrayBuffer(nonce), tagLength: 128 }, aesKey, webPushArrayBuffer(plaintext),
+  ));
+  const recordSize = new Uint8Array([0, 0, 16, 0]);
+  return webPushConcat(salt, recordSize, new Uint8Array([serverPublicBytes.length]), serverPublicBytes, ciphertext);
+}
+
+async function sendWebPush(
+  env: Env,
+  subscription: { id: string; endpoint: string; p256dh: string; auth_secret: string },
+  payload: Record<string, unknown>,
+  keys: { publicKey: string; privateKey: CryptoKey },
+): Promise<boolean> {
+  if (!isAllowedWebPushEndpoint(subscription.endpoint)) return false;
+  const jwt = await createWebPushVapidJwt(subscription.endpoint, keys);
+  const body = await encryptWebPushPayload(subscription, payload);
+  const response = await fetch(subscription.endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: "vapid t=" + jwt + ", k=" + keys.publicKey,
+      "Content-Encoding": "aes128gcm",
+      "Content-Type": "application/octet-stream",
+      TTL: "86400",
+      Urgency: "normal",
+    },
+    body: webPushArrayBuffer(body),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (response.status === 404 || response.status === 410) {
+    await env.DB.prepare("DELETE FROM staff_push_subscription WHERE id=?").bind(subscription.id).run();
+    return false;
+  }
+  return response.ok;
+}
+
+async function getPushPublicKey(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  try {
+    const keys = await getWebPushVapidKeys(env);
+    return json(200, { ok: true, public_key: keys.publicKey }, requestId, origin);
+  } catch {
+    return json(503, { ok: false, error: { code: "WEB_PUSH_NOT_CONFIGURED" } }, requestId, origin);
+  }
+}
+
+async function savePushSubscription(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const body = await readJsonBody(request, 8192);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !["endpoint", "keys"].includes(key)) ||
+      !payload.keys || typeof payload.keys !== "object" || Array.isArray(payload.keys) ||
+      Object.keys(payload.keys).some((key) => !["p256dh", "auth"].includes(key)) ||
+      typeof payload.endpoint !== "string" || payload.endpoint.length > 2048 ||
+      typeof payload.keys.p256dh !== "string" || typeof payload.keys.auth !== "string" ||
+      !isAllowedWebPushEndpoint(payload.endpoint)) {
+    return json(400, { ok: false, error: { code: "INVALID_PUSH_SUBSCRIPTION" } }, requestId, origin);
+  }
+  try {
+    if (webPushBase64UrlDecode(payload.keys.p256dh).length !== 65 ||
+        webPushBase64UrlDecode(payload.keys.auth).length !== 16) throw new Error("INVALID_PUSH_KEYS");
+  } catch {
+    return json(400, { ok: false, error: { code: "INVALID_PUSH_SUBSCRIPTION_KEYS" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  try {
+    await env.DB.prepare(`
+      INSERT INTO staff_push_subscription
+        (id,staff_profile_id,endpoint,p256dh,auth_secret,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?)
+      ON CONFLICT(endpoint) DO UPDATE SET
+        staff_profile_id=excluded.staff_profile_id,p256dh=excluded.p256dh,
+        auth_secret=excluded.auth_secret,updated_at=excluded.updated_at
+    `).bind(
+      crypto.randomUUID(), context.staff.profileId, payload.endpoint,
+      payload.keys.p256dh, payload.keys.auth, now, now,
+    ).run();
+  } catch {
+    return json(409, { ok: false, error: { code: "PUSH_SUBSCRIPTION_SAVE_FAILED" } }, requestId, origin);
+  }
+  return json(201, { ok: true, subscribed: true }, requestId, origin);
+}
+
+async function removePushSubscription(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  const body = await readJsonBody(request, 4096);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { endpoint?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length !== 1 || typeof payload.endpoint !== "string" ||
+      !isAllowedWebPushEndpoint(payload.endpoint)) {
+    return json(400, { ok: false, error: { code: "INVALID_PUSH_UNSUBSCRIBE" } }, requestId, origin);
+  }
+  await env.DB.prepare("DELETE FROM staff_push_subscription WHERE staff_profile_id=? AND endpoint=?")
+    .bind(context.staff.profileId, payload.endpoint).run();
+  return json(200, { ok: true, unsubscribed: true }, requestId, origin);
+}
+
+async function sendAnnouncementPushes(env: Env, announcementId: string): Promise<number> {
+  const announcement = await env.DB.prepare(
+    "SELECT title,body FROM announcement WHERE id=? AND status='published' LIMIT 1",
+  ).bind(announcementId).first<{ title: string; body: string }>();
+  if (!announcement) return 0;
+  const rows = await env.DB.prepare(`
+    SELECT DISTINCT p.id,p.endpoint,p.p256dh,p.auth_secret
+    FROM announcement_delivery d
+    JOIN staff_push_subscription p ON p.staff_profile_id=d.recipient_ref
+    WHERE d.announcement_id=? AND d.channel='in_app' AND d.status='delivered'
+    LIMIT 1000
+  `).bind(announcementId).all<{ id: string; endpoint: string; p256dh: string; auth_secret: string }>();
+  let delivered = 0;
+  const payload = {
+    title: "New church announcement",
+    body: "Open PCG Missions to read the latest update.",
+    url: "/?notifications=1",
+    tag: "pcg-announcement-" + announcementId,
+  };
+  const subscriptions = rows.results ?? [];
+  if (!subscriptions.length) return 0;
+  const keys = await getWebPushVapidKeys(env);
+  for (let offset = 0; offset < subscriptions.length; offset += 20) {
+    const chunk = subscriptions.slice(offset, offset + 20);
+    const results = await Promise.allSettled(chunk.map((subscription) => sendWebPush(env, subscription, payload, keys)));
+    delivered += results.filter((result) => result.status === "fulfilled" && result.value).length;
+  }
+  return delivered;
+}
+
+async function listPrayerRoomMessages(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "prayer.room.read");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const url = new URL(request.url);
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 80 : Number(rawLimit);
+  const requestedBranchId = url.searchParams.get("branch_id");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      (requestedBranchId !== null && requestedBranchId !== access.activeBranch.branchId) ||
+      [...url.searchParams.keys()].some((key) => !["limit", "branch_id"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_ROOM_QUERY" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const rows = await env.DB.prepare(`
+    SELECT m.id,m.branch_id,m.body,m.created_at,m.author_profile_id,
+           p.full_name AS author_name
+    FROM prayer_room_message m
+    JOIN staff_profile p ON p.id=m.author_profile_id AND p.account_status='active'
+    WHERE m.branch_id=?
+    ORDER BY m.created_at DESC,m.id DESC
+    LIMIT ?
+  `).bind(access.activeBranch.branchId, limit).all<Record<string, unknown>>();
+  try {
+    const audit = await env.DB.prepare(`
+      INSERT INTO prayer_room_access_audit
+        (id,branch_id,actor_profile_id,action,message_id,accessed_at)
+      VALUES (?,?,?,'read',NULL,?)
+    `).bind(crypto.randomUUID(), access.activeBranch.branchId, access.staff.profileId, now).run();
+    if (!audit.success) throw new Error("PRAYER_ROOM_READ_AUDIT_FAILED");
+  } catch {
+    return json(503, { ok: false, error: { code: "PRAYER_ROOM_AUDIT_UNAVAILABLE" } }, requestId, origin);
+  }
+  return json(200, { ok: true, messages: (rows.results ?? []).reverse() }, requestId, origin);
+}
+
+async function postPrayerRoomMessage(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "prayer.room.post");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request, 8192);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { body?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => key !== "body")) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_ROOM_MESSAGE" } }, requestId, origin);
+  }
+  const message = typeof payload.body === "string" ? payload.body.trim() : "";
+  if (!message || message.length > 4000) {
+    return json(422, { ok: false, error: { code: "PRAYER_ROOM_MESSAGE_LENGTH" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const windowStart = new Date(Date.now() - 15000).toISOString();
+  const recent = await env.DB.prepare(`
+    SELECT COUNT(*) AS count FROM prayer_room_message
+    WHERE author_profile_id=? AND branch_id=? AND created_at>=?
+  `).bind(access.staff.profileId, access.activeBranch.branchId, windowStart).first<{ count: number }>();
+  if ((recent?.count ?? 0) >= 3) {
+    return json(429, { ok: false, error: { code: "PRAYER_ROOM_RATE_LIMITED" } }, requestId, origin);
+  }
+  const id = crypto.randomUUID();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO prayer_room_message (id,branch_id,author_profile_id,body,created_at)
+        VALUES (?,?,?,?,?)
+      `).bind(id, access.activeBranch.branchId, access.staff.profileId, message, now),
+      env.DB.prepare(`
+        INSERT INTO prayer_room_access_audit
+          (id,branch_id,actor_profile_id,action,message_id,accessed_at)
+        VALUES (?,?,?,'post',?,?)
+      `).bind(crypto.randomUUID(), access.activeBranch.branchId, access.staff.profileId, id, now),
+    ]);
+    if (results.some((result) => !result.success)) throw new Error("PRAYER_ROOM_POST_FAILED");
+  } catch {
+    return json(409, { ok: false, error: { code: "PRAYER_ROOM_POST_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, { ok: true, message: {
+    id, branch_id: access.activeBranch.branchId, author_profile_id: access.staff.profileId,
+    author_name: access.staff.fullName, body: message, created_at: now,
+  } }, requestId, origin);
+}
+
+
+function teamOperationError(error:unknown,requestId:string,origin?:string):Response{
+  const message=error instanceof Error?error.message:"";
+  if(message.includes("TEAM_LEADER_ROLE_REQUIRED")) return json(403,{ok:false,error:{code:"TEAM_LEADER_ROLE_REQUIRED",message:"Assign the Team Leader role to this staff account in the branch first."}},requestId,origin);
+  if(message.includes("STAFF_NOT_ACTIVE_IN_BRANCH")) return json(422,{ok:false,error:{code:"STAFF_NOT_ACTIVE_IN_BRANCH",message:"Only active staff assigned to this branch can be added."}},requestId,origin);
+  if(message.includes("TEAM_HAS_ACTIVE_MEMBERS")||message.includes("AREA_HAS_ACTIVE_COVERAGE")) return json(409,{ok:false,error:{code:"ACTIVE_ASSIGNMENTS_EXIST",message:"End active team memberships or service-area coverage before deactivation."}},requestId,origin);
+  if(message.includes("STAFF_TEAM_MEMBERSHIP_OVERLAP")||message.includes("STAFF_AREA_COVERAGE_OVERLAP")||message.includes("UNIQUE constraint failed")) return json(409,{ok:false,error:{code:"DUPLICATE_RECORD",message:"A duplicate or overlapping team membership, area code or coverage assignment already exists."}},requestId,origin);
+  if(message.includes("ACTIVE_TEAM_NOT_FOUND")||message.includes("ACTIVE_SERVICE_AREA_NOT_FOUND")) return json(404,{ok:false,error:{code:"RECORD_NOT_FOUND",message:"The active team or service area could not be found in this branch."}},requestId,origin);
+  return json(409,{ok:false,error:{code:"TEAM_OPERATION_CONFLICT",message:"The team or service-area change could not be completed."}},requestId,origin);
+}
+
+function teamCreateBranchId(request:Request):string|null{
+  const header=request.headers.get("X-Branch-Id");
+  const values=new URL(request.url).searchParams.getAll("branch_id");
+  return isUuidValue(header)&&values.length===1&&values[0]===header?header:null;
+}
+
+async function listTeams(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
+  const context=await resolveStaffContext(request,env);
+  if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  const activeBranch=context.activeBranch;
+  if(!activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const access=context;
+  const branchId=activeBranch.branchId,now=new Date().toISOString();
+  const scope=activeBranch.capabilities.find(item=>item.code==="team.read")?.scopeMode;
+  if(scope!=="branch"&&scope!=="team") return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const teams=scope==="branch"
+    ? await env.DB.prepare("SELECT id,branch_id,name,description,is_active,created_at,updated_at FROM team WHERE branch_id=? ORDER BY is_active DESC,name COLLATE NOCASE").bind(branchId).all<Record<string,unknown>>()
+    : await env.DB.prepare(`SELECT t.id,t.branch_id,t.name,t.description,t.is_active,t.created_at,t.updated_at
+        FROM team t WHERE t.branch_id=? AND EXISTS(
+          SELECT 1 FROM staff_team_membership mine WHERE mine.team_id=t.id AND mine.branch_id=t.branch_id
+            AND mine.staff_profile_id=? AND mine.membership_role='leader' AND mine.revoked_at IS NULL AND mine.starts_at<=?
+            AND (mine.ends_at IS NULL OR mine.ends_at>?)
+        ) ORDER BY t.is_active DESC,t.name COLLATE NOCASE`).bind(branchId,access.staff.profileId,now,now).all<Record<string,unknown>>();
+  const canReadRoster=scope==="team"||activeBranch.capabilities.some(item=>item.code==="staff.directory.read"&&item.scopeMode==="branch");
+  const members=canReadRoster?await env.DB.prepare(`
+    SELECT stm.id,stm.team_id,stm.staff_profile_id,stm.membership_role,stm.starts_at,stm.ends_at,stm.created_at,
+           sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
+    FROM staff_team_membership stm JOIN staff_profile sp ON sp.id=stm.staff_profile_id
+    WHERE stm.branch_id=? AND stm.starts_at<=? AND stm.revoked_at IS NULL
+      AND (stm.ends_at IS NULL OR stm.ends_at>?) ORDER BY stm.created_at
+  `).bind(branchId,now,now).all<Record<string,unknown>>():{results:[]};
+  const rows=(teams.results??[]).map(team=>({
+    ...team,is_active:Boolean(team.is_active),
+    members:(members.results??[]).filter(member=>member.team_id===team.id).map(member=>({
+      id:member.id,team_id:member.team_id,staff_profile_id:member.staff_profile_id,
+      membership_role:member.membership_role,starts_at:member.starts_at,ends_at:member.ends_at,created_at:member.created_at,
+      staff:{id:member.staff_id,full_name:member.staff_full_name,account_status:member.staff_account_status},
+    })),
+  }));
+  return json(200,{ok:true,data:{teams:rows}},requestId,origin);
+}
+
+async function createTeam(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
+  const parsed=await readJsonBody(request,16*1024);
+  if(!parsed.ok) return json(parsed.status,{ok:false,error:{code:parsed.status===413?"BODY_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
+  if(!isPlainRecord(parsed.value)||Object.keys(parsed.value).some(k=>!["name","description"].includes(k))) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
+  const body=parsed.value,branchId=teamCreateBranchId(request);
+  if(!branchId) return json(400,{ok:false,error:{code:"BRANCH_REQUIRED",message:"A matching branch_id query parameter and X-Branch-Id header are required."}},requestId,origin);
+  if(typeof body.name!=="string"||body.name.trim().length<2||body.name.trim().length>160||
+     (body.description!==undefined&&body.description!==null&&typeof body.description!=="string")||
+     (typeof body.description==="string"&&body.description.length>1000)) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
+  const access=await authorizeRequestCapability(request,env,"team.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const id=crypto.randomUUID(),now=new Date().toISOString(),name=body.name.trim(),description=typeof body.description==="string"?body.description.trim()||null:null;
+  try{
+    const results=await env.DB.batch([
+      env.DB.prepare("INSERT INTO team(id,branch_id,name,description,is_active,created_at,updated_at) VALUES(?,?,?,?,1,?,?)").bind(id,branchId,name,description,now,now),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'team',?,'team.created',?,? WHERE EXISTS(SELECT 1 FROM team WHERE id=? AND branch_id=?)").bind(crypto.randomUUID(),branchId,access.staff.profileId,id,JSON.stringify({name}),now,id,branchId),
+    ]);
+    if((results[0]?.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"TEAM_CREATE_CONFLICT"}},requestId,origin);
+  }catch(error){return teamOperationError(error,requestId,origin);}
+  const row=await env.DB.prepare("SELECT id,branch_id,name,description,is_active,created_at,updated_at FROM team WHERE id=? AND branch_id=?").bind(id,branchId).first<Record<string,unknown>>();
+  return json(201,{ok:true,data:{team:{...row,is_active:Boolean(row?.is_active)}}},requestId,origin);
+}
+
+async function updateTeam(request:Request,env:Env,teamId:string,requestId:string,origin?:string):Promise<Response>{
+  const access=await authorizeRequestCapability(request,env,"team.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const parsed=await readJsonBody(request,16*1024);
+  if(!parsed.ok) return json(parsed.status,{ok:false,error:{code:"INVALID_JSON"}},requestId,origin);
+  if(!isPlainRecord(parsed.value)||Object.keys(parsed.value).length===0||Object.keys(parsed.value).some(k=>!["name","description","is_active"].includes(k))) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
+  const body=parsed.value,sets:string[]=[],values:unknown[]=[];
+  if(body.name!==undefined){if(typeof body.name!=="string"||body.name.trim().length<2||body.name.trim().length>160)return json(422,{ok:false,error:{code:"INVALID_TEAM_NAME"}},requestId,origin);sets.push("name=?");values.push(body.name.trim());}
+  if(body.description!==undefined){if(body.description!==null&&typeof body.description!=="string")return json(422,{ok:false,error:{code:"INVALID_TEAM_DESCRIPTION"}},requestId,origin);if(typeof body.description==="string"&&body.description.length>1000)return json(422,{ok:false,error:{code:"INVALID_TEAM_DESCRIPTION"}},requestId,origin);sets.push("description=?");values.push(typeof body.description==="string"?body.description.trim()||null:null);}
+  if(body.is_active!==undefined){if(typeof body.is_active!=="boolean")return json(422,{ok:false,error:{code:"INVALID_TEAM_STATUS"}},requestId,origin);sets.push("is_active=?");values.push(body.is_active?1:0);}
+  const now=new Date().toISOString();sets.push("updated_at=?");values.push(now);
+  try{
+    const result=await env.DB.batch([
+      env.DB.prepare("UPDATE team SET "+sets.join(",")+" WHERE id=? AND branch_id=?").bind(...values,teamId,access.activeBranch.branchId),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'team',?,?,?,? WHERE EXISTS(SELECT 1 FROM team WHERE id=? AND branch_id=?)").bind(crypto.randomUUID(),access.activeBranch.branchId,access.staff.profileId,teamId,body.is_active===false?"team.deactivated":body.is_active===true?"team.reactivated":"team.updated",JSON.stringify({changes:body}),now,teamId,access.activeBranch.branchId),
+    ]);
+    if((result[0]?.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"TEAM_NOT_FOUND"}},requestId,origin);
+  }catch(error){return teamOperationError(error,requestId,origin);}
+  const row=await env.DB.prepare("SELECT id,branch_id,name,description,is_active,created_at,updated_at FROM team WHERE id=? AND branch_id=?").bind(teamId,access.activeBranch.branchId).first<Record<string,unknown>>();
+  return json(200,{ok:true,data:{...row,is_active:Boolean(row?.is_active)}},requestId,origin);
+}
+
+async function addTeamMember(request:Request,env:Env,teamId:string,requestId:string,origin?:string):Promise<Response>{
+  const access=await authorizeRequestCapability(request,env,"team.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const parsed=await readJsonBody(request,8192);
+  if(!parsed.ok) return json(parsed.status,{ok:false,error:{code:"INVALID_JSON"}},requestId,origin);
+  if(!isPlainRecord(parsed.value)||Object.keys(parsed.value).some(k=>!["staff_profile_id","membership_role"].includes(k))||!isUuidValue(parsed.value.staff_profile_id)) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
+  const role=parsed.value.membership_role??"member";
+  if(role!=="member"&&role!=="leader") return json(422,{ok:false,error:{code:"INVALID_MEMBERSHIP_ROLE"}},requestId,origin);
+  const branchId=access.activeBranch.branchId,staffId=parsed.value.staff_profile_id,now=new Date().toISOString();
+  const team=await env.DB.prepare("SELECT id FROM team WHERE id=? AND branch_id=? AND is_active=1").bind(teamId,branchId).first<{id:string}>();
+  if(!team) return json(404,{ok:false,error:{code:"ACTIVE_TEAM_NOT_FOUND"}},requestId,origin);
+  const staff=await env.DB.prepare("SELECT sp.id FROM staff_profile sp WHERE sp.id=? AND sp.account_status='active' AND sp.must_change_password=0 AND EXISTS(SELECT 1 FROM staff_role_assignment ra JOIN role r ON r.id=ra.role_id AND r.is_active=1 WHERE ra.staff_profile_id=sp.id AND ra.branch_id=? AND ra.revoked_at IS NULL AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?))").bind(staffId,branchId,now,now).first<{id:string}>();
+  if(!staff) return json(422,{ok:false,error:{code:"STAFF_NOT_ACTIVE_IN_BRANCH"}},requestId,origin);
+  if(role==="leader"){
+    const leader=await env.DB.prepare("SELECT 1 AS ok FROM staff_role_assignment ra JOIN role r ON r.id=ra.role_id WHERE ra.staff_profile_id=? AND ra.branch_id=? AND r.code='team_leader' AND r.is_active=1 AND ra.revoked_at IS NULL AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?) LIMIT 1").bind(staffId,branchId,now,now).first<{ok:number}>();
+    if(!leader) return json(403,{ok:false,error:{code:"TEAM_LEADER_ROLE_REQUIRED"}},requestId,origin);
+  }
+  const id=crypto.randomUUID();
+  try{
+    const result=await env.DB.batch([
+      env.DB.prepare("INSERT INTO staff_team_membership(id,staff_profile_id,team_id,branch_id,membership_role,starts_at,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)").bind(id,staffId,teamId,branchId,role,now,access.staff.profileId,now),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'team_membership',?,'team.member_added',?,? WHERE EXISTS(SELECT 1 FROM staff_team_membership WHERE id=? AND branch_id=?)").bind(crypto.randomUUID(),branchId,access.staff.profileId,id,JSON.stringify({team_id:teamId,staff_profile_id:staffId,membership_role:role}),now,id,branchId),
+    ]);
+    if((result[0]?.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"TEAM_MEMBER_CREATE_CONFLICT"}},requestId,origin);
+  }catch(error){return teamOperationError(error,requestId,origin);}
+  const row=await env.DB.prepare("SELECT id,team_id,staff_profile_id,membership_role,starts_at,ends_at,created_at FROM staff_team_membership WHERE id=?").bind(id).first<Record<string,unknown>>();
+  return json(201,{ok:true,data:row},requestId,origin);
+}
+
+async function updateTeamMemberRole(request:Request,env:Env,teamId:string,membershipId:string,requestId:string,origin?:string):Promise<Response>{
+  const access=await authorizeRequestCapability(request,env,"team.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const parsed=await readJsonBody(request,8192);
+  if(!parsed.ok) return json(parsed.status,{ok:false,error:{code:"INVALID_JSON"}},requestId,origin);
+  if(!isPlainRecord(parsed.value)||Object.keys(parsed.value).length!==1||(parsed.value.membership_role!=="member"&&parsed.value.membership_role!=="leader")) return json(422,{ok:false,error:{code:"INVALID_MEMBERSHIP_ROLE"}},requestId,origin);
+  const branchId=access.activeBranch.branchId,role=parsed.value.membership_role,now=new Date().toISOString();
+  const membership=await env.DB.prepare("SELECT staff_profile_id FROM staff_team_membership WHERE id=? AND team_id=? AND branch_id=? AND revoked_at IS NULL AND (ends_at IS NULL OR ends_at>?)").bind(membershipId,teamId,branchId,now).first<{staff_profile_id:string}>();
+  if(!membership) return json(404,{ok:false,error:{code:"ACTIVE_MEMBERSHIP_NOT_FOUND"}},requestId,origin);
+  if(role==="leader"){
+    const leader=await env.DB.prepare("SELECT 1 AS ok FROM staff_role_assignment ra JOIN role r ON r.id=ra.role_id WHERE ra.staff_profile_id=? AND ra.branch_id=? AND r.code='team_leader' AND r.is_active=1 AND ra.revoked_at IS NULL AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?) LIMIT 1").bind(membership.staff_profile_id,branchId,now,now).first<{ok:number}>();
+    if(!leader) return json(403,{ok:false,error:{code:"TEAM_LEADER_ROLE_REQUIRED"}},requestId,origin);
+  }
+  try{
+    const result=await env.DB.batch([
+      env.DB.prepare("UPDATE staff_team_membership SET membership_role=? WHERE id=? AND team_id=? AND branch_id=? AND revoked_at IS NULL").bind(role,membershipId,teamId,branchId),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'team_membership',?,'team.member_role_changed',?,? WHERE EXISTS(SELECT 1 FROM staff_team_membership WHERE id=? AND branch_id=?)").bind(crypto.randomUUID(),branchId,access.staff.profileId,membershipId,JSON.stringify({membership_role:role}),now,membershipId,branchId),
+    ]);
+    if((result[0]?.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"ACTIVE_MEMBERSHIP_NOT_FOUND"}},requestId,origin);
+  }catch(error){return teamOperationError(error,requestId,origin);}
+  const row=await env.DB.prepare("SELECT id,team_id,staff_profile_id,membership_role,starts_at,ends_at,created_at FROM staff_team_membership WHERE id=?").bind(membershipId).first<Record<string,unknown>>();
+  return json(200,{ok:true,data:row},requestId,origin);
+}
+
+async function revokeTeamMember(request:Request,env:Env,teamId:string,membershipId:string,requestId:string,origin?:string):Promise<Response>{
+  const access=await authorizeRequestCapability(request,env,"team.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const branchId=access.activeBranch.branchId,now=new Date().toISOString();
+  const existing=await env.DB.prepare("SELECT starts_at FROM staff_team_membership WHERE id=? AND team_id=? AND branch_id=? AND revoked_at IS NULL AND (ends_at IS NULL OR ends_at>?)").bind(membershipId,teamId,branchId,now).first<{starts_at:string}>();
+  if(!existing) return json(404,{ok:false,error:{code:"ACTIVE_MEMBERSHIP_NOT_FOUND"}},requestId,origin);
+  const revokedAt=new Date(Math.max(Date.now(),Date.parse(existing.starts_at))).toISOString();
+  try{
+    const result=await env.DB.batch([
+      env.DB.prepare("UPDATE staff_team_membership SET revoked_at=? WHERE id=? AND team_id=? AND branch_id=? AND revoked_at IS NULL AND (ends_at IS NULL OR ends_at>?)").bind(revokedAt,membershipId,teamId,branchId,now),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'team_membership',?,'team.member_revoked',?,? WHERE EXISTS(SELECT 1 FROM staff_team_membership WHERE id=? AND branch_id=? AND revoked_at=?)").bind(crypto.randomUUID(),branchId,access.staff.profileId,membershipId,JSON.stringify({team_id:teamId}),now,membershipId,branchId,revokedAt),
+    ]);
+    if((result[0]?.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"ACTIVE_MEMBERSHIP_NOT_FOUND"}},requestId,origin);
+  }catch(error){return teamOperationError(error,requestId,origin);}
+  const row=await env.DB.prepare("SELECT id,team_id,staff_profile_id,membership_role,starts_at,ends_at,revoked_at,created_at FROM staff_team_membership WHERE id=?").bind(membershipId).first<Record<string,unknown>>();
+  return json(200,{ok:true,data:row},requestId,origin);
+}
+
+async function listServiceAreas(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
+  const context=await resolveStaffContext(request,env);
+  if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  const activeBranch=context.activeBranch;
+  if(!activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const access=context;
+  const branchId=activeBranch.branchId,now=new Date().toISOString();
+  const scope=activeBranch.capabilities.find(item=>item.code==="area.read")?.scopeMode;
+  if(scope!=="branch"&&scope!=="team"&&scope!=="assigned") return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const branchDirectory=activeBranch.capabilities.some(item=>item.code==="staff.directory.read"&&item.scopeMode==="branch");
+  let visibleStaffIds:string[]|null=null;
+  if(scope==="team"){
+    const teamStaff=await env.DB.prepare(`SELECT DISTINCT member.staff_profile_id
+      FROM staff_team_membership mine JOIN staff_team_membership member
+        ON member.team_id=mine.team_id AND member.branch_id=mine.branch_id
+      WHERE mine.staff_profile_id=? AND mine.branch_id=? AND mine.membership_role='leader' AND mine.revoked_at IS NULL
+        AND mine.starts_at<=? AND (mine.ends_at IS NULL OR mine.ends_at>?)
+        AND member.revoked_at IS NULL AND member.starts_at<=? AND (member.ends_at IS NULL OR member.ends_at>?)`)
+      .bind(access.staff.profileId,branchId,now,now,now,now).all<{staff_profile_id:string}>();
+    visibleStaffIds=(teamStaff.results??[]).map(row=>row.staff_profile_id);
+  }else if(scope==="assigned"){
+    visibleStaffIds=[access.staff.profileId];
+  }
+  let coverageRows:Record<string,unknown>[]=[];
+  if(scope==="branch"&&branchDirectory){
+    const coverage=await env.DB.prepare(`SELECT sac.id,sac.service_area_id,sac.staff_profile_id,sac.starts_at,sac.ends_at,sac.created_at,
+        sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
+      FROM staff_area_coverage sac JOIN staff_profile sp ON sp.id=sac.staff_profile_id
+      WHERE sac.branch_id=? AND sac.revoked_at IS NULL AND sac.starts_at<=?
+        AND (sac.ends_at IS NULL OR sac.ends_at>?) ORDER BY sac.starts_at DESC`)
+      .bind(branchId,now,now).all<Record<string,unknown>>();
+    coverageRows=coverage.results??[];
+  }else if(visibleStaffIds&&visibleStaffIds.length){
+    const placeholders=visibleStaffIds.map(()=>"?").join(",");
+    const coverage=await env.DB.prepare(`SELECT sac.id,sac.service_area_id,sac.staff_profile_id,sac.starts_at,sac.ends_at,sac.created_at,
+        sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
+      FROM staff_area_coverage sac JOIN staff_profile sp ON sp.id=sac.staff_profile_id
+      WHERE sac.branch_id=? AND sac.staff_profile_id IN (${placeholders}) AND sac.revoked_at IS NULL
+        AND sac.starts_at<=? AND (sac.ends_at IS NULL OR sac.ends_at>?) ORDER BY sac.starts_at DESC`)
+      .bind(branchId,...visibleStaffIds,now,now).all<Record<string,unknown>>();
+    coverageRows=coverage.results??[];
+  }
+  let areas:{results?:Record<string,unknown>[]}={results:[]};
+  if(scope==="branch"){
+    areas=await env.DB.prepare("SELECT id,branch_id,name,code,is_active,created_at,updated_at FROM service_area WHERE branch_id=? ORDER BY is_active DESC,name COLLATE NOCASE").bind(branchId).all<Record<string,unknown>>();
+  }else{
+    const areaIds=[...new Set(coverageRows.map(row=>String(row.service_area_id)))];
+    if(areaIds.length){
+      const placeholders=areaIds.map(()=>"?").join(",");
+      areas=await env.DB.prepare(`SELECT id,branch_id,name,code,is_active,created_at,updated_at FROM service_area
+        WHERE branch_id=? AND id IN (${placeholders}) ORDER BY is_active DESC,name COLLATE NOCASE`)
+        .bind(branchId,...areaIds).all<Record<string,unknown>>();
+    }
+  }
+  const rows=(areas.results??[]).map(area=>({
+    ...area,is_active:Boolean(area.is_active),
+    coverage:coverageRows.filter(item=>item.service_area_id===area.id).map(item=>({
+      id:item.id,service_area_id:item.service_area_id,staff_profile_id:item.staff_profile_id,
+      starts_at:item.starts_at,ends_at:item.ends_at,created_at:item.created_at,
+      staff:{id:item.staff_id,full_name:item.staff_full_name,account_status:item.staff_account_status},
+    })),
+  }));
+  return json(200,{ok:true,data:{areas:rows}},requestId,origin);
+}
+
+async function createServiceArea(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
+  const parsed=await readJsonBody(request,8192);
+  if(!parsed.ok) return json(parsed.status,{ok:false,error:{code:"INVALID_JSON"}},requestId,origin);
+  if(!isPlainRecord(parsed.value)||Object.keys(parsed.value).some(k=>!["name","code"].includes(k))) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
+  const body=parsed.value,branchId=teamCreateBranchId(request);
+  if(!branchId) return json(400,{ok:false,error:{code:"BRANCH_REQUIRED",message:"A matching branch_id query parameter and X-Branch-Id header are required."}},requestId,origin);
+  if(typeof body.name!=="string"||body.name.trim().length<2||body.name.trim().length>160||
+     (body.code!==undefined&&body.code!==null&&typeof body.code!=="string")) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
+  const code=typeof body.code==="string"?body.code.trim().toUpperCase()||null:null;
+  if(code!==null&&!/^[A-Z0-9_-]{2,24}$/.test(code)) return json(422,{ok:false,error:{code:"INVALID_SERVICE_AREA_CODE"}},requestId,origin);
+  const access=await authorizeRequestCapability(request,env,"area.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const id=crypto.randomUUID(),now=new Date().toISOString(),name=body.name.trim();
+  try{
+    const result=await env.DB.batch([
+      env.DB.prepare("INSERT INTO service_area(id,branch_id,name,code,is_active,created_at,updated_at) VALUES(?,?,?,?,1,?,?)").bind(id,branchId,name,code,now,now),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'service_area',?,'service_area.created',?,? WHERE EXISTS(SELECT 1 FROM service_area WHERE id=? AND branch_id=?)").bind(crypto.randomUUID(),branchId,access.staff.profileId,id,JSON.stringify({name,code}),now,id,branchId),
+    ]);
+    if((result[0]?.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"SERVICE_AREA_CREATE_CONFLICT"}},requestId,origin);
+  }catch(error){return teamOperationError(error,requestId,origin);}
+  const row=await env.DB.prepare("SELECT id,branch_id,name,code,is_active,created_at,updated_at FROM service_area WHERE id=?").bind(id).first<Record<string,unknown>>();
+  return json(201,{ok:true,data:{area:{...row,is_active:Boolean(row?.is_active)}}},requestId,origin);
+}
+
+async function updateServiceArea(request:Request,env:Env,areaId:string,requestId:string,origin?:string):Promise<Response>{
+  const access=await authorizeRequestCapability(request,env,"area.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const parsed=await readJsonBody(request,8192);
+  if(!parsed.ok) return json(parsed.status,{ok:false,error:{code:"INVALID_JSON"}},requestId,origin);
+  if(!isPlainRecord(parsed.value)||Object.keys(parsed.value).length===0||Object.keys(parsed.value).some(k=>!["name","code","is_active"].includes(k))) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
+  const body=parsed.value,sets:string[]=[],values:unknown[]=[];
+  if(body.name!==undefined){if(typeof body.name!=="string"||body.name.trim().length<2||body.name.trim().length>160)return json(422,{ok:false,error:{code:"INVALID_SERVICE_AREA_NAME"}},requestId,origin);sets.push("name=?");values.push(body.name.trim());}
+  if(body.code!==undefined){if(body.code!==null&&typeof body.code!=="string")return json(422,{ok:false,error:{code:"INVALID_SERVICE_AREA_CODE"}},requestId,origin);const code=typeof body.code==="string"?body.code.trim().toUpperCase()||null:null;if(code!==null&&!/^[A-Z0-9_-]{2,24}$/.test(code))return json(422,{ok:false,error:{code:"INVALID_SERVICE_AREA_CODE"}},requestId,origin);sets.push("code=?");values.push(code);}
+  if(body.is_active!==undefined){if(typeof body.is_active!=="boolean")return json(422,{ok:false,error:{code:"INVALID_SERVICE_AREA_STATUS"}},requestId,origin);sets.push("is_active=?");values.push(body.is_active?1:0);}
+  const now=new Date().toISOString();sets.push("updated_at=?");values.push(now);
+  try{
+    const result=await env.DB.batch([
+      env.DB.prepare("UPDATE service_area SET "+sets.join(",")+" WHERE id=? AND branch_id=?").bind(...values,areaId,access.activeBranch.branchId),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'service_area',?,?,?,? WHERE EXISTS(SELECT 1 FROM service_area WHERE id=? AND branch_id=?)").bind(crypto.randomUUID(),access.activeBranch.branchId,access.staff.profileId,areaId,body.is_active===false?"service_area.deactivated":body.is_active===true?"service_area.reactivated":"service_area.updated",JSON.stringify({changes:body}),now,areaId,access.activeBranch.branchId),
+    ]);
+    if((result[0]?.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"SERVICE_AREA_NOT_FOUND"}},requestId,origin);
+  }catch(error){return teamOperationError(error,requestId,origin);}
+  const row=await env.DB.prepare("SELECT id,branch_id,name,code,is_active,created_at,updated_at FROM service_area WHERE id=?").bind(areaId).first<Record<string,unknown>>();
+  return json(200,{ok:true,data:{...row,is_active:Boolean(row?.is_active)}},requestId,origin);
+}
+
+async function addAreaCoverage(request:Request,env:Env,areaId:string,requestId:string,origin?:string):Promise<Response>{
+  const access=await authorizeRequestCapability(request,env,"area.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const parsed=await readJsonBody(request,8192);
+  if(!parsed.ok) return json(parsed.status,{ok:false,error:{code:"INVALID_JSON"}},requestId,origin);
+  if(!isPlainRecord(parsed.value)||Object.keys(parsed.value).length!==1||!isUuidValue(parsed.value.staff_profile_id)) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
+  const branchId=access.activeBranch.branchId,staffId=parsed.value.staff_profile_id,now=new Date().toISOString();
+  const staff=await env.DB.prepare("SELECT sp.id FROM staff_profile sp WHERE sp.id=? AND sp.account_status='active' AND sp.must_change_password=0 AND EXISTS(SELECT 1 FROM staff_role_assignment ra JOIN role r ON r.id=ra.role_id AND r.is_active=1 WHERE ra.staff_profile_id=sp.id AND ra.branch_id=? AND ra.revoked_at IS NULL AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?))").bind(staffId,branchId,now,now).first<{id:string}>();
+  if(!staff) return json(422,{ok:false,error:{code:"STAFF_NOT_ACTIVE_IN_BRANCH"}},requestId,origin);
+  const id=crypto.randomUUID();
+  try{
+    const result=await env.DB.batch([
+      env.DB.prepare("INSERT INTO staff_area_coverage(id,staff_profile_id,service_area_id,branch_id,starts_at,created_by,created_at) SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM service_area WHERE id=? AND branch_id=? AND is_active=1)").bind(id,staffId,areaId,branchId,now,access.staff.profileId,now,areaId,branchId),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'area_coverage',?,'service_area.coverage_added',?,? WHERE EXISTS(SELECT 1 FROM staff_area_coverage WHERE id=? AND branch_id=?)").bind(crypto.randomUUID(),branchId,access.staff.profileId,id,JSON.stringify({service_area_id:areaId,staff_profile_id:staffId}),now,id,branchId),
+    ]);
+    if((result[0]?.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"ACTIVE_SERVICE_AREA_NOT_FOUND"}},requestId,origin);
+  }catch(error){return teamOperationError(error,requestId,origin);}
+  const row=await env.DB.prepare("SELECT id,service_area_id,staff_profile_id,starts_at,ends_at,created_at FROM staff_area_coverage WHERE id=?").bind(id).first<Record<string,unknown>>();
+  return json(201,{ok:true,data:row},requestId,origin);
+}
+
+async function revokeAreaCoverage(request:Request,env:Env,areaId:string,coverageId:string,requestId:string,origin?:string):Promise<Response>{
+  const access=await authorizeRequestCapability(request,env,"area.manage");
+  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const branchId=access.activeBranch.branchId,now=new Date().toISOString();
+  const existing=await env.DB.prepare("SELECT id FROM staff_area_coverage WHERE id=? AND service_area_id=? AND branch_id=? AND revoked_at IS NULL AND (ends_at IS NULL OR ends_at>?)").bind(coverageId,areaId,branchId,now).first<{id:string}>();
+  if(!existing) return json(404,{ok:false,error:{code:"ACTIVE_AREA_COVERAGE_NOT_FOUND"}},requestId,origin);
+  try{
+    const result=await env.DB.batch([
+      env.DB.prepare("UPDATE staff_area_coverage SET revoked_at=?,revoked_by=? WHERE id=? AND service_area_id=? AND branch_id=? AND revoked_at IS NULL").bind(now,access.staff.profileId,coverageId,areaId,branchId),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'area_coverage',?,'service_area.coverage_revoked',?,? WHERE EXISTS(SELECT 1 FROM staff_area_coverage WHERE id=? AND branch_id=? AND revoked_at=?)").bind(crypto.randomUUID(),branchId,access.staff.profileId,coverageId,JSON.stringify({service_area_id:areaId}),now,coverageId,branchId,now),
+    ]);
+    if((result[0]?.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"ACTIVE_AREA_COVERAGE_NOT_FOUND"}},requestId,origin);
+  }catch(error){return teamOperationError(error,requestId,origin);}
+  const row=await env.DB.prepare("SELECT id,service_area_id,staff_profile_id,starts_at,ends_at,revoked_at,revoked_by,created_at FROM staff_area_coverage WHERE id=?").bind(coverageId).first<Record<string,unknown>>();
+  return json(200,{ok:true,data:row},requestId,origin);
+}
+
+async function handleTeamOperations(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
+  const path=new URL(request.url).pathname;
+  const teamIdMatch=path.match(/^\/api\/v1\/teams\/([^/]+)$/);
+  const teamMemberMatch=path.match(/^\/api\/v1\/teams\/([^/]+)\/members(?:\/([^/]+)(?:\/(revoke))?)?$/);
+  const areaIdMatch=path.match(/^\/api\/v1\/areas\/([^/]+)$/);
+  const areaCoverageMatch=path.match(/^\/api\/v1\/areas\/([^/]+)\/coverage(?:\/([^/]+)\/revoke)?$/);
+  try{
+    if(path==="/api/v1/teams"&&request.method==="GET") return listTeams(request,env,requestId,origin);
+    if(path==="/api/v1/teams"&&request.method==="POST") return createTeam(request,env,requestId,origin);
+    if(teamIdMatch&&request.method==="PATCH"){
+      let id:string;try{id=decodeURIComponent(teamIdMatch[1]);}catch{return json(400,{ok:false,error:{code:"INVALID_TEAM_ID"}},requestId,origin);}
+      if(!isUuidValue(id))return json(400,{ok:false,error:{code:"INVALID_TEAM_ID"}},requestId,origin);
+      return updateTeam(request,env,id,requestId,origin);
+    }
+    if(teamMemberMatch){
+      let id:string,memberId:string|undefined;try{id=decodeURIComponent(teamMemberMatch[1]);memberId=teamMemberMatch[2]?decodeURIComponent(teamMemberMatch[2]):undefined;}catch{return json(400,{ok:false,error:{code:"INVALID_TEAM_ID"}},requestId,origin);}
+      if(!isUuidValue(id)||(memberId&&!isUuidValue(memberId)))return json(400,{ok:false,error:{code:"INVALID_TEAM_MEMBER_ID"}},requestId,origin);
+      if(request.method==="POST"&&!memberId)return addTeamMember(request,env,id,requestId,origin);
+      if(request.method==="PATCH"&&memberId&&!teamMemberMatch[3])return updateTeamMemberRole(request,env,id,memberId,requestId,origin);
+      if(request.method==="POST"&&memberId&&teamMemberMatch[3]==="revoke")return revokeTeamMember(request,env,id,memberId,requestId,origin);
+    }
+    if(path==="/api/v1/areas"&&request.method==="GET")return listServiceAreas(request,env,requestId,origin);
+    if(path==="/api/v1/areas"&&request.method==="POST")return createServiceArea(request,env,requestId,origin);
+    if(areaIdMatch&&request.method==="PATCH"){
+      let id:string;try{id=decodeURIComponent(areaIdMatch[1]);}catch{return json(400,{ok:false,error:{code:"INVALID_SERVICE_AREA_ID"}},requestId,origin);}
+      if(!isUuidValue(id))return json(400,{ok:false,error:{code:"INVALID_SERVICE_AREA_ID"}},requestId,origin);
+      return updateServiceArea(request,env,id,requestId,origin);
+    }
+    if(areaCoverageMatch){
+      let id:string,coverageId:string|undefined;try{id=decodeURIComponent(areaCoverageMatch[1]);coverageId=areaCoverageMatch[2]?decodeURIComponent(areaCoverageMatch[2]):undefined;}catch{return json(400,{ok:false,error:{code:"INVALID_SERVICE_AREA_ID"}},requestId,origin);}
+      if(!isUuidValue(id)||(coverageId&&!isUuidValue(coverageId)))return json(400,{ok:false,error:{code:"INVALID_AREA_COVERAGE_ID"}},requestId,origin);
+      if(request.method==="POST"&&!coverageId)return addAreaCoverage(request,env,id,requestId,origin);
+      if(request.method==="POST"&&coverageId)return revokeAreaCoverage(request,env,id,coverageId,requestId,origin);
+    }
+    return json(404,{ok:false,error:{code:"TEAM_OPERATION_NOT_FOUND"}},requestId,origin);
+  }catch(error){return teamOperationError(error,requestId,origin);}
+}
+
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  scheduled(controller: { scheduledTime: number }, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }): void {
+    ctx.waitUntil(publishDueAnnouncements(env,new Date(controller.scheduledTime).toISOString()));
+  },
+  async fetch(request: Request, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void } = { waitUntil: () => undefined }): Promise<Response> {
     const url = new URL(request.url);
     const requestId = crypto.randomUUID();
     const origin = request.headers.get("Origin") ?? undefined;
@@ -2651,10 +7223,33 @@ export default {
           error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." },
         }, requestId, origin);
       }
+      if (url.pathname === "/api/auth/change-password" && request.method === "POST") {
+        try {
+          const body = await request.clone().json() as { newPassword?: unknown };
+          if (!meetsPasswordPolicy(body?.newPassword)) {
+            return json(400, {
+              ok: false,
+              error: {
+                code: "PASSWORD_POLICY_INVALID",
+                message: "Use 12–128 characters with uppercase and lowercase letters, a number and a symbol.",
+              },
+            }, requestId, origin);
+          }
+        } catch {
+          // Leave malformed JSON handling to Better Auth's normal request parser.
+        }
+      }
       try {
         const auth = createAuth(env);
         return withSecurityHeaders(await auth.handler(request), origin);
-      } catch {
+      } catch (error) {
+        if (env.APP_ENV === "non-production") {
+          console.error("BETTER_AUTH_REQUEST_FAILED", {
+            request_id: requestId,
+            name: error instanceof Error ? error.name : "UnknownError",
+            message: error instanceof Error ? error.message.slice(0, 240) : "Authentication request failed",
+          });
+        }
         return json(503, {
           ok: false,
           error: { code: "AUTH_NOT_CONFIGURED", message: "Authentication is not configured for this environment." },
@@ -2670,6 +7265,108 @@ function hasScopedGrant(
   return !!context.activeBranch?.capabilities.some(
     (grant) => grant.code === code && grant.scopeMode === scopeMode,
   );
+}
+
+
+async function createPrayerRequest(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  if (!hasScopedGrant(context, "prayer.request.create", "branch")) {
+    return json(403, { ok: false, error: { code: "PRAYER_REQUEST_CREATE_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { request_text?: unknown; contact_id?: unknown; expires_at?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !["request_text", "contact_id", "expires_at"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_REQUEST_BODY" } }, requestId, origin);
+  }
+  const requestText = typeof payload.request_text === "string" ? payload.request_text.trim() : "";
+  const contactId = payload.contact_id === undefined || payload.contact_id === null || payload.contact_id === ""
+    ? null : typeof payload.contact_id === "string" ? payload.contact_id.trim() : "";
+  const now = new Date().toISOString();
+  const expiresAt = payload.expires_at === undefined || payload.expires_at === null || payload.expires_at === ""
+    ? null : parseIsoTimestamp(payload.expires_at, "");
+  const idempotencyKey = request.headers.get("Idempotency-Key")?.trim() ?? "";
+  if (requestText.length < 1 || requestText.length > 10000 ||
+      contactId === "" || (contactId !== null && contactId.length > 128) ||
+      (payload.expires_at !== undefined && payload.expires_at !== null && payload.expires_at !== "" &&
+        (!expiresAt || expiresAt <= now)) ||
+      idempotencyKey.length < 8 || idempotencyKey.length > 128) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_REQUEST_DETAILS" } }, requestId, origin);
+  }
+  const digest = await eventRequestDigest({ request_text: requestText, contact_id: contactId, expires_at: expiresAt });
+  const existing = await env.DB.prepare(`
+    SELECT actor_user_id, digest_hex, prayer_request_id
+    FROM prayer_request_idempotency
+    WHERE branch_id = ? AND idempotency_key = ?
+    LIMIT 1
+  `).bind(context.activeBranch.branchId, idempotencyKey).first<{
+    actor_user_id: string; digest_hex: string; prayer_request_id: string;
+  }>();
+  if (existing) {
+    if (existing.actor_user_id !== context.staff.userId || existing.digest_hex !== digest.hex) {
+      return json(409, { ok: false, error: { code: "IDEMPOTENCY_KEY_REUSED" } }, requestId, origin);
+    }
+    return json(200, { ok: true, prayer_request_id: existing.prayer_request_id, replayed: true }, requestId, origin);
+  }
+  const prayerRequestId = crypto.randomUUID();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO prayer_request
+          (id, branch_id, contact_id, created_by, request_text, status, sensitivity,
+           expires_at, answered_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 'open', 'restricted', ?, NULL, ?, ?)
+      `).bind(
+        prayerRequestId, context.activeBranch.branchId, contactId, context.staff.userId,
+        requestText, expiresAt, now, now,
+      ),
+      env.DB.prepare(`
+        INSERT INTO prayer_request_idempotency
+          (id, branch_id, actor_user_id, idempotency_key, digest_hex, prayer_request_id, created_at)
+        SELECT ?, ?, ?, ?, ?, ?, ?
+        WHERE changes() = 1
+      `).bind(
+        crypto.randomUUID(), context.activeBranch.branchId, context.staff.userId,
+        idempotencyKey, digest.hex, prayerRequestId, now,
+      ),
+      env.DB.prepare(`
+        INSERT INTO prayer_access_audit
+          (id, prayer_request_id, branch_id, actor_user_id, action, reason, request_id, safe_metadata, accessed_at)
+        SELECT ?, ?, ?, ?, 'created', 'Prayer request created by authorized staff member',
+               ?, json_object('sensitivity', 'restricted'), ?
+        WHERE changes() = 1
+      `).bind(
+        crypto.randomUUID(), prayerRequestId, context.activeBranch.branchId,
+        context.staff.userId, requestId, now,
+      ),
+    ]);
+    if (results.some((result) => !result.success) ||
+        results.some((result) => (result.meta?.changes ?? 0) !== 1)) {
+      throw new Error("PRAYER_REQUEST_CREATE_FAILED");
+    }
+  } catch {
+    const replay = await env.DB.prepare(`
+      SELECT actor_user_id, digest_hex, prayer_request_id
+      FROM prayer_request_idempotency
+      WHERE branch_id = ? AND idempotency_key = ? LIMIT 1
+    `).bind(context.activeBranch.branchId, idempotencyKey).first<{
+      actor_user_id: string; digest_hex: string; prayer_request_id: string;
+    }>();
+    if (replay && replay.actor_user_id === context.staff.userId && replay.digest_hex === digest.hex) {
+      return json(200, { ok: true, prayer_request_id: replay.prayer_request_id, replayed: true }, requestId, origin);
+    }
+    if (replay) return json(409, { ok: false, error: { code: "IDEMPOTENCY_KEY_REUSED" } }, requestId, origin);
+    return json(409, { ok: false, error: { code: "PRAYER_REQUEST_CREATE_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, { ok: true, prayer_request_id: prayerRequestId, status: "open" }, requestId, origin);
 }
 
 async function listPrayerQueue(
@@ -3158,6 +7855,44 @@ async function updatePrayerRequestStatus(
 }
 
 
+
+
+    if (url.pathname === "/api/v1/notifications/push/public-key" && request.method === "GET") return getPushPublicKey(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/notifications/push/subscriptions" && request.method === "POST") return savePushSubscription(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/notifications/push/unsubscribe" && request.method === "POST") return removePushSubscription(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/prayer-room/messages" && request.method === "GET") return listPrayerRoomMessages(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/prayer-room/messages" && request.method === "POST") return postPrayerRoomMessage(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/pastoral/care" && request.method === "GET") return listCareRecords(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/pastoral/care" && request.method === "POST") return createCareRecord(request,env,requestId,origin);
+    const careRevokeMatch=url.pathname.match(/^\/api\/v1\/pastoral\/care\/([^/]+)\/assignments\/([^/]+)\/revoke$/);
+    if(careRevokeMatch&&request.method==="POST") {
+      let careId:string,assignmentId:string;
+      try { careId=decodeURIComponent(careRevokeMatch[1]); assignmentId=decodeURIComponent(careRevokeMatch[2]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CARE_ASSIGNMENT_ID"}},requestId,origin); }
+      return revokeCareAssignment(request,env,careId,assignmentId,requestId,origin);
+    }
+    const careAssignMatch=url.pathname.match(/^\/api\/v1\/pastoral\/care\/([^/]+)\/assignments$/);
+    if(careAssignMatch&&request.method==="POST") {
+      let careId:string; try { careId=decodeURIComponent(careAssignMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_ID"}},requestId,origin); }
+      return assignCareRecord(request,env,careId,requestId,origin);
+    }
+    const careInteractionMatch=url.pathname.match(/^\/api\/v1\/pastoral\/care\/([^/]+)\/interactions$/);
+    if(careInteractionMatch&&request.method==="POST") {
+      let careId:string; try { careId=decodeURIComponent(careInteractionMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_ID"}},requestId,origin); }
+      return createCareInteraction(request,env,careId,requestId,origin);
+    }
+    const careRecordMatch=url.pathname.match(/^\/api\/v1\/pastoral\/care\/([^/]+)$/);
+    if(careRecordMatch) {
+      let careId:string; try { careId=decodeURIComponent(careRecordMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CARE_RECORD_ID"}},requestId,origin); }
+      if(request.method==="GET") return getCareRecord(request,env,careId,requestId,origin);
+      if(request.method==="PATCH") return updateCareRecord(request,env,careId,requestId,origin);
+    }
+    if (url.pathname === "/api/v1/pastoral/prayer/requests" && request.method === "POST") {
+      return createPrayerRequest(request, env, requestId, origin);
+    }
     if (url.pathname === "/api/v1/pastoral/prayer/queue" && request.method === "GET") {
       return listPrayerQueue(request, env, requestId, origin);
     }
@@ -3246,11 +7981,299 @@ async function updatePrayerRequestStatus(
     }
 
     const interactionMatch = url.pathname.match(/^\/api\/v1\/contacts\/([^/]+)\/interactions$/);
-    if (interactionMatch && request.method === "POST") {
+    if (interactionMatch) {
       let contactId: string;
       try { contactId = decodeURIComponent(interactionMatch[1]); }
       catch { return json(400, { ok: false, error: { code: "INVALID_CONTACT_ID" } }, requestId, origin); }
-      return createContactInteraction(request, env, contactId, requestId, origin);
+      if (request.method === "GET") return listContactInteractions(request, env, contactId, requestId, origin);
+      if (request.method === "POST") return createContactInteraction(request, env, contactId, requestId, origin);
+    }
+
+    if (url.pathname === "/api/v1/content" && request.method === "GET") {
+      return listContent(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/content/profile" && request.method === "GET") {
+      return getContentProfile(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/content/profile" && request.method === "PATCH") {
+      return updateContentProfile(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/content/links" && request.method === "POST") {
+      return createExternalDocumentLink(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/content/audit" && request.method === "GET") {
+      return listContentAudit(request, env, requestId, origin);
+    }
+    const contentActionMatch = url.pathname.match(/^\/api\/v1\/content\/(welcome-messages|sermons|daily-words|digital-tracts)\/([^/]+)\/(publish|archive)$/);
+    if (contentActionMatch && request.method === "POST") {
+      const kind = contentActionMatch[1] as ContentKind;
+      let contentId: string;
+      try { contentId = decodeURIComponent(contentActionMatch[2]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CONTENT_ID"}},requestId,origin); }
+      if (!contentKindConfig(kind)) return json(404,{ok:false,error:{code:"CONTENT_KIND_NOT_FOUND"}},requestId,origin);
+      if (contentActionMatch[3] === "publish") return publishContent(request,env,kind,contentId,requestId,origin);
+      return archiveContent(request,env,kind,contentId,requestId,origin);
+    }
+    const contentItemMatch = url.pathname.match(/^\/api\/v1\/content\/(welcome-messages|sermons|daily-words|digital-tracts)\/([^/]+)$/);
+    if (contentItemMatch && request.method === "PATCH") {
+      const kind = contentItemMatch[1] as ContentKind;
+      let contentId: string;
+      try { contentId = decodeURIComponent(contentItemMatch[2]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CONTENT_ID"}},requestId,origin); }
+      return updateContent(request,env,kind,contentId,requestId,origin);
+    }
+    const contentKindMatch = url.pathname.match(/^\/api\/v1\/content\/(welcome-messages|sermons|daily-words|digital-tracts)$/);
+    if (contentKindMatch && request.method === "POST") {
+      const kind = contentKindMatch[1] as ContentKind;
+      return createContent(request,env,kind,requestId,origin);
+    }
+
+    if (url.pathname === "/api/public/content" && request.method === "GET") {
+      return getPublicContent(request, env, requestId, origin);
+    }
+    if(url.pathname==="/api/v1/calendar/series"&&request.method==="POST") return createCalendarSeries(request,env,requestId,origin);
+    const calendarSeriesCancelMatch=url.pathname.match(/^\/api\/v1\/calendar\/series\/([^/]+)\/cancel$/);
+    if(calendarSeriesCancelMatch&&request.method==="POST") {
+      let seriesId:string; try { seriesId=decodeURIComponent(calendarSeriesCancelMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_CALENDAR_SERIES_ID"}},requestId,origin); }
+      return cancelCalendarSeries(request,env,seriesId,requestId,origin);
+    }
+    if (url.pathname === "/api/v1/calendar" && request.method === "GET") {
+      return listCalendarEntries(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/calendar" && request.method === "POST") {
+      return createCalendarEntry(request, env, requestId, origin);
+    }
+
+    const calendarCancelMatch = url.pathname.match(/^\/api\/v1\/calendar\/([^/]+)\/cancel$/);
+    if (calendarCancelMatch && request.method === "POST") {
+      let entryId: string;
+      try { entryId = decodeURIComponent(calendarCancelMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CALENDAR_ENTRY_ID" } }, requestId, origin); }
+      return cancelCalendarEntry(request, env, entryId, requestId, origin);
+    }
+    const calendarReadMatch = url.pathname.match(/^\/api\/v1\/calendar\/([^/]+)\/read$/);
+    if (calendarReadMatch && request.method === "POST") {
+      let entryId: string;
+      try { entryId = decodeURIComponent(calendarReadMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CALENDAR_ENTRY_ID" } }, requestId, origin); }
+      return markCalendarEntryRead(request, env, entryId, requestId, origin);
+    }
+    const calendarMatch = url.pathname.match(/^\/api\/v1\/calendar\/([^/]+)$/);
+    if (calendarMatch) {
+      let entryId: string;
+      try { entryId = decodeURIComponent(calendarMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CALENDAR_ENTRY_ID" } }, requestId, origin); }
+      if (request.method === "GET") return getCalendarEntry(request, env, entryId, requestId, origin);
+      if (request.method === "PATCH") return updateCalendarEntry(request, env, entryId, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/announcements" && request.method === "GET") {
+      return listAnnouncements(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/announcements" && request.method === "POST") {
+      return createAnnouncement(request, env, requestId, origin);
+    }
+    const announcementScheduleMatch=url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)\/schedule$/);
+    if(announcementScheduleMatch&&request.method==="POST") {
+      let announcementId:string; try { announcementId=decodeURIComponent(announcementScheduleMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_ANNOUNCEMENT_ID"}},requestId,origin); }
+      return scheduleAnnouncement(request,env,announcementId,requestId,origin);
+    }
+    const announcementActionMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)\/(publish|archive)$/);
+    if (announcementActionMatch && request.method === "POST") {
+      let announcementId: string;
+      try { announcementId = decodeURIComponent(announcementActionMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_ID" } }, requestId, origin); }
+      if (announcementActionMatch[2] === "publish") return publishAnnouncement(request, env, announcementId, requestId, origin, ctx);
+      return archiveAnnouncement(request, env, announcementId, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/announcements/inbox" && request.method === "GET") {
+      return listAnnouncementInbox(request,env,requestId,origin);
+    }
+    const announcementReadMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)\/read$/);
+    if (announcementReadMatch && request.method === "POST") {
+      let announcementId:string;
+      try { announcementId=decodeURIComponent(announcementReadMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_ANNOUNCEMENT_ID"}},requestId,origin); }
+      return markAnnouncementRead(request,env,announcementId,requestId,origin);
+    }
+    const announcementMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)$/);
+    if (announcementMatch) {
+      let announcementId: string;
+      try { announcementId = decodeURIComponent(announcementMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_ID" } }, requestId, origin); }
+      if (request.method === "GET") return getAnnouncement(request, env, announcementId, requestId, origin);
+      if (request.method === "PATCH") return updateAnnouncement(request, env, announcementId, requestId, origin);
+    }
+
+    if (url.pathname.startsWith("/api/v1/teams") || url.pathname.startsWith("/api/v1/areas")) return handleTeamOperations(request,env,requestId,origin);
+
+    if (url.pathname === "/api/v1/reports/teams" && request.method === "GET") {
+      return listReportTeams(request,env,requestId,origin);
+    }
+    if (url.pathname === "/api/v1/reports/events" && request.method === "GET") {
+      return listReportEvents(request,env,requestId,origin);
+    }
+    if (url.pathname === "/api/v1/reports" && request.method === "GET") {
+      return listMinistryReports(request,env,requestId,origin);
+    }
+    if (url.pathname === "/api/v1/reports" && request.method === "POST") {
+      return createMinistryReport(request,env,requestId,origin);
+    }
+    const reportReviewMatch=url.pathname.match(/^\/api\/v1\/reports\/([^/]+)\/review$/);
+    if (reportReviewMatch && request.method==="POST") {
+      let reportId:string;
+      try { reportId=decodeURIComponent(reportReviewMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_REPORT_ID"}},requestId,origin); }
+      return reviewMinistryReport(request,env,reportId,requestId,origin);
+    }
+    const reportResubmitMatch=url.pathname.match(/^\/api\/v1\/reports\/([^/]+)\/resubmit$/);
+    if (reportResubmitMatch && request.method==="POST") {
+      let reportId:string;
+      try { reportId=decodeURIComponent(reportResubmitMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_REPORT_ID"}},requestId,origin); }
+      return resubmitMinistryReport(request,env,reportId,requestId,origin);
+    }
+    if (url.pathname === "/api/v1/reports/export" && request.method === "GET") return exportReportsCsv(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/reports/overview" && request.method === "GET") {
+      return getReportsOverview(request,env,requestId,origin);
+    }
+    const reportMatch=url.pathname.match(/^\/api\/v1\/reports\/([^/]+)$/);
+    if (reportMatch && request.method==="GET") {
+      let reportId:string;
+      try { reportId=decodeURIComponent(reportMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_REPORT_ID"}},requestId,origin); }
+      return getMinistryReport(request,env,reportId,requestId,origin);
+    }
+    if (url.pathname === "/api/v1/events" && request.method === "GET") {
+      return listEvents(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/events" && request.method === "POST") {
+      return createEvent(request, env, requestId, origin);
+    }
+    const eventFlyerMatch=url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/flyer$/);
+    if(eventFlyerMatch){
+      let eventId:string; try{eventId=decodeURIComponent(eventFlyerMatch[1]);}catch{return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin);}
+      if(request.method==="POST") return uploadEventFlyer(request,env,eventId,requestId,origin);
+      if(request.method==="GET") return getEventFlyer(request,env,eventId,requestId,origin);
+    }
+    const eventRegistrationStateMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/registration\/(open|close)$/);
+    if (eventRegistrationStateMatch && request.method === "POST") {
+      let eventId: string;
+      try { eventId = decodeURIComponent(eventRegistrationStateMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      return setEventRegistrationState(request,env,eventId,eventRegistrationStateMatch[2]==="open"?"open":"closed",requestId,origin);
+    }
+    const eventRegistrationCancelMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/registrations\/([^/]+)\/cancel$/);
+    if (eventRegistrationCancelMatch && request.method === "POST") {
+      let eventId: string, registrationId: string;
+      try { eventId=decodeURIComponent(eventRegistrationCancelMatch[1]); registrationId=decodeURIComponent(eventRegistrationCancelMatch[2]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_REGISTRATION_ID"}},requestId,origin); }
+      return cancelEventRegistration(request,env,eventId,registrationId,requestId,origin);
+    }
+    const eventRegistrationsMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/registrations$/);
+    if (eventRegistrationsMatch) {
+      let eventId: string;
+      try { eventId=decodeURIComponent(eventRegistrationsMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      if (request.method==="GET") return listEventRegistrations(request,env,eventId,requestId,origin);
+      if (request.method==="POST") return createEventRegistration(request,env,eventId,requestId,origin);
+    }
+
+    const eventCheckinMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/checkins$/);
+    if (eventCheckinMatch) {
+      let eventId:string;
+      try { eventId=decodeURIComponent(eventCheckinMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      if (request.method==="POST") return createEventCheckin(request,env,eventId,requestId,origin);
+      if (request.method==="GET") return listEventCheckins(request,env,eventId,requestId,origin);
+    }
+    const transportOptionItemMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/transport-options\/([^/]+)$/);
+    if (transportOptionItemMatch && request.method==="PATCH") {
+      let eventId:string,optionId:string;
+      try { eventId=decodeURIComponent(transportOptionItemMatch[1]); optionId=decodeURIComponent(transportOptionItemMatch[2]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_OPTION_ID"}},requestId,origin); }
+      return updateTransportOption(request,env,eventId,optionId,requestId,origin);
+    }
+    const transportReservationCancelMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/transport-reservations\/([^/]+)\/cancel$/);
+    if (transportReservationCancelMatch && request.method==="POST") {
+      let eventId:string,reservationId:string;
+      try { eventId=decodeURIComponent(transportReservationCancelMatch[1]); reservationId=decodeURIComponent(transportReservationCancelMatch[2]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_TRANSPORT_RESERVATION_ID"}},requestId,origin); }
+      return cancelTransportReservation(request,env,eventId,reservationId,requestId,origin);
+    }
+    const transportReservationMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/transport-reservations$/);
+    if (transportReservationMatch) {
+      let eventId:string;
+      try { eventId=decodeURIComponent(transportReservationMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      if (request.method==="GET") return listTransportReservations(request,env,eventId,requestId,origin);
+      if (request.method==="POST") return createTransportReservation(request,env,eventId,requestId,origin);
+    }
+    const transportOptionsMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/transport-options$/);
+    if (transportOptionsMatch) {
+      let eventId:string;
+      try { eventId=decodeURIComponent(transportOptionsMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      if (request.method==="GET") return listTransportOptions(request,env,eventId,requestId,origin);
+      if (request.method==="POST") return createTransportOption(request,env,eventId,requestId,origin);
+    }
+
+    const eventCloseoutReviewMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/closeout\/review$/);
+    if (eventCloseoutReviewMatch && request.method==="POST") {
+      let eventId:string;
+      try { eventId=decodeURIComponent(eventCloseoutReviewMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      return reviewEventCloseout(request,env,eventId,requestId,origin);
+    }
+    const eventCloseoutResubmitMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/closeout\/resubmit$/);
+    if (eventCloseoutResubmitMatch && request.method==="POST") {
+      let eventId:string;
+      try { eventId=decodeURIComponent(eventCloseoutResubmitMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      return resubmitEventCloseout(request,env,eventId,requestId,origin);
+    }
+    const eventCloseoutMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/closeout$/);
+    if (eventCloseoutMatch) {
+      let eventId:string;
+      try { eventId=decodeURIComponent(eventCloseoutMatch[1]); }
+      catch { return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin); }
+      if (request.method==="GET") return getEventCloseout(request,env,eventId,requestId,origin);
+      if (request.method==="POST") return submitEventCloseout(request,env,eventId,requestId,origin);
+    }
+
+    const eventAuditMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/audit$/);
+    if (eventAuditMatch && request.method === "GET") {
+      let eventId: string;
+      try { eventId = decodeURIComponent(eventAuditMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_EVENT_ID" } }, requestId, origin); }
+      return listEventAudit(request, env, eventId, requestId, origin);
+    }
+    const eventActionMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)\/(publish|cancel)$/);
+    if (eventActionMatch && request.method === "POST") {
+      let eventId: string;
+      try { eventId = decodeURIComponent(eventActionMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_EVENT_ID" } }, requestId, origin); }
+      if (eventActionMatch[2] === "publish") return publishEvent(request, env, eventId, requestId, origin);
+      return cancelEvent(request, env, eventId, requestId, origin);
+    }
+    const eventMatch = url.pathname.match(/^\/api\/v1\/events\/([^/]+)$/);
+    if (eventMatch) {
+      let eventId: string;
+      try { eventId = decodeURIComponent(eventMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_EVENT_ID" } }, requestId, origin); }
+      if (request.method === "GET") return getEvent(request, env, eventId, requestId, origin);
+      if (request.method === "PATCH") return updateEvent(request, env, eventId, requestId, origin);
+    }
+
+    if (url.pathname === "/bootstrap" && request.method === "GET") {
+      if (env.APP_ENV !== "non-production" || !env.FIRST_ADMIN_BOOTSTRAP_TOKEN) {
+        return json(404, { ok: false, error: { code: "BOOTSTRAP_UNAVAILABLE" } }, requestId, origin);
+      }
+      return firstAdminBootstrapPage();
+    }
+    if (url.pathname === "/api/v1/bootstrap/first-admin" && request.method === "POST") {
+      return bootstrapFirstAdmin(request, env, requestId, origin);
     }
 
     if (url.pathname === "/api/v1/staff/invitations/accept" && request.method === "POST") {
