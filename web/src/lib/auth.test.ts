@@ -98,4 +98,29 @@ describe("PcgAuthClient — Better Auth cookie sessions", () => {
     const client = new PcgAuthClient(vi.fn(async (..._args: Parameters<typeof fetch>) => { throw new TypeError("offline"); }) as typeof fetch);
     await expect(client.getSession()).rejects.toBeInstanceOf(AuthClientError);
   });
+
+  it("accepts a valid invitation through the same-origin Worker endpoint", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, staff_profile_id: "staff-1", account_status: "active", sign_in_required: true,
+    }), { status: 201 }));
+    const client = new PcgAuthClient(fetcher as typeof fetch);
+    const token = "A".repeat(43);
+    const password = "Strong-" + "Invite-" + "2026!";
+    await expect(client.acceptInvitation(token, password)).resolves.toBeUndefined();
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/auth/v1/staff/invitations/accept");
+    expect(init.method).toBe("POST");
+    expect(init.credentials).toBe("include");
+    expect(JSON.parse(String(init.body))).toEqual({ invitation_token: token, password });
+  });
+
+  it("rejects invalid invitation credentials before contacting the Worker", async () => {
+    const fetcher = vi.fn() as unknown as typeof fetch;
+    const client = new PcgAuthClient(fetcher);
+    await expect(client.acceptInvitation("bad-token", "weak")).rejects.toMatchObject({
+      status: 400, code: "INVALID_INVITATION_TOKEN",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
 });
