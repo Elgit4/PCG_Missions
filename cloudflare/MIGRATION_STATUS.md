@@ -88,10 +88,10 @@ Latest verified CI run: [43514971428](https://github.com/Elgit4/PCG_Missions/act
 
 - Replaced the browser Supabase Auth/token-storage client with Better Auth sign-in, get-session and sign-out using HttpOnly cookies.
 - Routed browser business API requests through the Cloudflare Worker same-origin API proxy; branch context is sent as `X-Branch-Id` and remains server-validated.
-- Added Vercel and Cloudflare Pages proxy handlers, a local Wrangler Vite proxy, a branch-scoped Vercel Preview `PCG_MISSIONS_API_ORIGIN` variable, and the exact Vercel branch alias to the Worker trusted-origin allow-list.
+- Added the Cloudflare Pages Functions same-origin API proxy, a local Wrangler Vite proxy and the Pages origin to the Worker trusted-origin allow-list. Direct Upload configuration is version-controlled in `web/wrangler.toml`.
 - Updated frontend API adapters for staff context, contacts, follow-up, reports, events, calendar, announcements, content and pastoral endpoints. Team/service-area administration, administrator-approved password recovery and forced temporary-password replacement remain explicitly blocked rather than falling back to Supabase.
 - Frontend type-check, lint, unit tests and production build all pass in CI run [43516535210](https://github.com/Elgit4/PCG_Missions/actions/runs/43516535210); Worker integration CI also passes in run [43516535132](https://github.com/Elgit4/PCG_Missions/actions/runs/43516535132).
-- The full Worker is now deployed and its health and unauthenticated API gates have passed. A real authenticated browser-to-Worker end-to-end acceptance run remains pending. Production Vercel and DNS remain unchanged.
+- The previously deployed non-production Worker passed health and unauthenticated API gates. A real authenticated browser-to-Worker end-to-end acceptance run remains pending. Production routing and DNS remain unchanged.
 
 ## Authentication and authorization progress
 
