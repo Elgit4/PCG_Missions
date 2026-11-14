@@ -7046,6 +7046,80 @@ async function updatePrayerRequestStatus(
 }
 
 
+
+async function listPrayerRoomMessages(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "prayer.room.read");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const url = new URL(request.url);
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 80 : Number(rawLimit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      [...url.searchParams.keys()].some((key) => key !== "limit")) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_ROOM_QUERY" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const rows = await env.DB.prepare(`
+    SELECT m.id,m.branch_id,m.body,m.created_at,m.author_profile_id,
+           p.full_name AS author_name
+    FROM prayer_room_message m
+    JOIN staff_profile p ON p.id=m.author_profile_id AND p.account_status='active'
+    WHERE m.branch_id=?
+    ORDER BY m.created_at DESC,m.id DESC
+    LIMIT ?
+  `).bind(access.activeBranch.branchId, limit).all<Record<string, unknown>>();
+  try {
+    const audit = await env.DB.prepare(`
+      INSERT INTO prayer_room_access_audit
+        (id,branch_id,actor_profile_id,action,message_id,accessed_at)
+      VALUES (?,?,?,'read',NULL,?)
+    `).bind(crypto.randomUUID(), access.activeBranch.branchId, access.staff.profileId, now).run();
+    if (!audit.success) throw new Error("PRAYER_ROOM_READ_AUDIT_FAILED");
+  } catch {
+    return json(503, { ok: false, error: { code: "PRAYER_ROOM_AUDIT_UNAVAILABLE" } }, requestId, origin);
+  }
+  return json(200, { ok: true, messages: (rows.results ?? []).reverse() }, requestId, origin);
+}
+
+async function postPrayerRoomMessage(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "prayer.room.post");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request, 8192);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { body?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => key !== "body")) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_ROOM_MESSAGE" } }, requestId, origin);
+  }
+  const message = typeof payload.body === "string" ? payload.body.trim() : "";
+  if (!message || message.length > 4000) {
+    return json(422, { ok: false, error: { code: "PRAYER_ROOM_MESSAGE_LENGTH" } }, requestId, origin);
+  }
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO prayer_room_message (id,branch_id,author_profile_id,body,created_at)
+        VALUES (?,?,?,?,?)
+      `).bind(id, access.activeBranch.branchId, access.staff.profileId, message, now),
+      env.DB.prepare(`
+        INSERT INTO prayer_room_access_audit
+          (id,branch_id,actor_profile_id,action,message_id,accessed_at)
+        VALUES (?,?,?,'post',?,?)
+      `).bind(crypto.randomUUID(), access.activeBranch.branchId, access.staff.profileId, id, now),
+    ]);
+    if (results.some((result) => !result.success)) throw new Error("PRAYER_ROOM_POST_FAILED");
+  } catch {
+    return json(409, { ok: false, error: { code: "PRAYER_ROOM_POST_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, { ok: true, message: {
+    id, branch_id: access.activeBranch.branchId, author_profile_id: access.staff.profileId,
+    author_name: access.staff.fullName, body: message, created_at: now,
+  } }, requestId, origin);
+}
+
+    if (url.pathname === "/api/v1/prayer-room/messages" && request.method === "GET") return listPrayerRoomMessages(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/prayer-room/messages" && request.method === "POST") return postPrayerRoomMessage(request,env,requestId,origin);
     if (url.pathname === "/api/v1/pastoral/care" && request.method === "GET") return listCareRecords(request,env,requestId,origin);
     if (url.pathname === "/api/v1/pastoral/care" && request.method === "POST") return createCareRecord(request,env,requestId,origin);
     const careRevokeMatch=url.pathname.match(/^\/api\/v1\/pastoral\/care\/([^/]+)\/assignments\/([^/]+)\/revoke$/);
