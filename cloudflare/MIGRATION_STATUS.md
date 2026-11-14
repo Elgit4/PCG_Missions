@@ -1,23 +1,26 @@
 # Cloudflare migration status
 
-## Current-head CI verification — 2026-11-14
+## Current implementation and validation — 2026-11-14
 
-- Current PR head: `c16526df772accf00ab280192d50eff14c987a23`.
-- Cloudflare D1 Foundation: [run 43608138060](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138060) — SQLite/security suite and Worker typecheck/build/local D1 integration passed.
-- Frontend Worker Integration: [run 43608138041](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138041) — passed.
-- CMI web CI: [run 43608138043](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138043) — passed.
-- CMI frontend CI: [run 43608138118](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138118) — passed.
-- The Cloudflare run was pull-request-triggered. Its deployment credential gate, R2 provisioning, remote D1 migrations, Worker deployment and live health checks were skipped. These green checks do not establish remote schema 31 or a newly deployed Worker.
-- Vercel status check reports success for the current PR head; this is the provider's preview check, not production deployment approval.
+- Current PR #61 head: `7eacbf25f35e6c843b1184479bab4a2ba697f82f`.
+- Cloudflare D1 Foundation: [run 43609352440](https://github.com/Elgit4/PCG_Missions/actions/runs/43609352440) — SQLite/security suite, Worker TypeScript check, Wrangler dry-run bundle and local Worker/D1/Better Auth integration all passed.
+- Frontend Worker Integration: [run 43609352489](https://github.com/Elgit4/PCG_Missions/actions/runs/43609352489) — passed.
+- CMI web CI: [run 43609352441](https://github.com/Elgit4/PCG_Missions/actions/runs/43609352441) — passed.
+- CMI frontend CI: [run 43609352446](https://github.com/Elgit4/PCG_Missions/actions/runs/43609352446) — passed.
+- The Vercel status check still reports the account deployment build-rate limit. No new Vercel preview is claimed for this head.
+- Fixed the Worker nullability failures in `listTeams` and `listServiceAreas` by retaining the narrowed active-branch value. Added a regression test for both handlers.
+- Added a same-origin invitation acceptance client and staff onboarding screen. It accepts the one-time invitation token via the `?invite=` query parameter, removes the token from the browser URL immediately, validates the chosen password, and posts to `/api/v1/staff/invitations/accept` through the Worker proxy. The invitation API client and validation tests pass in the current CI. Invitation token delivery remains manual; automated invitation email is not configured.
+- Administrator-approved password recovery and forced temporary-password replacement remain incomplete. The browser client deliberately fails closed rather than silently falling back to Supabase or sending an unapproved reset.
+- These are pull-request validation runs. Credential validation, R2 provisioning, remote D1 migration, Worker deployment and live health checks were skipped by design. No deployment or migration was performed by this implementation pass.
 
-## Latest implementation note — 2026-11-14
+## EU non-production state and external blockers
 
-- Fixed the Worker nullability errors in `listTeams` and `listServiceAreas` by retaining the narrowed active-branch value before aliasing the staff context.
-- Added a Worker API contract regression test for both handlers.
-- The fix and regression test are present on the current PR head `c16526df772accf00ab280192d50eff14c987a23`. Current-head GitHub Actions run [43608138060](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138060) passed SQLite/security tests, Worker TypeScript type-check, bundle and local Worker/D1 integration. Current-head frontend runs [43608138043](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138043), [43608138041](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138041) and [43608138118](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138118) also passed. These are pull-request checks: the deployment credential, R2 provisioning, remote migration, Worker deploy and live health steps were skipped by design.
-- Direct read-only EU D1 inspection reconfirmed schema version 28, 28 migration-ledger entries, 81 application tables (82 user tables including the `d1_migrations` ledger), and no foreign-key violations. Migrations 0029–0031 remain pending.
-- The D1 authorization catalog still contains the six active roles. Prayer request narrative access remains explicit-share-only for Prayer Intercessors; pastoral case metadata is Admin/Pastor branch-scoped while narrative read/update/interact are explicit-share-scoped. Prayer, care and sensitive-record access audit immutability triggers are present.
-- R2 remains unavailable at account level (Cloudflare API error 10042). No bucket was created and no D1 migration or Worker deployment was performed during this implementation pass.
+- Database: `pcg-missions-dev`, UUID `376a6782-d059-41f9-9e09-f93718fef2bb`, EU jurisdiction, primary region `EEUR`.
+- Last direct read-only inspection: schema version 28, 28 migration-ledger entries, 81 application tables (82 user tables including `d1_migrations`), and no `PRAGMA foreign_key_check` violations. Migrations 0029–0031 remain pending.
+- The six active role records, branch/team scopes, explicit-share-only prayer and pastoral narrative access, and append-only prayer/care/sensitive access audit protections were verified in the D1 catalog. Authenticated remote acceptance remains blocked by the empty staff identity/assignment dataset and requires the owner-approved first Admin/QA bootstrap.
+- R2 remains unavailable at account level: the Cloudflare API returned error 10042 (R2 must first be enabled in the Cloudflare Dashboard). The event-media bucket was not created.
+- The deployment workflow must separately confirm the scoped `CLOUDFLARE_API_TOKEN` and `BETTER_AUTH_SECRET` secrets, provision the EU R2 bucket, apply migrations 0029–0031, deploy the non-production Worker, and pass schema-31 Worker and Pages health checks. A green PR validation is not evidence that any of these remote steps occurred.
+- Production Supabase, production Vercel, DNS, live accounts, SMS and email configuration remain untouched.
 
 ## Team and service-area administration — implementation update (2026-11-14)
 
