@@ -6857,17 +6857,19 @@ function teamCreateBranchId(request:Request):string|null{
 }
 
 async function listTeams(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
-  const access=await authorizeRequestCapability(request,env,"team.read");
-  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const context=await resolveStaffContext(request,env);
+  if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if(!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const access=context;
   const branchId=access.activeBranch.branchId,now=new Date().toISOString();
   const scope=access.activeBranch.capabilities.find(item=>item.code==="team.read")?.scopeMode;
-  if(!scope) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  if(scope!=="branch"&&scope!=="team") return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
   const teams=scope==="branch"
     ? await env.DB.prepare("SELECT id,branch_id,name,description,is_active,created_at,updated_at FROM team WHERE branch_id=? ORDER BY is_active DESC,name COLLATE NOCASE").bind(branchId).all<Record<string,unknown>>()
     : await env.DB.prepare(`SELECT t.id,t.branch_id,t.name,t.description,t.is_active,t.created_at,t.updated_at
         FROM team t WHERE t.branch_id=? AND EXISTS(
           SELECT 1 FROM staff_team_membership mine WHERE mine.team_id=t.id AND mine.branch_id=t.branch_id
-            AND mine.staff_profile_id=? AND mine.revoked_at IS NULL AND mine.starts_at<=?
+            AND mine.staff_profile_id=? AND mine.membership_role='leader' AND mine.revoked_at IS NULL AND mine.starts_at<=?
             AND (mine.ends_at IS NULL OR mine.ends_at>?)
         ) ORDER BY t.is_active DESC,t.name COLLATE NOCASE`).bind(branchId,access.staff.profileId,now,now).all<Record<string,unknown>>();
   const canReadRoster=scope==="team"||access.activeBranch.capabilities.some(item=>item.code==="staff.directory.read"&&item.scopeMode==="branch");
@@ -7006,18 +7008,20 @@ async function revokeTeamMember(request:Request,env:Env,teamId:string,membership
 }
 
 async function listServiceAreas(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
-  const access=await authorizeRequestCapability(request,env,"area.read");
-  if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
+  const context=await resolveStaffContext(request,env);
+  if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if(!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const access=context;
   const branchId=access.activeBranch.branchId,now=new Date().toISOString();
   const scope=access.activeBranch.capabilities.find(item=>item.code==="area.read")?.scopeMode;
-  if(!scope) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  if(scope!=="branch"&&scope!=="team"&&scope!=="assigned") return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
   const branchDirectory=access.activeBranch.capabilities.some(item=>item.code==="staff.directory.read"&&item.scopeMode==="branch");
   let visibleStaffIds:string[]|null=null;
   if(scope==="team"){
     const teamStaff=await env.DB.prepare(`SELECT DISTINCT member.staff_profile_id
       FROM staff_team_membership mine JOIN staff_team_membership member
         ON member.team_id=mine.team_id AND member.branch_id=mine.branch_id
-      WHERE mine.staff_profile_id=? AND mine.branch_id=? AND mine.revoked_at IS NULL
+      WHERE mine.staff_profile_id=? AND mine.branch_id=? AND mine.membership_role='leader' AND mine.revoked_at IS NULL
         AND mine.starts_at<=? AND (mine.ends_at IS NULL OR mine.ends_at>?)
         AND member.revoked_at IS NULL AND member.starts_at<=? AND (member.ends_at IS NULL OR member.ends_at>?)`)
       .bind(access.staff.profileId,branchId,now,now,now,now).all<{staff_profile_id:string}>();
