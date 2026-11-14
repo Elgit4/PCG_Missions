@@ -41,6 +41,7 @@ function formatDate(value: string, timeZone: string): string {
     : new Intl.DateTimeFormat(undefined, {
       dateStyle: "medium",
       timeStyle: "short",
+      timeZone,
     }).format(date);
 }
 
