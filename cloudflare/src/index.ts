@@ -6406,7 +6406,7 @@ export default {
   scheduled(controller: { scheduledTime: number }, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }): void {
     ctx.waitUntil(publishDueAnnouncements(env,new Date(controller.scheduledTime).toISOString()));
   },
-  async fetch(request: Request, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void } = { waitUntil: () => undefined }): Promise<Response> {
     const url = new URL(request.url);
     const requestId = crypto.randomUUID();
     const origin = request.headers.get("Origin") ?? undefined;
