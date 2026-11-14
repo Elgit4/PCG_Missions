@@ -42,7 +42,7 @@ export function PrayerRoomWorkspace({ branchId, branchName, api, currentProfileI
     try {
       const result = await api.listPrayerRoomMessages(branchId, 80);
       setMessages((current) => {
-        const next = result.data;
+        const next = result.data.messages;
         const newest = next[next.length - 1]?.id ?? null;
         if (!initial && newest && lastMessageRef.current && newest !== lastMessageRef.current) {
           const incoming = next.find((message) => message.id === newest);
