@@ -2,6 +2,13 @@
 -- The Worker authorizes every mutation; these triggers preserve the invariants
 -- under concurrent requests and prevent direct SQL paths from bypassing them.
 
+-- Coverage revocation is a cancellation timestamp, including for future assignments.
+ALTER TABLE staff_area_coverage ADD COLUMN revoked_at TEXT;
+ALTER TABLE staff_area_coverage ADD COLUMN revoked_by TEXT REFERENCES staff_profile(id) ON DELETE RESTRICT;
+CREATE INDEX staff_area_coverage_active_idx
+  ON staff_area_coverage(branch_id,service_area_id,staff_profile_id,starts_at)
+  WHERE revoked_at IS NULL;
+
 CREATE TABLE team_management_audit (
   id TEXT PRIMARY KEY,
   branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE RESTRICT,
@@ -113,7 +120,7 @@ END;
 
 CREATE TRIGGER area_coverage_active_parent_update_guard
 BEFORE UPDATE OF staff_profile_id,service_area_id,branch_id,starts_at ON staff_area_coverage
-WHEN NEW.ends_at IS NULL OR NEW.ends_at>strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHEN NEW.revoked_at IS NULL AND (NEW.ends_at IS NULL OR NEW.ends_at>strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 BEGIN
   SELECT CASE WHEN NOT EXISTS (
     SELECT 1 FROM service_area sa JOIN branch b ON b.id=sa.branch_id
@@ -139,7 +146,7 @@ WHEN OLD.is_active=1 AND NEW.is_active=0
 BEGIN
   SELECT CASE WHEN EXISTS (
     SELECT 1 FROM staff_area_coverage sac
-    WHERE sac.service_area_id=OLD.id AND sac.branch_id=OLD.branch_id
+    WHERE sac.service_area_id=OLD.id AND sac.branch_id=OLD.branch_id AND sac.revoked_at IS NULL
       AND (sac.ends_at IS NULL OR sac.ends_at>strftime('%Y-%m-%dT%H:%M:%fZ','now'))
   ) THEN RAISE(ABORT,'AREA_HAS_ACTIVE_COVERAGE') END;
 END;
