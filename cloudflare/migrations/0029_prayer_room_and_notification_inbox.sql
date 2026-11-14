@@ -100,3 +100,27 @@ BEGIN
    AND (a.audience_type='staff' OR ra.branch_id=a.branch_id)
  ) THEN RAISE(ABORT,'ANNOUNCEMENT_READ_NOT_AUTHORIZED') END;
 END;
+
+
+CREATE TRIGGER prayer_room_access_audit_authorize_insert
+BEFORE INSERT ON prayer_room_access_audit
+BEGIN
+ SELECT CASE WHEN NOT EXISTS (
+  SELECT 1
+  FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.is_active=1
+   AND c.code=CASE WHEN NEW.action='read' THEN 'prayer.room.read' ELSE 'prayer.room.post' END
+  JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
+  WHERE actor.id=NEW.actor_profile_id AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.accessed_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.accessed_at)
+   AND rc.scope_mode='branch'
+ ) THEN RAISE(ABORT,'PRAYER_ROOM_AUDIT_NOT_AUTHORIZED') END;
+ SELECT CASE WHEN NEW.message_id IS NOT NULL AND NOT EXISTS (
+  SELECT 1 FROM prayer_room_message m
+  WHERE m.id=NEW.message_id AND m.branch_id=NEW.branch_id
+ ) THEN RAISE(ABORT,'PRAYER_ROOM_AUDIT_MESSAGE_SCOPE') END;
+END;
