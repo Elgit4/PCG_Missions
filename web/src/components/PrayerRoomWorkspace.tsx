@@ -22,6 +22,8 @@ interface PrayerRoomWorkspaceProps {
   api: CmiApiClient;
   branchId: string;
   branchName: string;
+  timeZone: string;
+  onSessionExpired: () => void;
 }
 
 const OVERSIGHT_REASONS = [
@@ -32,7 +34,7 @@ const OVERSIGHT_REASONS = [
   ["administrative_review", "Administrative review"],
 ] as const;
 
-function formatDate(value: string): string {
+function formatDate(value: string, timeZone: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "Date unavailable"
@@ -57,6 +59,8 @@ export function PrayerRoomWorkspace({
   api,
   branchId,
   branchName,
+  timeZone,
+  onSessionExpired,
 }: PrayerRoomWorkspaceProps) {
   const [requests, setRequests] = useState<PrayerRequestMetadata[]>([]);
   const [accessMode, setAccessMode] = useState<"assigned" | "oversight">(
@@ -78,11 +82,12 @@ export function PrayerRoomWorkspace({
       setAccessMode(result.data.access_mode);
       setSelected(null);
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
     } finally {
       setLoading(false);
     }
-  }, [api, branchId]);
+  }, [api, branchId, onSessionExpired]);
 
   useEffect(() => {
     void loadRequests();
@@ -105,7 +110,8 @@ export function PrayerRoomWorkspace({
       );
       setSelected(result.data.request);
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
     } finally {
       setReading(false);
     }
@@ -183,7 +189,7 @@ export function PrayerRoomWorkspace({
                   <strong>Prayer request</strong>
                   <span>
                     {request.status.replaceAll("_", " ")} · Received{" "}
-                    {formatDate(request.created_at)}
+                    {formatDate(request.created_at, timeZone)}
                   </span>
                   {request.expires_at && (
                     <small>Expires {formatDate(request.expires_at)}</small>
@@ -209,7 +215,7 @@ export function PrayerRoomWorkspace({
             <div>
               <p className="cmi-eyebrow">AUDITED RECORD VIEW</p>
               <h3>Prayer request details</h3>
-              <p>Opened {formatDate(selected.updated_at)} · {selected.status}</p>
+              <p>Opened {formatDate(selected.updated_at, timeZone)} · {selected.status}</p>
             </div>
             <button
               className="cmi-button cmi-button-secondary"
