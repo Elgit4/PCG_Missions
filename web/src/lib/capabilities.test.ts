@@ -133,6 +133,14 @@ describe("capability-driven staff navigation", () => {
     expect(canOpenStaffPage(session, "Announcements", "branch-b")).toBe(false);
   });
 
+  it("exposes the prayer room only to staff with its branch-scoped read capability", () => {
+    const noGrant = { ...baseSession, capabilities: [] };
+    const prayerGrant = { ...baseSession, capabilities: [{ code: "prayer.room.read", scope_mode: "branch", branch_id: "branch-a" }] };
+    expect(canOpenStaffPage(noGrant, "Prayer", "branch-a")).toBe(false);
+    expect(canOpenStaffPage(prayerGrant, "Prayer", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(prayerGrant, "Prayer", "branch-b")).toBe(false);
+  });
+
   it("checks identity visibility separately from contact directory access", () => {
     const session = {
       ...baseSession,
