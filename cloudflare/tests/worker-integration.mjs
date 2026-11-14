@@ -309,6 +309,14 @@ try {
   assert(scheduledAnnouncement.headers.get("x-content-type-options") === "nosniff",
     "security headers missing on announcement schedule");
 
+  const protectedFlyerUpload = await fetch(baseUrl + "/api/v1/events/test-event/flyer", {
+    method: "POST",
+    headers: { "Content-Type": "multipart/form-data" },
+    body: new FormData(),
+  });
+  assert(protectedFlyerUpload.status === 401,
+    "unauthenticated event flyer upload must be rejected before parsing or storing media, got " + protectedFlyerUpload.status);
+
   const protectedPosts = [
     ["/api/v1/calendar/series", { title:"Weekly service", entry_type:"service", starts_at:"2026-11-16T10:00:00.000Z", timezone:"Africa/Accra", scope_type:"branch", recurrence:{frequency:"weekly",interval:1,count:4} }],
     ["/api/v1/calendar/series/test-series/cancel", { reason:"Cancelled for integration test" }],
