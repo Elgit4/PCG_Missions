@@ -9,6 +9,7 @@ const baseUrl = "http://127.0.0.1:" + port;
 const stateDir = path.resolve(".wrangler/test-state");
 const allowedOrigin = "https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev";
 const secret = Buffer.from(crypto.getRandomValues(new Uint8Array(48))).toString("base64url");
+const bootstrapToken = Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString("base64url");
 const testEmail = "cloudflare-worker-test@example.test";
 const testUserId = "cloudflare-worker-test-user";
 const testPassword = "Worker-Test-" + crypto.randomUUID() + "-Password!";
@@ -133,6 +134,25 @@ try {
 
   worker = startWorker();
   await waitForListener(worker);
+
+  const bootstrapPage = await fetch(baseUrl + "/bootstrap");
+  const bootstrapHtml = await bootstrapPage.text();
+  assert(bootstrapPage.status === 200, "configured non-production bootstrap page should return 200");
+  assert((bootstrapPage.headers.get("content-type") || "").includes("text/html"),
+    "bootstrap page must explicitly return HTML");
+  assert(bootstrapHtml.includes("Secure account setup"), "bootstrap page content missing");
+  assert(bootstrapHtml.includes("unexpected response"), "bootstrap page must safely handle non-JSON API responses");
+
+  const bootstrapApi = await fetch(baseUrl + "/api/v1/bootstrap/first-admin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: "Elvis", email: "elviskwakuboateng63@gmail.com", password: "NotARealPassword123!" }),
+  });
+  const bootstrapApiContentType = bootstrapApi.headers.get("content-type") || "";
+  const bootstrapApiBody = await bootstrapApi.json();
+  assert(bootstrapApi.status === 404, "bootstrap API must reject missing token with 404");
+  assert(bootstrapApiContentType.includes("application/json"), "bootstrap API errors must return JSON");
+  assert(bootstrapApiBody.error?.code === "BOOTSTRAP_UNAVAILABLE", "bootstrap API missing-token response was unexpected");
 
   const health = await fetch(baseUrl + "/health");
   const healthBody = await health.json();
