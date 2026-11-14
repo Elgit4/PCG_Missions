@@ -911,7 +911,7 @@ async function bootstrapFirstAdmin(request: Request, env: Env, requestId: string
   }
 
   const state = await env.DB.prepare(
-    "SELECT (SELECT COUNT(*) FROM \\"user\\") AS user_count, " +
+    "SELECT (SELECT COUNT(*) FROM \"user\") AS user_count, " +
     "(SELECT COUNT(*) FROM staff_profile) AS profile_count, " +
     "(SELECT remaining_slots FROM staff_admin_bootstrap_state WHERE id=1) AS remaining_slots, " +
     "(SELECT COUNT(*) FROM church WHERE name=?) AS church_count, " +
