@@ -7325,7 +7325,7 @@ async function sendAnnouncementPushes(env: Env, announcementId: string): Promise
   const payload = {
     title: "New church announcement",
     body: "Open PCG Missions to read the latest update.",
-    url: "/",
+    url: "/?notifications=1",
     tag: "pcg-announcement-" + announcementId,
   };
   const subscriptions = rows.results ?? [];
