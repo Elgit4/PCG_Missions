@@ -18,6 +18,7 @@ const PAGE_CAPABILITIES: Partial<Record<StaffPage, readonly string[]>> = {
   Events: ["event.read.scoped", "event.manage.scoped"],
   Calendar: ["calendar.read.scoped", "calendar.manage.scoped"],
   Announcements: ["announcement.read.scoped", "announcement.create.scoped"],
+  Prayer: ["prayer.room.read"],
   Content: ["content.manage.draft"],
   "Teams & Areas": ["team.manage", "area.manage"],
 };
@@ -70,6 +71,7 @@ export function getAvailableStaffPages(session: StaffSession, branchId?: string)
     "Events",
     "Calendar",
     "Announcements",
+    "Prayer",
     "Content",
     "Teams & Areas",
     "Reports",
