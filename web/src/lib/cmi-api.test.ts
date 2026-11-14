@@ -74,6 +74,69 @@ describe("CmiApiClient — Cloudflare Worker", () => {
     expect(url.pathname).toBe("/api/v1/staff/staff-2/deactivate");
   });
 
+  it("loads recipient-scoped in-app announcement notifications", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, announcements: [{ announcement_id: "notice-1", title: "Service update", is_read: 0 }], request_id: "inbox",
+    }), { status: 200 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    const result = await client.listAnnouncementInbox("branch-1");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/announcements/inbox");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(result.data.announcements[0]?.announcement_id).toBe("notice-1");
+  });
+
+  it("keeps announcement branch scope in the validated header, not the JSON payload", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, announcement_id: "announcement-1", status: "draft", request_id: "announcement",
+    }), { status: 201 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.createAnnouncementDraft({
+      branch_id: "branch-1", title: "Service update", body: "Service begins at 9am.", audience_type: "branch",
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/announcements");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(JSON.parse(String(init.body))).toEqual({
+      title: "Service update", body: "Service begins at 9am.", audience_type: "branch",
+    });
+  });
+
+  it("registers an authenticated browser push subscription for the selected branch", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, subscribed: true, request_id: "push-subscription",
+    }), { status: 201 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.savePushSubscription("branch-1", {
+      endpoint: "https://fcm.googleapis.com/fcm/send/test-subscription",
+      keys: { p256dh: "A".repeat(87), auth: "B".repeat(22) },
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/notifications/push/subscriptions");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      endpoint: "https://fcm.googleapis.com/fcm/send/test-subscription",
+      keys: { p256dh: "A".repeat(87), auth: "B".repeat(22) },
+    });
+  });
+
+  it("posts prayer-room messages only to the dedicated branch conversation route", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, message: { id: "message-1", body: "Praying for the team" }, request_id: "prayer-room",
+    }), { status: 201 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    const result = await client.postPrayerRoomMessage("branch-1", "Praying for the team");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/prayer-room/messages");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(JSON.parse(String(init.body))).toEqual({ body: "Praying for the team" });
+    expect(result.data.message.id).toBe("message-1");
+  });
+
   it("fails explicitly for team administration until its Worker handlers are implemented", async () => {
     const fetcher = vi.fn();
     const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);

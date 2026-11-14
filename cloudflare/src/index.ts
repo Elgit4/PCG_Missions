@@ -5202,13 +5202,16 @@ async function listAnnouncementInbox(
            rr.read_at,CASE WHEN rr.id IS NULL THEN 0 ELSE 1 END AS is_read
     FROM announcement_delivery d
     JOIN announcement a ON a.id=d.announcement_id
+    JOIN branch source_branch ON source_branch.id=a.branch_id AND source_branch.is_active=1
+    JOIN branch active_branch ON active_branch.id=? AND active_branch.church_id=source_branch.church_id AND active_branch.is_active=1
     LEFT JOIN announcement_read_receipt rr
       ON rr.announcement_id=a.id AND rr.staff_profile_id=d.recipient_ref
     WHERE d.channel='in_app' AND d.status='delivered'
-      AND d.recipient_ref=? AND a.branch_id=? AND a.status='published'
+      AND d.recipient_ref=? AND a.status='published'
+      AND (a.branch_id=? OR a.audience_type='staff')
     ORDER BY COALESCE(a.published_at,d.created_at) DESC,a.id DESC
     LIMIT 100
-  `).bind(context.staff.profileId,context.activeBranch.branchId).all<Record<string,unknown>>();
+  `).bind(context.activeBranch.branchId,context.staff.profileId,context.activeBranch.branchId).all<Record<string,unknown>>();
   return json(200,{ok:true,announcements:rows.results??[]},requestId,origin);
 }
 
@@ -5223,12 +5226,15 @@ async function markAnnouncementRead(
   if (context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
   if (!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
   const delivery=await env.DB.prepare(`
-    SELECT d.id FROM announcement_delivery d
+    SELECT d.id,a.branch_id FROM announcement_delivery d
     JOIN announcement a ON a.id=d.announcement_id
+    JOIN branch source_branch ON source_branch.id=a.branch_id AND source_branch.is_active=1
+    JOIN branch active_branch ON active_branch.id=? AND active_branch.church_id=source_branch.church_id AND active_branch.is_active=1
     WHERE d.announcement_id=? AND d.recipient_ref=? AND d.channel='in_app'
-      AND d.status='delivered' AND a.status='published' AND a.branch_id=?
+      AND d.status='delivered' AND a.status='published'
+      AND (a.branch_id=? OR a.audience_type='staff')
     LIMIT 1
-  `).bind(announcementId,context.staff.profileId,context.activeBranch.branchId).first<{id:string}>();
+  `).bind(context.activeBranch.branchId,announcementId,context.staff.profileId,context.activeBranch.branchId).first<{id:string;branch_id:string}>();
   if (!delivery) return json(404,{ok:false,error:{code:"ANNOUNCEMENT_NOT_IN_INBOX"}},requestId,origin);
   const now=new Date().toISOString();
   try {
@@ -5237,7 +5243,7 @@ async function markAnnouncementRead(
         (id,announcement_id,branch_id,staff_profile_id,read_by,read_at)
       VALUES (?,?,?,?,?,?)
     `).bind(
-      crypto.randomUUID(),announcementId,context.activeBranch.branchId,
+      crypto.randomUUID(),announcementId,delivery.branch_id,
       context.staff.profileId,context.staff.userId,now,
     ).run();
     if (!result.success) throw new Error("ANNOUNCEMENT_READ_RECEIPT_FAILED");
@@ -5268,10 +5274,15 @@ async function listAnnouncements(
   const status = url.searchParams.get("status") ?? "published";
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
+  const rawOffset = url.searchParams.get("offset");
+  const offset = rawOffset === null ? 0 : Number(rawOffset);
+  const requestedBranchId = url.searchParams.get("branch_id");
   if (!["draft", "scheduled", "published", "archived", "all"].includes(status) ||
       (status !== "published" && !canManage) ||
       !Number.isInteger(limit) || limit < 1 || limit > 100 ||
-      [...url.searchParams.keys()].some((key) => !["status", "limit"].includes(key))) {
+      !Number.isInteger(offset) || offset < 0 || offset > 10000 ||
+      (requestedBranchId !== null && requestedBranchId !== context.activeBranch.branchId) ||
+      [...url.searchParams.keys()].some((key) => !["status", "limit", "offset", "branch_id"].includes(key))) {
     return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_QUERY" } }, requestId, origin);
   }
   const now = new Date().toISOString();
@@ -5283,12 +5294,13 @@ async function listAnnouncements(
     FROM announcement a
     WHERE a.branch_id=? AND ${statusPredicate} AND (${predicate.sql})
     ORDER BY COALESCE(a.published_at,a.created_at) DESC,a.id DESC
-    LIMIT ?
+    LIMIT ? OFFSET ?
   `).bind(
     context.activeBranch.branchId,
     ...(status === "all" ? [] : [status]),
     ...predicate.values,
     limit,
+    offset,
   ).all<Record<string, unknown>>();
   return json(200, { ok: true, announcements: rows.results ?? [] }, requestId, origin);
 }
@@ -5354,6 +5366,9 @@ async function createAnnouncement(
     return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_DETAILS" } }, requestId, origin);
   }
   const branchId = access.activeBranch.branchId;
+  if (audience === "staff" && !access.activeBranch.roles.includes("admin_pastor")) {
+    return json(403, { ok: false, error: { code: "CHURCH_WIDE_ANNOUNCEMENT_REQUIRES_ADMIN_PASTOR" } }, requestId, origin);
+  }
   if (teamIds.length) {
     const found = await env.DB.prepare(
       `SELECT COUNT(*) AS count FROM team WHERE branch_id=? AND is_active=1 AND id IN (${teamIds.map(() => "?").join(",")})`,
@@ -5449,7 +5464,8 @@ async function publishAnnouncement(
   env: Env,
   announcementId: string,
   requestId: string,
-  origin?: string,
+  origin: string | undefined,
+  ctx: { waitUntil(promise: Promise<unknown>): void },
 ): Promise<Response> {
   const access = await authorizeRequestCapability(request, env, "announcements.manage");
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
@@ -5468,9 +5484,12 @@ async function publishAnnouncement(
     recipients(staff_profile_id) AS (
       SELECT DISTINCT sp.id
       FROM target a
-      JOIN staff_role_assignment ra ON ra.branch_id=a.branch_id
+      JOIN branch source_branch ON source_branch.id=a.branch_id AND source_branch.is_active=1
+      JOIN branch target_branch ON target_branch.is_active=1
+        AND ((a.audience_type='branch' AND target_branch.id=source_branch.id)
+          OR (a.audience_type='staff' AND target_branch.church_id=source_branch.church_id))
+      JOIN staff_role_assignment ra ON ra.branch_id=target_branch.id
       JOIN role r ON r.id=ra.role_id AND r.is_active=1
-      JOIN branch b ON b.id=ra.branch_id AND b.is_active=1
       JOIN staff_profile sp ON sp.id=ra.staff_profile_id AND sp.account_status='active'
       WHERE a.audience_type IN ('branch','staff')
         AND ra.revoked_at IS NULL AND ra.starts_at<=?
@@ -5534,7 +5553,8 @@ async function publishAnnouncement(
   const count=await env.DB.prepare(
     "SELECT COUNT(*) AS count FROM announcement_delivery WHERE announcement_id=? AND channel='in_app' AND status='delivered'",
   ).bind(announcementId).first<{count:number}>();
-  return json(200,{ok:true,announcement_id:announcementId,status:"published",delivery_count:count?.count??0},requestId,origin);
+  ctx.waitUntil(sendAnnouncementPushes(env, announcementId).catch(() => 0));
+  return json(200,{ok:true,announcement_id:announcementId,status:"published",delivery_count:count?.count??0,push_dispatch:"queued"},requestId,origin);
 }
 async function scheduleAnnouncement(request: Request, env: Env, announcementId: string, requestId: string, origin?: string): Promise<Response> {
   const access=await authorizeRequestCapability(request,env,"announcements.manage");
@@ -6386,11 +6406,376 @@ function meetsPasswordPolicy(value: unknown): value is string {
     /[^A-Za-z0-9]/.test(value);
 }
 
+function webPushBase64UrlEncode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function webPushBase64UrlDecode(value: string): Uint8Array {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const binary = atob(normalized + "=".repeat((4 - normalized.length % 4) % 4));
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function webPushArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
+}
+
+function webPushConcat(...parts: Uint8Array[]): Uint8Array {
+  const output = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+  let offset = 0;
+  for (const part of parts) { output.set(part, offset); offset += part.length; }
+  return output;
+}
+
+async function webPushHmac(keyBytes: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
+  const key = await crypto.subtle.importKey("raw", webPushArrayBuffer(keyBytes), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  return new Uint8Array(await crypto.subtle.sign("HMAC", key, webPushArrayBuffer(data)));
+}
+
+async function webPushHkdfExpand(prk: Uint8Array, info: Uint8Array, length: number): Promise<Uint8Array> {
+  let output: Uint8Array = new Uint8Array(0);
+  let previous: Uint8Array = new Uint8Array(0);
+  let counter = 1;
+  while (output.length < length) {
+    previous = await webPushHmac(prk, webPushConcat(previous, info, new Uint8Array([counter])));
+    output = webPushConcat(output, previous);
+    counter += 1;
+  }
+  return output.slice(0, length);
+}
+
+async function webPushEncryptionKey(env: Env): Promise<CryptoKey> {
+  if (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32) throw new Error("WEB_PUSH_KEY_ENCRYPTION_UNAVAILABLE");
+  const material = await crypto.subtle.importKey("raw", webPushArrayBuffer(new TextEncoder().encode(env.BETTER_AUTH_SECRET)), "HKDF", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey({
+    name: "HKDF", hash: "SHA-256",
+    salt: webPushArrayBuffer(new TextEncoder().encode("pcg-missions-web-push-v1")),
+    info: webPushArrayBuffer(new TextEncoder().encode("vapid-private-key-at-rest")),
+  }, material, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+
+async function getWebPushVapidKeys(env: Env): Promise<{ publicKey: string; privateKey: CryptoKey }> {
+  let row = await env.DB.prepare("SELECT public_key,private_key_ciphertext,iv FROM web_push_vapid_key WHERE id=1")
+    .first<{ public_key: string; private_key_ciphertext: string; iv: string }>();
+  if (!row) {
+    const pair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]) as CryptoKeyPair;
+    const publicJwk = await crypto.subtle.exportKey("jwk", pair.publicKey);
+    const privateJwk = await crypto.subtle.exportKey("jwk", pair.privateKey);
+    if (!publicJwk.x || !publicJwk.y) throw new Error("WEB_PUSH_PUBLIC_KEY_EXPORT_FAILED");
+    const rawPublic = webPushConcat(new Uint8Array([4]), webPushBase64UrlDecode(publicJwk.x), webPushBase64UrlDecode(publicJwk.y));
+    const publicKey = webPushBase64UrlEncode(rawPublic);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encryptionKey = await webPushEncryptionKey(env);
+    const ciphertext = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: webPushArrayBuffer(iv) },
+      encryptionKey,
+      webPushArrayBuffer(new TextEncoder().encode(JSON.stringify(privateJwk))),
+    );
+    await env.DB.prepare(`
+      INSERT OR IGNORE INTO web_push_vapid_key (id,public_key,private_key_ciphertext,iv,created_at)
+      VALUES (1,?,?,?,?)
+    `).bind(
+      publicKey,
+      webPushBase64UrlEncode(new Uint8Array(ciphertext)),
+      webPushBase64UrlEncode(iv),
+      new Date().toISOString(),
+    ).run();
+    row = await env.DB.prepare("SELECT public_key,private_key_ciphertext,iv FROM web_push_vapid_key WHERE id=1")
+      .first<{ public_key: string; private_key_ciphertext: string; iv: string }>();
+  }
+  if (!row) throw new Error("WEB_PUSH_VAPID_KEY_UNAVAILABLE");
+  const encryptionKey = await webPushEncryptionKey(env);
+  const decrypted = await crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: webPushArrayBuffer(webPushBase64UrlDecode(row.iv)) },
+    encryptionKey,
+    webPushArrayBuffer(webPushBase64UrlDecode(row.private_key_ciphertext)),
+  );
+  const privateJwk = JSON.parse(new TextDecoder().decode(decrypted)) as JsonWebKey;
+  const privateKey = await crypto.subtle.importKey(
+    "jwk", privateJwk, { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"],
+  );
+  return { publicKey: row.public_key, privateKey };
+}
+
+function isAllowedWebPushEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    if (url.protocol !== "https:" || url.username || url.password || url.port) return false;
+    const host = url.hostname.toLowerCase();
+    return host === "fcm.googleapis.com" ||
+      host === "updates.push.services.mozilla.com" ||
+      host.endsWith(".push.services.mozilla.com") ||
+      host === "web.push.apple.com" ||
+      host.endsWith(".push.apple.com") ||
+      host.endsWith(".notify.windows.com");
+  } catch { return false; }
+}
+
+async function createWebPushVapidJwt(endpoint: string, keys: { publicKey: string; privateKey: CryptoKey }): Promise<string> {
+  const encoder = new TextEncoder();
+  const header = webPushBase64UrlEncode(encoder.encode(JSON.stringify({ typ: "JWT", alg: "ES256" })));
+  const payload = webPushBase64UrlEncode(encoder.encode(JSON.stringify({
+    aud: new URL(endpoint).origin,
+    exp: Math.floor(Date.now() / 1000) + 12 * 60 * 60,
+    sub: "mailto:elviskwakuboateng63@gmail.com",
+  })));
+  const unsigned = header + "." + payload;
+  const signature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    keys.privateKey,
+    webPushArrayBuffer(encoder.encode(unsigned)),
+  );
+  return unsigned + "." + webPushBase64UrlEncode(new Uint8Array(signature));
+}
+
+async function encryptWebPushPayload(
+  subscription: { p256dh: string; auth_secret: string },
+  payload: Record<string, unknown>,
+): Promise<Uint8Array> {
+  const clientPublicBytes = webPushBase64UrlDecode(subscription.p256dh);
+  const authSecret = webPushBase64UrlDecode(subscription.auth_secret);
+  if (clientPublicBytes.length !== 65 || authSecret.length !== 16) throw new Error("WEB_PUSH_SUBSCRIPTION_KEYS_INVALID");
+  const clientPublicKey = await crypto.subtle.importKey(
+    "raw", webPushArrayBuffer(clientPublicBytes), { name: "ECDH", namedCurve: "P-256" }, false, [],
+  );
+  const ephemeral = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]) as CryptoKeyPair;
+  const serverPublicBytes = new Uint8Array(await crypto.subtle.exportKey("raw", ephemeral.publicKey));
+  const sharedSecret = new Uint8Array(await crypto.subtle.deriveBits(
+    { name: "ECDH", public: clientPublicKey }, ephemeral.privateKey, 256,
+  ));
+  const authPrk = await webPushHmac(authSecret, sharedSecret);
+  const keyInfo = webPushConcat(new TextEncoder().encode("WebPush: info\0"), clientPublicBytes, serverPublicBytes);
+  const inputKeyMaterial = await webPushHkdfExpand(authPrk, keyInfo, 32);
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const prk = await webPushHmac(salt, inputKeyMaterial);
+  const cek = await webPushHkdfExpand(prk, new TextEncoder().encode("Content-Encoding: aes128gcm\0"), 16);
+  const nonce = await webPushHkdfExpand(prk, new TextEncoder().encode("Content-Encoding: nonce\0"), 12);
+  const plaintext = webPushConcat(new TextEncoder().encode(JSON.stringify(payload)), new Uint8Array([2]));
+  const aesKey = await crypto.subtle.importKey("raw", webPushArrayBuffer(cek), { name: "AES-GCM" }, false, ["encrypt"]);
+  const ciphertext = new Uint8Array(await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv: webPushArrayBuffer(nonce), tagLength: 128 }, aesKey, webPushArrayBuffer(plaintext),
+  ));
+  const recordSize = new Uint8Array([0, 0, 16, 0]);
+  return webPushConcat(salt, recordSize, new Uint8Array([serverPublicBytes.length]), serverPublicBytes, ciphertext);
+}
+
+async function sendWebPush(
+  env: Env,
+  subscription: { id: string; endpoint: string; p256dh: string; auth_secret: string },
+  payload: Record<string, unknown>,
+  keys: { publicKey: string; privateKey: CryptoKey },
+): Promise<boolean> {
+  if (!isAllowedWebPushEndpoint(subscription.endpoint)) return false;
+  const jwt = await createWebPushVapidJwt(subscription.endpoint, keys);
+  const body = await encryptWebPushPayload(subscription, payload);
+  const response = await fetch(subscription.endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: "vapid t=" + jwt + ", k=" + keys.publicKey,
+      "Content-Encoding": "aes128gcm",
+      "Content-Type": "application/octet-stream",
+      TTL: "86400",
+      Urgency: "normal",
+    },
+    body: webPushArrayBuffer(body),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (response.status === 404 || response.status === 410) {
+    await env.DB.prepare("DELETE FROM staff_push_subscription WHERE id=?").bind(subscription.id).run();
+    return false;
+  }
+  return response.ok;
+}
+
+async function getPushPublicKey(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  try {
+    const keys = await getWebPushVapidKeys(env);
+    return json(200, { ok: true, public_key: keys.publicKey }, requestId, origin);
+  } catch {
+    return json(503, { ok: false, error: { code: "WEB_PUSH_NOT_CONFIGURED" } }, requestId, origin);
+  }
+}
+
+async function savePushSubscription(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  const body = await readJsonBody(request, 8192);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !["endpoint", "keys"].includes(key)) ||
+      !payload.keys || typeof payload.keys !== "object" || Array.isArray(payload.keys) ||
+      Object.keys(payload.keys).some((key) => !["p256dh", "auth"].includes(key)) ||
+      typeof payload.endpoint !== "string" || payload.endpoint.length > 2048 ||
+      typeof payload.keys.p256dh !== "string" || typeof payload.keys.auth !== "string" ||
+      !isAllowedWebPushEndpoint(payload.endpoint)) {
+    return json(400, { ok: false, error: { code: "INVALID_PUSH_SUBSCRIPTION" } }, requestId, origin);
+  }
+  try {
+    if (webPushBase64UrlDecode(payload.keys.p256dh).length !== 65 ||
+        webPushBase64UrlDecode(payload.keys.auth).length !== 16) throw new Error("INVALID_PUSH_KEYS");
+  } catch {
+    return json(400, { ok: false, error: { code: "INVALID_PUSH_SUBSCRIPTION_KEYS" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  try {
+    await env.DB.prepare(`
+      INSERT INTO staff_push_subscription
+        (id,staff_profile_id,endpoint,p256dh,auth_secret,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,?)
+      ON CONFLICT(endpoint) DO UPDATE SET
+        staff_profile_id=excluded.staff_profile_id,p256dh=excluded.p256dh,
+        auth_secret=excluded.auth_secret,updated_at=excluded.updated_at
+    `).bind(
+      crypto.randomUUID(), context.staff.profileId, payload.endpoint,
+      payload.keys.p256dh, payload.keys.auth, now, now,
+    ).run();
+  } catch {
+    return json(409, { ok: false, error: { code: "PUSH_SUBSCRIPTION_SAVE_FAILED" } }, requestId, origin);
+  }
+  return json(201, { ok: true, subscribed: true }, requestId, origin);
+}
+
+async function removePushSubscription(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  const body = await readJsonBody(request, 4096);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { endpoint?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).length !== 1 || typeof payload.endpoint !== "string" ||
+      !isAllowedWebPushEndpoint(payload.endpoint)) {
+    return json(400, { ok: false, error: { code: "INVALID_PUSH_UNSUBSCRIBE" } }, requestId, origin);
+  }
+  await env.DB.prepare("DELETE FROM staff_push_subscription WHERE staff_profile_id=? AND endpoint=?")
+    .bind(context.staff.profileId, payload.endpoint).run();
+  return json(200, { ok: true, unsubscribed: true }, requestId, origin);
+}
+
+async function sendAnnouncementPushes(env: Env, announcementId: string): Promise<number> {
+  const announcement = await env.DB.prepare(
+    "SELECT title,body FROM announcement WHERE id=? AND status='published' LIMIT 1",
+  ).bind(announcementId).first<{ title: string; body: string }>();
+  if (!announcement) return 0;
+  const rows = await env.DB.prepare(`
+    SELECT DISTINCT p.id,p.endpoint,p.p256dh,p.auth_secret
+    FROM announcement_delivery d
+    JOIN staff_push_subscription p ON p.staff_profile_id=d.recipient_ref
+    WHERE d.announcement_id=? AND d.channel='in_app' AND d.status='delivered'
+    LIMIT 1000
+  `).bind(announcementId).all<{ id: string; endpoint: string; p256dh: string; auth_secret: string }>();
+  let delivered = 0;
+  const payload = {
+    title: "New church announcement",
+    body: "Open PCG Missions to read the latest update.",
+    url: "/?notifications=1",
+    tag: "pcg-announcement-" + announcementId,
+  };
+  const subscriptions = rows.results ?? [];
+  if (!subscriptions.length) return 0;
+  const keys = await getWebPushVapidKeys(env);
+  for (let offset = 0; offset < subscriptions.length; offset += 20) {
+    const chunk = subscriptions.slice(offset, offset + 20);
+    const results = await Promise.allSettled(chunk.map((subscription) => sendWebPush(env, subscription, payload, keys)));
+    delivered += results.filter((result) => result.status === "fulfilled" && result.value).length;
+  }
+  return delivered;
+}
+
+async function listPrayerRoomMessages(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "prayer.room.read");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const url = new URL(request.url);
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 80 : Number(rawLimit);
+  const requestedBranchId = url.searchParams.get("branch_id");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      (requestedBranchId !== null && requestedBranchId !== access.activeBranch.branchId) ||
+      [...url.searchParams.keys()].some((key) => !["limit", "branch_id"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_ROOM_QUERY" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const rows = await env.DB.prepare(`
+    SELECT m.id,m.branch_id,m.body,m.created_at,m.author_profile_id,
+           p.full_name AS author_name
+    FROM prayer_room_message m
+    JOIN staff_profile p ON p.id=m.author_profile_id AND p.account_status='active'
+    WHERE m.branch_id=?
+    ORDER BY m.created_at DESC,m.id DESC
+    LIMIT ?
+  `).bind(access.activeBranch.branchId, limit).all<Record<string, unknown>>();
+  try {
+    const audit = await env.DB.prepare(`
+      INSERT INTO prayer_room_access_audit
+        (id,branch_id,actor_profile_id,action,message_id,accessed_at)
+      VALUES (?,?,?,'read',NULL,?)
+    `).bind(crypto.randomUUID(), access.activeBranch.branchId, access.staff.profileId, now).run();
+    if (!audit.success) throw new Error("PRAYER_ROOM_READ_AUDIT_FAILED");
+  } catch {
+    return json(503, { ok: false, error: { code: "PRAYER_ROOM_AUDIT_UNAVAILABLE" } }, requestId, origin);
+  }
+  return json(200, { ok: true, messages: (rows.results ?? []).reverse() }, requestId, origin);
+}
+
+async function postPrayerRoomMessage(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "prayer.room.post");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const body = await readJsonBody(request, 8192);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { body?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => key !== "body")) {
+    return json(400, { ok: false, error: { code: "INVALID_PRAYER_ROOM_MESSAGE" } }, requestId, origin);
+  }
+  const message = typeof payload.body === "string" ? payload.body.trim() : "";
+  if (!message || message.length > 4000) {
+    return json(422, { ok: false, error: { code: "PRAYER_ROOM_MESSAGE_LENGTH" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const windowStart = new Date(Date.now() - 15000).toISOString();
+  const recent = await env.DB.prepare(`
+    SELECT COUNT(*) AS count FROM prayer_room_message
+    WHERE author_profile_id=? AND branch_id=? AND created_at>=?
+  `).bind(access.staff.profileId, access.activeBranch.branchId, windowStart).first<{ count: number }>();
+  if ((recent?.count ?? 0) >= 3) {
+    return json(429, { ok: false, error: { code: "PRAYER_ROOM_RATE_LIMITED" } }, requestId, origin);
+  }
+  const id = crypto.randomUUID();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(`
+        INSERT INTO prayer_room_message (id,branch_id,author_profile_id,body,created_at)
+        VALUES (?,?,?,?,?)
+      `).bind(id, access.activeBranch.branchId, access.staff.profileId, message, now),
+      env.DB.prepare(`
+        INSERT INTO prayer_room_access_audit
+          (id,branch_id,actor_profile_id,action,message_id,accessed_at)
+        VALUES (?,?,?,'post',?,?)
+      `).bind(crypto.randomUUID(), access.activeBranch.branchId, access.staff.profileId, id, now),
+    ]);
+    if (results.some((result) => !result.success)) throw new Error("PRAYER_ROOM_POST_FAILED");
+  } catch {
+    return json(409, { ok: false, error: { code: "PRAYER_ROOM_POST_CONFLICT" } }, requestId, origin);
+  }
+  return json(201, { ok: true, message: {
+    id, branch_id: access.activeBranch.branchId, author_profile_id: access.staff.profileId,
+    author_name: access.staff.fullName, body: message, created_at: now,
+  } }, requestId, origin);
+}
+
 export default {
   scheduled(controller: { scheduledTime: number }, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }): void {
     ctx.waitUntil(publishDueAnnouncements(env,new Date(controller.scheduledTime).toISOString()));
   },
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void } = { waitUntil: () => undefined }): Promise<Response> {
     const url = new URL(request.url);
     const requestId = crypto.randomUUID();
     const origin = request.headers.get("Origin") ?? undefined;
@@ -7046,6 +7431,13 @@ async function updatePrayerRequestStatus(
 }
 
 
+
+
+    if (url.pathname === "/api/v1/notifications/push/public-key" && request.method === "GET") return getPushPublicKey(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/notifications/push/subscriptions" && request.method === "POST") return savePushSubscription(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/notifications/push/unsubscribe" && request.method === "POST") return removePushSubscription(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/prayer-room/messages" && request.method === "GET") return listPrayerRoomMessages(request,env,requestId,origin);
+    if (url.pathname === "/api/v1/prayer-room/messages" && request.method === "POST") return postPrayerRoomMessage(request,env,requestId,origin);
     if (url.pathname === "/api/v1/pastoral/care" && request.method === "GET") return listCareRecords(request,env,requestId,origin);
     if (url.pathname === "/api/v1/pastoral/care" && request.method === "POST") return createCareRecord(request,env,requestId,origin);
     const careRevokeMatch=url.pathname.match(/^\/api\/v1\/pastoral\/care\/([^/]+)\/assignments\/([^/]+)\/revoke$/);
@@ -7268,7 +7660,7 @@ async function updatePrayerRequestStatus(
       let announcementId: string;
       try { announcementId = decodeURIComponent(announcementActionMatch[1]); }
       catch { return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_ID" } }, requestId, origin); }
-      if (announcementActionMatch[2] === "publish") return publishAnnouncement(request, env, announcementId, requestId, origin);
+      if (announcementActionMatch[2] === "publish") return publishAnnouncement(request, env, announcementId, requestId, origin, ctx);
       return archiveAnnouncement(request, env, announcementId, requestId, origin);
     }
     if (url.pathname === "/api/v1/announcements/inbox" && request.method === "GET") {

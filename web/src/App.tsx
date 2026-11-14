@@ -244,14 +244,14 @@ export default function App() {
 
   if (initializing) {
     return (
-      <main className="cmi-auth-loading" role="status" aria-live="polite">
-        <div className="cmi-loading-brand">
-          <div className="cmi-loading-mark"><img src="/logo.svg" alt="" /></div>
-          <span className="cmi-loading-name">PCG MISSIONS</span>
-          <span className="cmi-loading-caption">PEOPLE · CARE · COMMUNITY</span>
-          <span className="cmi-auth-spinner" aria-hidden="true" />
+      <main className="cmi-boot-screen" role="status" aria-live="polite">
+        <div className="cmi-boot-content">
+          <div className="cmi-boot-logo"><img src="/logo.svg" alt="" /></div>
+          <span className="cmi-boot-name">PCG MISSIONS</span>
+          <span className="cmi-boot-caption">STAFF WORKSPACE</span>
+          <span className="cmi-boot-spinner" aria-hidden="true" />
+          <p>Preparing your workspace</p>
         </div>
-        <p className="cmi-loading-message">Preparing your ministry workspace</p>
       </main>
     );
   }

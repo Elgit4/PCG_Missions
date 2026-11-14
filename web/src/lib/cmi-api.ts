@@ -117,13 +117,35 @@ export interface CalendarEntryCreateInput {
 }
 export type CalendarEntryPatchInput = Partial<Omit<CalendarEntryCreateInput, "branch_id">>;
 
+export interface AnnouncementInboxRecord {
+  delivery_id: string;
+  announcement_id: string;
+  branch_id: string;
+  title: string;
+  body: string;
+  audience_type: string;
+  published_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  is_read: number;
+}
+export interface PrayerRoomMessage {
+  id: string;
+  branch_id: string;
+  author_profile_id: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+}
+
 export interface AnnouncementDraftRecord {
   id: string;
   branch_id: string;
   title: string;
   body: string;
   is_public: false;
-  status: "draft";
+  audience_type: "branch" | "staff" | "team" | "event" | "public";
+  status: "draft" | "scheduled" | "published" | "archived";
   created_at: string;
   updated_at: string;
 }
@@ -131,6 +153,7 @@ export interface AnnouncementDraftCreateInput {
   branch_id: string;
   title: string;
   body: string;
+  audience_type: "branch" | "staff";
 }
 export type AnnouncementDraftPatchInput = Partial<Pick<AnnouncementDraftCreateInput, "title" | "body">>;
 
@@ -793,13 +816,59 @@ export class CmiApiClient {
     });
   }
 
-  listAnnouncementDrafts(branchId: string, options: { limit?: number; offset?: number } = {}) {
+  listAnnouncementInbox(branchId: string) {
+    return this.request<{ announcements: AnnouncementInboxRecord[] }>("announcement-operations", "/announcements/inbox", {
+      query: { branch_id: branchId },
+    });
+  }
+  markAnnouncementRead(branchId: string, announcementId: string) {
+    return this.request<unknown>("announcement-operations", "/announcements/" + encodeURIComponent(announcementId) + "/read", {
+      method: "POST", query: { branch_id: branchId },
+    });
+  }
+
+  getPushPublicKey(branchId: string) {
+    return this.request<{ public_key: string }>("notification-push", "/notifications/push/public-key", {
+      query: { branch_id: branchId },
+    });
+  }
+  savePushSubscription(branchId: string, subscription: { endpoint: string; keys: { p256dh: string; auth: string } }) {
+    return this.request<{ subscribed: boolean }>("notification-push", "/notifications/push/subscriptions", {
+      method: "POST", query: { branch_id: branchId }, body: subscription,
+    });
+  }
+  removePushSubscription(branchId: string, endpoint: string) {
+    return this.request<{ unsubscribed: boolean }>("notification-push", "/notifications/push/unsubscribe", {
+      method: "POST", query: { branch_id: branchId }, body: { endpoint },
+    });
+  }
+
+  listPrayerRoomMessages(branchId: string, limit = 80) {
+    return this.request<{ messages: PrayerRoomMessage[] }>("prayer-room", "/prayer-room/messages", {
+      query: { branch_id: branchId, limit },
+    });
+  }
+  postPrayerRoomMessage(branchId: string, body: string) {
+    return this.request<{ message: PrayerRoomMessage }>("prayer-room", "/prayer-room/messages", {
+      method: "POST", query: { branch_id: branchId }, body: { body },
+    });
+  }
+
+  listAnnouncementDrafts(branchId: string, options: { limit?: number; offset?: number; status?: "published" | "all" } = {}) {
     return this.request<AnnouncementDraftRecord[]>("announcement-operations", "/announcements", {
-      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0 },
+      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0, status: options.status ?? "published" },
     });
   }
   createAnnouncementDraft(input: AnnouncementDraftCreateInput) {
-    return this.request<AnnouncementDraftRecord>("announcement-operations", "/announcements", { method: "POST", body: input });
+    const { branch_id, ...body } = input;
+    return this.request<AnnouncementDraftRecord>("announcement-operations", "/announcements", {
+      method: "POST", query: { branch_id }, body,
+    });
+  }
+  publishAnnouncementDraft(branchId: string, announcementId: string) {
+    return this.request<{ announcement_id: string; published_at?: string }>("announcement-operations", "/announcements/" + encodeURIComponent(announcementId) + "/publish", {
+      method: "POST", query: { branch_id: branchId },
+    });
   }
   updateAnnouncementDraft(branchId: string, announcementId: string, input: AnnouncementDraftPatchInput) {
     return this.request<AnnouncementDraftRecord>("announcement-operations", "/announcements/" + encodeURIComponent(announcementId), {

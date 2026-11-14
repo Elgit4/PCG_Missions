@@ -72,6 +72,7 @@ export function OperationsWorkspace({
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [publishingId, setPublishingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -80,7 +81,7 @@ export function OperationsWorkspace({
     : section === "Calendar"
     ? hasCapability(session, "calendar.read.scoped", branchId)
     : section === "Announcements"
-    ? hasCapability(session, "announcement.read.scoped", branchId)
+    ? hasCapability(session, "announcements.read", branchId)
     : hasCapability(session, "content.manage.draft", branchId);
 
   const canManage = section === "Events"
@@ -88,7 +89,7 @@ export function OperationsWorkspace({
     : section === "Calendar"
     ? hasCapability(session, "calendar.manage.scoped", branchId)
     : section === "Announcements"
-    ? hasCapability(session, "announcement.create.scoped", branchId)
+    ? hasCapability(session, "announcements.manage", branchId)
     : hasCapability(session, "content.manage.draft", branchId);
 
   const loadRecords = useCallback(async () => {
@@ -111,7 +112,7 @@ export function OperationsWorkspace({
         const result = await api.listCalendarEntries(branchId, { limit: 50, offset: 0 });
         setEntries(result.data);
       } else if (section === "Announcements") {
-        const result = await api.listAnnouncementDrafts(branchId, { limit: 50, offset: 0 });
+        const result = await api.listAnnouncementDrafts(branchId, { limit: 50, offset: 0, status: canManage ? "all" : "published" });
         setAnnouncements(result.data);
       } else if (contentKind === "sermons") {
         const result = await api.listSermonDrafts(branchId, { limit: 50, offset: 0 });
@@ -152,6 +153,23 @@ export function OperationsWorkspace({
   const cancelEdit = () => {
     setEditingId(null);
     setShowForm(false);
+  };
+
+  const publishAnnouncement = async (announcementId: string) => {
+    if (!canManage || publishingId) return;
+    setPublishingId(announcementId);
+    setError("");
+    setNotice("");
+    try {
+      await api.publishAnnouncementDraft(branchId, announcementId);
+      setNotice("Announcement published. It has been delivered to eligible staff in the selected audience’s in-app inbox.");
+      await loadRecords();
+    } catch (cause) {
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
+    } finally {
+      setPublishingId(null);
+    }
   };
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
@@ -195,8 +213,9 @@ export function OperationsWorkspace({
         const input = {
           title: String(form.get("title") ?? "").trim(),
           body: String(form.get("body") ?? "").trim(),
+          audience_type: String(form.get("audience_type") ?? "branch") as "branch" | "staff",
         };
-        if (editingId) await api.updateAnnouncementDraft(branchId, editingId, input);
+        if (editingId) await api.updateAnnouncementDraft(branchId, editingId, { title: input.title, body: input.body });
         else await api.createAnnouncementDraft({ branch_id: branchId, ...input });
       } else if (contentKind === "sermons") {
         const input = {
@@ -245,7 +264,7 @@ export function OperationsWorkspace({
     : section === "Calendar"
     ? "Maintain branch calendar entries for services, events and other ministry activities."
     : section === "Announcements"
-    ? "Prepare private announcement drafts. Publishing and message delivery are separate, unavailable actions."
+    ? "Publish branch announcements directly into each staff member’s in-app inbox. No email or SMS is sent."
     : "Prepare sermon and welcome-message drafts. Publishing remains disabled and is not available from this screen.";
 
   return (
@@ -304,9 +323,19 @@ export function OperationsWorkspace({
             )}
             {section === "Announcements" && (
               <>
-                <label>Announcement title<input name="title" required minLength={2} maxLength={220} defaultValue={editingAnnouncement?.title ?? ""} placeholder="e.g. Change to Sunday service time" /></label>
-                <label className="cmi-field-wide">Announcement message<textarea name="body" required minLength={1} maxLength={20000} rows={6} defaultValue={editingAnnouncement?.body ?? ""} placeholder="Write the announcement for review." /></label>
-                <p className="cmi-field-wide cmi-scope-note">The server forces private draft status. This form does not publish, schedule or send SMS/email/WhatsApp messages.</p>
+                <label>Announcement title<input name="title" required minLength={2} maxLength={180} defaultValue={editingAnnouncement?.title ?? ""} placeholder="e.g. Change to Sunday service time" /></label>
+                {!editingId ? (
+                  <label>Who should receive this?
+                    <select name="audience_type" defaultValue="branch">
+                      <option value="branch">Everyone in {branchName}</option>
+                      {session.roles.some((role) => role.branch_id === branchId && role.code === "admin_pastor") && <option value="staff">All active staff across the church</option>}
+                    </select>
+                  </label>
+                ) : (
+                  <label>Audience<input value={editingAnnouncement?.audience_type === "staff" ? "All active staff across the church" : "Everyone in this branch"} readOnly /></label>
+                )}
+                <label className="cmi-field-wide">Announcement message<textarea name="body" required minLength={1} maxLength={20000} rows={6} defaultValue={editingAnnouncement?.body ?? ""} placeholder="Write a clear announcement for your church team." /></label>
+                <p className="cmi-field-wide cmi-scope-note">Publishing places the announcement in each recipient’s in-app notification inbox. No email, SMS or OTP is sent. Church-wide delivery is restricted to Admin/Pastor.</p>
               </>
             )}
             {section === "Content" && contentKind === "sermons" && (
@@ -327,7 +356,7 @@ export function OperationsWorkspace({
             )}
             <div className="cmi-form-actions cmi-field-wide">
               <button type="button" className="cmi-button cmi-button-secondary" onClick={cancelEdit} disabled={saving}><X size={15} />Cancel</button>
-              <button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : editingId ? "Save changes" : "Save private draft"}</button>
+              <button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : editingId ? "Save changes" : section === "Announcements" ? "Save announcement draft" : "Save private draft"}</button>
             </div>
           </form>
         )}
@@ -368,8 +397,9 @@ export function OperationsWorkspace({
               <article className="cmi-task-row" key={item.id}>
                 <div className="cmi-task-symbol"><Megaphone size={18} /></div>
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.updated_at, timeZone)} · {shortText(item.body)}</p></div>
-                <span className="cmi-task-status status-open">Private draft</span>
-                {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+                <span className={"cmi-task-status " + (item.status === "published" ? "status-completed" : item.status === "archived" ? "status-cancelled" : "status-open")}>{item.status === "published" ? "Published" : item.status === "scheduled" ? "Scheduled" : item.status === "archived" ? "Archived" : "Draft"}</span>
+                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-primary" onClick={() => void publishAnnouncement(item.id)} disabled={publishingId !== null}>{publishingId === item.id ? "Publishing…" : "Publish & notify"}</button>}
               </article>
             ))}
             {!announcements.length && <p className="cmi-detail-muted">No announcement drafts are visible in this branch.</p>}
