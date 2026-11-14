@@ -8288,42 +8288,6 @@ async function updatePrayerRequestStatus(
       catch { return json(400,{ok:false,error:{code:"INVALID_REPORT_ID"}},requestId,origin); }
       return getMinistryReport(request,env,reportId,requestId,origin);
     }
-    if(url.pathname==="/api/v1/teams"&&request.method==="GET") return listTeams(request,env,requestId,origin);
-    if(url.pathname==="/api/v1/teams"&&request.method==="POST") return createTeam(request,env,requestId,origin);
-    const teamMemberRevoke=url.pathname.match(/^\/api\/v1\/teams\/([^/]+)\/members\/([^/]+)\/revoke$/);
-    if(teamMemberRevoke&&request.method==="POST"){
-      let teamId:string,membershipId:string;try{teamId=decodeURIComponent(teamMemberRevoke[1]);membershipId=decodeURIComponent(teamMemberRevoke[2]);}catch{return json(400,{ok:false,error:{code:"INVALID_TEAM_MEMBERSHIP_ID"}},requestId,origin);}
-      return revokeTeamMember(request,env,teamId,membershipId,requestId,origin);
-    }
-    const teamMember=url.pathname.match(/^\/api\/v1\/teams\/([^/]+)\/members(?:\/([^/]+))?$/);
-    if(teamMember){
-      let teamId:string,membershipId:string|null;try{teamId=decodeURIComponent(teamMember[1]);membershipId=teamMember[2]?decodeURIComponent(teamMember[2]):null;}catch{return json(400,{ok:false,error:{code:"INVALID_TEAM_ID"}},requestId,origin);}
-      if(!membershipId&&request.method==="POST")return addTeamMember(request,env,teamId,requestId,origin);
-      if(membershipId&&request.method==="PATCH")return updateTeamMemberRole(request,env,teamId,membershipId,requestId,origin);
-    }
-    const teamItem=url.pathname.match(/^\/api\/v1\/teams\/([^/]+)$/);
-    if(teamItem&&request.method==="PATCH"){
-      let teamId:string;try{teamId=decodeURIComponent(teamItem[1]);}catch{return json(400,{ok:false,error:{code:"INVALID_TEAM_ID"}},requestId,origin);}
-      return updateTeam(request,env,teamId,requestId,origin);
-    }
-    if(url.pathname==="/api/v1/areas"&&request.method==="GET")return listServiceAreas(request,env,requestId,origin);
-    if(url.pathname==="/api/v1/areas"&&request.method==="POST")return createServiceArea(request,env,requestId,origin);
-    const areaCoverageRevoke=url.pathname.match(/^\/api\/v1\/areas\/([^/]+)\/coverage\/([^/]+)\/revoke$/);
-    if(areaCoverageRevoke&&request.method==="POST"){
-      let areaId:string,coverageId:string;try{areaId=decodeURIComponent(areaCoverageRevoke[1]);coverageId=decodeURIComponent(areaCoverageRevoke[2]);}catch{return json(400,{ok:false,error:{code:"INVALID_AREA_COVERAGE_ID"}},requestId,origin);}
-      return revokeAreaCoverage(request,env,areaId,coverageId,requestId,origin);
-    }
-    const areaCoverage=url.pathname.match(/^\/api\/v1\/areas\/([^/]+)\/coverage$/);
-    if(areaCoverage&&request.method==="POST"){
-      let areaId:string;try{areaId=decodeURIComponent(areaCoverage[1]);}catch{return json(400,{ok:false,error:{code:"INVALID_AREA_ID"}},requestId,origin);}
-      return addAreaCoverage(request,env,areaId,requestId,origin);
-    }
-    const areaItem=url.pathname.match(/^\/api\/v1\/areas\/([^/]+)$/);
-    if(areaItem&&request.method==="PATCH"){
-      let areaId:string;try{areaId=decodeURIComponent(areaItem[1]);}catch{return json(400,{ok:false,error:{code:"INVALID_AREA_ID"}},requestId,origin);}
-      return updateServiceArea(request,env,areaId,requestId,origin);
-    }
-
     if (url.pathname === "/api/v1/events" && request.method === "GET") {
       return listEvents(request, env, requestId, origin);
     }
