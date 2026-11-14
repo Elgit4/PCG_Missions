@@ -5274,12 +5274,15 @@ async function listAnnouncements(
   const status = url.searchParams.get("status") ?? "published";
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
+  const rawOffset = url.searchParams.get("offset");
+  const offset = rawOffset === null ? 0 : Number(rawOffset);
   const requestedBranchId = url.searchParams.get("branch_id");
   if (!["draft", "scheduled", "published", "archived", "all"].includes(status) ||
       (status !== "published" && !canManage) ||
       !Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      !Number.isInteger(offset) || offset < 0 || offset > 10000 ||
       (requestedBranchId !== null && requestedBranchId !== context.activeBranch.branchId) ||
-      [...url.searchParams.keys()].some((key) => !["status", "limit", "branch_id"].includes(key))) {
+      [...url.searchParams.keys()].some((key) => !["status", "limit", "offset", "branch_id"].includes(key))) {
     return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_QUERY" } }, requestId, origin);
   }
   const now = new Date().toISOString();
@@ -5291,12 +5294,13 @@ async function listAnnouncements(
     FROM announcement a
     WHERE a.branch_id=? AND ${statusPredicate} AND (${predicate.sql})
     ORDER BY COALESCE(a.published_at,a.created_at) DESC,a.id DESC
-    LIMIT ?
+    LIMIT ? OFFSET ?
   `).bind(
     context.activeBranch.branchId,
     ...(status === "all" ? [] : [status]),
     ...predicate.values,
     limit,
+    offset,
   ).all<Record<string, unknown>>();
   return json(200, { ok: true, announcements: rows.results ?? [] }, requestId, origin);
 }
