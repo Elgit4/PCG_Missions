@@ -838,9 +838,9 @@ export class CmiApiClient {
     });
   }
 
-  listAnnouncementDrafts(branchId: string, options: { limit?: number; offset?: number } = {}) {
+  listAnnouncementDrafts(branchId: string, options: { limit?: number; offset?: number; status?: "published" | "all" } = {}) {
     return this.request<AnnouncementDraftRecord[]>("announcement-operations", "/announcements", {
-      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0, status: "all" },
+      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0, status: options.status ?? "published" },
     });
   }
   createAnnouncementDraft(input: AnnouncementDraftCreateInput) {
