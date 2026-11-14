@@ -163,4 +163,18 @@ describe("CmiApiClient — Cloudflare Worker", () => {
     expect(JSON.parse(String(init.body))).toEqual({name:"Welcome Team",description:null});
   });
 
+  it("routes pastoral-care narrative reads through the audited record endpoint", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, care_record: { id: "care-1", status: "active" }, interactions: [], request_id: "care-read",
+    }), { status: 200 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.readCareRecord("branch-1", "care-1");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/pastoral/care/care-1");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(init.method ?? "GET").toBe("GET");
+    expect(init.body).toBeUndefined();
+  });
+
 });
