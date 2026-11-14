@@ -357,7 +357,7 @@ class WorkerApiContractTests(unittest.TestCase):
             "createServiceArea", "updateServiceArea", "addAreaCoverage",
             "revokeAreaCoverage",
         ):
-            self.assertRegex(self.source, rf"async function {name}\\(")
+            self.assertRegex(self.source, rf"async function {name}\(")
         for route in ("/api/v1/teams", "/api/v1/areas"):
             self.assertIn(route, self.source)
         self.assertNotIn("TEAM_ADMINISTRATION_NOT_MIGRATED", self.source)
