@@ -194,6 +194,33 @@ try {
   const contactsBody = await contacts.text();
   assert(contacts.status === 200, "authorized branch-scoped contacts read failed: " + contacts.status + ": " + contactsBody);
 
+  // Establish a second device session so the password-rotation test can
+  // prove that only the initiating session survives.
+  const secondSignIn = await fetch(baseUrl + "/api/auth/sign-in/email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: baseUrl },
+    body: JSON.stringify({ email: testEmail, password: testPassword }),
+  });
+  const secondSignInBody = await secondSignIn.text();
+  assert(secondSignIn.status === 200, "second Better Auth sign-in failed: " + secondSignIn.status + ": " + secondSignInBody);
+  const secondSetCookies = typeof secondSignIn.headers.getSetCookie === "function"
+    ? secondSignIn.headers.getSetCookie()
+    : [secondSignIn.headers.get("set-cookie") ?? ""];
+  const secondCookie = secondSetCookies.map((value) => value.split(";")[0]).filter(Boolean).join("; ");
+  assert(secondCookie.includes("session_token"), "second Better Auth sign-in did not issue a session cookie");
+
+  const weakPasswordChange = await fetch(baseUrl + "/api/auth/change-password", {
+    method: "POST",
+    headers: { Cookie: cookie, Origin: baseUrl, "Content-Type": "application/json" },
+    body: JSON.stringify({ currentPassword: testPassword, newPassword: "lowercase-only-123" , revokeOtherSessions: true }),
+  });
+  const weakPasswordBody = await weakPasswordChange.json();
+  assert(weakPasswordChange.status === 400 && weakPasswordBody.error?.code === "PASSWORD_POLICY_INVALID",
+    "Worker must reject a password that fails the composition policy");
+  const originalSessionAfterRejectedChange = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: cookie } });
+  assert(originalSessionAfterRejectedChange.status === 200 && (await originalSessionAfterRejectedChange.text()).includes(testEmail),
+    "a rejected password change must not end the initiating session");
+
   const changedPassword = "Changed-" + crypto.randomUUID() + "-Secure!";
   const passwordChange = await fetch(baseUrl + "/api/auth/change-password", {
     method: "POST",
@@ -203,6 +230,17 @@ try {
   const passwordChangeBody = await passwordChange.text();
   assert(passwordChange.status === 200,
     "authenticated password change failed: " + passwordChange.status + ": " + passwordChangeBody);
+
+  const preservedSession = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: cookie } });
+  const preservedSessionBody = await preservedSession.text();
+  assert(preservedSession.status === 200 && preservedSessionBody.includes(testEmail),
+    "password change must preserve the session that initiated it: " + preservedSessionBody);
+
+  const revokedOtherSession = await fetch(baseUrl + "/api/auth/get-session", { headers: { Cookie: secondCookie } });
+  const revokedOtherSessionBody = await revokedOtherSession.text();
+  assert(revokedOtherSession.status === 200 &&
+    (revokedOtherSessionBody.trim() === "null" || revokedOtherSessionBody.trim() === ""),
+    "password change must revoke other active sessions: " + revokedOtherSessionBody);
 
   const oldPasswordSignIn = await fetch(baseUrl + "/api/auth/sign-in/email", {
     method: "POST",
