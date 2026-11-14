@@ -47,7 +47,7 @@ describe("capability-driven staff navigation", () => {
     expect(getAvailableStaffPages(baseSession)).toEqual([]);
   });
 
-  it("keeps pastoral and report pages unavailable without supported list APIs", () => {
+  it("opens Prayer only with an explicit pastoral list grant", () => {
     const session = {
       ...baseSession,
       capabilities: [
@@ -55,7 +55,8 @@ describe("capability-driven staff navigation", () => {
         { code: "report.read", scope_mode: "branch", branch_id: "branch-a" },
       ],
     };
-    expect(canOpenStaffPage(session, "Prayer", "branch-a")).toBe(false);
+    expect(canOpenStaffPage(session, "Prayer", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(baseSession, "Prayer", "branch-a")).toBe(false);
     expect(canOpenStaffPage(session, "Reports", "branch-a")).toBe(false);
   });
 
