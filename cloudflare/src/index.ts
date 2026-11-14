@@ -3604,7 +3604,8 @@ async function createEvent(
       access.staff.userId, access.staff.userId, now, now,
     ).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error("EVENT_CREATE_FAILED");
-  } catch {
+  } catch (error) {
+    console.error("event_create_conflict", { requestId, detail: error instanceof Error ? error.message : "unknown" });
     return json(409, { ok: false, error: { code: "EVENT_CREATE_CONFLICT" } }, requestId, origin);
   }
   return json(201, {
