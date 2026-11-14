@@ -13,6 +13,57 @@ export interface PastoralReadInput {
   reason_code: string | null;
 }
 
+export interface PastoralListQuery {
+  branch_id: string;
+  limit: number;
+  offset: number;
+}
+
+export type PastoralListParseResult =
+  | { ok: true; value: PastoralListQuery }
+  | { ok: false; error: string };
+
+export function parsePastoralListQuery(
+  params: URLSearchParams,
+): PastoralListParseResult {
+  const allowed = new Set(["branch_id", "limit", "offset"]);
+  const keys = [...params.keys()];
+  if (
+    keys.some((key) => !allowed.has(key)) ||
+    new Set(keys).size !== keys.length
+  ) {
+    return {
+      ok: false,
+      error: "Unsupported or duplicate query parameter.",
+    };
+  }
+
+  const branchId = params.get("branch_id") ?? "";
+  const rawLimit = params.get("limit") ?? "25";
+  const rawOffset = params.get("offset") ?? "0";
+  if (
+    !isUuid(branchId) ||
+    !/^(?:[1-9]|[1-4][0-9]|50)$/.test(rawLimit) ||
+    !/^(?:0|[1-9][0-9]{0,3}|5000)$/.test(rawOffset)
+  ) {
+    return {
+      ok: false,
+      error: "A valid branch_id, limit (1–50), and offset (0–5000) are required.",
+    };
+  }
+
+  const limit = Number(rawLimit);
+  const offset = Number(rawOffset);
+  if (offset > 5000) {
+    return {
+      ok: false,
+      error: "A valid branch_id, limit (1–50), and offset (0–5000) are required.",
+    };
+  }
+  return { ok: true, value: { branch_id: branchId, limit, offset } };
+}
+
+
 export type PastoralReadParseResult =
   | { ok: true; value: PastoralReadInput }
   | { ok: false; error: string };
