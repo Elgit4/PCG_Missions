@@ -110,8 +110,8 @@ const pythonSeed = [
   "db.execute('INSERT INTO branch (id,church_id,name,code,timezone,is_active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)', ('00000000-0000-4000-8000-000000000002', 'test-church', 'Other Branch', 'OTHER', 'Africa/Accra', 1, now, now))",
   "db.commit()",
   "version = db.execute(\"SELECT schema_version FROM app_meta WHERE id=1 AND environment='non-production'\").fetchone()",
-  "if not version or version[0] != 31:",
-  "    raise SystemExit('Expected non-production schema 31, got ' + str(version))",
+  "if not version or version[0] != 32:",
+  "    raise SystemExit('Expected non-production schema 32, got ' + str(version))",
   "violations = db.execute('PRAGMA foreign_key_check').fetchall()",
   "if violations:",
   "    raise SystemExit('Foreign key violations: ' + str(len(violations)))",
@@ -164,7 +164,7 @@ try {
   const health = await fetch(baseUrl + "/health");
   const healthBody = await health.json();
   assert(health.status === 200 && healthBody.ok === true, "Worker health endpoint failed");
-  assert(healthBody.schema_version === 31, "expected D1 schema 31, got " + healthBody.schema_version);
+  assert(healthBody.schema_version === 32, "expected D1 schema 32, got " + healthBody.schema_version);
 
   const scheduledTick = await fetch(baseUrl + "/cdn-cgi/local/scheduled");
   assert(scheduledTick.status === 200, "local scheduled announcement tick failed: " + scheduledTick.status);
