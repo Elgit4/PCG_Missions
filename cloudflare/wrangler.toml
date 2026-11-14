@@ -12,7 +12,7 @@ crons = ["*/5 * * * *"]
 [vars]
 APP_ENV = "non-production"
 BETTER_AUTH_URL = "https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev"
-BETTER_AUTH_TRUSTED_ORIGINS = "https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev,https://pcg-missions-git-migration-cloudflare-nonprod-completion-eltech.vercel.app"
+BETTER_AUTH_TRUSTED_ORIGINS = "https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev,https://pcg-missions-nonprod.pages.dev"
 
 [[d1_databases]]
 binding = "DB"
