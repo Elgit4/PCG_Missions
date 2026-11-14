@@ -8,6 +8,8 @@ This is an isolated Cloudflare Workers + D1 implementation track. It is not conn
 - Database ID: `376a6782-d059-41f9-9e09-f93718fef2bb`
 - Jurisdiction: EU (`eu`), primary region `EEUR`
 - Remote EU D1 schema version: 28
+- Migration branch target schema: 31 (event flyer metadata + team/service-area integrity guards; not yet applied remotely)
+- Event-media storage: private EU-jurisdiction R2 bucket `pcg-missions-event-media-nonprod` is configured in Worker bindings; Cloudflare account-level R2 activation and R2 Edit token scope are still required before the deployment preflight can create it
 - Remote migration ledger: 28 applied migrations
 - Remote application tables: 81 (excluding Wrangler's migration ledger)
 - EU non-production D1 verification: schema 28, 28 ledger entries, 81 application tables, zero foreign-key violations; primary query region `EEUR`
@@ -21,6 +23,7 @@ The database was created with an EU jurisdiction. This setting is fixed at creat
 ## Implemented backend foundations
 
 - Six fixed roles with least-privilege, branch-scoped capability grants.
+- Branch-scoped Teams & Service Areas administration with append-only audit, active-staff validation, Team Leader role checks and protected coverage lifecycle.
 - Better Auth `1.7.22` integration code, D1-backed sessions and database-backed rate limiting.
 - Invitation-only staff onboarding; the invitee establishes their own password.
 - Audited staff deactivation, suspension and reactivation, with immediate session revocation.
