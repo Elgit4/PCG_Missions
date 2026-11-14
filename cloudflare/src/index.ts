@@ -6859,10 +6859,11 @@ function teamCreateBranchId(request:Request):string|null{
 async function listTeams(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
   const context=await resolveStaffContext(request,env);
   if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
-  if(!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const activeBranch=context.activeBranch;
+  if(!activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
   const access=context;
-  const branchId=access.activeBranch.branchId,now=new Date().toISOString();
-  const scope=access.activeBranch.capabilities.find(item=>item.code==="team.read")?.scopeMode;
+  const branchId=activeBranch.branchId,now=new Date().toISOString();
+  const scope=activeBranch.capabilities.find(item=>item.code==="team.read")?.scopeMode;
   if(scope!=="branch"&&scope!=="team") return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
   const teams=scope==="branch"
     ? await env.DB.prepare("SELECT id,branch_id,name,description,is_active,created_at,updated_at FROM team WHERE branch_id=? ORDER BY is_active DESC,name COLLATE NOCASE").bind(branchId).all<Record<string,unknown>>()
@@ -6872,7 +6873,7 @@ async function listTeams(request:Request,env:Env,requestId:string,origin?:string
             AND mine.staff_profile_id=? AND mine.membership_role='leader' AND mine.revoked_at IS NULL AND mine.starts_at<=?
             AND (mine.ends_at IS NULL OR mine.ends_at>?)
         ) ORDER BY t.is_active DESC,t.name COLLATE NOCASE`).bind(branchId,access.staff.profileId,now,now).all<Record<string,unknown>>();
-  const canReadRoster=scope==="team"||access.activeBranch.capabilities.some(item=>item.code==="staff.directory.read"&&item.scopeMode==="branch");
+  const canReadRoster=scope==="team"||activeBranch.capabilities.some(item=>item.code==="staff.directory.read"&&item.scopeMode==="branch");
   const members=canReadRoster?await env.DB.prepare(`
     SELECT stm.id,stm.team_id,stm.staff_profile_id,stm.membership_role,stm.starts_at,stm.ends_at,stm.created_at,
            sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
@@ -7010,12 +7011,13 @@ async function revokeTeamMember(request:Request,env:Env,teamId:string,membership
 async function listServiceAreas(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
   const context=await resolveStaffContext(request,env);
   if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
-  if(!context.activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
+  const activeBranch=context.activeBranch;
+  if(!activeBranch) return mapCapabilityFailure("branch_required",requestId,origin);
   const access=context;
-  const branchId=access.activeBranch.branchId,now=new Date().toISOString();
-  const scope=access.activeBranch.capabilities.find(item=>item.code==="area.read")?.scopeMode;
+  const branchId=activeBranch.branchId,now=new Date().toISOString();
+  const scope=activeBranch.capabilities.find(item=>item.code==="area.read")?.scopeMode;
   if(scope!=="branch"&&scope!=="team"&&scope!=="assigned") return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
-  const branchDirectory=access.activeBranch.capabilities.some(item=>item.code==="staff.directory.read"&&item.scopeMode==="branch");
+  const branchDirectory=activeBranch.capabilities.some(item=>item.code==="staff.directory.read"&&item.scopeMode==="branch");
   let visibleStaffIds:string[]|null=null;
   if(scope==="team"){
     const teamStaff=await env.DB.prepare(`SELECT DISTINCT member.staff_profile_id
