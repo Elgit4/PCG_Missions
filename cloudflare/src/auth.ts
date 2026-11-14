@@ -120,6 +120,8 @@ export function createAuth(env: AuthEnvironment, allowInvitationSignUp = false) 
       disableSignUp: !allowInvitationSignUp,
       autoSignIn: false,
       requireEmailVerification: false,
+      minPasswordLength: 12,
+      maxPasswordLength: 128,
       password: {
         // Supabase GoTrue stores email passwords as bcrypt hashes ($2a$).
         // Keep bcrypt for migrated credentials; Better Auth verifies the same
