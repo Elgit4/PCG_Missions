@@ -144,7 +144,8 @@ export interface AnnouncementDraftRecord {
   title: string;
   body: string;
   is_public: false;
-  status: "draft";
+  audience_type: "branch" | "staff" | "team" | "event" | "public";
+  status: "draft" | "scheduled" | "published" | "archived";
   created_at: string;
   updated_at: string;
 }
@@ -152,6 +153,7 @@ export interface AnnouncementDraftCreateInput {
   branch_id: string;
   title: string;
   body: string;
+  audience_type: "branch" | "staff";
 }
 export type AnnouncementDraftPatchInput = Partial<Pick<AnnouncementDraftCreateInput, "title" | "body">>;
 
@@ -838,11 +840,16 @@ export class CmiApiClient {
 
   listAnnouncementDrafts(branchId: string, options: { limit?: number; offset?: number } = {}) {
     return this.request<AnnouncementDraftRecord[]>("announcement-operations", "/announcements", {
-      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0 },
+      query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0, status: "all" },
     });
   }
   createAnnouncementDraft(input: AnnouncementDraftCreateInput) {
     return this.request<AnnouncementDraftRecord>("announcement-operations", "/announcements", { method: "POST", body: input });
+  }
+  publishAnnouncementDraft(branchId: string, announcementId: string) {
+    return this.request<{ announcement_id: string; published_at?: string }>("announcement-operations", "/announcements/" + encodeURIComponent(announcementId) + "/publish", {
+      method: "POST", query: { branch_id: branchId },
+    });
   }
   updateAnnouncementDraft(branchId: string, announcementId: string, input: AnnouncementDraftPatchInput) {
     return this.request<AnnouncementDraftRecord>("announcement-operations", "/announcements/" + encodeURIComponent(announcementId), {
