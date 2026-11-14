@@ -478,3 +478,44 @@ describe("CmiApiClient", () => {
     expect(JSON.parse(String(init.body))).toHaveProperty("contacts_captured", 4);
   });
 });
+
+
+describe("Prayer Room API", () => {
+  it("lists only prayer request metadata through the authenticated branch-scoped endpoint", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({
+        data: {
+          data: [{
+            id: "prayer-1",
+            status: "open",
+            sensitivity: "restricted",
+            expires_at: null,
+            answered_at: null,
+            created_at: "2026-11-14T10:00:00Z",
+            updated_at: "2026-11-14T10:00:00Z",
+          }],
+          access_mode: "assigned",
+          request_id: "prayer-list-1",
+        },
+        request_id: "prayer-list-1",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    const client = new CmiApiClient(
+      config,
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    const result = await client.listPrayerRequests("branch-a", 20, 40);
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe(
+      "/functions/v1/pastoral-operations/prayer/requests",
+    );
+    expect(url.searchParams.get("branch_id")).toBe("branch-a");
+    expect(url.searchParams.get("limit")).toBe("20");
+    expect(url.searchParams.get("offset")).toBe("40");
+    expect(init.method).toBe("GET");
+    expect(result.data.access_mode).toBe("assigned");
+    expect(result.data.data[0]?.id).toBe("prayer-1");
+  });
+});
