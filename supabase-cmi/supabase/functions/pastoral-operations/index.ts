@@ -390,22 +390,40 @@ Deno.serve(async (request: Request) => {
         }
       }
 
-      const metadataTable = isPrayerCollection
-        ? "prayer_request"
-        : "care_record";
-      const metadataColumns = isPrayerCollection
-        ? "id,status,sensitivity,expires_at,answered_at,created_at,updated_at"
-        : "id,status,care_group_id,created_at,updated_at";
-      let query = (service as any).from(metadataTable)
-        .select(metadataColumns)
-        .eq("branch_id", branchId)
-        .order("created_at", { ascending: false })
-        .range(offset, offset + limit - 1);
-      if (requestIds) query = query.in("id", requestIds);
-      const { data, error } = await query;
-      if (error) throw new Error("PRAYER_REQUEST_LIST_FAILED");
+      let rows: Array<Record<string, unknown>> | null = null;
+      let listError: { message: string } | null = null;
+      if (isPrayerCollection) {
+        let query = service.from("prayer_request")
+          .select(
+            "id,status,sensitivity,expires_at,answered_at,created_at,updated_at",
+          )
+          .eq("branch_id", branchId)
+          .order("created_at", { ascending: false })
+          .range(offset, offset + limit - 1);
+        if (requestIds) query = query.in("id", requestIds);
+        const result = await query;
+        rows = result.data;
+        listError = result.error;
+      } else {
+        let query = service.from("care_record")
+          .select("id,status,care_group_id,created_at,updated_at")
+          .eq("branch_id", branchId)
+          .order("created_at", { ascending: false })
+          .range(offset, offset + limit - 1);
+        if (requestIds) query = query.in("id", requestIds);
+        const result = await query;
+        rows = result.data;
+        listError = result.error;
+      }
+      if (listError) {
+        throw new Error(
+          isPrayerCollection
+            ? "PRAYER_REQUEST_LIST_FAILED"
+            : "CARE_RECORD_LIST_FAILED",
+        );
+      }
       return jsonResponse(
-        { data: data ?? [], access_mode: accessMode, request_id: id },
+        { data: rows ?? [], access_mode: accessMode, request_id: id },
         200,
         origin,
         id,
