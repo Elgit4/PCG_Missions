@@ -350,5 +350,18 @@ class WorkerApiContractTests(unittest.TestCase):
 
 
 
+    def test_team_and_service_area_operations_have_worker_handlers_and_routes(self):
+        for name in (
+            "listTeams", "createTeam", "updateTeam", "addTeamMember",
+            "updateTeamMemberRole", "revokeTeamMember", "listServiceAreas",
+            "createServiceArea", "updateServiceArea", "addAreaCoverage",
+            "revokeAreaCoverage",
+        ):
+            self.assertRegex(self.source, rf"async function {name}\\(")
+        for route in ("/api/v1/teams", "/api/v1/areas"):
+            self.assertIn(route, self.source)
+        self.assertNotIn("TEAM_ADMINISTRATION_NOT_MIGRATED", self.source)
+
+
 if __name__ == "__main__":
     unittest.main()
