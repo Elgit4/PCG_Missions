@@ -363,5 +363,14 @@ class WorkerApiContractTests(unittest.TestCase):
         self.assertNotIn("TEAM_ADMINISTRATION_NOT_MIGRATED", self.source)
 
 
+
+    def test_team_and_service_area_list_handlers_preserve_active_branch_narrowing(self):
+        for name in ("listTeams", "listServiceAreas"):
+            handler = re.search(rf"async function {name}\\([\\s\\S]*?\\n\\}}", self.source)
+            self.assertIsNotNone(handler, name)
+            code = handler.group(0)
+            self.assertRegex(code, r"const activeBranch=context\\.activeBranch;\\s*if\\(!activeBranch\\)")
+            self.assertNotIn("access.activeBranch", code)
+
 if __name__ == "__main__":
     unittest.main()
