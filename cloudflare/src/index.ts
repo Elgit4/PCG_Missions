@@ -7107,8 +7107,16 @@ async function postPrayerRoomMessage(request: Request, env: Env, requestId: stri
   if (!message || message.length > 4000) {
     return json(422, { ok: false, error: { code: "PRAYER_ROOM_MESSAGE_LENGTH" } }, requestId, origin);
   }
-  const id = crypto.randomUUID();
   const now = new Date().toISOString();
+  const windowStart = new Date(Date.now() - 15000).toISOString();
+  const recent = await env.DB.prepare(`
+    SELECT COUNT(*) AS count FROM prayer_room_message
+    WHERE author_profile_id=? AND branch_id=? AND created_at>=?
+  `).bind(access.staff.profileId, access.activeBranch.branchId, windowStart).first<{ count: number }>();
+  if ((recent?.count ?? 0) >= 3) {
+    return json(429, { ok: false, error: { code: "PRAYER_ROOM_RATE_LIMITED" } }, requestId, origin);
+  }
+  const id = crypto.randomUUID();
   try {
     const results = await env.DB.batch([
       env.DB.prepare(`
