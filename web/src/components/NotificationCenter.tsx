@@ -32,7 +32,7 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
   const refresh = useCallback(async (notify = false) => {
     try {
       const result = await api.listAnnouncementInbox(branchId);
-      const next = result.data;
+      const next = result.data.announcements;
       if (notify && previousIds.current.size) {
         const incoming = next.filter((item) => !previousIds.current.has(item.announcement_id));
         if (incoming.length && permission === "granted" && document.visibilityState === "hidden" && "Notification" in window) {
