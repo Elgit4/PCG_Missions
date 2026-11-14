@@ -113,7 +113,7 @@ const pythonSeed = [
 ].join("\n");
 
 await rm(stateDir, { recursive: true, force: true });
-await writeFile(".dev.vars", "BETTER_AUTH_SECRET=" + secret + "\nBETTER_AUTH_TRUSTED_ORIGINS=http://127.0.0.1:8787," + allowedOrigin + "\n", { mode: 0o600 });
+await writeFile(".dev.vars", "BETTER_AUTH_SECRET=" + secret + "\nBETTER_AUTH_TRUSTED_ORIGINS=http://127.0.0.1:8787," + allowedOrigin + "\nFIRST_ADMIN_BOOTSTRAP_TOKEN=" + bootstrapToken + "\n", { mode: 0o600 });
 let worker = startWorker();
 try {
   await waitForListener(worker);
