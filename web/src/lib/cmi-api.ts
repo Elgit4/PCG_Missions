@@ -844,7 +844,10 @@ export class CmiApiClient {
     });
   }
   createAnnouncementDraft(input: AnnouncementDraftCreateInput) {
-    return this.request<AnnouncementDraftRecord>("announcement-operations", "/announcements", { method: "POST", body: input });
+    const { branch_id, ...body } = input;
+    return this.request<AnnouncementDraftRecord>("announcement-operations", "/announcements", {
+      method: "POST", query: { branch_id }, body,
+    });
   }
   publishAnnouncementDraft(branchId: string, announcementId: string) {
     return this.request<{ announcement_id: string; published_at?: string }>("announcement-operations", "/announcements/" + encodeURIComponent(announcementId) + "/publish", {
