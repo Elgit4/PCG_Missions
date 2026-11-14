@@ -8,10 +8,11 @@ import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCap
 import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 import { ThemeToggle } from "../lib/theme";
+import { ChangePasswordDialog } from "./ChangePasswordDialog";
 
 type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Reports" | "Staff" | "Access requests";
 type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue";
-interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void> }
+interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void>; onChangePassword: (currentPassword: string, newPassword: string) => Promise<void> }
 
 function messageFor(error: unknown): string {
   if (error instanceof CmiApiError) {
@@ -103,7 +104,7 @@ function WorkspaceSkeleton({ page }: { page: Page }) {
   );
 }
 
-export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps) {
+export function StaffWorkspace({ api, session, onSignOut, onChangePassword }: StaffWorkspaceProps) {
   const branchId = session.branches[0]?.id ?? "";
   const [page, setPage] = useState<Page>(() => {
     if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "access-requests") return "Access requests";
@@ -134,6 +135,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const contactRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
   const taskRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
 
@@ -578,6 +581,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           <div className="cmi-user-card">
             <div className="cmi-user-avatar">{session.staff.full_name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</div>
             <div><strong>{session.staff.full_name}</strong><small>{session.roles.filter((role) => role.branch_id === branchId).map((role) => role.name).join(" · ") || "Staff member"}</small></div>
+            <button aria-label="Change password" title="Change password" onClick={() => setShowChangePassword(true)}><KeyRound size={16} /></button>
             <button aria-label="Sign out" title="Sign out" onClick={() => void signOut()} disabled={signingOut}><LogOut size={16} /></button>
           </div>
         </div>
@@ -882,6 +886,19 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         </section>
         <footer className="cmi-footer"><span>PCG Missions · Staff operations</span><span>Powered by ElTech</span></footer>
       </main>
+      <ChangePasswordDialog
+        open={showChangePassword}
+        busy={changingPassword}
+        onClose={() => setShowChangePassword(false)}
+        onSubmit={async (currentPassword, newPassword) => {
+          setChangingPassword(true);
+          try {
+            await onChangePassword(currentPassword, newPassword);
+          } finally {
+            setChangingPassword(false);
+          }
+        }}
+      />
       {selectedContact && <ContactDetailDialog
         key={`${branchId}:${selectedContact.id}`}
         open={!!selectedContact}
