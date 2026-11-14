@@ -924,9 +924,9 @@ export class CmiApiClient {
     });
   }
   createTeam(input: TeamCreateInput) {
-    return this.request<TeamMutationResult>("team-operations", "/teams", {
-      method: "POST",
-      body: input,
+    const {branch_id,...body}=input;
+    return this.request<{team:TeamMutationResult}>("team-operations", "/teams", {
+      method: "POST", query:{branch_id}, body,
     });
   }
   updateTeam(branchId: string, teamId: string, input: TeamPatchInput) {
@@ -963,9 +963,9 @@ export class CmiApiClient {
     });
   }
   createServiceArea(input: ServiceAreaCreateInput) {
-    return this.request<ServiceAreaMutationResult>("team-operations", "/areas", {
-      method: "POST",
-      body: input,
+    const {branch_id,...body}=input;
+    return this.request<{area:ServiceAreaMutationResult}>("team-operations", "/areas", {
+      method: "POST", query:{branch_id}, body,
     });
   }
   updateServiceArea(branchId: string, areaId: string, input: ServiceAreaPatchInput) {
