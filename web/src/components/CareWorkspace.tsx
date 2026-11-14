@@ -19,7 +19,7 @@ function formatDate(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Date unavailable" : new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
-function statusLabel(value: string): string { return value.replaceAll("_", " ").replace(/\\b\\w/g, (c) => c.toUpperCase()); }
+function statusLabel(value: string): string { return value.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()); }
 function errorMessage(error: unknown): string {
   if (error instanceof CmiApiError && error.status === 403) return "Your current role does not have access to these care records.";
   if (error instanceof CmiApiError && error.status === 401) return "Your session has expired. Sign in again.";
