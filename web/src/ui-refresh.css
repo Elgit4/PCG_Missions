@@ -479,3 +479,103 @@ html[data-theme="dark"] .cmi-boot-name{color:#edf3fa}
 html[data-theme="dark"] .cmi-boot-caption,html[data-theme="dark"] .cmi-boot-content p{color:#9aaabd}
 html[data-theme="dark"] .cmi-boot-spinner{border-color:#344458;border-top-color:#e36a7c}
 @media(prefers-reduced-motion:reduce){.cmi-boot-spinner{animation:none;border-top-color:#c9233a}}
+
+/* Branch prayer room */
+.cmi-prayer-room{display:grid;gap:18px;max-width:1040px;margin:0 auto}
+.cmi-prayer-room-intro{display:flex;align-items:center;gap:16px;padding:22px 24px;border:1px solid #e7ebf0;border-radius:18px;background:linear-gradient(110deg,#fff 0%,#f8fafc 100%)}
+.cmi-prayer-room-emblem{display:grid;flex:0 0 52px;width:52px;height:52px;place-items:center;border-radius:16px;background:#fbecef;color:#b51f39}
+.cmi-prayer-room-copy{min-width:0;flex:1}
+.cmi-prayer-room-copy .cmi-eyebrow{margin:0 0 5px}
+.cmi-prayer-room-copy h2{margin:0;color:#172e4b;font-size:23px;letter-spacing:-.045em}
+.cmi-prayer-room-copy>p:last-child{margin:5px 0 0;color:#748194;font-size:13px}
+.cmi-prayer-room-live{display:inline-flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid #e3e9ef;border-radius:99px;background:#fff;color:#5d6c7e;font-size:10px;font-weight:700;white-space:nowrap}
+.cmi-prayer-room-live i{width:7px;height:7px;border-radius:50%;background:#26996c;box-shadow:0 0 0 3px #e4f4ec}
+.cmi-prayer-room-panel{overflow:hidden;border:1px solid #e6eaf0;border-radius:18px;background:#fff;box-shadow:0 8px 30px rgb(25 42 62 / 4%)}
+.cmi-prayer-room-panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid #edf0f4}
+.cmi-prayer-room-panel-head>div{display:flex;align-items:center;gap:9px;color:#243a54}
+.cmi-prayer-room-panel-head>div svg{color:#b51f39}
+.cmi-prayer-room-panel-head strong{font-size:13px}
+.cmi-prayer-room-panel-head>span{color:#8b97a6;font-size:10px}
+.cmi-prayer-room-feed{display:flex;min-height:330px;max-height:540px;flex-direction:column;gap:12px;overflow:auto;padding:20px;background:#fafbfd;overscroll-behavior:contain}
+.cmi-prayer-room-empty{display:flex;min-height:280px;align-items:center;justify-content:center;flex-direction:column;text-align:center;color:#7c8999}
+.cmi-prayer-room-empty>div{display:grid;width:46px;height:46px;place-items:center;margin-bottom:12px;border-radius:14px;background:#fbecef;color:#b51f39}
+.cmi-prayer-room-empty strong{color:#243a54;font-size:14px}
+.cmi-prayer-room-empty p{max-width:320px;margin:6px 0 0;font-size:12px;line-height:1.6}
+.cmi-prayer-room-loader{width:23px;height:23px;margin-bottom:13px;border:2px solid #e1e7ee;border-top-color:#b51f39;border-radius:50%;animation:cmi-boot-rotate .8s linear infinite}
+.cmi-prayer-day{display:flex;align-items:center;gap:12px;justify-content:center;margin:7px 0 2px}
+.cmi-prayer-day:before,.cmi-prayer-day:after{height:1px;flex:1;background:#e8edf2;content:""}
+.cmi-prayer-day span{color:#8793a2;font-size:10px;font-weight:700}
+.cmi-prayer-message{display:flex;align-items:flex-end;gap:9px;max-width:min(78%,640px)}
+.cmi-prayer-message.mine{align-self:flex-end;justify-content:flex-end}
+.cmi-prayer-avatar{display:grid;flex:0 0 29px;width:29px;height:29px;place-items:center;border-radius:10px;background:#e8edf4;color:#40536b;font-size:9px;font-weight:800}
+.cmi-prayer-message-body{padding:10px 13px;border:1px solid #e8edf2;border-radius:14px 14px 14px 4px;background:#fff;box-shadow:0 2px 8px rgb(20 36 54 / 3%)}
+.cmi-prayer-message.mine .cmi-prayer-message-body{border-color:#f1d9df;border-radius:14px 14px 4px 14px;background:#fff4f6}
+.cmi-prayer-message-body>strong{display:block;margin-bottom:4px;color:#8e2439;font-size:10px}
+.cmi-prayer-message-body>p{margin:0;color:#34445a;font-size:13px;line-height:1.55;white-space:pre-wrap;overflow-wrap:anywhere}
+.cmi-prayer-message-body>time{display:block;margin-top:5px;color:#98a2af;font-size:9px;text-align:right}
+.cmi-prayer-compose{padding:14px 16px 12px;border-top:1px solid #edf0f4;background:#fff}
+.cmi-prayer-compose-field textarea{display:block;width:100%;min-height:48px;max-height:140px;resize:vertical;padding:12px 13px;border:1px solid #e2e7ed;border-radius:12px;background:#fbfcfd;color:#26374c;font:inherit;font-size:13px;line-height:1.5;outline:none}
+.cmi-prayer-compose-field textarea:focus{border-color:#bd6577;box-shadow:0 0 0 3px rgb(189 101 119 / 12%)}
+.cmi-prayer-compose-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:9px}
+.cmi-prayer-compose-foot>span{color:#9aa4b1;font-size:10px}
+.cmi-prayer-compose-foot button{display:inline-flex;align-items:center;gap:8px;padding:9px 15px;border:0;border-radius:10px;background:#a91f39;color:#fff;font-size:11px;font-weight:750;cursor:pointer}
+.cmi-prayer-compose-foot button:disabled{opacity:.45;cursor:not-allowed}
+.cmi-prayer-room-error{margin:0;padding:9px 15px;background:#fff2f2;color:#a52837;font-size:12px}
+.cmi-prayer-room-privacy{display:flex;align-items:flex-start;gap:8px;margin:0;color:#8290a0;font-size:11px;line-height:1.6}
+.cmi-prayer-room-privacy svg{flex:0 0 auto;color:#5d8a73}
+.cmi-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
+/* In-app announcement inbox and unread state */
+.cmi-notification-center{position:relative;display:flex;align-items:center}
+.cmi-notification-trigger{position:relative;display:grid;width:38px;height:38px;place-items:center;border:1px solid #e4e9ef;border-radius:11px;background:#fff;color:#526176;cursor:pointer}
+.cmi-notification-trigger:hover{border-color:#d4dce6;background:#f8fafc;color:#1d344e}
+.cmi-notification-trigger>span{position:absolute;top:-5px;right:-5px;display:grid;min-width:17px;height:17px;place-items:center;padding:0 4px;border:2px solid #fff;border-radius:99px;background:#b51f39;color:#fff;font-size:8px;font-weight:800}
+.cmi-notification-popover{position:absolute;top:calc(100% + 12px);right:0;z-index:100;width:min(390px,calc(100vw - 28px));overflow:hidden;border:1px solid #e4e9ef;border-radius:16px;background:#fff;box-shadow:0 18px 55px rgb(18 35 55 / 18%)}
+.cmi-notification-popover>header{display:flex;align-items:flex-start;justify-content:space-between;padding:17px 18px 13px;border-bottom:1px solid #edf0f4}
+.cmi-notification-popover>header .cmi-eyebrow{margin:0;color:#a32640;font-size:9px;font-weight:800;letter-spacing:.13em}
+.cmi-notification-popover>header h3{margin:4px 0 2px;color:#1b3049;font-size:18px;letter-spacing:-.035em}
+.cmi-notification-popover>header p{margin:0;color:#8491a0;font-size:11px}
+.cmi-notification-popover>header>button{width:27px;height:27px;border:0;border-radius:8px;background:#f2f4f7;color:#667487;font-size:19px;cursor:pointer}
+.cmi-notification-list{max-height:min(420px,60vh);overflow:auto}
+.cmi-notification-item{display:flex;width:100%;align-items:flex-start;gap:10px;padding:13px 15px;border:0;border-bottom:1px solid #f0f2f5;background:#fff;text-align:left;cursor:pointer}
+.cmi-notification-item:hover{background:#fafbfd}
+.cmi-notification-item.unread{background:#fff9fa}
+.cmi-notification-icon{display:grid;flex:0 0 34px;width:34px;height:34px;place-items:center;border-radius:11px;background:#fbecef;color:#a91f39}
+.cmi-notification-copy{display:grid;min-width:0;flex:1;gap:4px}
+.cmi-notification-copy strong{color:#253951;font-size:12px}
+.cmi-notification-copy>span{color:#718094;font-size:11px;line-height:1.45}
+.cmi-notification-copy small{color:#9aa4b0;font-size:9px}
+.cmi-notification-item>i{width:7px;height:7px;flex:0 0 7px;margin-top:6px;border-radius:50%;background:#b51f39}
+.cmi-notification-empty{display:flex;min-height:130px;align-items:center;justify-content:center;flex-direction:column;gap:7px;padding:20px;color:#8793a2;text-align:center;font-size:11px}
+.cmi-notification-empty svg{color:#629477}
+.cmi-notification-empty strong{color:#31445b;font-size:12px}
+.cmi-notification-popover>footer{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:11px 13px;border-top:1px solid #edf0f4;background:#fbfcfd}
+.cmi-notification-popover>footer button{display:inline-flex;align-items:center;gap:6px;padding:7px 8px;border:0;border-radius:8px;background:transparent;color:#637287;font-size:10px;font-weight:700;cursor:pointer}
+.cmi-notification-popover>footer button:last-child{background:#fbecef;color:#9e1e36}
+.cmi-notification-popover>footer button:disabled{opacity:.6;cursor:default}
+html[data-theme="dark"] .cmi-prayer-room-intro,html[data-theme="dark"] .cmi-prayer-room-panel,html[data-theme="dark"] .cmi-prayer-room-panel-head,html[data-theme="dark"] .cmi-prayer-compose{background:#172332;border-color:#2c3b4d}
+html[data-theme="dark"] .cmi-prayer-room-copy h2,html[data-theme="dark"] .cmi-prayer-room-panel-head>div,html[data-theme="dark"] .cmi-prayer-room-empty strong{color:#e8eef6}
+html[data-theme="dark"] .cmi-prayer-room-copy>p:last-child,html[data-theme="dark"] .cmi-prayer-room-panel-head>span,html[data-theme="dark"] .cmi-prayer-room-privacy{color:#9baabd}
+html[data-theme="dark"] .cmi-prayer-room-feed{background:#111c29}
+html[data-theme="dark"] .cmi-prayer-message-body{border-color:#334255;background:#1b2939}
+html[data-theme="dark"] .cmi-prayer-message.mine .cmi-prayer-message-body{border-color:#593341;background:#30232e}
+html[data-theme="dark"] .cmi-prayer-message-body>p{color:#e0e7ef}
+html[data-theme="dark"] .cmi-prayer-compose-field textarea{border-color:#344458;background:#111c29;color:#e5ecf4}
+html[data-theme="dark"] .cmi-notification-trigger,html[data-theme="dark"] .cmi-notification-popover,html[data-theme="dark"] .cmi-notification-item{border-color:#344458;background:#182535;color:#e3ebf4}
+html[data-theme="dark"] .cmi-notification-popover>header h3,html[data-theme="dark"] .cmi-notification-copy strong,html[data-theme="dark"] .cmi-notification-empty strong{color:#e5edf5}
+html[data-theme="dark"] .cmi-notification-item.unread{background:#2a202b}
+html[data-theme="dark"] .cmi-notification-popover>footer{border-color:#344458;background:#14202e}
+@media(max-width:680px){
+ .cmi-prayer-room-intro{align-items:flex-start;gap:11px;padding:16px}
+ .cmi-prayer-room-emblem{width:43px;height:43px;flex-basis:43px;border-radius:13px}
+ .cmi-prayer-room-copy h2{font-size:20px}
+ .cmi-prayer-room-copy>p:last-child{font-size:11px}
+ .cmi-prayer-room-live{display:none}
+ .cmi-prayer-room-panel-head{align-items:flex-start;flex-direction:column;gap:5px;padding:13px 15px}
+ .cmi-prayer-room-feed{min-height:300px;max-height:calc(100svh - 390px);padding:14px 11px}
+ .cmi-prayer-message{max-width:88%}
+ .cmi-prayer-compose{padding:11px}
+ .cmi-prayer-compose-foot>span{max-width:62%;font-size:9px}
+ .cmi-notification-popover{position:fixed;top:calc(env(safe-area-inset-top) + 68px);right:12px}
+}
+@media(prefers-reduced-motion:reduce){.cmi-prayer-room-loader{animation:none}}
