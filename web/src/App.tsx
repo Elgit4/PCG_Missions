@@ -221,6 +221,11 @@ export default function App() {
     }
   };
 
+  const handleChangePassword = async (currentPassword: string, newPassword: string) => {
+    if (!auth) throw new AuthClientError(503, "AUTH_NOT_CONFIGURED", "The secure authentication service is unavailable.");
+    await auth.changePassword(currentPassword, newPassword);
+  };
+
   const signOut = async () => {
     setBusy(true);
     await clearAuthentication();
@@ -243,7 +248,7 @@ export default function App() {
   }
 
   if (staffSession && !staffSession.must_change_password && api) {
-    return <StaffWorkspace api={api} session={staffSession} onSignOut={async () => await signOut()} />;
+    return <StaffWorkspace api={api} session={staffSession} onSignOut={async () => await signOut()} onChangePassword={handleChangePassword} />;
   }
 
   return (

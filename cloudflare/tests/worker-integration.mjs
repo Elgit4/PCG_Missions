@@ -194,6 +194,33 @@ try {
   const contactsBody = await contacts.text();
   assert(contacts.status === 200, "authorized branch-scoped contacts read failed: " + contacts.status + ": " + contactsBody);
 
+  const changedPassword = "Changed-" + crypto.randomUUID() + "-Secure!";
+  const passwordChange = await fetch(baseUrl + "/api/auth/change-password", {
+    method: "POST",
+    headers: { Cookie: cookie, Origin: baseUrl, "Content-Type": "application/json" },
+    body: JSON.stringify({ currentPassword: testPassword, newPassword: changedPassword, revokeOtherSessions: true }),
+  });
+  const passwordChangeBody = await passwordChange.text();
+  assert(passwordChange.status === 200,
+    "authenticated password change failed: " + passwordChange.status + ": " + passwordChangeBody);
+
+  const oldPasswordSignIn = await fetch(baseUrl + "/api/auth/sign-in/email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: baseUrl },
+    body: JSON.stringify({ email: testEmail, password: testPassword }),
+  });
+  assert(oldPasswordSignIn.status >= 400,
+    "the previous password must stop authenticating after a successful password change");
+
+  const newPasswordSignIn = await fetch(baseUrl + "/api/auth/sign-in/email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Origin: baseUrl },
+    body: JSON.stringify({ email: testEmail, password: changedPassword }),
+  });
+  const newPasswordSignInBody = await newPasswordSignIn.text();
+  assert(newPasswordSignIn.status === 200,
+    "new password sign-in failed: " + newPasswordSignIn.status + ": " + newPasswordSignInBody);
+
 
   const signOut = await fetch(baseUrl + "/api/auth/sign-out", {
     method: "POST",

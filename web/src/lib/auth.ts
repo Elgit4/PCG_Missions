@@ -109,6 +109,20 @@ export class PcgAuthClient {
     return `Connection test passed: the PCG Missions API is reachable (schema version ${String(payload.schema_version ?? "unknown")}).`;
   }
 
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    if (!currentPassword || currentPassword.length > 128) {
+      throw new AuthClientError(400, "CURRENT_PASSWORD_REQUIRED", "Enter your current password.");
+    }
+    if (newPassword.length < 12 || newPassword.length > 128) {
+      throw new AuthClientError(400, "PASSWORD_POLICY_INVALID", "Use a password between 12 and 128 characters.");
+    }
+    await this.request("change-password", "POST", {
+      currentPassword,
+      newPassword,
+      revokeOtherSessions: true,
+    });
+  }
+
   async requestPasswordReset(_email: string): Promise<void> {
     throw new AuthClientError(
       501,
