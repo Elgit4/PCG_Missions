@@ -112,7 +112,7 @@ export function OperationsWorkspace({
         const result = await api.listCalendarEntries(branchId, { limit: 50, offset: 0 });
         setEntries(result.data);
       } else if (section === "Announcements") {
-        const result = await api.listAnnouncementDrafts(branchId, { limit: 50, offset: 0 });
+        const result = await api.listAnnouncementDrafts(branchId, { limit: 50, offset: 0, status: canManage ? "all" : "published" });
         setAnnouncements(result.data);
       } else if (contentKind === "sermons") {
         const result = await api.listSermonDrafts(branchId, { limit: 50, offset: 0 });
