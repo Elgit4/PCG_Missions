@@ -480,6 +480,58 @@ describe("CmiApiClient", () => {
 });
 
 
+describe("Pastoral care API", () => {
+  it("lists care-record metadata without loading restricted interaction notes", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({
+        data: {
+          data: [{
+            id: "care-1",
+            status: "monitoring",
+            care_group_id: null,
+            created_at: "2026-11-14T10:00:00Z",
+            updated_at: "2026-11-14T10:00:00Z",
+          }],
+          access_mode: "assigned",
+          request_id: "care-list-1",
+        },
+        request_id: "care-list-1",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.listCareRecords("branch-a", 15, 30);
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/pastoral-operations/care/records");
+    expect(url.searchParams.get("branch_id")).toBe("branch-a");
+    expect(url.searchParams.get("limit")).toBe("15");
+    expect(url.searchParams.get("offset")).toBe("30");
+    expect(init.method).toBe("GET");
+    expect(result.data.data[0]?.status).toBe("monitoring");
+    expect(JSON.stringify(result.data)).not.toContain("restricted_note");
+  });
+
+  it("opens a care record only through the audited single-record endpoint", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({
+        data: {
+          record: { id: "care-1", branch_id: "branch-a", status: "active", reviewed_at: null, created_at: "2026-11-14T10:00:00Z", updated_at: "2026-11-14T10:00:00Z" },
+          interactions: [{ id: "interaction-1", interaction_type: "visit", outcome_code: "completed", restricted_note: "Follow-up visit completed.", occurred_at: "2026-11-14T11:00:00Z" }],
+        },
+        request_id: "care-read-1",
+      }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.readCareRecord("branch-a", "care-1", "oversight", "continuity_of_care");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/pastoral-operations/care/records/care-1/read");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ branch_id: "branch-a", access_mode: "oversight", reason_code: "continuity_of_care" });
+    expect(result.data.interactions[0]?.restricted_note).toBe("Follow-up visit completed.");
+  });
+});
+
 describe("Prayer Room API", () => {
   it("lists only prayer request metadata through the authenticated branch-scoped endpoint", async () => {
     const fetcher = vi.fn(async () => new Response(
