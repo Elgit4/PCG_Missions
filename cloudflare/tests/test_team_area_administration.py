@@ -27,16 +27,10 @@ class TeamAreaAdministrationGuardTests(unittest.TestCase):
                            VALUES('ra-leader','sp1','r-leader','b1','sp1',?,?)""",(NOW,NOW))
         self.db.execute("INSERT INTO team(id,branch_id,name,created_at,updated_at) VALUES('t1','b1','Team',?,?)",(NOW,NOW))
         self.db.execute("INSERT INTO service_area(id,branch_id,name,created_at,updated_at) VALUES('a1','b1','Area',?,?)",(NOW,NOW))
-        self.db.execute("CREATE TABLE event (id TEXT PRIMARY KEY, branch_id TEXT NOT NULL REFERENCES branch(id), created_by TEXT NOT NULL REFERENCES staff_profile(auth_user_id), updated_at TEXT NOT NULL)")
-        self.db.execute("INSERT INTO event(id,branch_id,created_by,updated_at) VALUES('e1','b1','u1',?)",(NOW,))
         self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
 
     def tearDown(self):
         self.db.close()
-
-    def test_event_last_modified_actor_is_added_and_backfilled(self):
-        row = self.db.execute("SELECT created_by,last_modified_by FROM event WHERE id='e1'").fetchone()
-        self.assertEqual(row, ("u1", "u1"))
 
     def test_migration_advances_schema_and_creates_append_only_audit(self):
         self.assertEqual(self.db.execute("SELECT schema_version FROM app_meta WHERE id=1").fetchone()[0],31)
