@@ -6377,6 +6377,15 @@ function isAuthPath(pathname: string): boolean {
   return pathname === "/api/auth" || pathname.startsWith("/api/auth/");
 }
 
+function meetsPasswordPolicy(value: unknown): value is string {
+  return typeof value === "string" &&
+    value.length >= 12 && value.length <= 128 &&
+    /[a-z]/.test(value) &&
+    /[A-Z]/.test(value) &&
+    /[0-9]/.test(value) &&
+    /[^A-Za-z0-9]/.test(value);
+}
+
 export default {
   scheduled(controller: { scheduledTime: number }, env: Env, ctx: { waitUntil(promise: Promise<unknown>): void }): void {
     ctx.waitUntil(publishDueAnnouncements(env,new Date(controller.scheduledTime).toISOString()));
@@ -6404,6 +6413,22 @@ export default {
           ok: false,
           error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." },
         }, requestId, origin);
+      }
+      if (url.pathname === "/api/auth/change-password" && request.method === "POST") {
+        try {
+          const body = await request.clone().json() as { newPassword?: unknown };
+          if (!meetsPasswordPolicy(body?.newPassword)) {
+            return json(400, {
+              ok: false,
+              error: {
+                code: "PASSWORD_POLICY_INVALID",
+                message: "Use 12–128 characters with uppercase and lowercase letters, a number and a symbol.",
+              },
+            }, requestId, origin);
+          }
+        } catch {
+          // Leave malformed JSON handling to Better Auth's normal request parser.
+        }
       }
       try {
         const auth = createAuth(env);
