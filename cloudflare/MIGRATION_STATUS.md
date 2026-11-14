@@ -1,5 +1,14 @@
 # Cloudflare migration status
 
+## Event flyer media — current non-production gate (2026-11-14)
+
+- Migration branch now contains migration `0030_event_flyer_media.sql`, the `EVENT_MEDIA` R2 binding, and the event upload/read handlers. Each event draft in the Operations workspace requires a PNG, JPEG or WebP flyer (16 bytes–5 MB); the Worker checks the actual file signature and MIME type, writes to a branch/event-scoped private object key, and only allows authorized staff to read it. Event publishing fails closed unless a flyer exists.
+- Added an integration assertion that unauthenticated POST requests to the event-flyer upload route return HTTP 401 before media is accepted. Added a deployment preflight that provisions the bucket in the EU jurisdiction before applying D1 migrations or deploying the Worker; it never enables public R2 access.
+- Corrected the Pages health smoke test to require schema version 30, matching the Worker health gate.
+- **External account prerequisite remains:** direct Cloudflare R2 bucket-list and creation requests currently return error 10042, “Please enable R2 through the Cloudflare Dashboard.” The bucket `pcg-missions-event-media-nonprod` therefore does not yet exist and the R2 binding cannot be deployed. Enable R2 in the Cloudflare Dashboard for this account; the workflow will then create the bucket with `--jurisdiction eu` and continue. The scoped Actions token must also include R2 bucket edit permission. No image bytes are currently stored.
+- The remote EU D1 database remains at schema 28 until the preflight succeeds; migration 0030 has not been applied remotely. The deployed Worker is therefore still the previous version without event media. Do not treat event image upload as live until the R2 bucket, schema 30 and Worker deployment gates all pass.
+
+
 ## Current deployment gate — 2026-11-14
 
 - Password-change PR #62 has been squash-merged into the non-production migration branch at `38fc65dd`; the migration branch is now `145b2ea7`. The production branch was not changed.
