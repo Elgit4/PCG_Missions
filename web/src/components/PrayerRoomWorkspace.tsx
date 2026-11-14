@@ -192,7 +192,7 @@ export function PrayerRoomWorkspace({
                     {formatDate(request.created_at, timeZone)}
                   </span>
                   {request.expires_at && (
-                    <small>Expires {formatDate(request.expires_at)}</small>
+                    <small>Expires {formatDate(request.expires_at, timeZone)}</small>
                   )}
                 </div>
                 <button
