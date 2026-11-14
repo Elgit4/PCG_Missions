@@ -104,6 +104,25 @@ describe("CmiApiClient — Cloudflare Worker", () => {
     });
   });
 
+  it("registers an authenticated browser push subscription for the selected branch", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
+      ok: true, subscribed: true, request_id: "push-subscription",
+    }), { status: 201 }));
+    const client = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await client.savePushSubscription("branch-1", {
+      endpoint: "https://fcm.googleapis.com/fcm/send/test-subscription",
+      keys: { p256dh: "A".repeat(87), auth: "B".repeat(22) },
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/notifications/push/subscriptions");
+    expect(url.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(JSON.parse(String(init.body))).toMatchObject({
+      endpoint: "https://fcm.googleapis.com/fcm/send/test-subscription",
+      keys: { p256dh: "A".repeat(87), auth: "B".repeat(22) },
+    });
+  });
+
   it("posts prayer-room messages only to the dedicated branch conversation route", async () => {
     const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({
       ok: true, message: { id: "message-1", body: "Praying for the team" }, request_id: "prayer-room",
