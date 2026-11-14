@@ -369,9 +369,8 @@ export function OperationsWorkspace({
               <article className="cmi-task-row" key={item.id}>
                 <div className="cmi-task-symbol"><CalendarDays size={18} /></div>
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.starts_at, timeZone)} – {formatBranchDate(item.ends_at, timeZone)}{item.location ? " · " + item.location : ""}</p><small>{shortText(item.description ?? "No description added.")}</small></div>
-                <span className={"cmi-task-status " + (item.status === "published" ? "status-completed" : item.status === "archived" ? "status-cancelled" : "status-open")}>{item.status === "published" ? "Published" : item.status === "scheduled" ? "Scheduled" : item.status === "archived" ? "Archived" : "Draft"}</span>
-                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
-                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-primary" onClick={() => void publishAnnouncement(item.id)} disabled={publishingId !== null}>{publishingId === item.id ? "Publishing…" : "Publish & notify"}</button>}
+                <span className="cmi-task-status status-open">Private draft</span>
+                {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
             {!events.length && <p className="cmi-detail-muted">No event drafts are visible in this branch.</p>}
@@ -398,8 +397,9 @@ export function OperationsWorkspace({
               <article className="cmi-task-row" key={item.id}>
                 <div className="cmi-task-symbol"><Megaphone size={18} /></div>
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.updated_at, timeZone)} · {shortText(item.body)}</p></div>
-                <span className="cmi-task-status status-open">Private draft</span>
-                {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+                <span className={"cmi-task-status " + (item.status === "published" ? "status-completed" : item.status === "archived" ? "status-cancelled" : "status-open")}>{item.status === "published" ? "Published" : item.status === "scheduled" ? "Scheduled" : item.status === "archived" ? "Archived" : "Draft"}</span>
+                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-primary" onClick={() => void publishAnnouncement(item.id)} disabled={publishingId !== null}>{publishingId === item.id ? "Publishing…" : "Publish & notify"}</button>}
               </article>
             ))}
             {!announcements.length && <p className="cmi-detail-muted">No announcement drafts are visible in this branch.</p>}
