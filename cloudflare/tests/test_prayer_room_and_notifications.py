@@ -25,6 +25,8 @@ class PrayerRoomAndNotificationContractTests(unittest.TestCase):
         self.assertIn("prayer_room_message_no_update", MIGRATION)
         self.assertIn("prayer_room_message_no_delete", MIGRATION)
         self.assertIn("prayer_room_access_audit_authorize_insert", MIGRATION)
+        self.assertIn("CREATE TABLE web_push_vapid_key", MIGRATION)
+        self.assertIn("CREATE TABLE staff_push_subscription", MIGRATION)
 
     def test_prayer_room_post_route_uses_server_identity_and_capability_gate(self):
         handler = re.search(r"async function postPrayerRoomMessage\([\s\S]*?\n\}", WORKER)
@@ -51,6 +53,16 @@ class PrayerRoomAndNotificationContractTests(unittest.TestCase):
         self.assertIn("listPrayerRoomMessages(branchId", API)
         self.assertIn("postPrayerRoomMessage(branchId", API)
         self.assertIn("api.postPrayerRoomMessage", UI)
+
+    def test_web_push_uses_encrypted_vapid_key_and_authenticated_subscription_routes(self):
+        self.assertIn("async function getWebPushVapidKeys", WORKER)
+        self.assertIn("async function savePushSubscription", WORKER)
+        self.assertIn("async function sendAnnouncementPushes", WORKER)
+        self.assertIn('"/api/v1/notifications/push/public-key"', WORKER)
+        self.assertIn('"/api/v1/notifications/push/subscriptions"', WORKER)
+        self.assertIn("private_key_ciphertext", MIGRATION)
+        self.assertIn("AES-GCM", WORKER)
+        self.assertIn("Content-Encoding", WORKER)
 
     def test_church_wide_announcement_audience_requires_admin_pastor(self):
         handler = re.search(r"async function createAnnouncement\([\s\S]*?\n\}", WORKER)
