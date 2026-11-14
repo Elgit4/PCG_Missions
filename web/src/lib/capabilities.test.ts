@@ -60,6 +60,21 @@ describe("capability-driven staff navigation", () => {
     expect(canOpenStaffPage(session, "Reports", "branch-a")).toBe(false);
   });
 
+  it("opens Pastoral Care only with an explicit care-record grant", () => {
+    const assigned = {
+      ...baseSession,
+      capabilities: [{ code: "care.record.read.assigned", scope_mode: "assigned", branch_id: "branch-a" }],
+    };
+    const oversight = {
+      ...baseSession,
+      capabilities: [{ code: "care.oversight.read", scope_mode: "oversight", branch_id: "branch-a" }],
+    };
+    expect(canOpenStaffPage(assigned, "Care", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(oversight, "Care", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(baseSession, "Care", "branch-a")).toBe(false);
+    expect(canOpenStaffPage(assigned, "Care", "branch-b")).toBe(false);
+  });
+
   it("opens ministry reports only with the explicit D-12 own or review grants", () => {
     const ownReportAccess = {
       ...baseSession,
