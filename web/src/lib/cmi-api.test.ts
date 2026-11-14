@@ -161,6 +161,32 @@ describe("CmiApiClient", () => {
     expect(JSON.stringify(init.body)).not.toContain("visibility");
   });
 
+  it("uses the backend staff account status route for deactivation", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { staff_profile_id: "profile-1", branch_id: "branch-a", account_status: "inactive" }, request_id: "deactivate-1" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.setStaffAccountStatus("profile-1", "branch-a", "inactive", "Staff member left the team");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/staff-access-operations/staff/accounts/profile-1/deactivate");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ branch_id: "branch-a", reason: "Staff member left the team" });
+  });
+
+  it("uses the backend staff account status route for reactivation", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { staff_profile_id: "profile-1", branch_id: "branch-a", account_status: "active" }, request_id: "reactivate-1" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    await client.setStaffAccountStatus("profile-1", "branch-a", "active", "Staff member reinstated");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/staff-access-operations/staff/accounts/profile-1/reactivate");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ branch_id: "branch-a", reason: "Staff member reinstated" });
+  });
+
   it("uses the calendar and announcement draft endpoints with branch scope", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: [], request_id: "draft-list" }), { status: 200 },
