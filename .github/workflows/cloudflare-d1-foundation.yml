@@ -11,6 +11,7 @@ on:
     paths:
       - "cloudflare/**"
       - ".github/workflows/cloudflare-d1-foundation.yml"
+      - "web/wrangler.toml"
   workflow_dispatch:
 
 permissions:
