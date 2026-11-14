@@ -7,10 +7,10 @@ This is an isolated Cloudflare Workers + D1 implementation track. It is not conn
 - D1 database: `pcg-missions-dev`
 - Database ID: `376a6782-d059-41f9-9e09-f93718fef2bb`
 - Jurisdiction: EU (`eu`), primary region `EEUR`
-- Remote EU D1 schema version: 28
-- Migration branch target schema: 31 (event flyer metadata + team/service-area integrity guards; not yet applied remotely)
+- Remote EU D1 schema version: 28 (last remotely verified baseline; current branch target is schema 32)
+- Migration branch target schema: 32 (includes assigned Follow-up Volunteer event check-in; pending remote migration)
 - Event-media storage: private EU-jurisdiction R2 bucket `pcg-missions-event-media-nonprod` is configured in Worker bindings; Cloudflare account-level R2 activation and R2 Edit token scope are still required before the deployment preflight can create it
-- Remote migration ledger: 28 applied migrations
+- Remote migration ledger: 28 applied migrations; migrations 0029–0032 are pending remote application
 - Remote application tables: 81 (excluding Wrangler's migration ledger)
 - EU non-production D1 verification: schema 28, 28 ledger entries, 81 application tables, zero foreign-key violations; primary query region `EEUR`
 - Full API Worker: `pcg-missions-api-nonprod` deployed on 2026-11-13 from the migration branch; deployment workflow confirmed health response and unauthenticated API gate
@@ -65,6 +65,10 @@ The prayer/care, events/attendance/transport and calendar/announcement/content s
 - `GET /api/public/content?branch_id={id}` — anonymous published-only public projection for church profile, welcome messages, sermons, daily words, tracts, public announcements, public events and approved HTTPS links.
 
 These routes are deployed on the non-production Worker. Initial remote smoke verification covers Worker health, the EU D1 schema marker and the unauthenticated staff-context gate; it does not yet constitute full authenticated acceptance of every business route.
+
+## Latest role-capability change
+
+Migration 0032 adds `events.checkin` to Follow-up Volunteers at `assigned` scope only. The Worker additionally requires an active event assignment (owner/organizer/check-in) or qualifying ushering team assignment. It does not grant branch-wide check-in access.
 
 ## Not enabled yet
 
