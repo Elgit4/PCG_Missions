@@ -138,3 +138,11 @@ Latest verified CI run: [43514971428](https://github.com/Elgit4/PCG_Missions/act
 4. Remote schema version 28, all 28 migration ledger entries, 81 application tables and foreign-key integrity are verified. The deployed Worker health and unauthenticated API gate passed. Still verify authorization triggers, password-reset audit append-only behavior, aggregate CSV export privacy/audit and scheduled-announcement publication through authenticated Worker tests.
 5. Validate Better Auth's generated schema against the pinned release and complete the controlled source-to-D1 export/import and row/count/hash reconciliation for the remaining live schema. No production snapshot should be exported without a separate data-migration approval.
 6. Integrate the frontend with the non-production API and verify end-to-end user workflows. Configure `RESEND_API_KEY` and a verified `EMAIL_FROM` sender for password-reset emails; invitation tokens remain manual until the invitation acceptance UI is integrated. Production cutover remains a separate approval gate.
+
+
+## Event flyer media — schema 30 (implementation staged)
+- Event workspace requires a PNG, JPEG or WebP flyer/image for every event (maximum 5 MiB).
+- Binary objects are stored in the dedicated R2 bucket `pcg-missions-event-media-nonprod`; D1 stores only an opaque object key, verified content type, size and update timestamp.
+- Upload and read routes are branch/capability scoped. The Worker validates file signature and declared MIME. Publishing is blocked unless a flyer exists.
+- Migration `0030_event_flyer_media.sql` advances non-production schema to 30.
+- R2 provisioning is blocked because R2 is not enabled on this Cloudflare account (Cloudflare API error 10042). Enable R2 in the Dashboard and create the bucket with EU jurisdiction before deploying this binding. No public arbitrary-file fallback is used.
