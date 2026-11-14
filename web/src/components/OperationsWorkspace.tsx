@@ -108,7 +108,7 @@ export function OperationsWorkspace({
     setLoading(true);
     try {
       if (section === "Events") {
-        const result = await api.listEventDrafts(branchId, { limit: 50, offset: 0 });
+        const result = await api.listEventDrafts(branchId, { limit: 50 });
         setEvents(result.data);
       } else if (section === "Calendar") {
         const result = await api.listCalendarEntries(branchId, { limit: 50, offset: 0 });
