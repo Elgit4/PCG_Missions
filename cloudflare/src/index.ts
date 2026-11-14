@@ -18,6 +18,7 @@ interface Env extends Omit<StaffEnvironment, "DB"> {
   APP_ENV?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
+  FIRST_ADMIN_BOOTSTRAP_TOKEN?: string;
 }
 
 function json(status: number, body: Record<string, unknown>, requestId: string, origin?: string): Response {
@@ -871,6 +872,97 @@ async function acceptStaffInvitation(
     account_status: "active",
     sign_in_required: true,
   }, requestId, origin);
+}
+
+
+const FIRST_ADMIN_EMAIL = "elviskwakuboateng63@gmail.com";
+const FIRST_ADMIN_NAME = "Elvis";
+const FIRST_ADMIN_BRANCH_ID = "victory-congregation-0001";
+const FIRST_ADMIN_CHURCH_NAME = "Presbyterian Church of Ghana";
+
+function constantTimeEqual(left: string, right: string): boolean {
+  if (left.length !== right.length) return false;
+  let mismatch = 0;
+  for (let index = 0; index < left.length; index++) mismatch |= left.charCodeAt(index) ^ right.charCodeAt(index);
+  return mismatch === 0;
+}
+
+async function bootstrapFirstAdmin(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  if (env.APP_ENV !== "non-production" || !env.FIRST_ADMIN_BOOTSTRAP_TOKEN ||
+      env.FIRST_ADMIN_BOOTSTRAP_TOKEN.length < 40) {
+    return json(404, { ok: false, error: { code: "BOOTSTRAP_UNAVAILABLE" } }, requestId, origin);
+  }
+  if (!await applyInvitationAcceptRateLimit(request, env)) {
+    return json(429, { ok: false, error: { code: "BOOTSTRAP_RATE_LIMITED" } }, requestId, origin);
+  }
+  const suppliedToken = request.headers.get("X-First-Admin-Token") ?? "";
+  if (!/^[A-Za-z0-9_-]{43}$/.test(suppliedToken) ||
+      !constantTimeEqual(await sha256Hex(suppliedToken), await sha256Hex(env.FIRST_ADMIN_BOOTSTRAP_TOKEN))) {
+    return json(404, { ok: false, error: { code: "BOOTSTRAP_UNAVAILABLE" } }, requestId, origin);
+  }
+  const body = await readJsonBody(request, 2048);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { name?: unknown; email?: unknown; password?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => !["name", "email", "password"].includes(key)) ||
+      payload.name !== FIRST_ADMIN_NAME || payload.email !== FIRST_ADMIN_EMAIL ||
+      typeof payload.password !== "string" || payload.password.length < 12 || payload.password.length > 128) {
+    return json(400, { ok: false, error: { code: "INVALID_BOOTSTRAP_CREDENTIALS" } }, requestId, origin);
+  }
+
+  const state = await env.DB.prepare(
+    "SELECT (SELECT COUNT(*) FROM \\"user\\") AS user_count, " +
+    "(SELECT COUNT(*) FROM staff_profile) AS profile_count, " +
+    "(SELECT remaining_slots FROM staff_admin_bootstrap_state WHERE id=1) AS remaining_slots, " +
+    "(SELECT COUNT(*) FROM church WHERE name=?) AS church_count, " +
+    "(SELECT COUNT(*) FROM branch b JOIN church c ON c.id=b.church_id " +
+    "WHERE b.id=? AND b.name='Victory Congregation' AND b.is_active=1 AND c.name=? AND c.is_active=1) AS branch_count, " +
+    "(SELECT id FROM role WHERE code='admin_pastor' AND is_active=1 LIMIT 1) AS role_id",
+  ).bind(FIRST_ADMIN_CHURCH_NAME, FIRST_ADMIN_BRANCH_ID, FIRST_ADMIN_CHURCH_NAME)
+    .first<{user_count:number;profile_count:number;remaining_slots:number|null;church_count:number;branch_count:number;role_id:string|null}>();
+  if (!state || state.user_count !== 0 || state.profile_count !== 0 ||
+      state.remaining_slots !== 2 || state.church_count !== 1 ||
+      state.branch_count !== 1 || !state.role_id) {
+    return json(409, { ok: false, error: { code: "BOOTSTRAP_PRECONDITIONS_NOT_MET" } }, requestId, origin);
+  }
+
+  let authUserId = "";
+  try {
+    const auth = createAuth(env, true);
+    const signup = await auth.api.signUpEmail({
+      body: { name: FIRST_ADMIN_NAME, email: FIRST_ADMIN_EMAIL, password: payload.password },
+    });
+    authUserId = signup.user.id;
+  } catch {
+    return json(409, { ok: false, error: { code: "BOOTSTRAP_ACCOUNT_CREATION_FAILED" } }, requestId, origin);
+  }
+
+  const profileId = crypto.randomUUID();
+  const assignmentId = crypto.randomUUID();
+  const now = new Date().toISOString();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(
+        "INSERT INTO staff_profile (id,auth_user_id,full_name,email,account_status,created_at,updated_at,must_change_password,password_changed_at) " +
+        "VALUES (?,?,?,?, 'active',?,?,0,?)",
+      ).bind(profileId,authUserId,FIRST_ADMIN_NAME,FIRST_ADMIN_EMAIL,now,now,now),
+      env.DB.prepare(
+        "INSERT INTO staff_role_assignment (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,reason,created_at) " +
+        "VALUES (?,?,?,?,?,?,?,?)",
+      ).bind(assignmentId,profileId,state.role_id,FIRST_ADMIN_BRANCH_ID,profileId,now,
+        "Owner-approved first Admin/Pastor account bootstrap for Victory Congregation",now),
+    ]);
+    if (results.some((result) => !result.success) ||
+        results.some((result) => (result.meta?.changes ?? 0) !== 1)) {
+      throw new Error("FIRST_ADMIN_PROVISIONING_FAILED");
+    }
+  } catch {
+    try { await env.DB.prepare('DELETE FROM "user" WHERE id=?').bind(authUserId).run(); } catch {}
+    return json(409, { ok: false, error: { code: "BOOTSTRAP_PROVISIONING_FAILED" } }, requestId, origin);
+  }
+
+  return json(201, { ok: true, staff_profile_id: profileId, branch_id: FIRST_ADMIN_BRANCH_ID,
+    role_code: "admin_pastor", sign_in_required: true }, requestId, origin);
 }
 
 async function listStaffDirectory(
@@ -7310,6 +7402,10 @@ async function updatePrayerRequestStatus(
       catch { return json(400, { ok: false, error: { code: "INVALID_EVENT_ID" } }, requestId, origin); }
       if (request.method === "GET") return getEvent(request, env, eventId, requestId, origin);
       if (request.method === "PATCH") return updateEvent(request, env, eventId, requestId, origin);
+    }
+
+    if (url.pathname === "/api/v1/bootstrap/first-admin" && request.method === "POST") {
+      return bootstrapFirstAdmin(request, env, requestId, origin);
     }
 
     if (url.pathname === "/api/v1/staff/invitations/accept" && request.method === "POST") {
