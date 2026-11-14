@@ -94,7 +94,16 @@ export default function App() {
         await loadStaffSession();
       } catch (cause) {
         if (!current) return;
-        setError(messageFor(cause));
+        if (cause instanceof AuthClientError && cause.code === "AUTH_NETWORK_ERROR") {
+          // Session restoration is a best-effort check for returning users.
+          // A temporary network failure must not block a new sign-in attempt
+          // or present an alarming error before the user submits the form.
+          setError("");
+          setNotice("We couldn't check for an existing session. You can still sign in.");
+          console.warn("PCG Missions session restoration could not reach the auth endpoint.", cause);
+        } else {
+          setError(messageFor(cause));
+        }
         if (cause instanceof CmiApiError && cause.status === 401) {
           await clearAuthentication();
         } else if (cause instanceof CmiApiError) {
