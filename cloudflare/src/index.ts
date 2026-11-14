@@ -6857,9 +6857,18 @@ async function listTeams(request:Request,env:Env,requestId:string,origin?:string
   const access=await authorizeRequestCapability(request,env,"team.read");
   if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
   const branchId=access.activeBranch.branchId,now=new Date().toISOString();
-  const teams=await env.DB.prepare("SELECT id,branch_id,name,description,is_active,created_at,updated_at FROM team WHERE branch_id=? ORDER BY is_active DESC,name COLLATE NOCASE").bind(branchId).all<Record<string,unknown>>();
-  const includeStaff=access.activeBranch.capabilities.some(item=>item.code==="staff.directory.read"&&item.scopeMode==="branch");
-  const members=includeStaff?await env.DB.prepare(`
+  const scope=access.activeBranch.capabilities.find(item=>item.code==="team.read")?.scopeMode;
+  if(!scope) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const teams=scope==="branch"
+    ? await env.DB.prepare("SELECT id,branch_id,name,description,is_active,created_at,updated_at FROM team WHERE branch_id=? ORDER BY is_active DESC,name COLLATE NOCASE").bind(branchId).all<Record<string,unknown>>()
+    : await env.DB.prepare(`SELECT t.id,t.branch_id,t.name,t.description,t.is_active,t.created_at,t.updated_at
+        FROM team t WHERE t.branch_id=? AND EXISTS(
+          SELECT 1 FROM staff_team_membership mine WHERE mine.team_id=t.id AND mine.branch_id=t.branch_id
+            AND mine.staff_profile_id=? AND mine.revoked_at IS NULL AND mine.starts_at<=?
+            AND (mine.ends_at IS NULL OR mine.ends_at>?)
+        ) ORDER BY t.is_active DESC,t.name COLLATE NOCASE`).bind(branchId,access.staff.profileId,now,now).all<Record<string,unknown>>();
+  const canReadRoster=scope==="team"||access.activeBranch.capabilities.some(item=>item.code==="staff.directory.read"&&item.scopeMode==="branch");
+  const members=canReadRoster?await env.DB.prepare(`
     SELECT stm.id,stm.team_id,stm.staff_profile_id,stm.membership_role,stm.starts_at,stm.ends_at,stm.created_at,
            sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
     FROM staff_team_membership stm JOIN staff_profile sp ON sp.id=stm.staff_profile_id
@@ -6994,17 +7003,56 @@ async function listServiceAreas(request:Request,env:Env,requestId:string,origin?
   const access=await authorizeRequestCapability(request,env,"area.read");
   if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
   const branchId=access.activeBranch.branchId,now=new Date().toISOString();
-  const areas=await env.DB.prepare("SELECT id,branch_id,name,code,is_active,created_at,updated_at FROM service_area WHERE branch_id=? ORDER BY is_active DESC,name COLLATE NOCASE").bind(branchId).all<Record<string,unknown>>();
-  const includeStaff=access.activeBranch.capabilities.some(item=>item.code==="staff.directory.read");
-  const coverage=includeStaff?await env.DB.prepare(`
-    SELECT sac.id,sac.service_area_id,sac.staff_profile_id,sac.starts_at,sac.ends_at,sac.created_at,
-           sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
-    FROM staff_area_coverage sac JOIN staff_profile sp ON sp.id=sac.staff_profile_id
-    WHERE sac.branch_id=? AND sac.starts_at<=? AND (sac.ends_at IS NULL OR sac.ends_at>?) ORDER BY sac.starts_at DESC
-  `).bind(branchId,now,now).all<Record<string,unknown>>():{results:[]};
+  const scope=access.activeBranch.capabilities.find(item=>item.code==="area.read")?.scopeMode;
+  if(!scope) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const branchDirectory=access.activeBranch.capabilities.some(item=>item.code==="staff.directory.read"&&item.scopeMode==="branch");
+  let visibleStaffIds:string[]|null=null;
+  if(scope==="team"){
+    const teamStaff=await env.DB.prepare(`SELECT DISTINCT member.staff_profile_id
+      FROM staff_team_membership mine JOIN staff_team_membership member
+        ON member.team_id=mine.team_id AND member.branch_id=mine.branch_id
+      WHERE mine.staff_profile_id=? AND mine.branch_id=? AND mine.revoked_at IS NULL
+        AND mine.starts_at<=? AND (mine.ends_at IS NULL OR mine.ends_at>?)
+        AND member.revoked_at IS NULL AND member.starts_at<=? AND (member.ends_at IS NULL OR member.ends_at>?)`)
+      .bind(access.staff.profileId,branchId,now,now,now,now).all<{staff_profile_id:string}>();
+    visibleStaffIds=(teamStaff.results??[]).map(row=>row.staff_profile_id);
+  }else if(scope==="assigned"){
+    visibleStaffIds=[access.staff.profileId];
+  }
+  let coverageRows:Record<string,unknown>[]=[];
+  if(scope==="branch"&&branchDirectory){
+    const coverage=await env.DB.prepare(`SELECT sac.id,sac.service_area_id,sac.staff_profile_id,sac.starts_at,sac.ends_at,sac.created_at,
+        sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
+      FROM staff_area_coverage sac JOIN staff_profile sp ON sp.id=sac.staff_profile_id
+      WHERE sac.branch_id=? AND sac.revoked_at IS NULL AND sac.starts_at<=?
+        AND (sac.ends_at IS NULL OR sac.ends_at>?) ORDER BY sac.starts_at DESC`)
+      .bind(branchId,now,now).all<Record<string,unknown>>();
+    coverageRows=coverage.results??[];
+  }else if(visibleStaffIds&&visibleStaffIds.length){
+    const placeholders=visibleStaffIds.map(()=>"?").join(",");
+    const coverage=await env.DB.prepare(`SELECT sac.id,sac.service_area_id,sac.staff_profile_id,sac.starts_at,sac.ends_at,sac.created_at,
+        sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
+      FROM staff_area_coverage sac JOIN staff_profile sp ON sp.id=sac.staff_profile_id
+      WHERE sac.branch_id=? AND sac.staff_profile_id IN (${placeholders}) AND sac.revoked_at IS NULL
+        AND sac.starts_at<=? AND (sac.ends_at IS NULL OR sac.ends_at>?) ORDER BY sac.starts_at DESC`)
+      .bind(branchId,...visibleStaffIds,now,now).all<Record<string,unknown>>();
+    coverageRows=coverage.results??[];
+  }
+  let areas:{results?:Record<string,unknown>[]}={results:[]};
+  if(scope==="branch"){
+    areas=await env.DB.prepare("SELECT id,branch_id,name,code,is_active,created_at,updated_at FROM service_area WHERE branch_id=? ORDER BY is_active DESC,name COLLATE NOCASE").bind(branchId).all<Record<string,unknown>>();
+  }else{
+    const areaIds=[...new Set(coverageRows.map(row=>String(row.service_area_id)))];
+    if(areaIds.length){
+      const placeholders=areaIds.map(()=>"?").join(",");
+      areas=await env.DB.prepare(`SELECT id,branch_id,name,code,is_active,created_at,updated_at FROM service_area
+        WHERE branch_id=? AND id IN (${placeholders}) ORDER BY is_active DESC,name COLLATE NOCASE`)
+        .bind(branchId,...areaIds).all<Record<string,unknown>>();
+    }
+  }
   const rows=(areas.results??[]).map(area=>({
     ...area,is_active:Boolean(area.is_active),
-    coverage:(coverage.results??[]).filter(item=>item.service_area_id===area.id).map(item=>({
+    coverage:coverageRows.filter(item=>item.service_area_id===area.id).map(item=>({
       id:item.id,service_area_id:item.service_area_id,staff_profile_id:item.staff_profile_id,
       starts_at:item.starts_at,ends_at:item.ends_at,created_at:item.created_at,
       staff:{id:item.staff_id,full_name:item.staff_full_name,account_status:item.staff_account_status},
