@@ -186,7 +186,7 @@ export function StaffLogin({
           {notice && <div className="staff-login-auth-notice" role="status">{notice}</div>}
 
           <form className="staff-login-auth-form" onSubmit={(event) => void submit(event)}>
-            {view !== "change-password" && view !== "recovery" && (
+            {view !== "change-password" && view !== "recovery" && view !== "accept-invitation" && (
               <label className="staff-login-auth-field">
                 <span>Staff email address</span>
                 <input
