@@ -110,7 +110,7 @@ const pythonSeed = [
   "if violations:",
   "    raise SystemExit('Foreign key violations: ' + str(len(violations)))",
   "db.close()",
-  "print('Seeded local D1 schema version 30 and one Better Auth test identity')",
+  "print('Seeded local D1 schema version 31 and one Better Auth test identity')",
 ].join("\n");
 
 await rm(stateDir, { recursive: true, force: true });
