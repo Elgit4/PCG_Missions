@@ -10,6 +10,7 @@ export type StaffPage =
   | "Content"
   | "Teams & Areas"
   | "Prayer"
+  | "Care"
   | "Reports";
 
 const PAGE_CAPABILITIES: Partial<Record<StaffPage, readonly string[]>> = {
@@ -21,6 +22,7 @@ const PAGE_CAPABILITIES: Partial<Record<StaffPage, readonly string[]>> = {
   Content: ["content.manage.draft"],
   "Teams & Areas": ["team.manage", "area.manage"],
   Prayer: ["prayer.request.read.assigned", "prayer.oversight.read"],
+  Care: ["care.record.read.assigned", "care.oversight.read"],
 };
 
 /**
@@ -73,6 +75,7 @@ export function getAvailableStaffPages(session: StaffSession, branchId?: string)
     "Content",
     "Teams & Areas",
     "Prayer",
+    "Care",
     "Reports",
   ];
   return candidates.filter((page) => canOpenStaffPage(session, page, branchId));
