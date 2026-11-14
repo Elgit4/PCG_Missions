@@ -153,7 +153,7 @@ try {
   const bootstrapApi = await fetch(baseUrl + "/api/v1/bootstrap/first-admin", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: "Elvis", email: "elviskwakuboateng63@gmail.com", password: "NotARealPassword123!" }),
+    body: JSON.stringify({ name: "Integration Test", email: "ci-bootstrap-probe@example.test", password: "Worker-Test-" + crypto.randomUUID() + "-Password!" }),
   });
   const bootstrapApiContentType = bootstrapApi.headers.get("content-type") || "";
   const bootstrapApiBody = await bootstrapApi.json();
