@@ -163,3 +163,10 @@ Latest verified CI run: [43514971428](https://github.com/Elgit4/PCG_Missions/act
 - Upload and read routes are branch/capability scoped. The Worker validates file signature and declared MIME. Publishing is blocked unless a flyer exists.
 - Migration `0030_event_flyer_media.sql` advances non-production schema to 30.
 - R2 provisioning is blocked because R2 is not enabled on this Cloudflare account (Cloudflare API error 10042). Enable R2 in the Dashboard and create the bucket with EU jurisdiction before deploying this binding. No public arbitrary-file fallback is used.
+
+
+## Team and service-area administration — schema 31
+- Team and service-area CRUD, membership assignment/role change/revocation, and staff coverage assignment/revocation are implemented in the Worker and connected to the workspace API.
+- Mutations are branch-scoped, capability-gated and recorded in the append-only `team_management_audit` table. D1 triggers enforce active parent records, active staff membership, Team Leader role requirements, and deactivation guards.
+- Migration `0031_team_area_administration_guards.sql` adds the audit table and database invariants. It is the sole schema-31 migration.
+- Remote EU D1 is still at schema 28; migrations 29–31 are staged and must be applied only after the non-production deployment credentials and event-media R2 bucket are available.
