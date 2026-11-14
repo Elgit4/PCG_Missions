@@ -117,6 +117,27 @@ export interface CalendarEntryCreateInput {
 }
 export type CalendarEntryPatchInput = Partial<Omit<CalendarEntryCreateInput, "branch_id">>;
 
+export interface AnnouncementInboxRecord {
+  delivery_id: string;
+  announcement_id: string;
+  branch_id: string;
+  title: string;
+  body: string;
+  audience_type: string;
+  published_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  is_read: number;
+}
+export interface PrayerRoomMessage {
+  id: string;
+  branch_id: string;
+  author_profile_id: string;
+  author_name: string;
+  body: string;
+  created_at: string;
+}
+
 export interface AnnouncementDraftRecord {
   id: string;
   branch_id: string;
@@ -790,6 +811,28 @@ export class CmiApiClient {
   updateCalendarEntry(branchId: string, entryId: string, input: CalendarEntryPatchInput) {
     return this.request<CalendarEntryRecord>("calendar-operations", "/entries/" + encodeURIComponent(entryId), {
       method: "PATCH", query: { branch_id: branchId }, body: input,
+    });
+  }
+
+  listAnnouncementInbox(branchId: string) {
+    return this.request<AnnouncementInboxRecord[]>("announcement-operations", "/announcements/inbox", {
+      query: { branch_id: branchId },
+    });
+  }
+  markAnnouncementRead(branchId: string, announcementId: string) {
+    return this.request<unknown>("announcement-operations", "/announcements/" + encodeURIComponent(announcementId) + "/read", {
+      method: "POST", query: { branch_id: branchId },
+    });
+  }
+
+  listPrayerRoomMessages(branchId: string, limit = 80) {
+    return this.request<PrayerRoomMessage[]>("prayer-room", "/prayer-room/messages", {
+      query: { branch_id: branchId, limit },
+    });
+  }
+  postPrayerRoomMessage(branchId: string, body: string) {
+    return this.request<{ message: PrayerRoomMessage }>("prayer-room", "/prayer-room/messages", {
+      method: "POST", query: { branch_id: branchId }, body: { body },
     });
   }
 
