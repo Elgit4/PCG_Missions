@@ -815,7 +815,7 @@ export class CmiApiClient {
   }
 
   listAnnouncementInbox(branchId: string) {
-    return this.request<AnnouncementInboxRecord[]>("announcement-operations", "/announcements/inbox", {
+    return this.request<{ announcements: AnnouncementInboxRecord[] }>("announcement-operations", "/announcements/inbox", {
       query: { branch_id: branchId },
     });
   }
@@ -826,7 +826,7 @@ export class CmiApiClient {
   }
 
   listPrayerRoomMessages(branchId: string, limit = 80) {
-    return this.request<PrayerRoomMessage[]>("prayer-room", "/prayer-room/messages", {
+    return this.request<{ messages: PrayerRoomMessage[] }>("prayer-room", "/prayer-room/messages", {
       query: { branch_id: branchId, limit },
     });
   }
