@@ -104,7 +104,7 @@ const pythonSeed = [
   "db.execute('INSERT INTO staff_role_assignment (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at,reason) VALUES (?,?,?,?,?,?,?,?)', ('test-admin-assignment', 'test-staff-profile', role_id, 'test-branch', 'test-staff-profile', now, now, 'Automated non-production integration fixture'))",
   "db.commit()",
   "version = db.execute(\"SELECT schema_version FROM app_meta WHERE id=1 AND environment='non-production'\").fetchone()",
-  "if not version or version[0] != 28:",
+  "if not version or version[0] != 29:",
   "    raise SystemExit('Expected non-production schema 29, got ' + str(version))",
   "violations = db.execute('PRAGMA foreign_key_check').fetchall()",
   "if violations:",
