@@ -255,7 +255,7 @@ try {
   const eventHeaders = { Cookie: currentSessionCookie, Origin: baseUrl, "X-Branch-Id": "00000000-0000-4000-8000-000000000001", "Content-Type": "application/json" };
   const createdEventResponse = await fetch(baseUrl + "/api/v1/events", {
     method:"POST",headers:eventHeaders,
-    body:JSON.stringify({title:"Flyer upload integration",starts_at:eventStart,ends_at:eventEnd,timezone:"Africa/Accra",location:"Test venue"}),
+    body:JSON.stringify({title:"Flyer upload integration",starts_at:eventStart,ends_at:eventEnd,timezone:"Africa/Accra",location:"Test venue",capacity:1}),
   });
   const createdEventBody = await createdEventResponse.json();
   assert(createdEventResponse.status===201 && createdEventBody.event?.id,
@@ -285,6 +285,38 @@ try {
   });
   assert(publishWithFlyer.status===200,
     "event with a stored flyer should publish successfully: "+await publishWithFlyer.text());
+
+  const openRegistration=await fetch(baseUrl+"/api/v1/events/"+encodeURIComponent(createdEventId)+"/registration/open",{
+    method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001"},
+  });
+  assert(openRegistration.status===200,"event registration could not be opened: "+await openRegistration.text());
+  const registrationA={attendee_name:"Capacity Test A",attendee_phone:null,attendee_email:"capacity-a@example.test"};
+  const registrationB={attendee_name:"Capacity Test B",attendee_phone:null,attendee_email:"capacity-b@example.test"};
+  const [registrationResponseA,registrationResponseB]=await Promise.all([
+    fetch(baseUrl+"/api/v1/events/"+encodeURIComponent(createdEventId)+"/registrations",{
+      method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001","Content-Type":"application/json","Idempotency-Key":"capacity-race-a"},
+      body:JSON.stringify(registrationA),
+    }),
+    fetch(baseUrl+"/api/v1/events/"+encodeURIComponent(createdEventId)+"/registrations",{
+      method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001","Content-Type":"application/json","Idempotency-Key":"capacity-race-b"},
+      body:JSON.stringify(registrationB),
+    }),
+  ]);
+  const registrationResults=await Promise.all([registrationResponseA.json(),registrationResponseB.json()]);
+  const successCount=[registrationResponseA,registrationResponseB].filter(response=>response.status===201).length;
+  const capacityFailure=[registrationResponseA,registrationResponseB].find(response=>response.status===409);
+  assert(successCount===1&&capacityFailure,
+    "concurrent registrations must never exceed event capacity: "+JSON.stringify({statuses:[registrationResponseA.status,registrationResponseB.status],bodies:registrationResults}));
+  const winningIndex=registrationResponseA.status===201?0:1;
+  const winningKey=winningIndex===0?"capacity-race-a":"capacity-race-b";
+  const winningBody=winningIndex===0?registrationA:registrationB;
+  const replay=await fetch(baseUrl+"/api/v1/events/"+encodeURIComponent(createdEventId)+"/registrations",{
+    method:"POST",headers:{Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001","Content-Type":"application/json","Idempotency-Key":winningKey},
+    body:JSON.stringify(winningBody),
+  });
+  const replayBody=await replay.json();
+  assert(replay.status===201&&replayBody.registration_id===registrationResults[winningIndex].registration_id,
+    "idempotent registration retry must return the original registration: "+JSON.stringify(replayBody));
 
   const teamQuery="?branch_id=00000000-0000-4000-8000-000000000001";
   const adminBranchHeaders={Cookie:currentSessionCookie,Origin:baseUrl,"X-Branch-Id":"00000000-0000-4000-8000-000000000001","Content-Type":"application/json"};
