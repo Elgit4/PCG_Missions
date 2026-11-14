@@ -69,12 +69,28 @@ class TeamAreaAdministrationGuardTests(unittest.TestCase):
         with self.assertRaisesRegex(sqlite3.IntegrityError,"TEAM_HAS_ACTIVE_MEMBERS"):
             self.db.execute("UPDATE team SET is_active=0 WHERE id='t1'")
 
+    def test_team_cannot_be_deactivated_with_future_scheduled_membership(self):
+        future = "2026-12-01T00:00:00.000Z"
+        self.db.execute("""INSERT INTO staff_team_membership
+            (id,staff_profile_id,team_id,branch_id,membership_role,starts_at,created_by,created_at)
+            VALUES('m-future','sp1','t1','b1','member',?,'sp1',?)""",(future,NOW))
+        with self.assertRaisesRegex(sqlite3.IntegrityError,"TEAM_HAS_ACTIVE_MEMBERS"):
+            self.db.execute("UPDATE team SET is_active=0 WHERE id='t1'")
+
     def test_area_coverage_requires_active_area_and_staff_in_same_branch(self):
         self.db.execute("UPDATE service_area SET is_active=0 WHERE id='a1'")
         with self.assertRaisesRegex(sqlite3.IntegrityError,"ACTIVE_SERVICE_AREA_NOT_FOUND"):
             self.db.execute("""INSERT INTO staff_area_coverage
                 (id,staff_profile_id,service_area_id,branch_id,starts_at,created_by,created_at)
                 VALUES('cov1','sp1','a1','b1',?,'sp1',?)""",(NOW,NOW))
+
+    def test_area_cannot_be_deactivated_with_future_scheduled_coverage(self):
+        future = "2026-12-01T00:00:00.000Z"
+        self.db.execute("""INSERT INTO staff_area_coverage
+            (id,staff_profile_id,service_area_id,branch_id,starts_at,created_by,created_at)
+            VALUES('cov-future','sp1','a1','b1',?,'sp1',?)""",(future,NOW))
+        with self.assertRaisesRegex(sqlite3.IntegrityError,"AREA_HAS_ACTIVE_COVERAGE"):
+            self.db.execute("UPDATE service_area SET is_active=0 WHERE id='a1'")
 
     def test_area_cannot_be_deactivated_while_active_coverage_remains(self):
         self.db.execute("""INSERT INTO staff_area_coverage
