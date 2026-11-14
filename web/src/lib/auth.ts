@@ -113,8 +113,12 @@ export class PcgAuthClient {
     if (!currentPassword || currentPassword.length > 128) {
       throw new AuthClientError(400, "CURRENT_PASSWORD_REQUIRED", "Enter your current password.");
     }
-    if (newPassword.length < 12 || newPassword.length > 128) {
-      throw new AuthClientError(400, "PASSWORD_POLICY_INVALID", "Use a password between 12 and 128 characters.");
+    if (
+      newPassword.length < 12 || newPassword.length > 128 ||
+      !/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword) ||
+      !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)
+    ) {
+      throw new AuthClientError(400, "PASSWORD_POLICY_INVALID", "Use 12–128 characters with uppercase and lowercase letters, a number and a symbol.");
     }
     await this.request("change-password", "POST", {
       currentPassword,
