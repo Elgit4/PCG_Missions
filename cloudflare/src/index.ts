@@ -6857,7 +6857,7 @@ async function listTeams(request:Request,env:Env,requestId:string,origin?:string
   if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
   const branchId=access.activeBranch.branchId,now=new Date().toISOString();
   const teams=await env.DB.prepare("SELECT id,branch_id,name,description,is_active,created_at,updated_at FROM team WHERE branch_id=? ORDER BY is_active DESC,name COLLATE NOCASE").bind(branchId).all<Record<string,unknown>>();
-  const includeStaff=access.activeBranch.capabilities.some(item=>item.code==="staff.directory.read");
+  const includeStaff=access.activeBranch.capabilities.some(item=>item.code==="staff.directory.read"&&item.scopeMode==="branch");
   const members=includeStaff?await env.DB.prepare(`
     SELECT stm.id,stm.team_id,stm.staff_profile_id,stm.membership_role,stm.starts_at,stm.ends_at,stm.created_at,
            sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
