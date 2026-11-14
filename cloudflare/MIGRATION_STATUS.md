@@ -1,10 +1,20 @@
 # Cloudflare migration status
 
+## Current-head CI verification — 2026-11-14
+
+- Current PR head: `c16526df772accf00ab280192d50eff14c987a23`.
+- Cloudflare D1 Foundation: [run 43608138060](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138060) — SQLite/security suite and Worker typecheck/build/local D1 integration passed.
+- Frontend Worker Integration: [run 43608138041](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138041) — passed.
+- CMI web CI: [run 43608138043](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138043) — passed.
+- CMI frontend CI: [run 43608138118](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138118) — passed.
+- The Cloudflare run was pull-request-triggered. Its deployment credential gate, R2 provisioning, remote D1 migrations, Worker deployment and live health checks were skipped. These green checks do not establish remote schema 31 or a newly deployed Worker.
+- Vercel status check reports success for the current PR head; this is the provider's preview check, not production deployment approval.
+
 ## Latest implementation note — 2026-11-14
 
 - Fixed the Worker nullability errors in `listTeams` and `listServiceAreas` by retaining the narrowed active-branch value before aliasing the staff context.
 - Added a Worker API contract regression test for both handlers.
-- The change is committed on `migration/cloudflare-nonprod-completion`; a fresh GitHub Actions result for that exact head has not yet been retrieved, so type-check and test success are not claimed.
+- The fix and regression test are present on the current PR head `c16526df772accf00ab280192d50eff14c987a23`. Current-head GitHub Actions run [43608138060](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138060) passed SQLite/security tests, Worker TypeScript type-check, bundle and local Worker/D1 integration. Current-head frontend runs [43608138043](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138043), [43608138041](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138041) and [43608138118](https://github.com/Elgit4/PCG_Missions/actions/runs/43608138118) also passed. These are pull-request checks: the deployment credential, R2 provisioning, remote migration, Worker deploy and live health steps were skipped by design.
 - Direct read-only EU D1 inspection reconfirmed schema version 28, 28 migration-ledger entries, 81 application tables (82 user tables including the `d1_migrations` ledger), and no foreign-key violations. Migrations 0029–0031 remain pending.
 - The D1 authorization catalog still contains the six active roles. Prayer request narrative access remains explicit-share-only for Prayer Intercessors; pastoral case metadata is Admin/Pastor branch-scoped while narrative read/update/interact are explicit-share-scoped. Prayer, care and sensitive-record access audit immutability triggers are present.
 - R2 remains unavailable at account level (Cloudflare API error 10042). No bucket was created and no D1 migration or Worker deployment was performed during this implementation pass.
