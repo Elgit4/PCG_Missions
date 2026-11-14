@@ -7027,7 +7027,7 @@ async function listServiceAreas(request:Request,env:Env,requestId:string,origin?
     const coverage=await env.DB.prepare(`SELECT sac.id,sac.service_area_id,sac.staff_profile_id,sac.starts_at,sac.ends_at,sac.created_at,
         sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
       FROM staff_area_coverage sac JOIN staff_profile sp ON sp.id=sac.staff_profile_id
-      WHERE sac.branch_id=? AND sac.starts_at<=?
+      WHERE sac.branch_id=? AND sac.revoked_at IS NULL AND sac.starts_at<=?
         AND (sac.ends_at IS NULL OR sac.ends_at>?) ORDER BY sac.starts_at DESC`)
       .bind(branchId,now,now).all<Record<string,unknown>>();
     coverageRows=coverage.results??[];
@@ -7036,7 +7036,7 @@ async function listServiceAreas(request:Request,env:Env,requestId:string,origin?
     const coverage=await env.DB.prepare(`SELECT sac.id,sac.service_area_id,sac.staff_profile_id,sac.starts_at,sac.ends_at,sac.created_at,
         sp.id AS staff_id,sp.full_name AS staff_full_name,sp.account_status AS staff_account_status
       FROM staff_area_coverage sac JOIN staff_profile sp ON sp.id=sac.staff_profile_id
-      WHERE sac.branch_id=? AND sac.staff_profile_id IN (${placeholders})
+      WHERE sac.branch_id=? AND sac.staff_profile_id IN (${placeholders}) AND sac.revoked_at IS NULL
         AND sac.starts_at<=? AND (sac.ends_at IS NULL OR sac.ends_at>?) ORDER BY sac.starts_at DESC`)
       .bind(branchId,...visibleStaffIds,now,now).all<Record<string,unknown>>();
     coverageRows=coverage.results??[];
@@ -7135,17 +7135,16 @@ async function revokeAreaCoverage(request:Request,env:Env,areaId:string,coverage
   const access=await authorizeRequestCapability(request,env,"area.manage");
   if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
   const branchId=access.activeBranch.branchId,now=new Date().toISOString();
-  const existing=await env.DB.prepare("SELECT starts_at FROM staff_area_coverage WHERE id=? AND service_area_id=? AND branch_id=? AND (ends_at IS NULL OR ends_at>?)").bind(coverageId,areaId,branchId,now).first<{starts_at:string}>();
+  const existing=await env.DB.prepare("SELECT id FROM staff_area_coverage WHERE id=? AND service_area_id=? AND branch_id=? AND revoked_at IS NULL AND (ends_at IS NULL OR ends_at>?)").bind(coverageId,areaId,branchId,now).first<{id:string}>();
   if(!existing) return json(404,{ok:false,error:{code:"ACTIVE_AREA_COVERAGE_NOT_FOUND"}},requestId,origin);
-  const endedAt=new Date(Math.max(Date.now(),Date.parse(existing.starts_at)+1)).toISOString();
   try{
     const result=await env.DB.batch([
-      env.DB.prepare("UPDATE staff_area_coverage SET ends_at=? WHERE id=? AND service_area_id=? AND branch_id=? AND (ends_at IS NULL OR ends_at>?)").bind(endedAt,coverageId,areaId,branchId,now),
-      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'area_coverage',?,'service_area.coverage_revoked',?,? WHERE EXISTS(SELECT 1 FROM staff_area_coverage WHERE id=? AND branch_id=? AND ends_at=?)").bind(crypto.randomUUID(),branchId,access.staff.profileId,coverageId,JSON.stringify({service_area_id:areaId}),endedAt,coverageId,branchId,endedAt),
+      env.DB.prepare("UPDATE staff_area_coverage SET revoked_at=?,revoked_by=? WHERE id=? AND service_area_id=? AND branch_id=? AND revoked_at IS NULL").bind(now,access.staff.profileId,coverageId,areaId,branchId),
+      env.DB.prepare("INSERT INTO team_management_audit(id,branch_id,actor_profile_id,target_type,target_id,action,metadata,created_at) SELECT ?,?,?, 'area_coverage',?,'service_area.coverage_revoked',?,? WHERE EXISTS(SELECT 1 FROM staff_area_coverage WHERE id=? AND branch_id=? AND revoked_at=?)").bind(crypto.randomUUID(),branchId,access.staff.profileId,coverageId,JSON.stringify({service_area_id:areaId}),now,coverageId,branchId,now),
     ]);
     if((result[0]?.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"ACTIVE_AREA_COVERAGE_NOT_FOUND"}},requestId,origin);
   }catch(error){return teamOperationError(error,requestId,origin);}
-  const row=await env.DB.prepare("SELECT id,service_area_id,staff_profile_id,starts_at,ends_at,created_at FROM staff_area_coverage WHERE id=?").bind(coverageId).first<Record<string,unknown>>();
+  const row=await env.DB.prepare("SELECT id,service_area_id,staff_profile_id,starts_at,ends_at,revoked_at,revoked_by,created_at FROM staff_area_coverage WHERE id=?").bind(coverageId).first<Record<string,unknown>>();
   return json(200,{ok:true,data:row},requestId,origin);
 }
 
