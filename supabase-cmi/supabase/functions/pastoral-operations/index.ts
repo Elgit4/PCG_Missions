@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 
 import {
   isUuid,
+  parsePastoralListQuery,
   parsePastoralReadInput,
   parsePastoralReadPath,
 } from "./validation.ts";
@@ -149,36 +150,11 @@ Deno.serve(async (request: Request) => {
   // Return workflow metadata only. Prayer narratives remain available solely
   // through the audited single-record RPC below.
   if (request.method === "GET" && (isPrayerCollection || isCareCollection)) {
-    const allowedQuery = new Set(["branch_id", "limit", "offset"]);
-    const keys = [...requestUrl.searchParams.keys()];
-    if (
-      keys.some((key) => !allowedQuery.has(key)) ||
-      new Set(keys).size !== keys.length
-    ) {
-      return fail(
-        "INVALID_QUERY",
-        "Unsupported or duplicate query parameter.",
-        400,
-        origin,
-        id,
-      );
+    const parsedQuery = parsePastoralListQuery(requestUrl.searchParams);
+    if (!parsedQuery.ok) {
+      return fail("INVALID_QUERY", parsedQuery.error, 400, origin, id);
     }
-    const branchId = requestUrl.searchParams.get("branch_id") ?? "";
-    const limit = Number(requestUrl.searchParams.get("limit") ?? "25");
-    const offset = Number(requestUrl.searchParams.get("offset") ?? "0");
-    if (
-      !isUuid(branchId) ||
-      !Number.isInteger(limit) || limit < 1 || limit > 50 ||
-      !Number.isInteger(offset) || offset < 0 || offset > 5000
-    ) {
-      return fail(
-        "INVALID_QUERY",
-        "A valid branch_id, limit (1–50), and offset (0–5000) are required.",
-        400,
-        origin,
-        id,
-      );
-    }
+    const { branch_id: branchId, limit, offset } = parsedQuery.value;
     if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !SUPABASE_PUBLIC_KEY) {
       return fail(
         "SERVICE_NOT_CONFIGURED",
