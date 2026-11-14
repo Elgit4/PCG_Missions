@@ -7056,9 +7056,10 @@ function teamOperationError(error:unknown,requestId:string,origin?:string):Respo
   return json(409,{ok:false,error:{code:"TEAM_OPERATION_CONFLICT",message:"The team or service-area change could not be completed."}},requestId,origin);
 }
 
-function teamScopedRequest(request:Request,branchId:string):Request{
-  const headers=new Headers(request.headers);headers.set("X-Branch-Id",branchId);
-  return new Request(request.clone(),{headers});
+function teamCreateBranchId(request:Request):string|null{
+  const header=request.headers.get("X-Branch-Id");
+  const values=new URL(request.url).searchParams.getAll("branch_id");
+  return isUuidValue(header)&&values.length===1&&values[0]===header?header:null;
 }
 
 async function listTeams(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
@@ -7088,12 +7089,13 @@ async function listTeams(request:Request,env:Env,requestId:string,origin?:string
 async function createTeam(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
   const parsed=await readJsonBody(request,16*1024);
   if(!parsed.ok) return json(parsed.status,{ok:false,error:{code:parsed.status===413?"BODY_TOO_LARGE":"INVALID_JSON"}},requestId,origin);
-  if(!isPlainRecord(parsed.value)||Object.keys(parsed.value).some(k=>!["branch_id","name","description"].includes(k))) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
-  const body=parsed.value,branchId=body.branch_id;
-  if(!isUuidValue(branchId)||typeof body.name!=="string"||body.name.trim().length<2||body.name.trim().length>160||
+  if(!isPlainRecord(parsed.value)||Object.keys(parsed.value).some(k=>!["name","description"].includes(k))) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
+  const body=parsed.value,branchId=teamCreateBranchId(request);
+  if(!branchId) return json(400,{ok:false,error:{code:"BRANCH_REQUIRED",message:"A matching branch_id query parameter and X-Branch-Id header are required."}},requestId,origin);
+  if(typeof body.name!=="string"||body.name.trim().length<2||body.name.trim().length>160||
      (body.description!==undefined&&body.description!==null&&typeof body.description!=="string")||
      (typeof body.description==="string"&&body.description.length>1000)) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
-  const access=await authorizeRequestCapability(teamScopedRequest(request,branchId),env,"team.manage");
+  const access=await authorizeRequestCapability(request,env,"team.manage");
   if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
   const id=crypto.randomUUID(),now=new Date().toISOString(),name=body.name.trim(),description=typeof body.description==="string"?body.description.trim()||null:null;
   try{
@@ -7104,7 +7106,7 @@ async function createTeam(request:Request,env:Env,requestId:string,origin?:strin
     if((results[0]?.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"TEAM_CREATE_CONFLICT"}},requestId,origin);
   }catch(error){return teamOperationError(error,requestId,origin);}
   const row=await env.DB.prepare("SELECT id,branch_id,name,description,is_active,created_at,updated_at FROM team WHERE id=? AND branch_id=?").bind(id,branchId).first<Record<string,unknown>>();
-  return json(201,{ok:true,data:{...row,is_active:Boolean(row?.is_active)}},requestId,origin);
+  return json(201,{ok:true,data:{team:{...row,is_active:Boolean(row?.is_active)}}},requestId,origin);
 }
 
 async function updateTeam(request:Request,env:Env,teamId:string,requestId:string,origin?:string):Promise<Response>{
@@ -7223,13 +7225,14 @@ async function listServiceAreas(request:Request,env:Env,requestId:string,origin?
 async function createServiceArea(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
   const parsed=await readJsonBody(request,8192);
   if(!parsed.ok) return json(parsed.status,{ok:false,error:{code:"INVALID_JSON"}},requestId,origin);
-  if(!isPlainRecord(parsed.value)||Object.keys(parsed.value).some(k=>!["branch_id","name","code"].includes(k))) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
-  const body=parsed.value,branchId=body.branch_id;
-  if(!isUuidValue(branchId)||typeof body.name!=="string"||body.name.trim().length<2||body.name.trim().length>160||
+  if(!isPlainRecord(parsed.value)||Object.keys(parsed.value).some(k=>!["name","code"].includes(k))) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
+  const body=parsed.value,branchId=teamCreateBranchId(request);
+  if(!branchId) return json(400,{ok:false,error:{code:"BRANCH_REQUIRED",message:"A matching branch_id query parameter and X-Branch-Id header are required."}},requestId,origin);
+  if(typeof body.name!=="string"||body.name.trim().length<2||body.name.trim().length>160||
      (body.code!==undefined&&body.code!==null&&typeof body.code!=="string")) return json(422,{ok:false,error:{code:"VALIDATION_ERROR"}},requestId,origin);
   const code=typeof body.code==="string"?body.code.trim().toUpperCase()||null:null;
   if(code!==null&&!/^[A-Z0-9_-]{2,24}$/.test(code)) return json(422,{ok:false,error:{code:"INVALID_SERVICE_AREA_CODE"}},requestId,origin);
-  const access=await authorizeRequestCapability(teamScopedRequest(request,branchId),env,"area.manage");
+  const access=await authorizeRequestCapability(request,env,"area.manage");
   if(access.state!=="authorized") return mapCapabilityFailure(access.state,requestId,origin);
   const id=crypto.randomUUID(),now=new Date().toISOString(),name=body.name.trim();
   try{
@@ -7240,7 +7243,7 @@ async function createServiceArea(request:Request,env:Env,requestId:string,origin
     if((result[0]?.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"SERVICE_AREA_CREATE_CONFLICT"}},requestId,origin);
   }catch(error){return teamOperationError(error,requestId,origin);}
   const row=await env.DB.prepare("SELECT id,branch_id,name,code,is_active,created_at,updated_at FROM service_area WHERE id=?").bind(id).first<Record<string,unknown>>();
-  return json(201,{ok:true,data:{...row,is_active:Boolean(row?.is_active)}},requestId,origin);
+  return json(201,{ok:true,data:{area:{...row,is_active:Boolean(row?.is_active)}}},requestId,origin);
 }
 
 async function updateServiceArea(request:Request,env:Env,areaId:string,requestId:string,origin?:string):Promise<Response>{
