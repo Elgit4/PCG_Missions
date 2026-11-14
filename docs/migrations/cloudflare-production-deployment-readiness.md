@@ -7,7 +7,7 @@
 
 ## 1. Current verified baseline
 
-- EU non-production D1 exists and is on schema version 32 (81 application tables; last remotely verified baseline). Current migration branch target is schema 32..
+- EU non-production D1 was last verified on schema version 28 (81 application tables). The current migration branch targets schema version 32; migrations 0029–0032 are pending remote application.
 - The full API Worker exists in the isolated non-production environment.
 - Local SQLite migration/security tests, Worker type-check, bundle build and local Better Auth/D1 integration tests pass on the current migration head.
 - Existing Supabase accounts use GoTrue bcrypt hashes. The current branch configures Better Auth bcrypt verification and includes legacy-hash sign-in integration coverage.
