@@ -108,7 +108,7 @@ describe("PcgAuthClient — Better Auth cookie sessions", () => {
     const password = "Strong-" + "Invite-" + "2026!";
     await expect(client.acceptInvitation(token, password)).resolves.toBeUndefined();
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe("/api/auth/v1/staff/invitations/accept");
+    expect(url).toBe("/api/v1/staff/invitations/accept");
     expect(init.method).toBe("POST");
     expect(init.credentials).toBe("include");
     expect(JSON.parse(String(init.body))).toEqual({ invitation_token: token, password });
