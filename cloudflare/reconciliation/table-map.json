@@ -118,6 +118,16 @@
       "reason": "preserve source keys and approved history"
     },
     {
+      "source_table": "public.team_management_audit",
+      "target_table": "team_management_audit",
+      "primary_key": [
+        "id"
+      ],
+      "action": "copy",
+      "classification": "restricted",
+      "reason": "preserve append-only team, membership, service-area and coverage administration audit history"
+    },
+    {
       "source_table": "public.contact",
       "target_table": "contact",
       "primary_key": [
