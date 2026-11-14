@@ -287,6 +287,7 @@ try {
     "/api/v1/pastoral/prayer/queue",
     "/api/v1/pastoral/care",
     "/api/v1/events",
+    "/api/v1/events/test-event/flyer",
     "/api/v1/calendar",
     "/api/v1/announcements",
     "/api/v1/reports",
