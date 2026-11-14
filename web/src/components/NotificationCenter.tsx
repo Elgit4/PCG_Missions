@@ -115,7 +115,7 @@ export function NotificationCenter({ api, branchId, onOpenAnnouncements, onSessi
         </div>
         <footer>
           <button type="button" onClick={enableDeviceAlerts} disabled={permission === "granted" || permission === "unsupported"}>
-            <Settings2 size={14} />{permission === "granted" ? "Device alerts enabled" : permission === "denied" ? "Alerts blocked in browser" : permission === "unsupported" ? "Device alerts unavailable" : "Enable device alerts"}
+            <Settings2 size={14} />{permission === "granted" ? "Browser alerts enabled" : permission === "denied" ? "Browser alerts blocked" : permission === "unsupported" ? "Browser alerts unavailable" : "Allow browser alerts"}
           </button>
           <button type="button" onClick={() => { setOpen(false); onOpenAnnouncements(); }}>Open announcements</button>
         </footer>
