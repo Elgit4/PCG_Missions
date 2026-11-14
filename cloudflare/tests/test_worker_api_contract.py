@@ -372,6 +372,18 @@ class WorkerApiContractTests(unittest.TestCase):
             self.assertRegex(code, r"const activeBranch=context\.activeBranch;\s*if\(!activeBranch\)")
             self.assertNotIn("access.activeBranch", code)
 
+    def test_followup_volunteer_event_checkin_is_assigned_only(self):
+        migration = (Path(__file__).resolve().parents[1] / "migrations" / "0032_followup_volunteer_assigned_event_checkin.sql").read_text(encoding="utf-8")
+        self.assertIn("'role-follow-up-volunteer'", migration)
+        self.assertIn("code='events.checkin'", migration)
+        self.assertIn("'assigned'", migration)
+        self.assertNotIn("'branch'", migration)
+        access = re.search(r"async function hasEventCheckinAccess\([\s\S]*?\n\}", self.source)
+        self.assertIsNotNone(access)
+        self.assertIn("hasEventAssignmentRole", access.group(0))
+        self.assertIn("EVENT_CHECKIN_ASSIGNMENT_REQUIRED", self.source)
+
+
 
 if __name__ == "__main__":
     unittest.main()
