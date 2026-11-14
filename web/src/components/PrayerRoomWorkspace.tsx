@@ -63,7 +63,7 @@ export function PrayerRoomWorkspace({
     "assigned",
   );
   const [selected, setSelected] = useState<PrayerRequestRecord | null>(null);
-  const [reason, setReason] = useState<string>(OVERSIGHT_REASONS[0][0]);
+  const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(true);
   const [reading, setReading] = useState(false);
   const [error, setError] = useState("");
@@ -90,6 +90,10 @@ export function PrayerRoomWorkspace({
 
   const openRequest = async (requestId: string) => {
     if (reading) return;
+    if (accessMode === "oversight" && !reason) {
+      setError("Select an oversight reason before opening this restricted request.");
+      return;
+    }
     setReading(true);
     setError("");
     try {
@@ -144,6 +148,7 @@ export function PrayerRoomWorkspace({
             value={reason}
             onChange={(event) => setReason(event.target.value)}
           >
+            <option value="" disabled>Select an oversight reason</option>
             {OVERSIGHT_REASONS.map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
