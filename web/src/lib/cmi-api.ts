@@ -528,6 +528,7 @@ export class CmiApiClient {
   ): Promise<ApiEnvelope<T>> {
     const url = new URL(this.workerPath(functionName, path), this.baseUrl);
     for (const [key, value] of Object.entries(options.query ?? {})) {
+      if (key === "branch_id") continue; // branch scope is carried only in X-Branch-Id
       if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
     }
     const headers = new Headers({ Accept: "application/json" });
