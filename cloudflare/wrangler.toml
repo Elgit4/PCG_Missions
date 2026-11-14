@@ -21,3 +21,8 @@ database_name = "pcg-missions-dev"
 # Never replace this with a production database ID.
 database_id = "376a6782-d059-41f9-9e09-f93718fef2bb"
 migrations_dir = "migrations"
+
+
+[[r2_buckets]]
+binding = "EVENT_MEDIA"
+bucket_name = "pcg-missions-event-media-nonprod"
