@@ -12,7 +12,7 @@ class EventFlyerMediaMigrationTests(unittest.TestCase):
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.execute("CREATE TABLE app_meta (id INTEGER PRIMARY KEY, environment TEXT NOT NULL, schema_version INTEGER NOT NULL)")
         self.db.execute("INSERT INTO app_meta VALUES (1,'non-production',29)")
-        self.db.execute("CREATE TABLE event (id TEXT PRIMARY KEY)")
+        self.db.execute("CREATE TABLE event (id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'draft')")
         self.db.executescript(MIGRATION.read_text(encoding="utf-8"))
 
     def tearDown(self):
@@ -28,6 +28,15 @@ class EventFlyerMediaMigrationTests(unittest.TestCase):
             self.db.execute("INSERT INTO event(id,flyer_key) VALUES ('bad-event','events/key.png')")
         with self.assertRaises(sqlite3.IntegrityError):
             self.db.execute("INSERT INTO event(id,flyer_key,flyer_content_type,flyer_size) VALUES ('bad-type','events/key.gif','image/gif',100)")
+
+    def test_publishing_requires_a_complete_flyer(self):
+        self.db.execute("INSERT INTO event(id) VALUES ('draft-event')")
+        with self.assertRaisesRegex(sqlite3.IntegrityError,"EVENT_FLYER_REQUIRED"):
+            self.db.execute("UPDATE event SET status='published' WHERE id='draft-event'")
+        self.db.execute("UPDATE event SET flyer_key='events/draft-event.png',flyer_content_type='image/png',flyer_size=100 WHERE id='draft-event'")
+        self.db.execute("UPDATE event SET status='published' WHERE id='draft-event'")
+        self.assertEqual(self.db.execute("SELECT status FROM event WHERE id='draft-event'").fetchone()[0],"published")
+
 
     def test_duplicate_object_keys_are_rejected(self):
         self.db.execute("INSERT INTO event(id,flyer_key,flyer_content_type,flyer_size) VALUES ('one','events/one.png','image/png',100)")
