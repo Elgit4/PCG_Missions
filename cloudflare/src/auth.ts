@@ -1,4 +1,5 @@
 import { betterAuth } from "better-auth";
+import { compare as bcryptCompare, hash as bcryptHash } from "bcryptjs";
 
 export interface AuthDatabase {
   prepare(sql: string): {
@@ -119,6 +120,17 @@ export function createAuth(env: AuthEnvironment, allowInvitationSignUp = false) 
       disableSignUp: !allowInvitationSignUp,
       autoSignIn: false,
       requireEmailVerification: false,
+      password: {
+        // Supabase GoTrue stores email passwords as bcrypt hashes ($2a$).
+        // Keep bcrypt for migrated credentials; Better Auth verifies the same
+        // hashes and newly changed passwords remain compatible with this verifier.
+        hash: async (password) => bcryptHash(password, 12),
+        verify: async ({ password, hash }) => {
+          if (!/^\\$2[aby]\\$\\d{2}\\$/.test(hash)) return false;
+          const compatibleHash = hash.startsWith("$2y$") ? "$2b$" + hash.slice(4) : hash;
+          return bcryptCompare(password, compatibleHash);
+        },
+      },
       sendResetPassword: async ({ user, url }) => {
         const safeUrl=url.replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
         await sendResendEmail(env,{
