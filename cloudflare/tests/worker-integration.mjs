@@ -305,7 +305,8 @@ try {
   const registrationResults=await Promise.all([registrationResponseA.json(),registrationResponseB.json()]);
   const successCount=[registrationResponseA,registrationResponseB].filter(response=>response.status===201).length;
   const capacityFailure=[registrationResponseA,registrationResponseB].find(response=>response.status===409);
-  assert(successCount===1&&capacityFailure,
+  const losingIndex=registrationResponseA.status===409?0:1;
+  assert(successCount===1&&capacityFailure&&registrationResults[losingIndex].error?.code==="EVENT_CAPACITY_REACHED",
     "concurrent registrations must never exceed event capacity: "+JSON.stringify({statuses:[registrationResponseA.status,registrationResponseB.status],bodies:registrationResults}));
   const winningIndex=registrationResponseA.status===201?0:1;
   const winningKey=winningIndex===0?"capacity-race-a":"capacity-race-b";
