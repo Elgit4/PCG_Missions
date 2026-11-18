@@ -203,13 +203,14 @@ Do not use generative image editing for the crest. Do not add a new symbol or de
 ### 10.2 Proposed implementation
 
 1. Extract the embedded source raster deterministically from the existing asset.
-2. Generate contour paths from the actual image regions. Trace the outer silhouette, internal boundaries, palm tree, ribbon and lettering rather than drawing a generic perimeter only.
-3. Preserve the original source image as an underlay/final reveal. The path animation is a tracing treatment over the original identity, not a replacement artwork.
-4. Compare the traced paths against the source at the same 600 × 680 view box. Correct scale, alignment, path ordering and visible contour gaps. Reject an output that alters the shield, lettering or palm tree.
-5. Build a small inline React/SVG loader so the tracing mark is present in the first render and does not wait for an external logo request before showing anything.
-6. Draw the main outline first, then internal emblem detail and banner lettering, followed by a restrained reveal of the existing full-colour source image.
-7. Respect `prefers-reduced-motion`; use a static exact-logo state for users requesting reduced motion.
-8. Tie loader visibility to the existing authentication/workspace initialization state. Never add a minimum delay or wait for the full animation before granting access to a ready workspace.
+2. Generate contour paths from the actual image regions. Trace the outer shield silhouette, both border lines, diagonal elements, central cross boundaries, palm tree, ribbon edges and motto lettering; do not substitute a generic shield outline.
+3. The loader is **outline-only and single-colour**. Every traced path uses one uniform stroke colour, one consistent stroke treatment and no filled regions, gradients, multicolour segments, shadows or final full-colour logo reveal. The original artwork is the geometric source of truth, not an image displayed over the tracing.
+4. The trace itself communicates progress: strokes are revealed progressively from the first contour to the final contour. The animation must visibly advance across the complete crest and end on the fully drawn one-colour outline. Do not show an unrelated spinner or a separate percentage indicator.
+5. Compare the traced paths against the source at the same 600 × 680 view box. Correct scale, alignment, path ordering and visible contour gaps. Reject an output that alters the shield, lettering or palm tree.
+6. Build a small inline React/SVG loader so the first outline stroke is present in the first render and does not wait for an external image request before showing anything.
+7. Sequence the outline to draw the main shield and borders first, then interior geometry and the palm tree, and finally the curved banner and motto lettering. Keep all strokes in the same colour; a subtle opacity or dash-offset progression may communicate the drawing sequence.
+8. Respect `prefers-reduced-motion`; use a static single-colour complete outline for users requesting reduced motion.
+9. Tie loader visibility to the existing authentication/workspace initialization state. Never add a minimum delay or wait for the full animation before granting access to a ready workspace.
 
 Normal sidebar and mobile branding continue to use the existing original logo assets. The tracing loader is a separate presentation component.
 
