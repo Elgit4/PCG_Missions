@@ -1421,3 +1421,23 @@ html[data-theme="dark"] .cmi-followup-toolbar {
 html[data-theme="dark"] .cmi-followup-toolbar > span {
   color: #e0e8f0 !important;
 }
+
+
+/* Desktop contact rows must use the light table surface in the light theme. */
+html:not([data-theme="dark"]) .cmi-table tbody tr {
+  background: #fff !important;
+}
+
+html:not([data-theme="dark"]) .cmi-table tbody tr:hover {
+  background: #f8fafc !important;
+}
+
+html:not([data-theme="dark"]) .cmi-table tbody td {
+  background: transparent !important;
+  color: #586b7e;
+}
+
+/* The follow-up filter label uses a separate compact toolbar surface. */
+html[data-theme="dark"] .cmi-followup-toolbar label {
+  color: #d4deea !important;
+}
