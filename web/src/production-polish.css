@@ -1,0 +1,654 @@
+/* PCG Missions — frontend production polish
+   Layered after the existing design system. No workflow or data behavior changes. */
+
+:root {
+  --cmi-focus-ring: 0 0 0 3px rgb(49 81 111 / 16%);
+  --cmi-control-border: #d8e1e9;
+  --cmi-copy: #42536a;
+  --cmi-copy-muted: #69798e;
+}
+
+html,
+body {
+  min-width: 320px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  line-height: 1.5;
+}
+
+.cmi-workspace,
+.staff-login-page {
+  font-family: "DM Sans Variable", "Segoe UI", sans-serif;
+  font-optical-sizing: auto;
+}
+
+.cmi-content {
+  padding-top: clamp(22px, 3vw, 34px);
+  padding-bottom: max(42px, env(safe-area-inset-bottom));
+}
+
+.cmi-topbar {
+  min-height: 88px;
+}
+
+.cmi-topbar-heading h1 {
+  font-size: clamp(22px, 2.1vw, 28px);
+  line-height: 1.2;
+}
+
+.cmi-breadcrumb {
+  font-size: 10px;
+  letter-spacing: .12em;
+}
+
+.cmi-eyebrow,
+.cmi-operations-eyebrow,
+.ministry-reports-eyebrow {
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: .12em;
+}
+
+.cmi-welcome {
+  min-height: 148px;
+  padding: clamp(22px, 3vw, 32px);
+}
+
+.cmi-welcome h2 {
+  max-width: 680px;
+  line-height: 1.14;
+}
+
+.cmi-welcome p:not(.cmi-eyebrow) {
+  max-width: 650px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.cmi-stat-card {
+  min-height: 126px;
+  padding: 19px 20px;
+}
+
+.cmi-stat-card > span {
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: .07em;
+}
+
+.cmi-stat-card strong {
+  font-size: clamp(25px, 2.2vw, 31px);
+  line-height: 1.15;
+}
+
+.cmi-stat-card small {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.cmi-overview-card-heading h3,
+.cmi-panel-heading h3 {
+  line-height: 1.25;
+}
+
+.cmi-overview-card-heading p:not(.cmi-eyebrow),
+.cmi-panel-heading p:not(.cmi-eyebrow) {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cmi-overview-disclosure > summary {
+  min-height: 70px;
+}
+
+.cmi-overview-disclosure > summary strong {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.cmi-overview-disclosure > summary small {
+  font-size: 12px;
+}
+
+.cmi-disclosure-body,
+.cmi-access-list > div span,
+.cmi-restricted-list article p,
+.cmi-access-footnote {
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.cmi-button,
+.cmi-complete-button,
+.cmi-user-card > button,
+.cmi-icon-action,
+.cmi-theme-toggle {
+  min-height: 44px;
+}
+
+.cmi-button {
+  padding-inline: 15px;
+  font-size: 12px;
+  border-radius: 11px;
+}
+
+.cmi-button-primary {
+  font-weight: 750;
+}
+
+.cmi-search {
+  min-height: 46px;
+  border-radius: 12px;
+}
+
+.cmi-search input {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.cmi-form-grid,
+.cmi-operations-form,
+.cmi-detail-form,
+.cmi-detail-form-grid,
+.cmi-staff-status-form {
+  gap: 15px;
+}
+
+.cmi-form-grid label,
+.cmi-operations-form label,
+.cmi-detail-form label,
+.cmi-detail-form-grid label,
+.cmi-staff-status-form label,
+.ministry-report-form-grid label > span,
+.ministry-report-count-grid label > span,
+.ministry-report-review label > span {
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.cmi-form-grid label > span,
+.cmi-operations-form label > span,
+.cmi-staff-status-form label > span {
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+.cmi-form-grid input,
+.cmi-form-grid select,
+.cmi-form-grid textarea,
+.cmi-operations-form input,
+.cmi-operations-form select,
+.cmi-operations-form textarea,
+.cmi-detail-form input,
+.cmi-detail-form select,
+.cmi-detail-form textarea,
+.cmi-detail-form-grid input,
+.cmi-detail-form-grid select,
+.cmi-detail-form-grid textarea,
+.cmi-staff-status-form textarea,
+.ministry-report-form-grid input,
+.ministry-report-form-grid select,
+.ministry-report-count-grid input,
+.ministry-report-review textarea {
+  min-height: 46px;
+  border-color: var(--cmi-control-border);
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.cmi-form-grid textarea,
+.cmi-operations-form textarea,
+.cmi-detail-form textarea,
+.cmi-detail-form-grid textarea,
+.cmi-staff-status-form textarea,
+.ministry-report-review textarea {
+  min-height: 104px;
+  padding: 12px;
+  resize: vertical;
+}
+
+.cmi-form-grid input:focus-visible,
+.cmi-form-grid select:focus-visible,
+.cmi-form-grid textarea:focus-visible,
+.cmi-operations-form input:focus-visible,
+.cmi-operations-form select:focus-visible,
+.cmi-operations-form textarea:focus-visible,
+.cmi-detail-form input:focus-visible,
+.cmi-detail-form select:focus-visible,
+.cmi-detail-form textarea:focus-visible,
+.cmi-detail-form-grid input:focus-visible,
+.cmi-detail-form-grid select:focus-visible,
+.cmi-detail-form-grid textarea:focus-visible,
+.cmi-staff-status-form textarea:focus-visible,
+.ministry-report-form-grid input:focus-visible,
+.ministry-report-form-grid select:focus-visible,
+.ministry-report-count-grid input:focus-visible,
+.ministry-report-review textarea:focus-visible {
+  outline: 2px solid #315a7b;
+  outline-offset: 2px;
+  box-shadow: var(--cmi-focus-ring);
+}
+
+.cmi-table thead th {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.cmi-table tbody td {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cmi-table tbody td strong {
+  font-size: 13px;
+}
+
+.cmi-table tbody td small,
+.cmi-contact-open span {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.cmi-task-copy strong {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cmi-task-copy p {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.cmi-task-copy small,
+.cmi-task-status,
+.cmi-status {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.cmi-scope-note,
+.cmi-detail-muted,
+.cmi-empty-row,
+.cmi-empty-state p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cmi-alert,
+.cmi-success-note {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cmi-operations-timezone {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.cmi-operations-actions {
+  flex: 0 0 auto;
+}
+
+.staff-login-form-wrap {
+  border-radius: 20px;
+}
+
+.staff-login-heading h2 {
+  line-height: 1.12;
+}
+
+.staff-login-heading > p:last-child {
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.staff-login-security-label,
+.staff-login-section-label {
+  font-size: 10px;
+}
+
+.staff-login-auth-field > span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.staff-login-auth-field input,
+.staff-login-password-field input {
+  min-height: 49px;
+  font-size: 16px;
+}
+
+.staff-login-auth-form button[type="submit"],
+.staff-login-submit {
+  min-height: 48px;
+  font-size: 13px;
+}
+
+.staff-login-config-error,
+.staff-login-auth-error,
+.staff-login-auth-notice {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cmi-workspace :focus-visible,
+.staff-login-page :focus-visible {
+  outline: 2px solid #315a7b;
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+.cmi-overview-disclosure > summary:focus-visible,
+.cmi-icon-action:focus-visible,
+.cmi-theme-toggle:focus-visible {
+  outline: 2px solid #315a7b;
+  outline-offset: 2px;
+}
+
+.cmi-skip-link {
+  z-index: 120;
+}
+
+.cmi-footer {
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+/* Tablet and phone layouts */
+@media (max-width: 980px) {
+  .cmi-content {
+    padding-right: 22px;
+    padding-left: 22px;
+  }
+
+  .cmi-overview-tools {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .cmi-topbar {
+    gap: 10px;
+    padding-top: max(13px, env(safe-area-inset-top));
+  }
+
+  .cmi-topbar-heading h1 {
+    font-size: 21px;
+  }
+
+  .cmi-content {
+    padding-top: 16px;
+    padding-right: max(13px, env(safe-area-inset-right));
+    padding-bottom: calc(126px + env(safe-area-inset-bottom));
+    padding-left: max(13px, env(safe-area-inset-left));
+  }
+
+  .cmi-welcome {
+    gap: 14px;
+    padding: 18px;
+  }
+
+  .cmi-welcome h2 {
+    font-size: 22px;
+  }
+
+  .cmi-welcome p:not(.cmi-eyebrow) {
+    font-size: 12px;
+  }
+
+  .cmi-stat-card {
+    min-height: 106px;
+    padding: 14px;
+  }
+
+  .cmi-stat-card > span {
+    font-size: 9px;
+  }
+
+  .cmi-stat-card small {
+    font-size: 10px;
+  }
+
+  .cmi-panel {
+    padding: 17px 14px;
+  }
+
+  .cmi-form-grid,
+  .cmi-operations-form,
+  .cmi-detail-form,
+  .cmi-detail-form-grid {
+    padding: 14px;
+  }
+
+  .cmi-form-grid input,
+  .cmi-form-grid select,
+  .cmi-form-grid textarea,
+  .cmi-operations-form input,
+  .cmi-operations-form select,
+  .cmi-operations-form textarea,
+  .cmi-detail-form input,
+  .cmi-detail-form select,
+  .cmi-detail-form textarea,
+  .cmi-detail-form-grid input,
+  .cmi-detail-form-grid select,
+  .cmi-detail-form-grid textarea,
+  .cmi-staff-status-form textarea,
+  .ministry-report-form-grid input,
+  .ministry-report-form-grid select,
+  .ministry-report-count-grid input,
+  .ministry-report-review textarea {
+    font-size: 16px;
+  }
+
+  .cmi-mobile-nav {
+    bottom: max(8px, env(safe-area-inset-bottom));
+    padding: 6px;
+  }
+
+  .cmi-mobile-nav-items button {
+    min-height: 56px;
+    font-size: 10px;
+  }
+
+  .cmi-mobile-more button {
+    min-height: 48px;
+    font-size: 12px;
+  }
+
+  .cmi-task-copy strong {
+    font-size: 13px;
+  }
+
+  .cmi-task-copy p {
+    font-size: 12px;
+    white-space: normal;
+  }
+
+  .cmi-operations-heading {
+    align-items: flex-start;
+  }
+
+  .cmi-operations-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .cmi-operations-actions .cmi-button {
+    flex: 1 1 auto;
+  }
+
+  .ministry-report-form-grid,
+  .ministry-report-count-grid {
+    gap: 11px;
+  }
+
+  .staff-login-main {
+    padding-top: max(18px, env(safe-area-inset-top));
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+    padding-left: max(16px, env(safe-area-inset-left));
+  }
+
+  .staff-login-mobile-brand {
+    margin-bottom: clamp(16px, 4vh, 30px);
+  }
+
+  .staff-login-form-wrap {
+    padding: 22px 18px;
+  }
+
+  .staff-login-heading {
+    margin-top: 20px;
+    margin-bottom: 20px;
+  }
+
+  .staff-login-heading h2 {
+    font-size: clamp(27px, 7.5vw, 34px);
+  }
+}
+
+@media (max-width: 420px) {
+  .cmi-overview-card {
+    padding: 15px;
+  }
+
+  .cmi-overview-card-heading h3 {
+    font-size: 16px;
+  }
+
+  .cmi-overview-disclosure > summary {
+    gap: 9px;
+    padding: 10px;
+  }
+
+  .cmi-overview-disclosure > summary small {
+    font-size: 11px;
+  }
+
+  .cmi-mobile-nav {
+    width: calc(100% - 16px);
+  }
+
+  .cmi-mobile-nav-items button {
+    min-height: 54px;
+    font-size: 9px;
+  }
+
+  .staff-login-form-wrap {
+    padding: 20px 16px;
+  }
+}
+
+/* Dark theme counterpart for the new control and typography rules */
+html[data-theme="dark"] .cmi-form-grid input,
+html[data-theme="dark"] .cmi-form-grid select,
+html[data-theme="dark"] .cmi-form-grid textarea,
+html[data-theme="dark"] .cmi-operations-form input,
+html[data-theme="dark"] .cmi-operations-form select,
+html[data-theme="dark"] .cmi-operations-form textarea,
+html[data-theme="dark"] .cmi-detail-form input,
+html[data-theme="dark"] .cmi-detail-form select,
+html[data-theme="dark"] .cmi-detail-form textarea,
+html[data-theme="dark"] .cmi-detail-form-grid input,
+html[data-theme="dark"] .cmi-detail-form-grid select,
+html[data-theme="dark"] .cmi-detail-form-grid textarea,
+html[data-theme="dark"] .cmi-staff-status-form textarea,
+html[data-theme="dark"] .ministry-report-form-grid input,
+html[data-theme="dark"] .ministry-report-form-grid select,
+html[data-theme="dark"] .ministry-report-count-grid input,
+html[data-theme="dark"] .ministry-report-review textarea {
+  border-color: #40536a;
+  background: #111c29;
+  color: #edf3fa;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] .cmi-form-grid label,
+html[data-theme="dark"] .cmi-operations-form label,
+html[data-theme="dark"] .cmi-detail-form label,
+html[data-theme="dark"] .cmi-detail-form-grid label,
+html[data-theme="dark"] .cmi-staff-status-form label,
+html[data-theme="dark"] .ministry-report-form-grid label > span,
+html[data-theme="dark"] .ministry-report-count-grid label > span,
+html[data-theme="dark"] .ministry-report-review label > span {
+  color: #d0dbe8;
+}
+
+html[data-theme="dark"] .cmi-form-grid label > span,
+html[data-theme="dark"] .cmi-operations-form label > span,
+html[data-theme="dark"] .cmi-staff-status-form label > span {
+  color: #a6b6c8;
+}
+
+html[data-theme="dark"] .cmi-table thead th {
+  background: #202e3f;
+  color: #a9b9cb;
+}
+
+html[data-theme="dark"] .cmi-table tbody td {
+  border-color: #2c3b4d;
+  color: #c2cfdd;
+}
+
+html[data-theme="dark"] .cmi-table tbody tr:hover {
+  background: #202e3f;
+}
+
+html[data-theme="dark"] .cmi-task-copy p,
+html[data-theme="dark"] .cmi-task-copy small,
+html[data-theme="dark"] .cmi-detail-muted,
+html[data-theme="dark"] .cmi-scope-note {
+  color: #a6b6c8;
+}
+
+html[data-theme="dark"] .cmi-success-note {
+  border-color: #315b4a;
+  background: #1d342d;
+  color: #bce5ce;
+}
+
+html[data-theme="dark"] .cmi-alert {
+  border-color: #75404d;
+  background: #3a222a;
+  color: #ffc2cc;
+}
+
+html[data-theme="dark"] .cmi-skip-link {
+  background: #263b51;
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .cmi-button,
+  .cmi-icon-action,
+  .cmi-theme-toggle,
+  .cmi-mobile-nav-items button,
+  .cmi-overview-disclosure {
+    border: 1px solid ButtonText;
+  }
+
+  .cmi-workspace :focus-visible,
+  .staff-login-page :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 3px;
+  }
+}
