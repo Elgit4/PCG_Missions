@@ -337,7 +337,7 @@ export function TeamAdministrationWorkspace({
           <div className="cmi-structure-grid">
             <div className="cmi-structure-index">
               <div className="cmi-structure-index-heading">
-                <div><strong>Branch teams</strong><small>{teams.length} team{teams.length === 1 ? "" : "s"}</small></div>
+                <div><strong>Teams</strong><small>{teams.length} team{teams.length === 1 ? "" : "s"}</small></div>
                 <button
                   type="button"
                   className="cmi-button cmi-button-primary cmi-button-compact"
