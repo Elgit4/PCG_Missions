@@ -5,6 +5,7 @@ import "@fontsource-variable/fraunces";
 import "./styles.css";
 import "../production.css";
 import "./ui-refresh.css";
+import "./visual-system.css";
 import App from "./App";
 import { ThemeProvider } from "./lib/theme";
 
