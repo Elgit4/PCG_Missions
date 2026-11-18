@@ -702,7 +702,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
           {page === "Staff" && canReadStaffDirectory && <div className="cmi-panel">
             <div className="cmi-panel-heading">
-              <div><p className="cmi-eyebrow">TEAM & ACCESS</p><h3>Staff accounts</h3><p>Manage staff access for your authorised workspace. Account creation is restricted to authorised administrators.</p></div>
+              <div><p className="cmi-eyebrow">TEAM & ACCESS</p><h2>Staff accounts</h2><p>Manage staff access for your authorised workspace. Account creation is restricted to authorised administrators.</p></div>
               {canCreateStaffAccounts && <button className="cmi-button cmi-button-primary" type="button" onClick={() => setShowStaffForm((value) => !value)}><Plus size={16} />Create staff account</button>}
             </div>
             {showStaffForm && canCreateStaffAccounts && <form className="cmi-form-grid" onSubmit={createStaffAccount}>
@@ -808,7 +808,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             <div className="cmi-panel-heading">
               <div>
                 <p className="cmi-eyebrow">ACCOUNT SECURITY</p>
-                <h3>Password reset requests</h3>
+                <h2>Password reset requests</h2>
                 <p>Review staff requests and issue a one-time temporary password by email. The staff member must replace it at first sign-in.</p>
               </div>
               <span className="cmi-reset-count">{resetRequests.length} pending</span>
