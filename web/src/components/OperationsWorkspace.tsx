@@ -28,7 +28,6 @@ type ContentKind = "sermons" | "welcome-messages";
 interface OperationsWorkspaceProps {
   section: OperationsSection;
   branchId: string;
-  branchName: string;
   timeZone: string;
   api: CmiApiClient;
   session: import("../lib/cmi-api").StaffSession;
@@ -44,7 +43,7 @@ function errorMessage(error: unknown): string {
   if (error instanceof CmiApiError) {
     if (error.status === 401) return "Your staff session has expired. Sign in again.";
     if (error.status === 403) return "Your account does not have the required permission for this operation.";
-    if (error.status === 404) return "This record is no longer available in your branch.";
+    if (error.status === 404) return "This record is no longer available in your access scope.";
     if (error.status === 409) return "This record changed before the save completed. Refresh and try again.";
     if (error.status === 422) return error.message;
     if (error.status === 0) return "The service could not be reached. Check your connection and retry.";
@@ -56,7 +55,6 @@ function errorMessage(error: unknown): string {
 export function OperationsWorkspace({
   section,
   branchId,
-  branchName,
   timeZone,
   api,
   session,
@@ -165,7 +163,7 @@ export function OperationsWorkspace({
       if (section === "Events") {
         const start = branchLocalInputToIso(String(form.get("starts_at") ?? ""), timeZone);
         const end = branchLocalInputToIso(String(form.get("ends_at") ?? ""), timeZone);
-        if (!start || !end) throw new Error("Enter valid start and end times in the branch time zone.");
+        if (!start || !end) throw new Error("Enter valid start and end times in the workspace time zone.");
         if (Date.parse(end) <= Date.parse(start)) throw new Error("The event end must be later than its start.");
         const input = {
           title: String(form.get("title") ?? "").trim(),
@@ -181,7 +179,7 @@ export function OperationsWorkspace({
         const start = branchLocalInputToIso(String(form.get("starts_at") ?? ""), timeZone);
         const endValue = String(form.get("ends_at") ?? "");
         const end = endValue ? branchLocalInputToIso(endValue, timeZone) : null;
-        if (!start || (endValue && !end)) throw new Error("Enter a valid calendar date and time in the branch time zone.");
+        if (!start || (endValue && !end)) throw new Error("Enter a valid calendar date and time in the workspace time zone.");
         if (end && Date.parse(end) <= Date.parse(start)) throw new Error("The end must be later than the start.");
         const input = {
           entry_type: String(form.get("entry_type") ?? "other") as "service" | "event" | "other",
@@ -243,7 +241,7 @@ export function OperationsWorkspace({
   const description = section === "Events"
     ? "Create and maintain internal event drafts. Registration, transport, capacity and check-in are not enabled in this workspace."
     : section === "Calendar"
-    ? "Maintain branch calendar entries for services, events and other ministry activities."
+    ? "Maintain calendar entries for services, events and other ministry activities."
     : section === "Announcements"
     ? "Prepare private announcement drafts. Publishing and message delivery are separate, unavailable actions."
     : "Prepare sermon and welcome-message drafts. Publishing remains disabled and is not available from this screen.";
@@ -253,9 +251,9 @@ export function OperationsWorkspace({
       <section className="cmi-panel">
         <div className="cmi-panel-heading cmi-operations-heading">
           <div>
-            <p className="cmi-eyebrow">BRANCH OPERATIONS</p>
-            <h3>{section === "Content" ? "Visitor content" : section}</h3>
-            <p>{description} <strong>{branchName}</strong>.</p>
+            <p className="cmi-eyebrow">WORKSPACE OPERATIONS</p>
+            <h2>{section === "Content" ? "Visitor content" : section}</h2>
+            <p>{description}</p>
             <small className="cmi-operations-timezone">All dates and times are shown in {timeZone}.</small>
           </div>
           <div className="cmi-operations-actions">
@@ -299,7 +297,7 @@ export function OperationsWorkspace({
                 <label>Entry type<select name="entry_type" defaultValue={editingEntry?.entry_type ?? "service"}><option value="service">Service</option><option value="event">Event</option><option value="other">Other ministry activity</option></select></label>
                 <label>Starts at ({timeZone})<input name="starts_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEntry?.starts_at, timeZone)} /></label>
                 <label>Ends at ({timeZone})<input name="ends_at" type="datetime-local" defaultValue={toBranchLocalInput(editingEntry?.ends_at, timeZone)} /></label>
-                <p className="cmi-field-wide cmi-scope-note">Calendar entries are branch-scoped. Leave the end time blank for an entry with no defined end.</p>
+                <p className="cmi-field-wide cmi-scope-note">Calendar entries follow your current access scope. Leave the end time blank for an entry with no defined end.</p>
               </>
             )}
             {section === "Announcements" && (
@@ -344,7 +342,7 @@ export function OperationsWorkspace({
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
-            {!events.length && <p className="cmi-detail-muted">No event drafts are visible in this branch.</p>}
+            {!events.length && <p className="cmi-detail-muted">No event drafts are visible in your current access scope.</p>}
           </div>
         )}
 
@@ -358,7 +356,7 @@ export function OperationsWorkspace({
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
-            {!entries.length && <p className="cmi-detail-muted">No calendar entries are visible in this branch.</p>}
+            {!entries.length && <p className="cmi-detail-muted">No calendar entries are visible in your current access scope.</p>}
           </div>
         )}
 
@@ -372,7 +370,7 @@ export function OperationsWorkspace({
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
-            {!announcements.length && <p className="cmi-detail-muted">No announcement drafts are visible in this branch.</p>}
+            {!announcements.length && <p className="cmi-detail-muted">No announcement drafts are visible in your current access scope.</p>}
           </div>
         )}
 
@@ -386,7 +384,7 @@ export function OperationsWorkspace({
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
-            {!sermons.length && <p className="cmi-detail-muted">No sermon drafts are visible in this branch.</p>}
+            {!sermons.length && <p className="cmi-detail-muted">No sermon drafts are visible in your current access scope.</p>}
           </div>
         )}
 
@@ -400,11 +398,11 @@ export function OperationsWorkspace({
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
-            {!welcomeMessages.length && <p className="cmi-detail-muted">No welcome-message drafts are visible in this branch.</p>}
+            {!welcomeMessages.length && <p className="cmi-detail-muted">No welcome-message drafts are visible in your current access scope.</p>}
           </div>
         )}
 
-        {!canRead && !canManage && <div className="cmi-empty-state"><ShieldCheck size={22} /><strong>This module is not authorised for your account.</strong><p>The sidebar is permission-driven. Ask an administrator to review the role and branch capability assignments.</p></div>}
+        {!canRead && !canManage && <div className="cmi-empty-state"><ShieldCheck size={22} /><strong>This module is not authorised for your account.</strong><p>The sidebar is permission-driven. Ask an administrator to review your role and access assignments.</p></div>}
       </section>
     </div>
   );
