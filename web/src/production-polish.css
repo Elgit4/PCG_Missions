@@ -1011,3 +1011,21 @@ html[data-theme="dark"] .staff-login-aside-content h2 em {
     padding-top: 6px;
   }
 }
+
+
+/* Dark-mode links and support copy retain readable contrast on the slate surface. */
+html[data-theme="dark"] .staff-login-inline-link {
+  color: #ff9eac;
+}
+
+html[data-theme="dark"] .staff-login-inline-link:hover {
+  color: #ffd5dc;
+}
+
+html[data-theme="dark"] .staff-login-support > span {
+  color: #e6edf5;
+}
+
+html[data-theme="dark"] .staff-login-support p {
+  color: #b9c7d6;
+}
