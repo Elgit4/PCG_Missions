@@ -3,7 +3,7 @@ import { AlertCircle, CheckCircle2, ClipboardCheck, FilePlus2, RefreshCw, Send, 
 import { CmiApiClient, CmiApiError, type MinistryReportCreateInput, type MinistryReportRecord, type MinistryReportType, type StaffSession } from "../lib/cmi-api";
 import { hasCapability } from "../lib/capabilities";
 
-interface Props { branchId: string; branchName: string; api: CmiApiClient; session: StaffSession }
+interface Props { branchId: string; api: CmiApiClient; session: StaffSession }
 const REPORT_PAGE_SIZE = 50;
 const COUNT_FIELDS = [
   ["contacts_captured", "Contacts captured"],
@@ -35,7 +35,7 @@ function emptyCounts(): Record<CountKey, string> {
   return Object.fromEntries(COUNT_FIELDS.map(([key]) => [key, "0"])) as Record<CountKey, string>;
 }
 
-export function MinistryReportsWorkspace({ branchId, branchName, api, session }: Props) {
+export function MinistryReportsWorkspace({ branchId, api, session }: Props) {
   const canSubmit = hasCapability(session, "report.submit.own", branchId);
   const canReview = hasCapability(session, "report.review.branch", branchId) || hasCapability(session, "report.review.team", branchId);
   const [reports, setReports] = useState<MinistryReportRecord[]>([]);
@@ -231,7 +231,7 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
     <section className="ministry-reports" aria-labelledby="ministry-reports-title">
       <header className="ministry-reports-header">
         <div>
-          <p className="ministry-reports-eyebrow">MINISTRY ACCOUNTABILITY · {branchName.toUpperCase()}</p>
+          <p className="ministry-reports-eyebrow">MINISTRY ACCOUNTABILITY · YOUR WORKSPACE</p>
           <h2 id="ministry-reports-title">Ministry reports</h2>
           <p>Record ministry activity, follow progress and review submitted reports.</p>
         </div>
@@ -263,7 +263,7 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
             <label><span>Period starts</span><input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} required /></label>
             <label><span>Period ends</span><input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} required readOnly={reportType !== "weekly_ministry"} /></label>
             <label><span>Team <small>(optional)</small></span><select value={teamId} onChange={(event) => setTeamId(event.target.value)}><option value="">No team selected</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>
-            {reportType === "event_evangelism" && <label className="ministry-report-wide"><span>Event (required)</span><select value={eventId} onChange={(event) => setEventId(event.target.value)} required><option value="">Choose an event</option>{events.map((item) => <option key={item.id} value={item.id}>{item.title} · {dateLabel(item.starts_at.slice(0, 10))}</option>)}</select>{events.length === 0 && <small>No event options are available for this branch.</small>}</label>}
+            {reportType === "event_evangelism" && <label className="ministry-report-wide"><span>Event (required)</span><select value={eventId} onChange={(event) => setEventId(event.target.value)} required><option value="">Choose an event</option>{events.map((item) => <option key={item.id} value={item.id}>{item.title} · {dateLabel(item.starts_at.slice(0, 10))}</option>)}</select>{events.length === 0 && <small>No event options are available within your current access scope.</small>}</label>}
           </div>
           <div className="ministry-report-count-grid">
             {COUNT_FIELDS.map(([key, label]) => <label key={key}><span>{label}</span><input type="number" min="0" max="100000" step="1" value={counts[key]} onChange={(event) => setCounts((current) => ({ ...current, [key]: event.target.value }))} required /></label>)}
