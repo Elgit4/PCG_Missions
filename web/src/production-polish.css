@@ -1405,3 +1405,19 @@ html[data-theme="dark"] .cmi-structure-index-empty > span,
 html[data-theme="dark"] .cmi-structure-detail-empty > span {
   color: #c0ccda !important;
 }
+
+
+/* Table headings and follow-up metadata keep AA contrast on both surfaces. */
+html:not([data-theme="dark"]) .cmi-table thead th {
+  background: #f8fafc;
+  color: #566a7d;
+}
+
+html[data-theme="dark"] .cmi-followup-toolbar {
+  background: #1e2b3b !important;
+  border-color: #40546b !important;
+}
+
+html[data-theme="dark"] .cmi-followup-toolbar > span {
+  color: #e0e8f0 !important;
+}
