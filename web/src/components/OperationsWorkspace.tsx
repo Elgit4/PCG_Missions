@@ -163,7 +163,7 @@ export function OperationsWorkspace({
       if (section === "Events") {
         const start = branchLocalInputToIso(String(form.get("starts_at") ?? ""), timeZone);
         const end = branchLocalInputToIso(String(form.get("ends_at") ?? ""), timeZone);
-        if (!start || !end) throw new Error("Enter valid start and end times in the branch time zone.");
+        if (!start || !end) throw new Error("Enter valid start and end times in the workspace time zone.");
         if (Date.parse(end) <= Date.parse(start)) throw new Error("The event end must be later than its start.");
         const input = {
           title: String(form.get("title") ?? "").trim(),
