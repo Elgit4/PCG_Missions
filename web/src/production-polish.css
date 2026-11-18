@@ -652,3 +652,140 @@ html[data-theme="dark"] .cmi-skip-link {
     outline-offset: 3px;
   }
 }
+
+
+/* Compact handset sign-in: preserve the full recovery flow without clipping. */
+@media (max-width: 759px) {
+  .staff-login-auth-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 3px 16px;
+    min-height: 0;
+    margin-top: 9px;
+  }
+
+  .staff-login-inline-link {
+    min-height: 38px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 759px) and (max-height: 740px) {
+  .staff-login-main {
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .staff-login-mobile-brand {
+    margin-top: 0;
+    margin-bottom: 9px;
+  }
+
+  .staff-login-mobile-brand .staff-login-brand-mark {
+    width: 35px;
+    height: 35px;
+    flex-basis: 35px;
+  }
+
+  .staff-login-form-wrap {
+    padding: 15px 15px 14px;
+    border-radius: 16px;
+  }
+
+  .staff-login-theme-row {
+    margin: -2px 0 7px;
+  }
+
+  .staff-login-theme-row .cmi-theme-toggle {
+    min-height: 34px;
+  }
+
+  .staff-login-security-label {
+    min-height: 32px;
+    padding-block: 5px;
+  }
+
+  .staff-login-heading {
+    margin: 12px 0 13px;
+  }
+
+  .staff-login-heading h2 {
+    font-size: clamp(25px, 7vw, 29px);
+  }
+
+  .staff-login-heading > p:last-child {
+    margin-top: 6px;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .staff-login-auth-form {
+    gap: 11px;
+    margin-top: 2px;
+  }
+
+  .staff-login-auth-field {
+    gap: 5px;
+  }
+
+  .staff-login-auth-field input,
+  .staff-login-password-field input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .staff-login-auth-form button[type="submit"],
+  .staff-login-submit {
+    min-height: 46px;
+  }
+
+  .staff-login-auth-bottom {
+    gap: 2px 13px;
+    margin-top: 5px;
+  }
+
+  .staff-login-inline-link {
+    min-height: 34px;
+    font-size: 11px;
+  }
+
+  .staff-login-support {
+    margin-top: 11px;
+    padding-top: 9px;
+  }
+
+  .staff-login-support > span {
+    font-size: 10px;
+  }
+
+  .staff-login-support p {
+    margin-top: 4px;
+    font-size: 9px;
+    line-height: 1.45;
+  }
+
+  .staff-login-footer {
+    padding-top: 9px;
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 759px) and (max-height: 560px) {
+  .staff-login-page {
+    min-height: 100svh;
+  }
+
+  .staff-login-main {
+    justify-content: flex-start;
+  }
+
+  .staff-login-support {
+    display: none;
+  }
+
+  .staff-login-footer {
+    margin-top: 10px;
+  }
+}
