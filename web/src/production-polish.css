@@ -1471,3 +1471,9 @@ html[data-theme="dark"] .cmi-operations-heading h3 {
 html[data-theme="dark"] .cmi-overview-card-heading p:not(.cmi-eyebrow) {
   color: #c0ccda !important;
 }
+
+
+/* Scope-boundary guidance must remain readable for team-scoped task roles. */
+html:not([data-theme="dark"]) .cmi-scope-note {
+  color: #536579 !important;
+}
