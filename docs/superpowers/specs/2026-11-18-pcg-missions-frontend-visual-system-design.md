@@ -215,7 +215,7 @@ Normal sidebar and mobile branding continue to use the existing original logo as
 
 ### 10.3 Fidelity acceptance
 
-The loaded final crest must be recognisably and visibly the same existing crest, with no rebranding or redrawing. The traced contour overlay must align with the source at the correct aspect ratio. If an automated trace cannot preserve a fine feature, refine that contour from the source; do not silently omit the feature or substitute an approximation.
+The loaded final crest must be a single-colour outline of the exact existing crest, with no fills and no multicolour/full-colour reveal. All main external and internal contours—including the palm tree and motto lettering—must be drawn progressively by the trace itself and remain visible at completion. It must be recognisably and geometrically the same existing crest, with no rebranding, simplification or reinterpretation. If an automated trace cannot preserve a fine feature, refine that contour from the source; do not silently omit the feature or substitute an approximation.
 
 ## 11. Existing modules and consistency pass
 
