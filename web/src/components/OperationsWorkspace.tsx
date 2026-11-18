@@ -252,7 +252,7 @@ export function OperationsWorkspace({
         <div className="cmi-panel-heading cmi-operations-heading">
           <div>
             <p className="cmi-eyebrow">WORKSPACE OPERATIONS</p>
-            <h3>{section === "Content" ? "Visitor content" : section}</h3>
+            <h2>{section === "Content" ? "Visitor content" : section}</h2>
             <p>{description}</p>
             <small className="cmi-operations-timezone">All dates and times are shown in {timeZone}.</small>
           </div>
