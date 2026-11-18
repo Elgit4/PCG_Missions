@@ -537,8 +537,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   if (!activeBranch) return (
     <main className="cmi-no-branch">
       <div className="cmi-empty-icon"><ShieldCheck size={24} /></div>
-      <h1>No active branch access</h1>
-      <p>Your staff account is authenticated, but no active workspace assignment is available. Contact an authorised church administrator.</p>
+      <h1>No active workspace access</h1>
+      <p>Your staff account is authenticated, but no active workspace assignment is available. Contact an authorised administrator.</p>
       <button className="cmi-button cmi-button-secondary" onClick={() => void signOut()} disabled={signingOut}><LogOut size={16} />{signingOut ? "Signing out…" : "Sign out"}</button>
     </main>
   );
@@ -876,8 +876,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           {page === "Calendar" && availablePages.includes("Calendar") && <OperationsWorkspace key={branchId + ":calendar"} section="Calendar" branchId={branchId} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
           {page === "Announcements" && availablePages.includes("Announcements") && <OperationsWorkspace key={branchId + ":announcements"} section="Announcements" branchId={branchId} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
           {page === "Content" && availablePages.includes("Content") && <OperationsWorkspace key={branchId + ":content"} section="Content" branchId={branchId} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
-          {!canReadContacts && !canCreateContacts && page === "Contacts" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Contact access is not granted</h3><p>Your assigned role has no contact-read capability for this branch.</p></div>}
-          {!canReadTasks && page === "Follow-up" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Follow-up access is not granted</h3><p>Your assigned role has no follow-up-read capability for this branch.</p></div>}
+          {!canReadContacts && !canCreateContacts && page === "Contacts" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Contact access is not granted</h3><p>Your assigned role does not include contact access in this workspace.</p></div>}
+          {!canReadTasks && page === "Follow-up" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Follow-up access is not granted</h3><p>Your assigned role does not include follow-up access in this workspace.</p></div>}
           {!availablePages.includes(page) && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>This section is unavailable</h3><p>Your session does not contain an active permission for this section.</p></div>}
         </section>
         <footer className="cmi-footer"><span>PCG Missions · Staff operations</span><span>Powered by ElTech</span></footer>
