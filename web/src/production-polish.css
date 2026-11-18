@@ -1292,3 +1292,17 @@ html[data-theme="dark"] .cmi-workspace .cmi-mobile-more button.active {
   background-color: #3a202b !important;
   color: #ffe5e9 !important;
 }
+
+
+/* Empty-state copy in the ministry reports workspace remains readable in dark mode. */
+html[data-theme="dark"] .ministry-report-empty {
+  color: #c0ccda;
+}
+
+html[data-theme="dark"] .ministry-report-empty h3 {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .ministry-report-empty p {
+  color: #c0ccda !important;
+}
