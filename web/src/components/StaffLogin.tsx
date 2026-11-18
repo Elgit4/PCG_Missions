@@ -121,7 +121,7 @@ export function StaffLogin({
         </div>
         <div className="staff-login-aside-content">
           <p className="staff-login-overline"><span aria-hidden="true" /> PEOPLE · CARE · COMMUNITY</p>
-          <h1>Good ministry work starts with <em>connection.</em></h1>
+          <h2>Good ministry work starts with <em>connection.</em></h2>
           <p className="staff-login-aside-description">
             Keep people, follow-up and ministry coordination in one considered workspace.
           </p>
@@ -157,7 +157,7 @@ export function StaffLogin({
             <p className="staff-login-section-label">
               {view === "sign-in" ? "SIGN IN" : view === "forgot-password" ? "ACCOUNT RECOVERY" : "PASSWORD SECURITY"}
             </p>
-            <h2 id="staff-login-title">{title}</h2>
+            <h1 id="staff-login-title">{title}</h1>
             <p>{description}</p>
           </header>
 
