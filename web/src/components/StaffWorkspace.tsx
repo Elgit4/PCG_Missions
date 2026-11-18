@@ -481,7 +481,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     const taskNote = String(form.get("task_note") ?? "").trim();
     const rawPriority = Number(form.get("priority") ?? 2);
     const dueInput = String(form.get("due_at") ?? "");
-    if (!contactId || !contacts.some((contact) => contact.id === contactId)) { setActionError("Select a contact that is visible in this branch."); return; }
+    if (!contactId || !contacts.some((contact) => contact.id === contactId)) { setActionError("Select a contact that is visible in your current access scope."); return; }
     // Without membership/assignment projections, only self-assignment can be constructed safely.
     if (!canSelfAssignTask) {
       setActionError("Task creation for this scope requires an authorised team or staff assignment target.");
@@ -538,7 +538,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     <main className="cmi-no-branch">
       <div className="cmi-empty-icon"><ShieldCheck size={24} /></div>
       <h1>No active branch access</h1>
-      <p>Your staff account is authenticated, but no active branch assignment is available. Contact an authorised church administrator.</p>
+      <p>Your staff account is authenticated, but no active workspace assignment is available. Contact an authorised church administrator.</p>
       <button className="cmi-button cmi-button-secondary" onClick={() => void signOut()} disabled={signingOut}><LogOut size={16} />{signingOut ? "Signing out…" : "Sign out"}</button>
     </main>
   );
@@ -574,7 +574,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           ))}
         </div>
         <div className="cmi-sidebar-bottom">
-          <div className="cmi-access-note"><ShieldCheck size={16} /><span>Access is controlled by your active role grants and branch assignment.</span></div>
+          <div className="cmi-access-note"><ShieldCheck size={16} /><span>Access is controlled by your active role grants and staff assignment.</span></div>
           <div className="cmi-user-card">
             <div className="cmi-user-avatar">{session.staff.full_name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</div>
             <div><strong>{session.staff.full_name}</strong><small>{session.roles.filter((role) => role.branch_id === branchId).map((role) => role.name).join(" · ") || "Staff member"}</small></div>
@@ -616,7 +616,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         <header className="cmi-topbar">
           <div className="cmi-topbar-heading">
             <div className="cmi-mobile-brand"><img src="/logo.svg" alt="" /><span><strong>PCG Missions</strong><small>STAFF WORKSPACE</small></span></div>
-            <span className="cmi-breadcrumb">PCG MISSIONS / {(activeBranch?.name ?? "NO ACTIVE BRANCH").toUpperCase()}</span>
+            <span className="cmi-breadcrumb">PCG MISSIONS / YOUR WORKSPACE</span>
             <h1>{page === "Follow-up" ? "Follow-up tasks" : page}</h1>
           </div>
           <div className="cmi-topbar-actions">
@@ -634,7 +634,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
           {page === "Overview" && (
             <>
-              <div className="cmi-welcome"><div><p className="cmi-eyebrow">YOUR MINISTRY WORKSPACE</p><h2>Welcome, {session.staff.full_name.split(/\s+/)[0]}.</h2><p>Here is the current activity available to your account in {activeBranch?.name ?? "your branch"}.</p></div><div className="cmi-welcome-mark"><ShieldCheck size={30} /></div></div>
+              <div className="cmi-welcome"><div><p className="cmi-eyebrow">YOUR MINISTRY WORKSPACE</p><h2>Welcome, {session.staff.full_name.split(/\s+/)[0]}.</h2><p>Here is your current ministry activity.</p></div><div className="cmi-welcome-mark"><ShieldCheck size={30} /></div></div>
               <div className="cmi-stat-grid cmi-stat-grid-four">
                 <article className="cmi-stat-card"><span>LOADED CONTACTS</span><strong>{canReadContacts ? contacts.length : "—"}</strong><small>{canReadContacts ? (contactsHasMore ? "More records available" : "Within your current access scope") : "Contact access not granted"}</small></article>
                 <article className="cmi-stat-card"><span>OPEN FOLLOW-UPS</span><strong>{canReadTasks ? openTasks.length : "—"}</strong><small>{canReadTasks ? "In the loaded task records" : "Task access not granted"}</small></article>
@@ -644,7 +644,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               <div className="cmi-overview-tools">
                 <section className="cmi-overview-card cmi-onboarding-card">
                   <div className="cmi-overview-card-heading">
-                    <div><p className="cmi-eyebrow">GETTING STARTED</p><h3>Build your branch contact workflow</h3><p>Follow these three steps to capture a contact and organise the next action.</p></div>
+                    <div><p className="cmi-eyebrow">GETTING STARTED</p><h3>Build your contact workflow</h3><p>Follow these three steps to capture a contact and organise the next action.</p></div>
                     <span className="cmi-overview-count">01–03</span>
                   </div>
                   <button type="button" className="cmi-button cmi-button-primary cmi-overview-primary-action" onClick={() => { setPage("Contacts"); setShowContactForm(true); }}>
@@ -674,7 +674,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                   <details className="cmi-overview-disclosure cmi-access-disclosure">
                     <summary><span className="cmi-access-icon"><ShieldCheck size={17} /></span><span><strong>Available in this workspace</strong><small>Modules enabled for your account</small></span><span className="cmi-inline-count">{[canReadContacts,canReadTasks,canReadStaffDirectory,canManagePasswordResets,availablePages.includes("Teams & Areas"),availablePages.includes("Reports")].filter(Boolean).length}</span><ChevronDown size={17} /></summary>
                     <div className="cmi-disclosure-body cmi-access-list">
-                      <div><span>Overview & branch workspace</span><strong>Available</strong></div>
+                      <div><span>Overview & workspace</span><strong>Available</strong></div>
                       <div><span>Contacts, notes & activity history</span><strong>{canReadContacts ? "Available" : "Not granted"}</strong></div>
                       <div><span>Follow-up tasks</span><strong>{canReadTasks ? "Available" : "Not granted"}</strong></div>
                       <div><span>Staff accounts</span><strong>{canReadStaffDirectory ? "Available" : "Not granted"}</strong></div>
@@ -686,7 +686,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                   <details className="cmi-overview-disclosure cmi-access-disclosure">
                     <summary><span className="cmi-access-icon muted"><LockKeyhole size={17} /></span><span><strong>Restricted or not yet enabled</strong><small>Current product and permission boundaries</small></span><span className="cmi-inline-count">6</span><ChevronDown size={17} /></summary>
                     <div className="cmi-disclosure-body cmi-restricted-list">
-                      <article><strong>Events & calendar</strong><p>Private branch-scoped drafts are available to Admin/Pastor. Registration, transport, attendance and check-in are not enabled.</p></article>
+                      <article><strong>Events & calendar</strong><p>Private workspace drafts are available to Admin/Pastor. Registration, transport, attendance and check-in are not enabled.</p></article>
                       <article><strong>Announcements & visitor content</strong><p>Admin/Pastor can prepare private drafts. Publication and delivery are not enabled.</p></article>
                       <article><strong>Prayer & pastoral care</strong><p>Restricted workflows are not exposed in this workspace.</p></article>
                       <article><strong>Report exports</strong><p>Role-scoped report submission and review are supported; bulk export is disabled.</p></article>
@@ -694,7 +694,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                       <article><strong>Offline capture & sync</strong><p>Offline mode is disabled for this release.</p></article>
                     </div>
                   </details>
-                  <p className="cmi-access-footnote"><LockKeyhole size={13} /> Access is enforced by your active role grants and branch assignment.</p>
+                  <p className="cmi-access-footnote"><LockKeyhole size={13} /> Access is enforced by your active role grants and staff assignment.</p>
                 </section>
               </div>
             </>
@@ -702,7 +702,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
           {page === "Staff" && canReadStaffDirectory && <div className="cmi-panel">
             <div className="cmi-panel-heading">
-              <div><p className="cmi-eyebrow">TEAM & ACCESS</p><h3>Staff accounts</h3><p>Manage staff access for {activeBranch?.name ?? "this branch"}. Account creation is restricted to authorised administrators.</p></div>
+              <div><p className="cmi-eyebrow">TEAM & ACCESS</p><h3>Staff accounts</h3><p>Manage staff access for your authorised workspace. Account creation is restricted to authorised administrators.</p></div>
               {canCreateStaffAccounts && <button className="cmi-button cmi-button-primary" type="button" onClick={() => setShowStaffForm((value) => !value)}><Plus size={16} />Create staff account</button>}
             </div>
             {showStaffForm && canCreateStaffAccounts && <form className="cmi-form-grid" onSubmit={createStaffAccount}>
@@ -726,7 +726,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                   <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setStaffStatusEdit(null); setStaffStatusReason(""); }}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Confirm " + (staffStatusEdit.nextStatus === "inactive" ? "deactivation" : "reactivation")}</button></div>
                 </form>}
               </article>)}
-              {!staffMembers.length && !loading && <p className="cmi-empty-row">No staff accounts are assigned to this branch yet.</p>}
+              {!staffMembers.length && !loading && <p className="cmi-empty-row">No staff accounts are assigned to this workspace yet.</p>}
             </div>
           </div>}
 
@@ -750,7 +750,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               <p className="cmi-field-wide cmi-scope-note">Identity fields are available only with the required permission. Add only information needed for ministry follow-up.</p>
             </form>}
             {canReadContacts && <>
-              <div className="cmi-table-wrap"><table className="cmi-table"><caption className="cmi-sr-only">Contacts visible in the current branch and access scope</caption><thead><tr><th scope="col">CONTACT</th><th scope="col">STATUS</th><th scope="col">LANGUAGE</th><th scope="col">IDENTITY</th></tr></thead><tbody>
+              <div className="cmi-table-wrap"><table className="cmi-table"><caption className="cmi-sr-only">Contacts visible within your authorised access scope</caption><thead><tr><th scope="col">CONTACT</th><th scope="col">STATUS</th><th scope="col">LANGUAGE</th><th scope="col">IDENTITY</th></tr></thead><tbody>
                 {visibleContacts.map((contact) => <tr key={contact.id}><td data-label="Contact"><button type="button" className="cmi-contact-open" onClick={() => setSelectedContact(contact)} aria-label={`Open contact profile, notes and activity for ${displayName(contact)}`}><strong>{displayName(contact)}</strong><span>Open profile, notes & activity</span></button><small>{contact.id}</small></td><td data-label="Status"><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td data-label="Language">{contact.preferred_language || "Not recorded"}</td><td data-label="Identity">{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
               </tbody></table>{!visibleContacts.length && !loading && <div className="cmi-contact-empty">
                 <strong>{query.trim() ? "No contacts match that search." : "No contacts have been added yet."}</strong>
@@ -762,7 +762,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           </div>}
 
           {page === "Follow-up" && canReadTasks && <div className="cmi-panel">
-            <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h3>Follow-up tasks</h3><p>Filter tasks in your current branch and assignment scope. Counts reflect the loaded records.</p></div>
+            <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h3>Follow-up tasks</h3><p>Filter tasks within your authorised assignment scope. Counts reflect the loaded records.</p></div>
               {canSelfAssignTask && <button className="cmi-button cmi-button-primary" onClick={() => setShowTaskForm((value) => !value)} disabled={!canReadContacts || !contacts.length}><Plus size={16} />New task</button>}
               {canCreateTasks && canSelfAssignTask && (!canReadContacts || !contacts.length) && <div className="cmi-task-prerequisite" role="note">
                 <span>Follow-up tasks must be attached to a visible contact before they can be created.</span>
@@ -800,7 +800,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                   <button type="button" className="cmi-button cmi-button-primary" onClick={() => void updateTaskStatus(task, "completed")}><CheckCircle2 size={14} /> Complete</button>
                 </div>}
               </article>;
-            })}{!filteredTasks.length && !loading && <p className="cmi-empty-row">{tasks.length ? "No tasks match this filter in the loaded records." : "No follow-up tasks are visible in this branch scope."}</p>}</div>
+            })}{!filteredTasks.length && !loading && <p className="cmi-empty-row">{tasks.length ? "No tasks match this filter in the loaded records." : "No follow-up tasks are visible in your current access scope."}</p>}</div>
             {tasksHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreTasks()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more tasks"}</button></div>}
           </div>}
 
@@ -870,12 +870,12 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             </div>
           </div>}
 
-          {page === "Teams & Areas" && availablePages.includes("Teams & Areas") && <TeamAdministrationWorkspace key={branchId + ":teams-areas"} branchId={branchId} branchName={activeBranch.name} api={api} session={session} onSessionExpired={expireSession} />}
-          {page === "Reports" && availablePages.includes("Reports") && <MinistryReportsWorkspace key={branchId + ":reports"} branchId={branchId} branchName={activeBranch.name} api={api} session={session} />}
-          {page === "Events" && availablePages.includes("Events") && <OperationsWorkspace key={branchId + ":events"} section="Events" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
-          {page === "Calendar" && availablePages.includes("Calendar") && <OperationsWorkspace key={branchId + ":calendar"} section="Calendar" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
-          {page === "Announcements" && availablePages.includes("Announcements") && <OperationsWorkspace key={branchId + ":announcements"} section="Announcements" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
-          {page === "Content" && availablePages.includes("Content") && <OperationsWorkspace key={branchId + ":content"} section="Content" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Teams & Areas" && availablePages.includes("Teams & Areas") && <TeamAdministrationWorkspace key={branchId + ":teams-areas"} branchId={branchId} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Reports" && availablePages.includes("Reports") && <MinistryReportsWorkspace key={branchId + ":reports"} branchId={branchId} api={api} session={session} />}
+          {page === "Events" && availablePages.includes("Events") && <OperationsWorkspace key={branchId + ":events"} section="Events" branchId={branchId} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Calendar" && availablePages.includes("Calendar") && <OperationsWorkspace key={branchId + ":calendar"} section="Calendar" branchId={branchId} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Announcements" && availablePages.includes("Announcements") && <OperationsWorkspace key={branchId + ":announcements"} section="Announcements" branchId={branchId} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Content" && availablePages.includes("Content") && <OperationsWorkspace key={branchId + ":content"} section="Content" branchId={branchId} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
           {!canReadContacts && !canCreateContacts && page === "Contacts" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Contact access is not granted</h3><p>Your assigned role has no contact-read capability for this branch.</p></div>}
           {!canReadTasks && page === "Follow-up" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Follow-up access is not granted</h3><p>Your assigned role has no follow-up-read capability for this branch.</p></div>}
           {!availablePages.includes(page) && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>This section is unavailable</h3><p>Your session does not contain an active permission for this section.</p></div>}
