@@ -289,7 +289,7 @@ export function TeamAdministrationWorkspace({
         <div className="cmi-panel-heading cmi-structure-heading">
           <div>
             <p className="cmi-eyebrow">PEOPLE & MINISTRY STRUCTURE</p>
-            <h3>Teams & Service Areas</h3>
+            <h2>Teams & Service Areas</h2>
             <p>Organise staff membership and coverage within your authorised workspace. Access is permission-controlled.</p>
           </div>
           <button
