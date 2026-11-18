@@ -1441,3 +1441,33 @@ html:not([data-theme="dark"]) .cmi-table tbody td {
 html[data-theme="dark"] .cmi-followup-toolbar label {
   color: #d4deea !important;
 }
+
+
+/* Remaining administration copy and operations metadata. */
+html:not([data-theme="dark"]) .cmi-empty-row,
+html:not([data-theme="dark"]) .cmi-operations-timezone,
+html:not([data-theme="dark"]) .cmi-detail-muted {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .cmi-reset-empty {
+  border-color: #d8e1e9;
+  background: #fafbfd;
+}
+
+html:not([data-theme="dark"]) .cmi-reset-empty strong {
+  color: #26384e;
+}
+
+html:not([data-theme="dark"]) .cmi-reset-empty p {
+  color: #586b7e;
+}
+
+html[data-theme="dark"] .cmi-operations-heading h2,
+html[data-theme="dark"] .cmi-operations-heading h3 {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .cmi-overview-card-heading p:not(.cmi-eyebrow) {
+  color: #c0ccda !important;
+}
