@@ -24,7 +24,6 @@ type WorkspaceTab = "teams" | "areas";
 
 interface TeamAdministrationWorkspaceProps {
   branchId: string;
-  branchName: string;
   api: CmiApiClient;
   session: import("../lib/cmi-api").StaffSession;
   onSessionExpired: () => void;
@@ -34,11 +33,11 @@ function apiMessage(error: unknown): string {
   if (error instanceof CmiApiError) {
     if (error.status === 401) return "Your staff session has expired. Sign in again.";
     if (error.code === "TEAM_LEADER_ROLE_REQUIRED") {
-      return "This staff member must first be assigned the Team Leader role in this branch.";
+      return "This staff member must first be assigned the Team Leader role in your workspace.";
     }
     if (error.code === "ACTIVE_ASSIGNMENTS_EXIST") return error.message;
     if (error.code === "DUPLICATE_RECORD") return "A team, area code or membership with these details already exists.";
-    if (error.status === 403) return "Your account does not have permission for this operation in the selected branch.";
+    if (error.status === 403) return "Your account does not have permission for this operation in your current workspace.";
     if (error.status === 404) return "The selected team, staff membership or service area is no longer available.";
     if (error.status === 422) return error.message;
     if (error.status === 0) return "The service could not be reached. Check your connection and retry.";
@@ -57,7 +56,6 @@ function displayName(staff: Pick<StaffDirectoryEntry, "id" | "full_name" | "acco
 
 export function TeamAdministrationWorkspace({
   branchId,
-  branchName,
   api,
   session,
   onSessionExpired,
@@ -292,7 +290,7 @@ export function TeamAdministrationWorkspace({
           <div>
             <p className="cmi-eyebrow">PEOPLE & MINISTRY STRUCTURE</p>
             <h3>Teams & Service Areas</h3>
-            <p>Organise staff membership and coverage within <strong>{branchName}</strong>. Access is restricted to this branch.</p>
+            <p>Organise staff membership and coverage within your authorised workspace. Access is permission-controlled.</p>
           </div>
           <button
             type="button"
@@ -333,7 +331,7 @@ export function TeamAdministrationWorkspace({
 
         {error && <div className="cmi-alert" role="alert">{error}<button type="button" onClick={() => setError("")} aria-label="Dismiss error">×</button></div>}
         {notice && <div className="cmi-success-note" role="status">{notice}<button type="button" onClick={() => setNotice("")} aria-label="Dismiss notice">×</button></div>}
-        {loading && <div className="cmi-loading" role="status">Loading branch structure…</div>}
+        {loading && <div className="cmi-loading" role="status">Loading workspace structure…</div>}
 
         {tab === "teams" && canManageTeams && (
           <div className="cmi-structure-grid">
@@ -362,14 +360,14 @@ export function TeamAdministrationWorkspace({
                   <ChevronRight size={15} />
                 </button>
               ))}
-              {!teams.length && !loading && <div className="cmi-structure-index-empty"><Users size={24} /><strong>No teams yet</strong><span>Create the first branch team to begin assigning staff.</span></div>}
+              {!teams.length && !loading && <div className="cmi-structure-index-empty"><Users size={24} /><strong>No teams yet</strong><span>Create the first team to begin assigning staff.</span></div>}
             </div>
 
             <div className="cmi-structure-detail">
               {showTeamForm && (
                 <form className="cmi-structure-form" onSubmit={(event) => void submitTeam(event)}>
                   <div className="cmi-structure-detail-heading">
-                    <div><p className="cmi-eyebrow">{editingTeamId ? "EDIT TEAM" : "NEW TEAM"}</p><h4>{editingTeamId ? "Update team details" : "Create a branch team"}</h4></div>
+                    <div><p className="cmi-eyebrow">{editingTeamId ? "EDIT TEAM" : "NEW TEAM"}</p><h4>{editingTeamId ? "Update team details" : "Create a team"}</h4></div>
                     <button type="button" className="cmi-icon-button" onClick={() => { setShowTeamForm(false); setEditingTeamId(null); }} aria-label="Close form"><X size={16} /></button>
                   </div>
                   <label>Team name<input name="name" required minLength={2} maxLength={160} defaultValue={teams.find((team) => team.id === editingTeamId)?.name ?? ""} placeholder="e.g. Welcome & Follow-up" /></label>
@@ -409,10 +407,10 @@ export function TeamAdministrationWorkspace({
 
                   {showMemberForm && canReadStaff && (
                     <form className="cmi-structure-assignment-form" onSubmit={(event) => void addMember(event)}>
-                      <div><strong>Add staff to team</strong><small>Only active staff assigned to this branch are eligible.</small></div>
+                      <div><strong>Add staff to team</strong><small>Only active staff with an eligible assignment can be added.</small></div>
                       <label>Staff member<select name="staff_profile_id" required defaultValue=""><option value="" disabled>Select a staff member</option>{activeStaff.filter((person) => !selectedTeam.members.some((member) => member.staff_profile_id === person.id)).map((person) => <option key={person.id} value={person.id}>{person.full_name} · {person.roles.map((role) => role.name).join(", ")}</option>)}</select></label>
                       <label>Team membership<select name="membership_role" defaultValue="member"><option value="member">Member</option><option value="leader" disabled={!activeStaff.some((person) => isLeader(person) && !selectedTeam.members.some((member) => member.staff_profile_id === person.id))}>Team Leader</option></select></label>
-                      {!activeStaff.some((person) => isLeader(person) && !selectedTeam.members.some((member) => member.staff_profile_id === person.id)) && <p className="cmi-scope-note cmi-structure-leader-note">No eligible Team Leaders are available. Assign the Team Leader role to a staff account in this branch first.</p>}
+                      {!activeStaff.some((person) => isLeader(person) && !selectedTeam.members.some((member) => member.staff_profile_id === person.id)) && <p className="cmi-scope-note cmi-structure-leader-note">No eligible Team Leaders are available. Assign the Team Leader role to an active staff account first.</p>}
                       <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowMemberForm(false)} disabled={saving}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving || !activeStaff.some((person) => !selectedTeam.members.some((member) => member.staff_profile_id === person.id))}>{saving ? "Adding…" : "Add to team"}</button></div>
                     </form>
                   )}
@@ -485,7 +483,7 @@ export function TeamAdministrationWorkspace({
                   </div>
                   <label>Area name<input name="name" required minLength={2} maxLength={160} defaultValue={areas.find((area) => area.id === editingAreaId)?.name ?? ""} placeholder="e.g. Northern Area" /></label>
                   <label>Area code <span>Optional</span><input name="code" maxLength={24} pattern="[A-Za-z0-9_-]{2,24}" defaultValue={areas.find((area) => area.id === editingAreaId)?.code ?? ""} placeholder="e.g. NORTH" /></label>
-                  <p className="cmi-scope-note">Area codes are unique within this branch. Use short codes that are easy to recognise in reports and field assignments.</p>
+                  <p className="cmi-scope-note">Area codes must be unique within your authorised workspace. Use short codes that are easy to recognise in reports and field assignments.</p>
                   <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setShowAreaForm(false); setEditingAreaId(null); }} disabled={saving}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : editingAreaId ? "Save changes" : "Create service area"}</button></div>
                 </form>
               )}
@@ -508,7 +506,7 @@ export function TeamAdministrationWorkspace({
 
                   {showCoverageForm && canReadStaff && (
                     <form className="cmi-structure-assignment-form" onSubmit={(event) => void addCoverage(event)}>
-                      <div><strong>Assign field coverage</strong><small>Choose active staff who already belong to this branch.</small></div>
+                      <div><strong>Assign field coverage</strong><small>Choose active staff with an eligible workspace assignment.</small></div>
                       <label>Staff member<select name="staff_profile_id" required defaultValue=""><option value="" disabled>Select staff member</option>{activeStaff.filter((person) => !selectedArea.coverage.some((item) => item.staff_profile_id === person.id)).map((person) => <option key={person.id} value={person.id}>{person.full_name} · {person.roles.map((role) => role.name).join(", ")}</option>)}</select></label>
                       <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowCoverageForm(false)} disabled={saving}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving || !activeStaff.some((person) => !selectedArea.coverage.some((item) => item.staff_profile_id === person.id))}>{saving ? "Assigning…" : "Assign coverage"}</button></div>
                     </form>
@@ -541,7 +539,7 @@ export function TeamAdministrationWorkspace({
         )}
 
         {!canManageTeams && !canManageAreas && (
-          <div className="cmi-empty-state"><ShieldCheck size={22} /><strong>Team administration is not authorised.</strong><p>This section is visible only when your active branch grants team or service-area management.</p></div>
+          <div className="cmi-empty-state"><ShieldCheck size={22} /><strong>Team administration is not authorised.</strong><p>This section is visible only when your role grants team or service-area management.</p></div>
         )}
       </section>
     </div>
