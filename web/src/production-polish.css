@@ -1306,3 +1306,102 @@ html[data-theme="dark"] .ministry-report-empty h3 {
 html[data-theme="dark"] .ministry-report-empty p {
   color: #c0ccda !important;
 }
+
+
+/* Contacts and follow-up pages: readable copy and correct light/dark table surfaces. */
+html:not([data-theme="dark"]) .cmi-panel-heading h2 {
+  margin: 0;
+  color: #26384e;
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 730;
+  letter-spacing: -.03em;
+}
+
+html:not([data-theme="dark"]) .cmi-panel-heading p:not(.cmi-eyebrow) {
+  color: #566a7d;
+}
+
+html:not([data-theme="dark"]) .cmi-contact-open,
+html:not([data-theme="dark"]) .cmi-contact-open strong {
+  color: #26384e;
+}
+
+html:not([data-theme="dark"]) .cmi-contact-open span,
+html:not([data-theme="dark"]) .cmi-table td > small {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .cmi-contact-open:hover,
+html:not([data-theme="dark"]) .cmi-contact-open:hover strong {
+  color: #9f1c31;
+}
+
+html:not([data-theme="dark"]) .cmi-followup-toolbar > span,
+html:not([data-theme="dark"]) .cmi-task-copy small {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .cmi-structure-index-heading small,
+html:not([data-theme="dark"]) .cmi-structure-index-empty > span,
+html:not([data-theme="dark"]) .cmi-structure-detail-empty > span {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .ministry-reports-eyebrow,
+html:not([data-theme="dark"]) .ministry-reports-header p:not(.ministry-reports-eyebrow),
+html:not([data-theme="dark"]) .ministry-report-list-heading > div > span,
+html:not([data-theme="dark"]) .ministry-report-scope,
+html:not([data-theme="dark"]) .ministry-report-empty p {
+  color: #586b7e;
+}
+
+html[data-theme="dark"] .cmi-table-wrap {
+  background: #182332 !important;
+  border-color: #344458;
+}
+
+html[data-theme="dark"] .cmi-table tbody tr {
+  background: #182332 !important;
+}
+
+html[data-theme="dark"] .cmi-table tbody tr:hover {
+  background: #223247 !important;
+}
+
+html[data-theme="dark"] .cmi-table tbody td {
+  background: transparent !important;
+  color: #d4deea;
+  border-top-color: #344458;
+}
+
+html[data-theme="dark"] .cmi-contact-open,
+html[data-theme="dark"] .cmi-contact-open strong {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .cmi-contact-open span,
+html[data-theme="dark"] .cmi-table td > small {
+  color: #c0ccda !important;
+}
+
+html[data-theme="dark"] .cmi-contact-open:hover,
+html[data-theme="dark"] .cmi-contact-open:hover strong {
+  color: #ffb6c2 !important;
+}
+
+html[data-theme="dark"] .cmi-followup-toolbar > span,
+html[data-theme="dark"] .cmi-task-copy small {
+  color: #c0ccda !important;
+}
+
+html[data-theme="dark"] .cmi-panel-heading h2,
+html[data-theme="dark"] .cmi-structure-heading h2 {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .cmi-structure-index-heading small,
+html[data-theme="dark"] .cmi-structure-index-empty > span,
+html[data-theme="dark"] .cmi-structure-detail-empty > span {
+  color: #c0ccda !important;
+}
