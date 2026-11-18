@@ -113,6 +113,7 @@ Do not split or rewrite unrelated business logic in `StaffWorkspace.tsx`. Extrac
   - `branchName: string`
   - `contactCount: number | null`
   - `contactsHasMore: boolean`
+  - `tasksHasMore: boolean`
   - `openTasks: FollowUpTask[] | null`
   - `overdueTasks: FollowUpTask[] | null`
   - `completedTaskCount: number | null`
@@ -182,10 +183,10 @@ Do not split or rewrite unrelated business logic in `StaffWorkspace.tsx`. Extrac
 - One single stroke token is used for the entire crest; all traced regions have `fill="none"`. The loader has no raster image overlay or separate spinner.
 
 - [ ] **Step 1: Extract the original crest raster deterministically** from the embedded JPEG inside `web/public/logo.svg`; keep a copy in a temporary working directory only. Verify its native 600 × 680 view box and inspect the visible source contours.
-- [ ] **Step 2: Generate a first trace from the source artwork** with the shield outer contour, double border, diagonal elements, central cross boundaries, palm tree, ribbon and motto lettering. Treat the trace as asset data, not a runtime image-processing dependency.
+- [ ] **Step 2: Generate a first trace from the source artwork** using a one-off local Python trace script: extract the embedded JPEG with the standard library, decode it with Pillow, derive edge/colour-region masks with OpenCV, and export nested contours from `cv2.findContours(..., RETR_TREE, CHAIN_APPROX_SIMPLE)` as SVG path data. Keep contour simplification below one source pixel around small text/tree details. Include the shield outer contour, double border, diagonal elements, central cross boundaries, palm tree, ribbon and motto lettering. The script is temporary build tooling; do not add OpenCV/Pillow as application runtime dependencies.
 - [ ] **Step 3: Write failing tests** asserting: rendered loader contains an inline SVG; the SVG viewBox preserves 600 × 680 proportions; every visible path has the same one-colour stroke; no path has a fill; there is no `img`/external source overlay; no separate spinner/progress number is rendered; reduced-motion CSS presents the completed outline statically.
 - [ ] **Step 4: Run the focused tests and verify they fail** before implementing the loader.
-- [ ] **Step 5: Refine the vector path against the original raster**. Preserve all contour details and motto lettering. The trace should visually coincide with the original at 600 × 680; do not approximate the palm tree or omit banner text. Keep the original logo assets unchanged.
+- [ ] **Step 5: Refine the vector path against the original raster**. Render an overlay and a trace-only preview at 600 × 680. Adjust masks/contours until the outline aligns with the source boundaries. Preserve the palm tree fronds/trunk, shield double border, cross negative-space boundaries, ribbon shape and individual motto letter contours. Do not approximate the palm tree or omit banner text. Keep the original logo assets unchanged.
 - [ ] **Step 6: Implement `CrestOutlineLoader`** as an inline SVG using only the static trace path data. Use one warm muted-gold stroke on a restrained deep-navy loader surface. Use no fills, multicolour strokes, gradients, shadows or full-colour logo reveal.
 - [ ] **Step 7: Animate the path drawing itself** with SVG stroke-dash progress (or individually sequenced subpaths with the same stroke). The first outline segment is visible on first paint; the trace proceeds across the complete crest and the finished state remains as a complete one-colour outline. The outline animation is the only progress indicator.
 - [ ] **Step 8: Add a static reduced-motion state** that immediately displays the completed single-colour outline, without depending on animation completion.
