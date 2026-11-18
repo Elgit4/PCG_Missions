@@ -1232,3 +1232,63 @@ html[data-theme="dark"] .cmi-structure-index-empty strong,
 html[data-theme="dark"] .cmi-structure-detail-empty strong {
   color: #edf3fa !important;
 }
+
+
+/* Higher-specificity dark-state controls: active navigation and tab surfaces. */
+html[data-theme="dark"] .cmi-workspace .cmi-sidebar .cmi-nav button .cmi-nav-desktop-label,
+html[data-theme="dark"] .cmi-workspace .cmi-sidebar .cmi-nav button:not(.active) {
+  color: #d4deea !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-sidebar .cmi-nav button.active,
+html[data-theme="dark"] .cmi-workspace .cmi-sidebar .cmi-nav button.active .cmi-nav-desktop-label {
+  color: #ffe5e9 !important;
+  background-color: #3a202b !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-mobile-nav .cmi-mobile-nav-items > button.active,
+html[data-theme="dark"] .cmi-workspace .cmi-mobile-nav .cmi-mobile-nav-items > button[aria-controls="cmi-mobile-more-list"].active {
+  color: #ffe5e9 !important;
+  background-color: #3a202b !important;
+  background-image: none !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-mobile-nav .cmi-mobile-nav-items > button.active svg {
+  color: #ffb6c2 !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-structure-tabs > button {
+  border-color: #40546b !important;
+  background-color: #202e3f !important;
+  color: #d4deea !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-structure-tabs > button.active {
+  border-color: #75404d !important;
+  background-color: #3a202b !important;
+  color: #ffe5e9 !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-structure-tabs > button span {
+  border-color: #53677d !important;
+  background-color: #2c3e50 !important;
+  color: #e0e8f0 !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-mobile-more {
+  border-color: #40546b;
+  background-color: #182332 !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-mobile-more button {
+  border-color: #40546b;
+  background-color: #223247 !important;
+  color: #d4deea !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-mobile-more button.active {
+  border-color: #75404d !important;
+  background-color: #3a202b !important;
+  color: #ffe5e9 !important;
+}
