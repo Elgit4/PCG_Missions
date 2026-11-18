@@ -731,7 +731,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           </div>}
 
           {page === "Contacts" && (canReadContacts || canCreateContacts) && <div className="cmi-panel">
-            <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">PEOPLE & CONNECTION</p><h3>Contacts</h3><p>Only contacts within your server-authorised scope are shown.</p></div>
+            <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">PEOPLE & CONNECTION</p><h2>Contacts</h2><p>Only contacts within your server-authorised scope are shown.</p></div>
               {canCreateContacts && <button className="cmi-button cmi-button-primary" onClick={() => setShowContactForm((value) => !value)}><Plus size={16} />Add contact</button>}
             </div>
             {canReadContacts && <label className="cmi-search"><Search size={16} /><input aria-label="Search contacts by first name" maxLength={80} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search contacts by first name" /></label>}
@@ -751,7 +751,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             </form>}
             {canReadContacts && <>
               <div className="cmi-table-wrap"><table className="cmi-table"><caption className="cmi-sr-only">Contacts visible within your authorised access scope</caption><thead><tr><th scope="col">CONTACT</th><th scope="col">STATUS</th><th scope="col">LANGUAGE</th><th scope="col">IDENTITY</th></tr></thead><tbody>
-                {visibleContacts.map((contact) => <tr key={contact.id}><td data-label="Contact"><button type="button" className="cmi-contact-open" onClick={() => setSelectedContact(contact)} aria-label={`Open contact profile, notes and activity for ${displayName(contact)}`}><strong>{displayName(contact)}</strong><span>Open profile, notes & activity</span></button><small>{contact.id}</small></td><td data-label="Status"><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td data-label="Language">{contact.preferred_language || "Not recorded"}</td><td data-label="Identity">{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
+                {visibleContacts.map((contact) => <tr key={contact.id}><td data-label="Contact"><button type="button" className="cmi-contact-open" onClick={() => setSelectedContact(contact)}><strong>{displayName(contact)}</strong><span>Open profile, notes & activity</span></button><small>{contact.id}</small></td><td data-label="Status"><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td data-label="Language">{contact.preferred_language || "Not recorded"}</td><td data-label="Identity">{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
               </tbody></table>{!visibleContacts.length && !loading && <div className="cmi-contact-empty">
                 <strong>{query.trim() ? "No contacts match that search." : "No contacts have been added yet."}</strong>
                 <span>{query.trim() ? "Clear the search or try another first name." : "Add a contact to begin using profiles, notes, interaction history and follow-up tasks."}</span>
@@ -762,7 +762,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           </div>}
 
           {page === "Follow-up" && canReadTasks && <div className="cmi-panel">
-            <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h3>Follow-up tasks</h3><p>Filter tasks within your authorised assignment scope. Counts reflect the loaded records.</p></div>
+            <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h2>Follow-up tasks</h2><p>Filter tasks within your authorised assignment scope. Counts reflect the loaded records.</p></div>
               {canSelfAssignTask && <button className="cmi-button cmi-button-primary" onClick={() => setShowTaskForm((value) => !value)} disabled={!canReadContacts || !contacts.length}><Plus size={16} />New task</button>}
               {canCreateTasks && canSelfAssignTask && (!canReadContacts || !contacts.length) && <div className="cmi-task-prerequisite" role="note">
                 <span>Follow-up tasks must be attached to a visible contact before they can be created.</span>
