@@ -1029,3 +1029,198 @@ html[data-theme="dark"] .staff-login-support > span {
 html[data-theme="dark"] .staff-login-support p {
   color: #b9c7d6;
 }
+
+
+/* Workspace content contrast — light theme */
+html:not([data-theme="dark"]) .cmi-brand small,
+html:not([data-theme="dark"]) .cmi-user-card small,
+html:not([data-theme="dark"]) .cmi-mobile-brand small {
+  color: #536579;
+}
+
+html:not([data-theme="dark"]) .cmi-sidebar-label {
+  color: #526477;
+}
+
+html:not([data-theme="dark"]) .cmi-access-note,
+html:not([data-theme="dark"]) .cmi-access-note span {
+  color: #526477;
+}
+
+html:not([data-theme="dark"]) .cmi-breadcrumb,
+html:not([data-theme="dark"]) .cmi-eyebrow {
+  color: #566a7d;
+}
+
+html:not([data-theme="dark"]) .cmi-welcome p:not(.cmi-eyebrow) {
+  color: #536579;
+}
+
+html:not([data-theme="dark"]) .cmi-stat-card > span,
+html:not([data-theme="dark"]) .cmi-stat-card > small {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .cmi-mobile-nav-items button {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .cmi-mobile-nav-items button svg {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .cmi-overview-count,
+html:not([data-theme="dark"]) .cmi-access-summary-count,
+html:not([data-theme="dark"]) .cmi-inline-count {
+  color: #536477;
+}
+
+html:not([data-theme="dark"]) .cmi-access-list > div strong,
+html:not([data-theme="dark"]) .cmi-access-footnote,
+html:not([data-theme="dark"]) .cmi-overview-disclosure > summary small {
+  color: #536477;
+}
+
+/* Workspace contrast and surfaces — dark theme */
+html[data-theme="dark"] .cmi-sidebar {
+  background: #182332 !important;
+  border-right-color: #344458;
+}
+
+html[data-theme="dark"] .cmi-brand strong,
+html[data-theme="dark"] .cmi-mobile-brand strong {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .cmi-brand small,
+html[data-theme="dark"] .cmi-mobile-brand small,
+html[data-theme="dark"] .cmi-sidebar-label,
+html[data-theme="dark"] .cmi-breadcrumb,
+html[data-theme="dark"] .cmi-eyebrow {
+  color: #c0ccda !important;
+}
+
+html[data-theme="dark"] .cmi-nav button {
+  color: #cbd5e1 !important;
+  background: transparent;
+}
+
+html[data-theme="dark"] .cmi-nav button > svg {
+  color: #bac9d9 !important;
+}
+
+html[data-theme="dark"] .cmi-nav button:hover {
+  background: #253548 !important;
+  border-color: #43586f;
+  color: #fff !important;
+}
+
+html[data-theme="dark"] .cmi-nav button.active {
+  background: #3a202b !important;
+  border-color: #75404d;
+  color: #ffe5e9 !important;
+  box-shadow: inset 3px 0 0 #e15a70;
+}
+
+html[data-theme="dark"] .cmi-nav button.active > svg {
+  color: #ffb6c2 !important;
+}
+
+html[data-theme="dark"] .cmi-access-note,
+html[data-theme="dark"] .cmi-access-note span,
+html[data-theme="dark"] .cmi-user-card small {
+  color: #c0ccda !important;
+}
+
+html[data-theme="dark"] .cmi-topbar {
+  background: #101a28;
+  border-bottom-color: #344458;
+}
+
+html[data-theme="dark"] .cmi-welcome,
+html[data-theme="dark"] .cmi-stat-card {
+  background: #182332 !important;
+  border-color: #344458;
+}
+
+html[data-theme="dark"] .cmi-welcome h2,
+html[data-theme="dark"] .cmi-stat-card strong,
+html[data-theme="dark"] .cmi-panel-heading h3,
+html[data-theme="dark"] .cmi-overview-card-heading h3 {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .cmi-welcome p:not(.cmi-eyebrow),
+html[data-theme="dark"] .cmi-stat-card > span,
+html[data-theme="dark"] .cmi-stat-card > small,
+html[data-theme="dark"] .cmi-panel-heading p:not(.cmi-eyebrow) {
+  color: #c0ccda !important;
+}
+
+html[data-theme="dark"] .cmi-overview-card,
+html[data-theme="dark"] .cmi-overview-disclosure {
+  background: #182332 !important;
+  border-color: #344458;
+  color: #e7edf5;
+}
+
+html[data-theme="dark"] .cmi-overview-disclosure > summary strong,
+html[data-theme="dark"] .cmi-access-list > div span,
+html[data-theme="dark"] .cmi-restricted-list article strong {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .cmi-overview-disclosure > summary small,
+html[data-theme="dark"] .cmi-disclosure-body,
+html[data-theme="dark"] .cmi-access-list > div strong,
+html[data-theme="dark"] .cmi-restricted-list article p,
+html[data-theme="dark"] .cmi-access-footnote {
+  color: #c0ccda !important;
+}
+
+html[data-theme="dark"] .cmi-overview-count,
+html[data-theme="dark"] .cmi-access-summary-count,
+html[data-theme="dark"] .cmi-inline-count {
+  background: #2a3a4d;
+  border-color: #455a70;
+  color: #d7e1eb !important;
+}
+
+html[data-theme="dark"] .cmi-step-number,
+html[data-theme="dark"] .cmi-access-icon,
+html[data-theme="dark"] .cmi-access-icon.muted {
+  background: #2a3a4d;
+  color: #d7e7f5;
+}
+
+html[data-theme="dark"] .cmi-mobile-nav {
+  background: #182332;
+  border-color: #40546b;
+}
+
+html[data-theme="dark"] .cmi-mobile-nav-items button {
+  color: #cbd5e1 !important;
+  background: transparent;
+}
+
+html[data-theme="dark"] .cmi-mobile-nav-items button svg {
+  color: #bdcbd9 !important;
+}
+
+html[data-theme="dark"] .cmi-mobile-nav-items button.active {
+  background: #3a202b !important;
+  color: #ffe5e9 !important;
+}
+
+html[data-theme="dark"] .cmi-mobile-nav-items button.active svg {
+  color: #ffb6c2 !important;
+}
+
+html[data-theme="dark"] .cmi-structure-heading h2 {
+  margin: 0;
+  color: #edf3fa;
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 730;
+  letter-spacing: -.03em;
+}
