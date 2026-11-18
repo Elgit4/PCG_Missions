@@ -1224,3 +1224,11 @@ html[data-theme="dark"] .cmi-structure-heading h2 {
   font-weight: 730;
   letter-spacing: -.03em;
 }
+
+
+/* Keep empty-state and index labels readable in dark-mode administration panels. */
+html[data-theme="dark"] .cmi-structure-index-heading strong,
+html[data-theme="dark"] .cmi-structure-index-empty strong,
+html[data-theme="dark"] .cmi-structure-detail-empty strong {
+  color: #edf3fa !important;
+}
