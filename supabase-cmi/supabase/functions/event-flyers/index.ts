@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
-import { isUuid, sniffImage } from "./validation.ts";
+import { isUuid, validateFlyerImage } from "./validation.ts";
 import {
   attachFlyerReplacement,
   FLYER_SIGNED_URL_SECONDS,
@@ -479,8 +479,8 @@ Deno.serve(async (request: Request) => {
       );
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const detected = sniffImage(bytes);
-    if (!detected || file.type !== detected.mime) {
+    const detected = validateFlyerImage(bytes, file.type);
+    if (!detected) {
       return fail(
         "FLYER_TYPE_INVALID",
         "Only valid JPEG, PNG or WebP images are accepted.",
