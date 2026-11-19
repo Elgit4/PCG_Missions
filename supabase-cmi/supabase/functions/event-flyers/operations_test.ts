@@ -16,20 +16,26 @@ function fakeOperations(
   } = {},
 ): FlyerReplacementOperations {
   return {
-    async createSignedPreview(objectPath) {
+    createSignedPreview(objectPath) {
       calls.push(`sign:${objectPath}`);
-      if (options.failSigning) throw new Error("SIGNING_FAILED");
-      return `https://signed.example/${objectPath}`;
+      if (options.failSigning) {
+        return Promise.reject(new Error("SIGNING_FAILED"));
+      }
+      return Promise.resolve(`https://signed.example/${objectPath}`);
     },
-    async saveMetadata(metadata: FlyerMetadata) {
+    saveMetadata(metadata: FlyerMetadata) {
       calls.push(`save:${metadata.objectPath}`);
-      if (options.failMetadata) throw new Error("METADATA_FAILED");
+      if (options.failMetadata) {
+        return Promise.reject(new Error("METADATA_FAILED"));
+      }
+      return Promise.resolve();
     },
-    async removeObject(objectPath) {
+    removeObject(objectPath) {
       calls.push(`remove:${objectPath}`);
       if (options.failRemovalFor === objectPath) {
-        throw new Error("CLEANUP_FAILED");
+        return Promise.reject(new Error("CLEANUP_FAILED"));
       }
+      return Promise.resolve();
     },
     onRollbackCleanupFailure: options.onRollbackCleanupFailure,
   };
