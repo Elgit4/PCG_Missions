@@ -81,3 +81,7 @@ verify_jwt = false
 [functions.staff-notifications]
 # Private per-recipient notification inbox; branch and recipient ownership are checked in code.
 verify_jwt = true
+
+[functions.event-flyers]
+# Private, branch-authorised event flyer upload and short-lived preview URLs.
+verify_jwt = true
