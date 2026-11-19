@@ -168,7 +168,9 @@ Deno.test("rejects PNG chunks with a corrupted CRC", () => {
   assertEquals(sniffImage(bytes), null);
 });
 
-Deno.test("rejects declared MIME types that do not match the detected signature", () => {
+Deno.test(
+  "rejects declared MIME types that do not match the detected signature",
+  () => {
   const png = makePng(1200, 1600);
   assertEquals(validateFlyerImage(png, "image/png"), {
     mime: "image/png",
@@ -180,7 +182,8 @@ Deno.test("rejects declared MIME types that do not match the detected signature"
     validateFlyerImage(new TextEncoder().encode("not an image"), "image/png"),
     null,
   );
-});
+  },
+);
 
 Deno.test("rejects unsupported image content", () => {
   assertEquals(sniffImage(new TextEncoder().encode("not an image")), null);
