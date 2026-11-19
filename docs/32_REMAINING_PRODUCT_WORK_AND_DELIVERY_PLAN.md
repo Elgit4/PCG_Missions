@@ -107,5 +107,17 @@ Reconcile each module against docs/00_MASTER_PRODUCT_SPECIFICATION.md, docs/01_F
 - Added a static app-shell service worker and offline fallback. API routes and all staff/ministry data are excluded from caches; offline workflows remain disabled.
 - Added manifest id/scope and synchronised browser theme metadata with the selected theme.
 - Increased minimum field typography and touch targets in the workspace.
-- Internal notifications and private event-flyer storage/upload are designed but not yet implemented.
+- Internal notification inbox and private event-flyer upload are implemented in source on this branch: database migration, recipient-isolated Edge Function, assignment/review notification triggers, private Storage bucket, signed previews and event-form upload/preview/remove controls. These changes have not been deployed to hosted Supabase.
 - Public registration, attendance/check-in, event assignment/closeout, publication, and restricted pastoral mutations remain separate implementation tracks with their documented security gates.
+
+
+## 19 November implementation update
+
+- Added migration `20261119160000_cmi_internal_notifications_event_flyers.sql` for private staff notifications, event flyer metadata, a private Storage bucket, and idempotent assignment/review notification triggers. The report-review trigger is installed conditionally because typed report tables are not present in every hosted environment.
+- Added `staff-notifications` Edge Function source for authenticated inbox reads, unread count, individual read and mark-all-read, always filtered by authenticated recipient and currently assigned branch.
+- Added `event-flyers` Edge Function source for role/scope-checked private upload, signed preview and removal. MIME signatures and size are validated server-side; objects use random branch/event-scoped paths.
+- Added Staff Workspace notification centre with unread badge, minute polling while visible, read states and capability-safe navigation.
+- Added event form flyer selection, image preview, replacement and removal.
+- Transport assignment notifications are excluded. SMS/Arkesel, Cloudflare migration and existing screen loader remain untouched.
+- Source changes only: no hosted migration or function deployment, no production release.
+- Remaining: event assignment/registration/check-in/closeout workflows, report schema reconciliation, PWA icon assets, focused tests, current-head CI and browser/role acceptance.
