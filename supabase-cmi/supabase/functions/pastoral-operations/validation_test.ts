@@ -1,6 +1,7 @@
 import {
   isUuid,
   parsePastoralReadInput,
+  parsePastoralAssignedListInput,
   parsePastoralReadPath,
 } from "./validation.ts";
 
@@ -127,3 +128,41 @@ Deno.test("rejects unsupported modes and malformed branch IDs", () => {
     throw new Error("Unsupported mode or malformed branch ID was accepted.");
   }
 });
+
+Deno.test("parses the assigned prayer inbox route", () => {
+  const route = parsePastoralReadPath(
+    "/functions/v1/pastoral-operations/prayer/requests/assigned",
+  );
+  if (route?.kind !== "prayer_request_list") {
+    throw new Error("Assigned prayer inbox route was not recognised.");
+  }
+});
+
+Deno.test("validates assigned prayer inbox pagination and branch scope", () => {
+  const defaults = parsePastoralAssignedListInput({ branch_id: BRANCH_ID });
+  const valid = parsePastoralAssignedListInput({
+    branch_id: BRANCH_ID,
+    limit: 50,
+    offset: 250,
+  });
+  const invalidLimit = parsePastoralAssignedListInput({
+    branch_id: BRANCH_ID,
+    limit: 51,
+  });
+  const invalidOffset = parsePastoralAssignedListInput({
+    branch_id: BRANCH_ID,
+    offset: -1,
+  });
+  const extraField = parsePastoralAssignedListInput({
+    branch_id: BRANCH_ID,
+    actor_user_id: "caller-controlled",
+  });
+  if (
+    !defaults.ok || defaults.value.limit !== 25 || defaults.value.offset !== 0 ||
+    !valid.ok || valid.value.limit !== 50 || valid.value.offset !== 250 ||
+    invalidLimit.ok || invalidOffset.ok || extraField.ok
+  ) {
+    throw new Error("Assigned prayer inbox validation did not enforce pagination and field allowlists.");
+  }
+});
+
