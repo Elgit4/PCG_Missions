@@ -6,6 +6,18 @@
 
 The CMI Follow-up v2.1 target scope covers church field capture, contacts, follow-up, prayer and care, events, attendance, calendar, announcements, visitor-facing content, ministry reports and team administration. The scope below describes intended product capability; see the deployment snapshot before treating a feature as operational.
 
+## Verified release status — 19 November 2026
+
+**Production and PR #82 are different release states.** Vercel currently reports the production deployment as READY on `main` at commit `b83d1feb44fe5cca1e2ddc7d8026a7126a10d385`. PR #82 is still an open Draft targeting `main`; its changes are not part of production.
+
+The PR #82 head is `af40ac88a37ee813d686b0099079e31cdd8ae6f8`. Its backend CI (including isolated migration replay and pgTAP), web CI and frontend CI all passed. Its Vercel preview is READY at [the PR preview](https://pcg-missions-oxllfh1ft-eltech.vercel.app). The preview build reports a main JavaScript chunk slightly above Vite's 500 kB warning threshold; this is a performance follow-up, not a failed build.
+
+The linked production Supabase project currently records 17 migrations, with the latest version `20261112220204`. The seven newer PR #82 migrations are not applied to the hosted database, and the `staff-notifications` and `event-flyers` Edge Functions are not deployed. Production therefore does not yet include the PR's notification inbox, flyer upload, expanded event registration/check-in/closeout, or assigned Prayer Intercessor inbox workflows.
+
+The first Admin/Pastor login issue was repaired through a narrowly guarded role-assignment restore and the account owner has confirmed that login now works. That data repair did not merge PR #82, deploy code, or apply schema migrations. SMS/Arkesel remains deferred, the Cloudflare migration remains cancelled, Transport remains excluded, and the existing screen loader remains unchanged.
+
+Do not treat a green CI run or READY preview as production release approval. Authenticated six-role acceptance, negative authorization tests, hosted migration/function rollout planning, operational configuration, and separate staging/production approval remain open. See [the current implementation status](supabase-cmi/IMPLEMENTATION_STATUS.md) and [the delivery plan](docs/32_REMAINING_PRODUCT_WORK_AND_DELIVERY_PLAN.md).
+
 ## Current product baseline
 
 - **Staff access:** Supabase Auth email/password, short-lived temporary onboarding credentials and mandatory first-login password replacement.
