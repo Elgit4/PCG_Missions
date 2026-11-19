@@ -168,7 +168,7 @@ export function canonicalJson(value: CanonicalJson): string {
  */
 export async function deriveIdempotencySecret(
   masterSecret: string,
-  purpose: "contact" | "followup",
+  purpose: "contact" | "followup" | "event",
 ): Promise<string> {
   const masterBytes = new TextEncoder().encode(masterSecret);
   if (masterBytes.byteLength < 32) {
