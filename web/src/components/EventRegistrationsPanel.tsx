@@ -14,6 +14,7 @@ interface EventRegistrationsPanelProps {
   branchId: string;
   timeZone: string;
   event: EventDraftRecord;
+  canCheckIn: boolean;
   onClose: () => void;
   onSessionExpired: () => void;
 }
@@ -27,6 +28,7 @@ export function EventRegistrationsPanel({
   branchId,
   timeZone,
   event,
+  canCheckIn,
   onClose,
   onSessionExpired,
 }: EventRegistrationsPanelProps) {
@@ -222,7 +224,7 @@ export function EventRegistrationsPanel({
                 {item.checked_in_at ? "Checked in" : item.status.replaceAll("_", " ")}
               </span>
               {item.checked_in_at && <p>Checked in {formatBranchDate(item.checked_in_at, timeZone)}</p>}
-              {item.status === "registered" && !item.checked_in_at &&
+              {canCheckIn && item.status === "registered" && !item.checked_in_at &&
                 event.status === "published" && Date.parse(event.ends_at) > Date.now() && (
                   <button
                     className="cmi-button cmi-button-primary"
