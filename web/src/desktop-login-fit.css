@@ -1,0 +1,48 @@
+/* Desktop staff sign-in: keep the complete login experience inside the viewport. */
+@media (min-width: 760px) {
+  .staff-login-page { height: 100vh; height: 100dvh; min-height: 0; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+  .staff-login-aside, .staff-login-main { height: 100%; min-height: 0; min-width: 0; box-sizing: border-box; overflow: hidden; }
+  .staff-login-aside { display: flex; flex-direction: column; justify-content: space-between; padding: clamp(18px, 3vh, 30px) clamp(24px, 4vw, 58px); }
+  .staff-login-aside-content { padding: clamp(10px, 2vh, 22px) 0; }
+  .staff-login-aside-content h1 { margin-top: clamp(10px, 2vh, 18px); margin-bottom: clamp(8px, 1.6vh, 14px); font-size: clamp(32px, 3.5vw, 48px); line-height: 1.08; }
+  .staff-login-service-list { gap: clamp(7px, 1.2vh, 11px); margin-top: clamp(12px, 2vh, 22px); }
+  .staff-login-main { display: flex; align-items: center; justify-content: center; padding: 12px clamp(18px, 3vw, 40px); }
+  .staff-login-form-wrap.staff-login-auth-wrap { width: min(100%, 480px); max-height: 100%; min-height: 0; box-sizing: border-box; padding: clamp(16px, 2vh, 22px); overflow: hidden; }
+  .staff-login-theme-row { margin-top: -4px; margin-bottom: 7px; }
+  .staff-login-heading { margin: clamp(8px, 1.2vh, 12px) 0; }
+  .staff-login-heading h2 { font-size: clamp(30px, 2.8vw, 36px); }
+  .staff-login-heading > p:last-child { margin-top: 7px; }
+  .staff-login-auth-form { gap: clamp(7px, 1vh, 10px); }
+  .staff-login-auth-field { gap: 5px; }
+  .staff-login-auth-field input, .staff-login-password-field { min-height: 42px; }
+  .staff-login-submit { min-height: 44px; margin-top: 0; }
+  .staff-login-support { margin-top: clamp(6px, 1vh, 10px); padding-top: 7px; }
+  .staff-login-footer { margin-top: 0; padding-top: 8px; }
+}
+@media (min-width: 760px) and (max-height: 760px) {
+  .staff-login-aside { padding-top: 12px; padding-bottom: 12px; }
+  .staff-login-aside-content { padding: 7px 0; }
+  .staff-login-aside-content h1 { font-size: clamp(29px, 3vw, 38px); }
+  .staff-login-service-list { margin-top: 10px; gap: 6px; }
+  .staff-login-main { padding: 6px 16px; }
+  .staff-login-form-wrap.staff-login-auth-wrap { padding: 12px 18px; }
+  .staff-login-heading { margin: 6px 0; }
+  .staff-login-auth-form { gap: 7px; }
+  .staff-login-auth-field input, .staff-login-password-field { min-height: 40px; }
+  .staff-login-support { margin-top: 6px; padding-top: 6px; }
+  .staff-login-footer { padding-top: 5px; }
+}
+@media (min-width: 760px) and (max-height: 700px) {
+  .staff-login-form-wrap.staff-login-auth-wrap { padding: 10px 16px; }
+  .staff-login-theme-row { margin-bottom: 3px; }
+  .staff-login-heading { margin: 5px 0; }
+  .staff-login-heading h2 { font-size: 28px; }
+  .staff-login-heading > p:last-child { margin-top: 5px; line-height: 1.4; }
+  .staff-login-auth-form { gap: 5px; }
+  .staff-login-auth-field input, .staff-login-password-field { min-height: 38px; }
+  .staff-login-auth-bottom { min-height: 30px; margin-top: 3px; }
+  .staff-login-auth-bottom button:nth-child(n + 2) { display: none; }
+  .staff-login-support { margin-top: 4px; padding-top: 5px; }
+  .staff-login-support p { display: none; }
+  .staff-login-footer { padding-top: 3px; }
+}
