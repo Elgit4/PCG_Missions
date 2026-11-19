@@ -121,3 +121,19 @@ Reconcile each module against docs/00_MASTER_PRODUCT_SPECIFICATION.md, docs/01_F
 - Transport assignment notifications are excluded. SMS/Arkesel, Cloudflare migration and existing screen loader remain untouched.
 - Source changes only: no hosted migration or function deployment, no production release.
 - Remaining: event assignment/registration/check-in/closeout workflows, report schema reconciliation, PWA icon assets, focused tests, current-head CI and browser/role acceptance.
+
+
+## 19 November final-review update
+
+- Added the staff notification inbox and private event flyer upload/preview/remove flows, with source-only database migration and authenticated Edge Functions.
+- Added event flyer signature/size/dimension validation and Deno tests; backend CI now type-checks both new Edge Functions.
+- Replaced the task form's loaded-contact <select> with a debounced server-search combobox (first/last name and only permission-visible phone search). Task creation no longer depends on the first 50 contacts being preloaded.
+- Hid connection diagnostics unless ?debug=1 is present or the login is already in an error state; added live password-strength checks.
+- Removed raw internal contact UUIDs from the staff contact table.
+- Removed unused prototype demo-ribbon, role-preview and mobile-tabbar selectors.
+- Consolidated the desktop login, UI refresh, visual-system and login-brand stylesheets into web/production.css, preserving their original cascade order; main.tsx now imports only the base and consolidated stylesheets.
+- Added original-crest 192px vector and padded maskable 512px vector PWA icons; the service worker precaches the manifest and both icons. Raster PNG variants remain a separate compatibility follow-up.
+- Added a visually-hidden level-two heading to establish the staff workspace heading hierarchy.
+- No hosted Supabase migration or Edge Function deployment has been performed. No production deployment or merge.
+- Transport remains excluded; Arkesel SMS remains deferred; the screen loader is unchanged; Cloudflare migration remains cancelled.
+- Remaining release gates: complete non-transport event registration/check-in/closeout workflows, reconcile typed ministry report migration history, add Edge Function authorization integration tests, confirm current-head migration replay and perform authenticated role-based browser acceptance.
