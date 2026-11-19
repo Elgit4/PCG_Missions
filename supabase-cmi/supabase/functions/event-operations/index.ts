@@ -1103,7 +1103,9 @@ Deno.serve(async (request: Request) => {
             row.checked_in_at,
           ]),
         );
-        const registrationRows = (registrations.data ?? []).map((registration) => ({
+        const registrationRows = (registrations.data ?? []).map((
+          registration,
+        ) => ({
           ...registration,
           checked_in_at: checkedInAt.get(registration.id) ?? null,
         }));
