@@ -340,6 +340,64 @@ export function parseEventTeamAssignment(
   };
 }
 
+
+export interface EventStaffRegistrationInput {
+  idempotency_key: string;
+  attendee_name: string;
+  attendee_phone: string | null;
+}
+
+export function parseEventStaffRegistration(
+  value: unknown,
+): { ok: true; value: EventStaffRegistrationInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const allowed = new Set([
+    "idempotency_key",
+    "attendee_name",
+    "attendee_phone",
+  ]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    return {
+      ok: false,
+      error: "Unsupported staff registration field.",
+    };
+  }
+  if (
+    typeof value.idempotency_key !== "string" ||
+    !UUID_PATTERN.test(value.idempotency_key)
+  ) {
+    return { ok: false, error: "A valid idempotency_key is required." };
+  }
+  const name = parseText(value.attendee_name, "attendee_name", 2, 180);
+  if (!name.ok || name.value === null) {
+    return { ok: false, error: "Enter an attendee name between 2 and 180 characters." };
+  }
+  let phone: string | null = null;
+  if (value.attendee_phone !== undefined && value.attendee_phone !== null) {
+    if (typeof value.attendee_phone !== "string") {
+      return { ok: false, error: "Enter a valid international phone number." };
+    }
+    const normalized = value.attendee_phone.trim();
+    if (normalized !== "" && !/^\\+[1-9][0-9]{7,14}$/.test(normalized)) {
+      return { ok: false, error: "Enter a valid international phone number." };
+    }
+    phone = normalized || null;
+  }
+  return {
+    ok: true,
+    value: {
+      idempotency_key: value.idempotency_key,
+      attendee_name: name.value,
+      attendee_phone: phone,
+    },
+  };
+}
+
 export function parseEventListQuery(
   url: URL,
 ): { ok: true; value: EventListQuery } | { ok: false; error: string } {
