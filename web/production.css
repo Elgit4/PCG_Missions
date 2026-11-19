@@ -68,6 +68,18 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.cmi-event-closeout-panel .cmi-closeout-review-reason {
+  margin-top: 7px;
+  padding: 9px 11px;
+  border: 1px solid var(--cmi-border-soft);
+  border-radius: 9px;
+  background: var(--cmi-bg-raised);
+  color: var(--cmi-muted);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .cmi-event-closeout-panel .cmi-scope-note {
   color: var(--cmi-muted);
 }
