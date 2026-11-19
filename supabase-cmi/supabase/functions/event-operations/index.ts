@@ -274,8 +274,19 @@ async function loadEventForManagement(
   profileId: string,
   eventId: string,
   branchId: string,
-): Promise<{ ok: true; status: string; starts_at: string; ends_at: string } | { ok: false; responseCode: "FORBIDDEN" | "NOT_FOUND"; statusCode: 403 | 404 }> {
-  const scopes = await resolveScopes(service, profileId, branchId, "event.manage.scoped");
+): Promise<
+  { ok: true; status: string; starts_at: string; ends_at: string } | {
+    ok: false;
+    responseCode: "FORBIDDEN" | "NOT_FOUND";
+    statusCode: 403 | 404;
+  }
+> {
+  const scopes = await resolveScopes(
+    service,
+    profileId,
+    branchId,
+    "event.manage.scoped",
+  );
   if (!scopes.includes("branch")) {
     return { ok: false, responseCode: "FORBIDDEN", statusCode: 403 };
   }
@@ -286,9 +297,13 @@ async function loadEventForManagement(
     .maybeSingle();
   if (error) throw new Error("EVENT_MANAGEMENT_LOOKUP_FAILED");
   if (!data) return { ok: false, responseCode: "NOT_FOUND", statusCode: 404 };
-  return { ok: true, status: data.status, starts_at: data.starts_at, ends_at: data.ends_at };
+  return {
+    ok: true,
+    status: data.status,
+    starts_at: data.starts_at,
+    ends_at: data.ends_at,
+  };
 }
-
 
 function resolveEventAssignmentEnd(
   startsAt: string,
@@ -326,11 +341,15 @@ async function listEventAssignmentWorkspace(
   const now = new Date().toISOString();
   const [staffRows, teamRows, memberships, teams] = await Promise.all([
     service.from("event_staff_assignment")
-      .select("id,event_id,branch_id,staff_auth_user_id,assignment_role,starts_at,ends_at,revoked_at,created_at")
+      .select(
+        "id,event_id,branch_id,staff_auth_user_id,assignment_role,starts_at,ends_at,revoked_at,created_at",
+      )
       .eq("event_id", eventId).eq("branch_id", branchId)
       .order("starts_at", { ascending: true }),
     service.from("event_team_assignment")
-      .select("id,event_id,branch_id,team_id,assignment_role,starts_at,ends_at,revoked_at,created_at")
+      .select(
+        "id,event_id,branch_id,team_id,assignment_role,starts_at,ends_at,revoked_at,created_at",
+      )
       .eq("event_id", eventId).eq("branch_id", branchId)
       .order("starts_at", { ascending: true }),
     service.from("staff_role_assignment")
@@ -346,21 +365,53 @@ async function listEventAssignmentWorkspace(
     throw new Error("EVENT_ASSIGNMENT_LIST_FAILED");
   }
 
-  const profileIds = [...new Set((memberships.data ?? []).map((row: { staff_profile_id: string }) => row.staff_profile_id))];
-  const assignedStaffIds = [...new Set((staffRows.data ?? []).map((row: { staff_auth_user_id: string }) => row.staff_auth_user_id))];
-  const assignedTeamIds = [...new Set((teamRows.data ?? []).map((row: { team_id: string }) => row.team_id))];
-  const historicalTeamIds = [...new Set([...(teams.data ?? []).map((row: { id: string }) => row.id), ...assignedTeamIds])];
+  const profileIds = [
+    ...new Set(
+      (memberships.data ?? []).map((row: { staff_profile_id: string }) =>
+        row.staff_profile_id
+      ),
+    ),
+  ];
+  const assignedStaffIds = [
+    ...new Set(
+      (staffRows.data ?? []).map((row: { staff_auth_user_id: string }) =>
+        row.staff_auth_user_id
+      ),
+    ),
+  ];
+  const assignedTeamIds = [
+    ...new Set((teamRows.data ?? []).map((row: { team_id: string }) =>
+      row.team_id
+    )),
+  ];
+  const historicalTeamIds = [
+    ...new Set([
+      ...(teams.data ?? []).map((row: { id: string }) => row.id),
+      ...assignedTeamIds,
+    ]),
+  ];
   const [profiles, assignedProfiles, historicalTeams] = await Promise.all([
     service.from("staff_profile")
       .select("id,auth_user_id,full_name,account_status")
-      .in("id", profileIds.length ? profileIds : ["00000000-0000-4000-8000-000000000000"])
+      .in(
+        "id",
+        profileIds.length
+          ? profileIds
+          : ["00000000-0000-4000-8000-000000000000"],
+      )
       .eq("account_status", "active")
       .order("full_name", { ascending: true }).limit(200),
     assignedStaffIds.length
-      ? service.from("staff_profile").select("auth_user_id,full_name").in("auth_user_id", assignedStaffIds)
+      ? service.from("staff_profile").select("auth_user_id,full_name").in(
+        "auth_user_id",
+        assignedStaffIds,
+      )
       : Promise.resolve({ data: [], error: null }),
     historicalTeamIds.length
-      ? service.from("team").select("id,name,is_active").eq("branch_id", branchId).in("id", historicalTeamIds).limit(250)
+      ? service.from("team").select("id,name,is_active").eq(
+        "branch_id",
+        branchId,
+      ).in("id", historicalTeamIds).limit(250)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (profiles.error || assignedProfiles.error || historicalTeams.error) {
@@ -368,7 +419,9 @@ async function listEventAssignmentWorkspace(
   }
 
   const staffNames = new Map<string, string>();
-  for (const row of [...(assignedProfiles.data ?? []), ...(profiles.data ?? [])]) {
+  for (
+    const row of [...(assignedProfiles.data ?? []), ...(profiles.data ?? [])]
+  ) {
     staffNames.set(row.auth_user_id, row.full_name);
   }
   const teamNames = new Map<string, string>();
@@ -379,16 +432,23 @@ async function listEventAssignmentWorkspace(
     auth_user_id: row.auth_user_id,
     full_name: row.full_name,
   }));
-  const teamCandidates = [...(teams.data ?? [])].map((row: { id: string; name: string }) => ({
+  const teamCandidates = [...(teams.data ?? [])].map((
+    row: { id: string; name: string },
+  ) => ({
     id: row.id,
     name: row.name,
   }));
   return {
-    staff_assignments: (staffRows.data ?? []).map((row: Record<string, unknown>) => ({
+    staff_assignments: (staffRows.data ?? []).map((
+      row: Record<string, unknown>,
+    ) => ({
       ...row,
-      staff_name: staffNames.get(String(row.staff_auth_user_id)) ?? "Inactive or unavailable staff",
+      staff_name: staffNames.get(String(row.staff_auth_user_id)) ??
+        "Inactive or unavailable staff",
     })),
-    team_assignments: (teamRows.data ?? []).map((row: Record<string, unknown>) => ({
+    team_assignments: (teamRows.data ?? []).map((
+      row: Record<string, unknown>,
+    ) => ({
       ...row,
       team_name: teamNames.get(String(row.team_id)) ?? "Inactive team",
     })),
@@ -483,7 +543,13 @@ Deno.serve(async (request: Request) => {
     ) {
       const branchId = parseBranchQuery(url);
       if (!branchId) {
-        return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
       }
       const managed = await loadEventForManagement(
         auth.service,
@@ -494,7 +560,9 @@ Deno.serve(async (request: Request) => {
       if (!managed.ok) {
         return fail(
           managed.responseCode,
-          managed.responseCode === "NOT_FOUND" ? "Event not found." : "The operation is not permitted.",
+          managed.responseCode === "NOT_FOUND"
+            ? "Event not found."
+            : "The operation is not permitted.",
           managed.statusCode,
           origin,
           id,
@@ -502,13 +570,23 @@ Deno.serve(async (request: Request) => {
       }
 
       if (request.method === "GET" && isAssignmentWorkspace) {
-        const data = await listEventAssignmentWorkspace(auth.service, nestedEventId, branchId);
+        const data = await listEventAssignmentWorkspace(
+          auth.service,
+          nestedEventId,
+          branchId,
+        );
         return response({ data, request_id: id }, 200, origin, id);
       }
 
       if (request.method === "POST" && isAssignmentCollection) {
         if (managed.status === "cancelled" || managed.status === "completed") {
-          return fail("EVENT_NOT_ASSIGNABLE", "Assignments cannot be changed for a cancelled or completed event.", 409, origin, id);
+          return fail(
+            "EVENT_NOT_ASSIGNABLE",
+            "Assignments cannot be changed for a cancelled or completed event.",
+            409,
+            origin,
+            id,
+          );
         }
         let body: unknown;
         try {
@@ -517,9 +595,11 @@ Deno.serve(async (request: Request) => {
           const code = error instanceof Error ? error.message : "INVALID_JSON";
           return fail(
             code,
-            code === "CONTENT_TYPE_REQUIRED" ? "Content-Type must be application/json." :
-              code === "BODY_TOO_LARGE" ? "Request body is too large." :
-              "A valid JSON request body is required.",
+            code === "CONTENT_TYPE_REQUIRED"
+              ? "Content-Type must be application/json."
+              : code === "BODY_TOO_LARGE"
+              ? "Request body is too large."
+              : "A valid JSON request body is required.",
             code === "BODY_TOO_LARGE" ? 413 : 400,
             origin,
             id,
@@ -528,7 +608,9 @@ Deno.serve(async (request: Request) => {
 
         if (assignmentKind === "staff") {
           const parsed = parseEventStaffAssignment(body);
-          if (!parsed.ok) return fail("INVALID_ASSIGNMENT", parsed.error, 400, origin, id);
+          if (!parsed.ok) {
+            return fail("INVALID_ASSIGNMENT", parsed.error, 400, origin, id);
+          }
           const assignmentEndsAt = resolveEventAssignmentEnd(
             parsed.value.starts_at,
             parsed.value.ends_at,
@@ -536,7 +618,13 @@ Deno.serve(async (request: Request) => {
             managed.ends_at,
           );
           if (!assignmentEndsAt) {
-            return fail("INVALID_ASSIGNMENT_WINDOW", "Assignments must start and end within the event's scheduled window.", 422, origin, id);
+            return fail(
+              "INVALID_ASSIGNMENT_WINDOW",
+              "Assignments must start and end within the event's scheduled window.",
+              422,
+              origin,
+              id,
+            );
           }
 
           const { data: profile, error: profileError } = await auth.service
@@ -546,7 +634,13 @@ Deno.serve(async (request: Request) => {
             .maybeSingle();
           if (profileError) throw new Error("EVENT_ASSIGNEE_LOOKUP_FAILED");
           if (!profile || profile.account_status !== "active") {
-            return fail("STAFF_NOT_ASSIGNABLE", "Choose an active staff member assigned to this branch.", 422, origin, id);
+            return fail(
+              "STAFF_NOT_ASSIGNABLE",
+              "Choose an active staff member assigned to this branch.",
+              422,
+              origin,
+              id,
+            );
           }
           const { data: membership, error: membershipError } = await auth
             .service
@@ -560,9 +654,17 @@ Deno.serve(async (request: Request) => {
             .is("revoked_at", null)
             .limit(1)
             .maybeSingle();
-          if (membershipError) throw new Error("EVENT_ASSIGNEE_SCOPE_LOOKUP_FAILED");
+          if (membershipError) {
+            throw new Error("EVENT_ASSIGNEE_SCOPE_LOOKUP_FAILED");
+          }
           if (!membership) {
-            return fail("STAFF_NOT_IN_BRANCH", "The selected staff member is not active in this branch for the assignment period.", 422, origin, id);
+            return fail(
+              "STAFF_NOT_IN_BRANCH",
+              "The selected staff member is not active in this branch for the assignment period.",
+              422,
+              origin,
+              id,
+            );
           }
           const { data, error } = await auth.service.from("event_staff_assignment")
             .insert({
@@ -586,7 +688,9 @@ Deno.serve(async (request: Request) => {
         }
 
         const parsed = parseEventTeamAssignment(body);
-        if (!parsed.ok) return fail("INVALID_ASSIGNMENT", parsed.error, 400, origin, id);
+        if (!parsed.ok) {
+          return fail("INVALID_ASSIGNMENT", parsed.error, 400, origin, id);
+        }
         const assignmentEndsAt = resolveEventAssignmentEnd(
           parsed.value.starts_at,
           parsed.value.ends_at,
@@ -631,12 +735,23 @@ Deno.serve(async (request: Request) => {
           .select("id,event_id,branch_id,starts_at,ends_at,revoked_at")
           .eq("id", eventSuffix[1]).eq("event_id", nestedEventId)
           .eq("branch_id", branchId).maybeSingle();
-        if (lookupError) throw new Error("EVENT_ASSIGNMENT_REVOKE_LOOKUP_FAILED");
-        if (!existing) return fail("NOT_FOUND", "Assignment not found.", 404, origin, id);
-        if (existing.revoked_at) {
-          return response({ data: existing, already_revoked: true, request_id: id }, 200, origin, id);
+        if (lookupError) {
+          throw new Error("EVENT_ASSIGNMENT_REVOKE_LOOKUP_FAILED");
         }
-        const revokedAt = new Date(Math.max(Date.now(), Date.parse(existing.starts_at))).toISOString();
+        if (!existing) {
+          return fail("NOT_FOUND", "Assignment not found.", 404, origin, id);
+        }
+        if (existing.revoked_at) {
+          return response(
+            { data: existing, already_revoked: true, request_id: id },
+            200,
+            origin,
+            id,
+          );
+        }
+        const revokedAt = new Date(
+          Math.max(Date.now(), Date.parse(existing.starts_at)),
+        ).toISOString();
         const { data, error } = await auth.service.from(table)
           .update({ revoked_at: revokedAt })
           .eq("id", eventSuffix[1]).eq("event_id", nestedEventId)
@@ -644,8 +759,21 @@ Deno.serve(async (request: Request) => {
           .select("id,event_id,branch_id,starts_at,ends_at,revoked_at")
           .maybeSingle();
         if (error) throw new Error("EVENT_ASSIGNMENT_REVOKE_FAILED");
-        if (!data) return fail("ASSIGNMENT_CHANGED", "The assignment changed. Refresh and try again.", 409, origin, id);
-        return response({ data, already_revoked: false, request_id: id }, 200, origin, id);
+        if (!data) {
+          return fail(
+            "ASSIGNMENT_CHANGED",
+            "The assignment changed. Refresh and try again.",
+            409,
+            origin,
+            id,
+          );
+        }
+        return response(
+          { data, already_revoked: false, request_id: id },
+          200,
+          origin,
+          id,
+        );
       }
     }
 
