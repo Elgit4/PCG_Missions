@@ -36,6 +36,12 @@ export function isFlyerAssignmentEligible(assignmentRole: string): boolean {
   return assignmentRole !== "transport";
 }
 
+export function hasEligibleFlyerAssignment(
+  assignmentRoles: readonly string[],
+): boolean {
+  return assignmentRoles.some(isFlyerAssignmentEligible);
+}
+
 export interface FlyerScopeDecision {
   branchActive: boolean;
   scopeModes: readonly FlyerScopeMode[];
