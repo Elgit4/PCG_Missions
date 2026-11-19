@@ -158,11 +158,15 @@ Deno.test("validates assigned prayer inbox pagination and branch scope", () => {
     actor_user_id: "caller-controlled",
   });
   if (
-    !defaults.ok || defaults.value.limit !== 25 || defaults.value.offset !== 0 ||
-    !valid.ok || valid.value.limit !== 50 || valid.value.offset !== 250 ||
+    !defaults.ok || defaults.value.limit !== 25 ||
+    defaults.value.offset !== 0 ||
+    !valid.ok || valid.value.limit !== 50 ||
+    valid.value.offset !== 250 ||
     invalidLimit.ok || invalidOffset.ok || extraField.ok
   ) {
-    throw new Error("Assigned prayer inbox validation did not enforce pagination and field allowlists.");
+    throw new Error(
+      "Assigned prayer inbox validation did not enforce pagination and field allowlists.",
+    );
   }
 });
 
