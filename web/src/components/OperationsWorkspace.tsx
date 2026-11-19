@@ -325,6 +325,21 @@ export function OperationsWorkspace({
                   {(flyerPreview || existingFlyerUrl) && <div className="cmi-flyer-preview"><img src={flyerPreview ?? existingFlyerUrl ?? ""} alt="Event flyer preview" /><span>{flyerFile?.name ?? "Current event flyer"}</span></div>}
                   {editingEvent?.flyer_mime_type && !flyerFile && !existingFlyerUrl && <small>Existing flyer attached. Preview is being prepared or is temporarily unavailable.</small>}
                   {flyerFile && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setFlyerFile(null); setExistingFlyerUrl(null); }}>Remove selected image</button>}
+                  {editingEvent?.flyer_mime_type && <button type="button" className="cmi-button cmi-button-secondary" disabled={saving}
+                    onClick={() => void (async () => {
+                      setSaving(true);
+                      setError("");
+                      try {
+                        await api.removeEventFlyer(branchId, editingEvent.id);
+                        setExistingFlyerUrl(null);
+                        await loadRecords();
+                        setNotice("The event flyer has been removed.");
+                      } catch (cause) {
+                        setError(errorMessage(cause));
+                      } finally {
+                        setSaving(false);
+                      }
+                    })()}>Remove current flyer</button>}
                 </div>
                 <p className="cmi-field-wide cmi-scope-note">The server saves this as a private draft with registration closed. Public registration, capacity and attendance are intentionally unavailable.</p>
               </>
