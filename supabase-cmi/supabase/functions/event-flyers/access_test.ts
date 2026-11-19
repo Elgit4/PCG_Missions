@@ -3,6 +3,7 @@ import {
   canManageFlyerInScope,
   flyerProfileDenial,
   isEditablePrivateEvent,
+  hasEligibleFlyerAssignment,
   isFlyerAssignmentEligible,
 } from "./access.ts";
 
@@ -100,6 +101,14 @@ Deno.test(
     assertEquals(isFlyerAssignmentEligible("support"), true);
     assertEquals(isFlyerAssignmentEligible("host"), true);
     assertEquals(isFlyerAssignmentEligible("transport"), false);
+    assertEquals(
+      hasEligibleFlyerAssignment(["transport", "support"]),
+      true,
+    );
+    assertEquals(
+      hasEligibleFlyerAssignment(["transport"]),
+      false,
+    );
     assertEquals(
       canManageFlyerInScope({
         branchActive: true,
