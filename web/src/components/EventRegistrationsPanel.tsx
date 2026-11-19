@@ -31,6 +31,7 @@ export function EventRegistrationsPanel({
   onSessionExpired,
 }: EventRegistrationsPanelProps) {
   const [registrations, setRegistrations] = useState<EventRegistrationRecord[]>([]);
+  const [activeRegistrationCount, setActiveRegistrationCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
@@ -46,7 +47,8 @@ export function EventRegistrationsPanel({
     setError("");
     try {
       const result = await api.listEventRegistrations(branchId, event.id);
-      setRegistrations(result.data);
+      setRegistrations(result.data.registrations);
+      setActiveRegistrationCount(result.data.active_count);
     } catch (cause) {
       if (cause instanceof CmiApiError && cause.status === 401) {
         onSessionExpired();
@@ -153,7 +155,7 @@ export function EventRegistrationsPanel({
     }
   };
 
-  const activeCount = registrations.filter((item) => item.status !== "cancelled").length;
+  const activeCount = activeRegistrationCount;
   const remaining = event.capacity === null
     ? null
     : Math.max(0, event.capacity - activeCount);
