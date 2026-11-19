@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(107);
+select plan(122);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -73,8 +73,8 @@ select extensions.ok(
   ),
   'no client policies exist before trusted public projections and reviewed role grants'
 );
-select extensions.is((select count(*)::integer from public.role_capability),78,
-  'the owner-directed role grants include staff registration and Admin/Pastor check-in');
+select extensions.is((select count(*)::integer from public.role_capability),80,
+  'the owner-directed role grants include staff registration, check-in and closeout');
 
 select extensions.ok(
   has_table_privilege('service_role','public.event','SELECT')
@@ -146,6 +146,18 @@ insert into auth.users (
 );
 insert into public.staff_profile(auth_user_id,full_name,account_status)
 values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Synthetic Event Tester','active');
+insert into auth.users (
+ instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,
+ raw_app_meta_data,raw_user_meta_data,created_at,updated_at
+) values (
+ '00000000-0000-0000-0000-000000000000',
+ 'cccccccc-cccc-4ccc-8ccc-cccccccccccc','authenticated','authenticated',
+ 'cmi-event-reviewer@example.invalid','not-a-real-password-hash',now(),
+ '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb,now(),now()
+);
+insert into public.staff_profile(auth_user_id,full_name,account_status)
+values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc','Synthetic Event Reviewer','active');
+
 insert into public.church(id,name,timezone)
 values ('11000000-0000-4000-8000-000000000001','Synthetic Event Test Church','Africa/Accra');
 insert into public.branch(id,church_id,name,code) values
@@ -192,6 +204,19 @@ select sp.id,r.id,'21000000-0000-4000-8000-000000000001',sp.id,
 from public.staff_profile sp
 cross join public.role r
 where sp.auth_user_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  and r.code='admin_pastor';
+
+
+insert into public.staff_role_assignment(
+ staff_profile_id,role_id,branch_id,assigned_by,starts_at,reason
+)
+select reviewer.id, r.id, '21000000-0000-4000-8000-000000000001', owner.id,
+ now()-interval '1 hour','Synthetic independent event closeout reviewer'
+from public.staff_profile reviewer
+join public.staff_profile owner
+  on owner.auth_user_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+cross join public.role r
+where reviewer.auth_user_id='cccccccc-cccc-4ccc-8ccc-cccccccccccc'
   and r.code='admin_pastor';
 
 select extensions.throws_ok(
@@ -951,6 +976,191 @@ select ok(
     and operation='staff_registration'
  ),
  'registration and HMAC receipt are committed together with the key version and actor'
+);
+
+
+-- Closeout runs only after the event ends. The event has one check-in and two
+-- active registrations after the earlier cancellation/capacity test.
+update public.event
+   set starts_at=now()-interval '2 days',
+       ends_at=now()-interval '1 hour'
+ where id='51000000-0000-4000-8000-000000000003';
+
+select has_function(
+ 'public','cmi_staff_submit_event_closeout',
+ array['uuid','uuid','uuid','uuid','smallint','text','text'],
+ 'staff event closeout submit transaction exists'
+);
+select has_function(
+ 'public','cmi_staff_review_event_closeout',
+ array['uuid','uuid','uuid','uuid','text','text','uuid','smallint','text'],
+ 'staff event closeout review transaction exists'
+);
+select ok(
+ not has_function_privilege(
+  'anon',
+  'public.cmi_staff_submit_event_closeout(uuid,uuid,uuid,uuid,smallint,text,text)',
+  'EXECUTE'
+ )
+ and not has_function_privilege(
+  'authenticated',
+  'public.cmi_staff_submit_event_closeout(uuid,uuid,uuid,uuid,smallint,text,text)',
+  'EXECUTE'
+ )
+ and has_function_privilege(
+  'service_role',
+  'public.cmi_staff_submit_event_closeout(uuid,uuid,uuid,uuid,smallint,text,text)',
+  'EXECUTE'
+ ),
+ 'closeout submit transaction is service-role-only'
+);
+select ok(
+ not has_function_privilege(
+  'anon',
+  'public.cmi_staff_review_event_closeout(uuid,uuid,uuid,uuid,text,text,uuid,smallint,text)',
+  'EXECUTE'
+ )
+ and not has_function_privilege(
+  'authenticated',
+  'public.cmi_staff_review_event_closeout(uuid,uuid,uuid,uuid,text,text,uuid,smallint,text)',
+  'EXECUTE'
+ )
+ and has_function_privilege(
+  'service_role',
+  'public.cmi_staff_review_event_closeout(uuid,uuid,uuid,uuid,text,text,uuid,smallint,text)',
+  'EXECUTE'
+ ),
+ 'closeout review transaction is service-role-only'
+);
+select is(
+ (
+  select count(*)::integer
+  from public.role_capability rc
+  join public.role r on r.id=rc.role_id
+  join public.capability c on c.id=rc.capability_id
+  where r.code='admin_pastor'
+    and c.code='event.closeout.submit'
+    and rc.scope_mode='branch'
+ ),
+ 1,
+ 'Admin/Pastor receives one branch-scoped closeout submission grant'
+);
+select is(
+ (
+  select count(*)::integer
+  from public.role_capability rc
+  join public.role r on r.id=rc.role_id
+  join public.capability c on c.id=rc.capability_id
+  where r.code='admin_pastor'
+    and c.code='event.closeout.review'
+    and rc.scope_mode='branch'
+ ),
+ 1,
+ 'Admin/Pastor receives one branch-scoped closeout review grant'
+);
+
+set local role service_role;
+select ok(
+ (
+  public.cmi_staff_submit_event_closeout(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    '61000000-0000-4000-8000-000000000050',
+    1,repeat('dd',32),'Synthetic event closeout summary'
+  )->'closeout'->>'status'
+ ) = 'submitted'
+ and (
+  public.cmi_staff_submit_event_closeout(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    '61000000-0000-4000-8000-000000000050',
+    1,repeat('dd',32),'Synthetic event closeout summary'
+  )->>'replayed'
+ )::boolean = true,
+ 'event closeout submission is atomic and same-key retries replay'
+);
+select throws_ok(
+ $q$select public.cmi_staff_review_event_closeout(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  (select id from public.event_closeout
+    where event_id='51000000-0000-4000-8000-000000000003'),
+  'approved',null,
+  '61000000-0000-4000-8000-000000000051',
+  1,repeat('ee',32)
+ )$q$,
+ '42501','EVENT_CLOSEOUT_SELF_REVIEW',
+ 'the closeout submitter cannot approve their own event closeout'
+);
+select ok(
+ (
+  public.cmi_staff_review_event_closeout(
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    (select id from public.event_closeout
+      where event_id='51000000-0000-4000-8000-000000000003'),
+    'approved',null,
+    '61000000-0000-4000-8000-000000000052',
+    1,repeat('ff',32)
+  )->'closeout'->>'status'
+ ) = 'approved'
+ and (
+  public.cmi_staff_review_event_closeout(
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    (select id from public.event_closeout
+      where event_id='51000000-0000-4000-8000-000000000003'),
+    'approved',null,
+    '61000000-0000-4000-8000-000000000052',
+    1,repeat('ff',32)
+  )->>'replayed'
+ )::boolean = true,
+ 'a different authorized Admin/Pastor can approve and the review request replays'
+);
+reset role;
+select ok(
+ exists(
+  select 1 from public.event_closeout
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and status='approved'
+    and attendee_count=1
+    and registration_count=2
+    and transport_seat_count is null
+    and summary_notes='Synthetic event closeout summary'
+    and reviewed_by='cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+ )
+ and exists(
+  select 1 from public.event_idempotency_receipt
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and operation='closeout_submit'
+    and idempotency_key='61000000-0000-4000-8000-000000000050'
+    and digest_key_version=1
+    and request_digest=decode(repeat('dd',32),'hex')
+ )
+ and exists(
+  select 1 from public.event_idempotency_receipt
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and operation='closeout_review'
+    and idempotency_key='61000000-0000-4000-8000-000000000052'
+    and digest_key_version=1
+    and request_digest=decode(repeat('ff',32),'hex')
+ )
+ and (
+  select count(*)=2 from public.event_closeout_event history
+  join public.event_closeout closeout on closeout.id=history.closeout_id
+  where closeout.event_id='51000000-0000-4000-8000-000000000003'
+ ),
+ 'closeout counts, HMAC receipts and append-only submitted/approved history are retained'
+);
+select is(
+ (select status from public.event where id='51000000-0000-4000-8000-000000000003'),
+ 'completed',
+ 'submitting closeout completes the event lifecycle'
 );
 
 select * from finish();
