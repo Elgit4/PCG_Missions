@@ -21,6 +21,7 @@ import {
 } from "../lib/cmi-api";
 import { hasCapability } from "../lib/capabilities";
 import { formatBranchDate, toBranchLocalInput, branchLocalInputToIso } from "../lib/branch-time";
+import { formatApplicationError } from "../lib/error-messages";
 
 type OperationsSection = "Events" | "Calendar" | "Announcements" | "Content";
 type ContentKind = "sermons" | "welcome-messages";
@@ -41,16 +42,7 @@ function shortText(value: string, max = 150): string {
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof CmiApiError) {
-    if (error.status === 401) return "Your staff session has expired. Sign in again.";
-    if (error.status === 403) return "Your account does not have the required permission for this operation.";
-    if (error.status === 404) return "This record is no longer available in your branch.";
-    if (error.status === 409) return "This record changed before the save completed. Refresh and try again.";
-    if (error.status === 422) return error.message;
-    if (error.status === 0) return "The service could not be reached. Check your connection and retry.";
-    return error.message + (error.requestId ? " (Reference: " + error.requestId + ")" : "");
-  }
-  return "The operation could not be completed. Please try again.";
+  return formatApplicationError(error);
 }
 
 export function OperationsWorkspace({
