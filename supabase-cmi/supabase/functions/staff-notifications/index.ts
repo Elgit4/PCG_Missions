@@ -139,7 +139,7 @@ Deno.serve(async (request: Request) => {
       if (error) throw new Error("NOTIFICATION_UPDATE_FAILED");
       return respond({ data: { updated_count: data?.length ?? 0 }, request_id: id }, 200, origin, id);
     }
-    const notificationId = path[path.length - 2] === "read" ? path[path.length - 3] : "";
+    const notificationId = path[path.length - 1] === "read" ? path[path.length - 2] : "";
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(notificationId)) {
       return fail("NOT_FOUND", "The requested notification action was not found.", 404, origin, id);
     }
