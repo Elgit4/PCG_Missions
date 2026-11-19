@@ -49,8 +49,8 @@ export function EventAssignmentsPanel({
   const [targetId, setTargetId] = useState("");
   const [staffRole, setStaffRole] = useState<EventStaffAssignmentRole>("checkin");
   const [teamRole, setTeamRole] = useState<EventTeamAssignmentRole>("support");
-  const [startsAt, setStartsAt] = useState(() => toBranchLocalInput(new Date().toISOString(), timeZone));
-  const [endsAt, setEndsAt] = useState("");
+  const [startsAt, setStartsAt] = useState(() => toBranchLocalInput(event.starts_at, timeZone));
+  const [endsAt, setEndsAt] = useState(() => toBranchLocalInput(event.ends_at, timeZone));
 
   const staffCandidates = workspace?.staff_candidates ?? [];
   const teamCandidates = workspace?.team_candidates ?? [];
@@ -212,7 +212,7 @@ export function EventAssignmentsPanel({
         <label>Starts at ({timeZone})
           <input type="datetime-local" value={startsAt} onChange={(change) => setStartsAt(change.currentTarget.value)} required />
         </label>
-        <label>Ends at ({timeZone}) · Optional
+        <label>Ends at ({timeZone}) · Defaults to event end
           <input type="datetime-local" value={endsAt} min={startsAt || undefined} onChange={(change) => setEndsAt(change.currentTarget.value)} />
         </label>
         <div className="cmi-form-actions cmi-field-wide">
