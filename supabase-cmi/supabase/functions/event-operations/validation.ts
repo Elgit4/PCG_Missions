@@ -216,7 +216,6 @@ export function parseEventPatch(
   return parseEventFields(value, false);
 }
 
-
 export interface EventStaffAssignmentInput {
   staff_auth_user_id: string;
   assignment_role: "owner" | "organizer" | "checkin" | "support";
