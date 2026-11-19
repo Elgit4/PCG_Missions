@@ -139,3 +139,22 @@ Reconcile each module against docs/00_MASTER_PRODUCT_SPECIFICATION.md, docs/01_F
 - Remaining release gates: complete non-transport event registration/check-in/closeout workflows, reconcile typed ministry report migration history, add Edge Function authorization integration tests, confirm current-head migration replay and perform authenticated role-based browser acceptance.
 
 - The notification centre clears prior-branch rows immediately on workspace changes and ignores stale in-flight responses, preventing notifications from a previously selected branch from appearing in the new workspace.
+
+
+## Owner clarification — 19 November 2026
+
+The product owner has reaffirmed that all product-specification workflows are in scope except Transport. Therefore, the following are **required**, not optional future scope:
+
+- Event-specific staff and team assignment management, including assignment roles, start/end dates, revocation and assignment-scoped visibility.
+- Registration enable/disable and staff registration management; public registration only after its privacy, abuse-prevention, capacity and authorization gates pass.
+- Event attendee check-in with event/branch scope enforcement and duplicate-safe check-in.
+- Event closeout, attendance reconciliation and authorised event reporting.
+- Complete typed ministry report schema reconciliation and review lifecycle.
+- Prayer-request workflow for the Prayer Intercessor, limited to individually assigned requests; privileged oversight remains reason-coded and audited. No broad contact/CRM access is implied.
+- Complete remaining authorised content, announcement, team, service-area and staff-access workflows against the master specification.
+
+Transport remains explicitly excluded, including transport reservation UI, assignment roles, notifications and API operations. SMS/Arkesel remains deferred. The existing screen loader and current Supabase/Vercel architecture remain unchanged; no Cloudflare migration work is authorised.
+
+## Additional release correction
+
+The notification, flyer and event Edge Functions now always include the canonical production origin `https://pcg-missions.vercel.app` in their CORS allow-list, while preserving explicitly configured preview/development origins. This prevents a configured `CMI_ALLOWED_ORIGINS` value from accidentally excluding the production application.
