@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { RefreshCw, UserPlus, Users } from "lucide-react";
+import { RefreshCw, UserPlus, Users, XCircle } from "lucide-react";
 import {
   CmiApiClient,
   CmiApiError,
@@ -33,6 +33,7 @@ export function EventRegistrationsPanel({
   const [registrations, setRegistrations] = useState<EventRegistrationRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [attendeeName, setAttendeeName] = useState("");
@@ -87,6 +88,39 @@ export function EventRegistrationsPanel({
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+
+  const cancel = async (registration: EventRegistrationRecord) => {
+    if (saving || cancellingId) return;
+    if (!window.confirm(
+      "Cancel the registration for " + registration.attendee_name_snapshot +
+      "? This releases one event capacity slot. A checked-in attendee cannot be cancelled.",
+    )) return;
+
+    setCancellingId(registration.id);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api.cancelEventRegistration(
+        branchId,
+        event.id,
+        registration.id,
+        createRequestKey(),
+      );
+      setNotice(result.data.replayed
+        ? "The cancellation was already recorded."
+        : "Registration cancelled and capacity released.");
+      await load();
+    } catch (cause) {
+      if (cause instanceof CmiApiError && cause.status === 401) {
+        onSessionExpired();
+      } else {
+        setError(formatApplicationError(cause));
+      }
+    } finally {
+      setCancellingId(null);
     }
   };
 
@@ -156,6 +190,17 @@ export function EventRegistrationsPanel({
               <span className={"cmi-task-status " + (item.status === "registered" ? "status-open" : "status-muted")}>
                 {item.status.replaceAll("_", " ")}
               </span>
+              {item.status === "registered" && Date.parse(event.starts_at) > Date.now() && (
+                <button
+                  className="cmi-button cmi-button-secondary"
+                  type="button"
+                  onClick={() => void cancel(item)}
+                  disabled={saving || cancellingId !== null || loading}
+                  aria-label={"Cancel registration for " + item.attendee_name_snapshot}
+                >
+                  <XCircle size={14} />{cancellingId === item.id ? "Cancelling…" : "Cancel"}
+                </button>
+              )}
             </article>
           ))}
           {!registrations.length && <p className="cmi-detail-muted">No registrations have been recorded for this event.</p>}
