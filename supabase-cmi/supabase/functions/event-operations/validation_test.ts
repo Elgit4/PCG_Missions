@@ -396,7 +396,6 @@ Deno.test("validates an idempotent event check-in request", () => {
   );
 });
 
-
 Deno.test("validates event closeout submission fields and notes", () => {
   const input = parseEventCloseoutSubmit({
     idempotency_key: "61000000-0000-4000-8000-000000000106",
