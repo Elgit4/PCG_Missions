@@ -116,6 +116,10 @@ export interface EventRegistrationRecord {
   registered_at: string;
   checked_in_at: string | null;
 }
+export interface EventRegistrationWorkspace {
+  registrations: EventRegistrationRecord[];
+  active_count: number;
+}
 
 export interface EventCheckinRecord {
   id: string;
@@ -986,7 +990,7 @@ export class CmiApiClient {
     );
   }
   listEventRegistrations(branchId: string, eventId: string) {
-    return this.request<EventRegistrationRecord[]>(
+    return this.request<EventRegistrationWorkspace>(
       "event-operations",
       "/events/" + encodeURIComponent(eventId) + "/registrations",
       { query: { branch_id: branchId } },
