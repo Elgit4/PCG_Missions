@@ -26,7 +26,14 @@ select extensions.ok(
 select has_column('public','event','flyer_object_path','event stores a private object path');
 select has_column('public','event','flyer_mime_type','event stores validated flyer MIME metadata');
 select has_column('public','event','flyer_size_bytes','event stores validated flyer size');
-select has_constraint('public','event','event_flyer_metadata_consistent','flyer metadata must be complete, scoped and within limits');
+select extensions.ok(
+  exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.event'::regclass
+      and conname = 'event_flyer_metadata_consistent'
+  ),
+  'flyer metadata must be complete, scoped and within limits'
+);
 select extensions.ok(
   exists (select 1 from storage.buckets where id='event-flyers'),
   'private event flyer bucket exists'
