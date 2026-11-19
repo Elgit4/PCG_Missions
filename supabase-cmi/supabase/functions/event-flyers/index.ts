@@ -99,6 +99,14 @@ async function resolveStaff(token: string) {
     .select("id,account_status,must_change_password")
     .eq("auth_user_id", auth.user.id).maybeSingle();
   if (error) throw new Error("STAFF_PROFILE_LOOKUP_FAILED");
+  if (!profile) {
+    return {
+      ok: false as const,
+      status: 403,
+      code: "STAFF_ACCOUNT_NOT_ACTIVE",
+      message: "Your staff account is not active.",
+    };
+  }
   const profileDenial = flyerProfileDenial(profile);
   if (profileDenial === "not_active") {
     return {
