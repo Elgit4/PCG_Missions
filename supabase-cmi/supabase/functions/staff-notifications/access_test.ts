@@ -5,7 +5,9 @@ import {
   notificationRecipientScope,
 } from "./access.ts";
 
-Deno.test("notification access rejects missing, inactive and temporary-password profiles", () => {
+Deno.test(
+  "notification access rejects missing, inactive and temporary-password profiles",
+  () => {
   assertEquals(notificationProfileDenial(null), "not_active");
   assertEquals(
     notificationProfileDenial({
@@ -28,19 +30,25 @@ Deno.test("notification access rejects missing, inactive and temporary-password 
     }),
     null,
   );
-});
+  },
+);
 
-Deno.test("notification list and read filters always bind to the authenticated recipient and branch", () => {
+Deno.test(
+  "notification list and read filters always bind to the authenticated recipient and branch",
+  () => {
   const actorId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const branchId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
   assertEquals(notificationRecipientScope(actorId, branchId), {
     recipient_user_id: actorId,
     branch_id: branchId,
-  });
+    },
+);
 });
 
-Deno.test("notification page size is bounded to one through fifty", () => {
+Deno.test(
+  "notification page size is bounded to one through fifty",
+  () => {
   assertEquals(notificationPageLimit(null), 30);
   assertEquals(notificationPageLimit("1"), 1);
   assertEquals(notificationPageLimit("50"), 50);
