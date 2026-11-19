@@ -75,10 +75,10 @@ begin
      or pg_catalog.length(pg_catalog.btrim(p_attendee_name)) not between 2 and 180
      or (
        p_attendee_phone is not null
-       and p_attendee_phone !~ '^[+][1-9][0-9]{7,14}
-
-  v_name := pg_catalog.btrim(p_attendee_name);
-  v_phone := case
+       and p_attendee_phone !~ '^[+][1-9][0-9]{7,14}$'
+     ) then
+    raise exception using errcode = '22023', message = 'INVALID_STAFF_REGISTRATION_INPUT';
+  end if;
     when p_attendee_phone is null or pg_catalog.btrim(p_attendee_phone) = ''
       then null
     else pg_catalog.btrim(p_attendee_phone)
