@@ -358,6 +358,7 @@ begin
      or p_event_id is null
      or p_branch_id is null
      or p_closeout_id is null
+     or p_decision is null
      or p_decision not in ('approved', 'returned')
      or p_idempotency_key is null
      or p_digest_key_version is null
