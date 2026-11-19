@@ -4,7 +4,54 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(49);
+select plan(61);
+
+
+select has_function(
+  'public', 'cmi_list_assigned_prayer_requests',
+  array['uuid','uuid','integer','integer','text'],
+  'Assigned prayer inbox transaction exists'
+);
+select extensions.ok(
+  not has_function_privilege(
+    'anon',
+    'public.cmi_list_assigned_prayer_requests(uuid,uuid,integer,integer,text)',
+    'EXECUTE'
+  ),
+  'Anonymous role cannot execute assigned prayer inbox transaction'
+);
+select extensions.ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.cmi_list_assigned_prayer_requests(uuid,uuid,integer,integer,text)',
+    'EXECUTE'
+  ),
+  'Authenticated browser role cannot execute assigned prayer inbox transaction directly'
+);
+select extensions.ok(
+  has_function_privilege(
+    'service_role',
+    'public.cmi_list_assigned_prayer_requests(uuid,uuid,integer,integer,text)',
+    'EXECUTE'
+  ),
+  'Trusted service role can execute assigned prayer inbox transaction'
+);
+select extensions.ok(
+  not (
+    select prosecdef
+    from pg_proc
+    where oid = 'public.cmi_list_assigned_prayer_requests(uuid,uuid,integer,integer,text)'::regprocedure
+  ),
+  'Assigned prayer inbox transaction uses SECURITY INVOKER'
+);
+select extensions.ok(
+  (
+    select coalesce(array_to_string(proconfig, ','), '') like '%search_path=pg_catalog%'
+    from pg_proc
+    where oid = 'public.cmi_list_assigned_prayer_requests(uuid,uuid,integer,integer,text)'::regprocedure
+  ),
+  'Assigned prayer inbox transaction pins search_path'
+);
 
 select has_function(
   'public', 'cmi_read_prayer_request',
@@ -206,6 +253,94 @@ insert into public.prayer_assignment(
   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb002'
 );
+
+
+set local role service_role;
+select extensions.ok(
+  (public.cmi_list_assigned_prayer_requests(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    25,
+    0,
+    'synthetic-prayer-inbox'
+  )->'requests'->0->>'request_text') =
+    'Synthetic confidential prayer request for the assigned intercessor.'
+  and public.cmi_list_assigned_prayer_requests(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    25,
+    0,
+    'synthetic-prayer-inbox-total'
+  )->>'total' = '1',
+  'Assigned prayer intercessor receives their active narrative and exact inbox count'
+);
+select extensions.ok(
+  not (
+    public.cmi_list_assigned_prayer_requests(
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+      25,
+      0,
+      'synthetic-prayer-inbox-no-identity'
+    )->'requests'->0 ? 'contact_id'
+  )
+  and not (
+    public.cmi_list_assigned_prayer_requests(
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+      25,
+      0,
+      'synthetic-prayer-inbox-no-identity-2'
+    )->'requests'->0 ? 'created_by'
+  ),
+  'Assigned prayer inbox omits linked contact identity and creator identity'
+);
+reset role;
+select extensions.ok(
+  exists (
+    select 1 from public.prayer_access_audit
+    where request_id in (
+      'synthetic-prayer-inbox',
+      'synthetic-prayer-inbox-total',
+      'synthetic-prayer-inbox-no-identity',
+      'synthetic-prayer-inbox-no-identity-2'
+    )
+      and actor_user_id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001'
+      and action = 'read'
+      and safe_metadata->>'read_surface' = 'inbox'
+  ),
+  'Every returned prayer narrative in the inbox is audited'
+);
+set local role service_role;
+select extensions.ok(
+  public.cmi_list_assigned_prayer_requests(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb003',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    25,
+    0,
+    'synthetic-prayer-empty-inbox'
+  )->>'total' = '0',
+  'Intercessor inbox excludes requests not assigned to that user'
+);
+select extensions.throws_ok(
+  $q$ select public.cmi_list_assigned_prayer_requests(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb004',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    25, 0, 'synthetic-prayer-no-capability-inbox'
+  ) $q$,
+  '42501', 'assigned prayer inbox not authorized',
+  'Staff without the assigned prayer capability cannot list prayer narratives'
+);
+select extensions.throws_ok(
+  $q$ select public.cmi_list_assigned_prayer_requests(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb001',
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbba101',
+    51, 0, 'synthetic-prayer-invalid-inbox-limit'
+  ) $q$,
+  '22023', 'invalid assigned prayer inbox pagination',
+  'Assigned prayer inbox enforces a bounded result limit'
+);
+reset role;
 
 insert into public.care_record(
   id, branch_id, contact_id, created_by
