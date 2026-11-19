@@ -954,6 +954,25 @@ export class CmiApiClient {
     );
   }
 
+
+  cancelEventRegistration(
+    branchId: string,
+    eventId: string,
+    registrationId: string,
+    idempotencyKey: string,
+  ) {
+    return this.request<EventStaffRegistrationResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/registrations/" +
+        encodeURIComponent(registrationId) + "/cancel",
+      {
+        method: "POST",
+        query: { branch_id: branchId },
+        body: { idempotency_key: idempotencyKey },
+      },
+    );
+  }
+
   getEventAssignments(branchId: string, eventId: string) {
     return this.request<EventAssignmentWorkspace>(
       "event-operations",
