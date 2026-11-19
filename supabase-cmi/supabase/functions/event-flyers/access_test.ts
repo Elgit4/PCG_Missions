@@ -5,7 +5,9 @@ import {
   isEditablePrivateEvent,
 } from "./access.ts";
 
-Deno.test("flyer access rejects unprovisioned, inactive and temporary-password profiles", () => {
+Deno.test(
+  "flyer access rejects unprovisioned, inactive and temporary-password profiles",
+  () => {
   assertEquals(flyerProfileDenial(null), "not_active");
   assertEquals(
     flyerProfileDenial({
@@ -28,9 +30,12 @@ Deno.test("flyer access rejects unprovisioned, inactive and temporary-password p
     }),
     null,
   );
-});
+  },
+);
 
-Deno.test("flyer management requires an active branch and a matching capability scope", () => {
+Deno.test(
+  "flyer management requires an active branch and a matching capability scope",
+  () => {
   assertEquals(
     canManageFlyerInScope({
       branchActive: true,
@@ -85,9 +90,12 @@ Deno.test("flyer management requires an active branch and a matching capability 
     }),
     false,
   );
-});
+  },
+);
 
-Deno.test("transport assignments do not satisfy event flyer scope and cannot replace branch/team scope", () => {
+Deno.test(
+  "transport assignments do not satisfy event flyer scope and cannot replace branch/team scope",
+  () => {
   assertEquals(
     canManageFlyerInScope({
       branchActive: true,
@@ -108,7 +116,9 @@ Deno.test("transport assignments do not satisfy event flyer scope and cannot rep
   );
 });
 
-Deno.test("flyers are editable only while the event is a private draft", () => {
+Deno.test(
+  "flyers are editable only while the event is a private draft",
+  () => {
   assertEquals(
     isEditablePrivateEvent({ status: "draft", visibility: "private" }),
     true,
