@@ -11,6 +11,7 @@ import {
   X,
   Users,
   ClipboardList,
+  ClipboardCheck,
 } from "lucide-react";
 import {
   CmiApiClient,
@@ -26,6 +27,7 @@ import { formatBranchDate, toBranchLocalInput, branchLocalInputToIso } from "../
 import { formatApplicationError } from "../lib/error-messages";
 import { EventAssignmentsPanel } from "./EventAssignmentsPanel";
 import { EventRegistrationsPanel } from "./EventRegistrationsPanel";
+import { EventCloseoutPanel } from "./EventCloseoutPanel";
 
 type OperationsSection = "Events" | "Calendar" | "Announcements" | "Content";
 type ContentKind = "sermons" | "welcome-messages";
@@ -75,6 +77,7 @@ export function OperationsWorkspace({
   const [existingFlyerUrl, setExistingFlyerUrl] = useState<string | null>(null);
   const [assignmentEvent, setAssignmentEvent] = useState<EventDraftRecord | null>(null);
   const [registrationEvent, setRegistrationEvent] = useState<EventDraftRecord | null>(null);
+  const [closeoutEvent, setCloseoutEvent] = useState<EventDraftRecord | null>(null);
 
   useEffect(() => {
     if (!flyerFile) { setFlyerPreview(null); return; }
@@ -93,6 +96,10 @@ export function OperationsWorkspace({
 
   const canManageRegistrations = section === "Events" &&
     hasCapability(session, "event.registration.manage.scoped", branchId);
+  const canSubmitCloseout = section === "Events" &&
+    hasCapability(session, "event.closeout.submit", branchId);
+  const canReviewCloseout = section === "Events" &&
+    hasCapability(session, "event.closeout.review", branchId);
 
   const canManage = section === "Events"
     ? hasCapability(session, "event.manage.scoped", branchId)
@@ -288,7 +295,7 @@ export function OperationsWorkspace({
   const editingWelcome = section === "Content" && contentKind === "welcome-messages" ? welcomeMessages.find((item) => item.id === editingId) : undefined;
 
   const description = section === "Events"
-    ? "Create private event drafts and manage the staff and ministry teams assigned to each event. Registration, check-in and closeout remain separately gated."
+    ? "Manage branch events, assigned teams, staff registration and attendance. Completed events can be submitted for independent closeout review."
     : section === "Calendar"
     ? "Maintain branch calendar entries for services, events and other ministry activities."
     : section === "Announcements"
@@ -435,6 +442,9 @@ export function OperationsWorkspace({
                     }}>Close registration</button>}
                   </>
                 )}
+                {(canSubmitCloseout || canReviewCloseout) && item.status !== "cancelled" && Date.parse(item.ends_at) <= Date.now() && (
+                  <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setCloseoutEvent(item)} aria-label={"Open closeout for " + item.title}><ClipboardCheck size={14} />Closeout</button>
+                )}
                 {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
@@ -462,6 +472,21 @@ export function OperationsWorkspace({
             timeZone={timeZone}
             event={registrationEvent}
             onClose={() => setRegistrationEvent(null)}
+            onSessionExpired={onSessionExpired}
+          />
+        )}
+
+        {section === "Events" && (canSubmitCloseout || canReviewCloseout) && closeoutEvent && (
+          <EventCloseoutPanel
+            key={closeoutEvent.id}
+            api={api}
+            branchId={branchId}
+            timeZone={timeZone}
+            event={closeoutEvent}
+            currentStaffId={session.user.id}
+            canSubmit={canSubmitCloseout}
+            canReview={canReviewCloseout}
+            onClose={() => setCloseoutEvent(null)}
             onSessionExpired={onSessionExpired}
           />
         )}
