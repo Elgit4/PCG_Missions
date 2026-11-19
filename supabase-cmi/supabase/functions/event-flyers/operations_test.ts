@@ -12,6 +12,7 @@ function fakeOperations(
     failSigning?: boolean;
     failMetadata?: boolean;
     failRemovalFor?: string;
+    onRollbackCleanupFailure?: () => void;
   } = {},
 ): FlyerReplacementOperations {
   return {
@@ -30,6 +31,7 @@ function fakeOperations(
         throw new Error("CLEANUP_FAILED");
       }
     },
+    onRollbackCleanupFailure: options.onRollbackCleanupFailure,
   };
 }
 
@@ -131,5 +133,33 @@ Deno.test("initial flyer attachment does not attempt previous-object cleanup", a
   assertEquals(calls, [
     "sign:branch/event/new.webp",
     "save:branch/event/new.webp",
+  ]);
+});
+
+Deno.test("rollback cleanup failure is surfaced to the request logger", async () => {
+  const calls: string[] = [];
+  let cleanupFailureReported = false;
+  try {
+    await attachFlyerReplacement(
+      "branch/event/new.webp",
+      "branch/event/old.jpg",
+      { mimeType: "image/webp", sizeBytes: 1200 },
+      fakeOperations(calls, {
+        failMetadata: true,
+        failRemovalFor: "branch/event/new.webp",
+        onRollbackCleanupFailure: () => {
+          cleanupFailureReported = true;
+        },
+      }),
+    );
+  } catch {
+    // The metadata failure remains the primary failure.
+  }
+
+  assertEquals(cleanupFailureReported, true);
+  assertEquals(calls, [
+    "sign:branch/event/new.webp",
+    "save:branch/event/new.webp",
+    "remove:branch/event/new.webp",
   ]);
 });
