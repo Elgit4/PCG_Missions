@@ -5,6 +5,8 @@ import {
 import {
   isUuid,
   parseEventCheckin,
+  parseEventCloseoutReview,
+  parseEventCloseoutSubmit,
   parseEventCreate,
   parseEventListQuery,
   parseEventPatch,
@@ -389,6 +391,59 @@ Deno.test("validates an idempotent event check-in request", () => {
     parseEventCheckin({
       idempotency_key: "61000000-0000-4000-8000-000000000104",
       recorded_by: branchId,
+    }).ok,
+    false,
+  );
+});
+
+
+Deno.test("validates event closeout submission fields and notes", () => {
+  const input = parseEventCloseoutSubmit({
+    idempotency_key: "61000000-0000-4000-8000-000000000106",
+    summary_notes: "Synthetic closeout notes",
+  });
+  assert(input.ok);
+  assertEquals(input.value.summary_notes, "Synthetic closeout notes");
+  assertEquals(
+    parseEventCloseoutSubmit({
+      idempotency_key: "61000000-0000-4000-8000-000000000106",
+      submitted_by: branchId,
+    }).ok,
+    false,
+  );
+  assertEquals(
+    parseEventCloseoutSubmit({
+      idempotency_key: "61000000-0000-4000-8000-000000000106",
+      summary_notes: "x".repeat(4001),
+    }).ok,
+    false,
+  );
+});
+
+Deno.test("requires independent closeout review decision and return reason", () => {
+  const approved = parseEventCloseoutReview({
+    idempotency_key: "61000000-0000-4000-8000-000000000107",
+    decision: "approved",
+  });
+  const returned = parseEventCloseoutReview({
+    idempotency_key: "61000000-0000-4000-8000-000000000108",
+    decision: "returned",
+    reason: "Please reconcile the registration total.",
+  });
+  assert(approved.ok);
+  assert(returned.ok);
+  assertEquals(
+    parseEventCloseoutReview({
+      idempotency_key: "61000000-0000-4000-8000-000000000109",
+      decision: "returned",
+    }).ok,
+    false,
+  );
+  assertEquals(
+    parseEventCloseoutReview({
+      idempotency_key: "61000000-0000-4000-8000-000000000110",
+      decision: "approved",
+      actor_user_id: branchId,
     }).ok,
     false,
   );
