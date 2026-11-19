@@ -323,34 +323,28 @@ async function listEventAssignmentWorkspace(
   }
 
   const profileIds = [...new Set((memberships.data ?? []).map((row: { staff_profile_id: string }) => row.staff_profile_id))];
-  const assignedStaffIds = (staffRows.data ?? []).map((row: { staff_auth_user_id: string }) => row.staff_auth_user_id);
-  const assignedTeamIds = (teamRows.data ?? []).map((row: { team_id: string }) => row.team_id);
-  const [profiles, historicalTeams] = await Promise.all([
+  const assignedStaffIds = [...new Set((staffRows.data ?? []).map((row: { staff_auth_user_id: string }) => row.staff_auth_user_id))];
+  const assignedTeamIds = [...new Set((teamRows.data ?? []).map((row: { team_id: string }) => row.team_id))];
+  const historicalTeamIds = [...new Set([...(teams.data ?? []).map((row: { id: string }) => row.id), ...assignedTeamIds])];
+  const [profiles, assignedProfiles, historicalTeams] = await Promise.all([
     service.from("staff_profile")
       .select("id,auth_user_id,full_name,account_status")
       .in("id", profileIds.length ? profileIds : ["00000000-0000-4000-8000-000000000000"])
       .eq("account_status", "active")
       .order("full_name", { ascending: true }).limit(200),
-    async () => {
-      const ids = [...new Set([...(teams.data ?? []).map((row: { id: string }) => row.id), ...assignedTeamIds])];
-      if (ids.length === 0) return { data: [], error: null };
-      return await service.from("team")
-        .select("id,name,is_active")
-        .eq("branch_id", branchId)
-        .in("id", ids)
-        .limit(250);
-    },
+    assignedStaffIds.length
+      ? service.from("staff_profile").select("auth_user_id,full_name").in("auth_user_id", assignedStaffIds)
+      : Promise.resolve({ data: [], error: null }),
+    historicalTeamIds.length
+      ? service.from("team").select("id,name,is_active").eq("branch_id", branchId).in("id", historicalTeamIds).limit(250)
+      : Promise.resolve({ data: [], error: null }),
   ]);
-  const [profileResult, historicalTeamResult] = await Promise.all([
-    profiles,
-    typeof historicalTeams === "function" ? historicalTeams() : historicalTeams,
-  ]);
-  if (profileResult.error || historicalTeamResult.error) {
+  if (profiles.error || assignedProfiles.error || historicalTeams.error) {
     throw new Error("EVENT_ASSIGNMENT_DIRECTORY_FAILED");
   }
 
   const staffNames = new Map<string, string>();
-  for (const row of [...(profileResult.data ?? [])]) {
+  for (const row of [...(assignedProfiles.data ?? []), ...(profiles.data ?? [])]) {
     staffNames.set(row.auth_user_id, row.full_name);
   }
   const teamNames = new Map<string, string>();
