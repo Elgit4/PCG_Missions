@@ -5,6 +5,7 @@ import {
 import {
   isUuid,
   parseEventCreate,
+  parseEventCheckin,
   parseEventListQuery,
   parseEventPatch,
   parseEventStaffAssignment,
@@ -374,6 +375,22 @@ Deno.test("validates a minimal event registration cancellation request", () => {
     parseEventRegistrationCancel({
       idempotency_key: "61000000-0000-4000-8000-000000000100",
       status: "cancelled",
+    }).ok,
+    false,
+  );
+});
+
+
+Deno.test("validates an idempotent event check-in request", () => {
+  const valid = parseEventCheckin({
+    idempotency_key: "61000000-0000-4000-8000-000000000104",
+  });
+  assert(valid.ok);
+  assertEquals(parseEventCheckin({ idempotency_key: "bad" }).ok, false);
+  assertEquals(
+    parseEventCheckin({
+      idempotency_key: "61000000-0000-4000-8000-000000000104",
+      recorded_by: branchId,
     }).ok,
     false,
   );
