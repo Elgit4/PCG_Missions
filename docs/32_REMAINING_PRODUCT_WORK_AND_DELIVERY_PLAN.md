@@ -193,3 +193,16 @@ Therefore the notification centre and flyer UI in this branch are source impleme
 8. Only after the above pass, apply the reviewed migration to the intended environment, deploy the two new functions, verify the live API, and request a separate production release approval.
 
 The production app, hosted database, deployed Edge Functions, current screen loader, SMS/Arkesel configuration and existing Supabase/Vercel architecture remain unchanged. Transport remains excluded; Cloudflare migration remains cancelled.
+
+
+## Hosted event/prayer schema inspection — 19 November 2026
+
+A read-only inspection of the linked hosted Supabase schema confirms that foundational tables already exist for:
+- Events, staff/team event assignments, registrations, check-ins and closeout.
+- Prayer requests, prayer assignments and prayer access audit.
+
+The hosted schema also contains an identity-consistency trigger for event check-ins and a protected prayer read RPC. This means the next implementation phase should reuse and verify these existing structures rather than creating parallel tables.
+
+However, the currently deployed `event-operations` Edge Function is version 14 and its source in the proposed PR only implements private-draft event list/create/update. It does not yet expose staff/team assignment management, registration administration, check-in or closeout endpoints. The prayer read RPC exists, but no complete Prayer Intercessor workspace/API workflow has been verified. Existing tables alone do not mean these workflows are available to staff.
+
+Do not add duplicate event/prayer tables. Build the missing server operations and UI against the existing schema after inspecting its constraints, policies, grants and audit triggers. Keep transport-related columns and historical data intact, but do not expose or implement transport features.
