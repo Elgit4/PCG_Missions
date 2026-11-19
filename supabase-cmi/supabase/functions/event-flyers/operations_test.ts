@@ -111,7 +111,10 @@ Deno.test("previous-flyer cleanup failure is reported without discarding the rep
     fakeOperations(calls, { failRemovalFor: "branch/event/old.jpg" }),
   );
 
-  assertEquals(result.signedUrl, "https://signed.example/branch/event/new.webp");
+  assertEquals(
+    result.signedUrl,
+    "https://signed.example/branch/event/new.webp",
+  );
   assertEquals(result.previousCleanupSucceeded, false);
   assertEquals(calls, [
     "sign:branch/event/new.webp",
