@@ -65,6 +65,17 @@ function readUint32LE(bytes: Uint8Array, offset: number) {
   ) >>> 0;
 }
 
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
 function hasAscii(bytes: Uint8Array, offset: number, value: string) {
   return value.split("").every((character, index) =>
     bytes[offset + index] === character.charCodeAt(0)
@@ -94,6 +105,10 @@ function sniffPng(bytes: Uint8Array): FlyerImage | null {
     const nextOffset = chunkEnd + 4;
 
     if (nextOffset > bytes.length) return null;
+
+    const storedCrc = readUint32BE(bytes, chunkEnd);
+    const calculatedCrc = crc32(bytes.subarray(offset + 4, chunkEnd));
+    if (storedCrc !== calculatedCrc) return null;
 
     if (firstChunk) {
       if (chunkLength !== 13 || !hasAscii(bytes, offset + 4, "IHDR")) {
@@ -294,4 +309,12 @@ export function sniffImage(bytes: Uint8Array): FlyerImage | null {
     return sniffWebp(bytes);
   }
   return null;
+}
+
+export function validateFlyerImage(
+  bytes: Uint8Array,
+  declaredMimeType: string,
+): FlyerImage | null {
+  const detected = sniffImage(bytes);
+  return detected?.mime === declaredMimeType ? detected : null;
 }
