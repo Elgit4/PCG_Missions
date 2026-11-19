@@ -407,6 +407,7 @@ export function OperationsWorkspace({
 
         {section === "Events" && canManage && assignmentEvent && (
           <EventAssignmentsPanel
+            key={assignmentEvent.id}
             api={api}
             branchId={branchId}
             timeZone={timeZone}
