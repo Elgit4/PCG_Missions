@@ -191,11 +191,16 @@ export function OperationsWorkspace({
         } else {
           const created = await api.createEventDraft({ branch_id: branchId, ...input });
           savedEventId = created.data.id;
-          setEditingId(savedEventId);
         }
         const selectedFlyer = form.get("flyer");
         if (savedEventId && selectedFlyer instanceof File && selectedFlyer.size > 0) {
-          await api.uploadEventFlyer(branchId, savedEventId, selectedFlyer);
+          try {
+            await api.uploadEventFlyer(branchId, savedEventId, selectedFlyer);
+          } catch (uploadError) {
+            await loadRecords();
+            setEditingId(savedEventId);
+            throw uploadError;
+          }
         }
       } else if (section === "Calendar") {
         const start = branchLocalInputToIso(String(form.get("starts_at") ?? ""), timeZone);
