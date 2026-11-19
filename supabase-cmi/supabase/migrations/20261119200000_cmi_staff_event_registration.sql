@@ -70,18 +70,18 @@ begin
      or p_digest_key_version is null
      or p_digest_key_version < 1
      or p_request_digest_hex is null
-     or p_request_digest_hex !~ '^[0-9a-fA-F]{64}$'
+     or pg_catalog.length(p_request_digest_hex) <> 64
+     or p_request_digest_hex ~ '[^0-9a-fA-F]'
      or p_attendee_name is null
      or pg_catalog.length(pg_catalog.btrim(p_attendee_name)) not between 2 and 180
-     or (
-       p_attendee_phone is not null
-       and (
-         pg_catalog.length(p_attendee_phone) not between 9 and 16
-         or pg_catalog.left(p_attendee_phone, 1) <> '+'
-         or pg_catalog.substr(p_attendee_phone, 2, 1) not between '1' and '9'
-         or pg_catalog.substr(p_attendee_phone, 2) ~ '[^0-9]'
-       )
-     ) then
+     or p_attendee_phone is not null
+        and pg_catalog.length(p_attendee_phone) not between 9 and 16
+     or p_attendee_phone is not null
+        and pg_catalog.left(p_attendee_phone, 1) <> '+'
+     or p_attendee_phone is not null
+        and pg_catalog.substr(p_attendee_phone, 2, 1) not between '1' and '9'
+     or p_attendee_phone is not null
+        and pg_catalog.substr(p_attendee_phone, 2) ~ '[^0-9]' then
     raise exception using errcode = '22023', message = 'INVALID_STAFF_REGISTRATION_INPUT';
   end if;
 
