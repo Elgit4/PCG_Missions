@@ -700,7 +700,7 @@ select ok(
     'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
     '51000000-0000-4000-8000-000000000003',
     '21000000-0000-4000-8000-000000000001',
-    '61000000-0000-4000-8000-bbbbbbbbb031',
+    '61000000-0000-4000-8000-000000000031',
     1,repeat('88',32),'Replacement Attendee',null
   )->'registration'->>'attendee_name_snapshot') = 'Replacement Attendee',
   'released capacity can be reused by a new staff registration'
