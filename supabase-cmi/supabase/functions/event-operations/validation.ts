@@ -460,6 +460,31 @@ export function parseEventRegistrationCancel(
   return { ok: true, value: { idempotency_key: value.idempotency_key } };
 }
 
+
+export function parseEventCheckin(
+  value: unknown,
+): { ok: true; value: { idempotency_key: string } } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  if (Object.keys(value).some((key) => key !== "idempotency_key")) {
+    return { ok: false, error: "Unsupported event check-in field." };
+  }
+  if (
+    typeof value.idempotency_key !== "string" ||
+    !UUID_PATTERN.test(value.idempotency_key)
+  ) {
+    return {
+      ok: false,
+      error: "A valid idempotency_key is required.",
+    };
+  }
+  return { ok: true, value: { idempotency_key: value.idempotency_key } };
+}
+
 export function parseEventListQuery(
   url: URL,
 ): { ok: true; value: EventListQuery } | { ok: false; error: string } {
