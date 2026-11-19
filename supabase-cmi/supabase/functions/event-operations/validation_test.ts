@@ -9,6 +9,7 @@ import {
   parseEventPatch,
   parseEventStaffAssignment,
   parseEventStaffRegistration,
+  parseEventRegistrationCancel,
   parseEventTeamAssignment,
 } from "./validation.ts";
 
@@ -354,6 +355,25 @@ Deno.test("validates minimized staff event registration input", () => {
     parseEventStaffRegistration({
       ...input,
       attendee_name: " ",
+    }).ok,
+    false,
+  );
+});
+
+
+Deno.test("validates a minimal event registration cancellation request", () => {
+  const valid = parseEventRegistrationCancel({
+    idempotency_key: "61000000-0000-4000-8000-000000000100",
+  });
+  assert(valid.ok);
+  assertEquals(
+    parseEventRegistrationCancel({ idempotency_key: "not-a-uuid" }).ok,
+    false,
+  );
+  assertEquals(
+    parseEventRegistrationCancel({
+      idempotency_key: "61000000-0000-4000-8000-000000000100",
+      status: "cancelled",
     }).ok,
     false,
   );
