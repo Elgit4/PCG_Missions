@@ -1,7 +1,7 @@
 -- Private notification inbox and event flyer storage security contract.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(24);
+select plan(25);
 
 select has_table('public','staff_notification','private staff notification inbox exists');
 select extensions.ok(
