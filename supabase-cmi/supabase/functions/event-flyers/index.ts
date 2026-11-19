@@ -171,9 +171,9 @@ async function canManageEvent(
       "event_staff_assignment",
     )
       .select("id").eq("event_id", eventId).eq("branch_id", branchId)
-      .eq("staff_auth_user_id", actorId).lte("starts_at", now)
-      .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null)
-      .limit(1).maybeSingle();
+      .eq("staff_auth_user_id", actorId).neq("assignment_role", "transport")
+      .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
+      .is("revoked_at", null).limit(1).maybeSingle();
     if (eventError) throw new Error("EVENT_ASSIGNMENT_LOOKUP_FAILED");
     if (data) return true;
   }
@@ -182,8 +182,8 @@ async function canManageEvent(
       "event_team_assignment",
     )
       .select("team_id").eq("event_id", eventId).eq("branch_id", branchId)
-      .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
-      .is("revoked_at", null);
+      .neq("assignment_role", "transport").lte("starts_at", now)
+      .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null);
     if (eventTeamError) throw new Error("EVENT_TEAM_LOOKUP_FAILED");
     const teamIds = [
       ...new Set(
