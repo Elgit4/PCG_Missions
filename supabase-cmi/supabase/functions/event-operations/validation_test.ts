@@ -64,7 +64,7 @@ Deno.test("rejects missing branch IDs and malformed UUIDs", () => {
   );
 });
 
-Deno.test("rejects caller-controlled lifecycle and capacity fields", () => {
+Deno.test("rejects caller-controlled event lifecycle fields", () => {
   const base = {
     branch_id: branchId,
     title: "Sunday Outreach",
@@ -76,7 +76,6 @@ Deno.test("rejects caller-controlled lifecycle and capacity fields", () => {
       "status",
       "visibility",
       "registration_state",
-      "capacity",
       "created_by",
     ]
   ) {
@@ -85,6 +84,31 @@ Deno.test("rejects caller-controlled lifecycle and capacity fields", () => {
       { ok: false, error: "Unsupported event field." },
     );
   }
+});
+
+
+Deno.test("accepts finite event capacity and rejects invalid capacity values", () => {
+  const base = {
+    branch_id: branchId,
+    title: "Sunday Outreach",
+    starts_at: "2026-11-15T08:00:00Z",
+    ends_at: "2026-11-15T12:00:00Z",
+  };
+  const valid = parseEventCreate({ ...base, capacity: 120 });
+  assert(valid.ok);
+  assertEquals(valid.value.capacity, 120);
+  assertEquals(
+    parseEventCreate({ ...base, capacity: 0 }),
+    { ok: false, error: "Capacity must be a positive whole number or blank." },
+  );
+  assertEquals(
+    parseEventCreate({ ...base, capacity: 1.5 }),
+    { ok: false, error: "Capacity must be a positive whole number or blank." },
+  );
+  assertEquals(
+    parseEventCreate({ ...base, capacity: "120" }),
+    { ok: false, error: "Capacity must be a positive whole number or blank." },
+  );
 });
 
 Deno.test("rejects invalid title and description lengths", () => {
