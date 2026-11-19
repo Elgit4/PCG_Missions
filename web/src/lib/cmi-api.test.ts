@@ -153,6 +153,7 @@ describe("CmiApiClient", () => {
       ends_at: "2026-11-15T10:00:00.000Z",
       timezone: "Africa/Accra",
       location: null,
+        capacity: null,
     };
     await client.createEventDraft(input);
     const [, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
@@ -294,6 +295,7 @@ describe("CmiApiClient", () => {
       branch_id: "branch-a", title: "Outreach", description: null,
       starts_at: "2026-11-14T08:00:00.000Z", ends_at: "2026-11-14T10:00:00.000Z",
       timezone: "Africa/Accra", location: null,
+        capacity: null,
     });
     await client.updateEventDraft("branch-a", "event-1", { title: "Updated outreach" });
 
