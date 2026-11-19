@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { AlertCircle, CheckCircle2, ClipboardCheck, FilePlus2, RefreshCw, Send, ShieldCheck } from "lucide-react";
 import { CmiApiClient, CmiApiError, type MinistryReportCreateInput, type MinistryReportRecord, type MinistryReportType, type StaffSession } from "../lib/cmi-api";
 import { hasCapability } from "../lib/capabilities";
+import { formatApplicationError } from "../lib/error-messages";
 
 interface Props { branchId: string; branchName: string; api: CmiApiClient; session: StaffSession }
 const REPORT_PAGE_SIZE = 50;
@@ -19,9 +20,7 @@ const COUNT_FIELDS = [
 type CountKey = typeof COUNT_FIELDS[number][0];
 
 function errorMessage(error: unknown): string {
-  if (error instanceof CmiApiError && error.status === 403) return "Your role does not have permission for this report action.";
-  if (error instanceof CmiApiError && error.status === 409) return "This report has changed. Refresh the list and try again.";
-  return "The report service could not complete this request. Try again.";
+  return formatApplicationError(error, "We could not complete the report action. Please try again.");
 }
 function reportTitle(type: MinistryReportType): string {
   if (type === "daily_evangelism") return "Daily evangelism";
