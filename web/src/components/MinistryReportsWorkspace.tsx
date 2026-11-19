@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { AlertCircle, CheckCircle2, ClipboardCheck, FilePlus2, RefreshCw, Send, ShieldCheck } from "lucide-react";
-import { CmiApiClient, CmiApiError, type MinistryReportCreateInput, type MinistryReportRecord, type MinistryReportType, type StaffSession } from "../lib/cmi-api";
+import { CmiApiClient, type MinistryReportCreateInput, type MinistryReportRecord, type MinistryReportType, type StaffSession } from "../lib/cmi-api";
 import { hasCapability } from "../lib/capabilities";
 import { formatApplicationError } from "../lib/error-messages";
 
