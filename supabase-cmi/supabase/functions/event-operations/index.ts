@@ -534,8 +534,6 @@ Deno.serve(async (request: Request) => {
       eventSuffix.length === 3 && assignmentKind !== null &&
       isUuid(eventSuffix[1]) && eventSuffix[2] === "revoke";
 
-
-
     if (
       (request.method === "GET" && isAssignmentWorkspace) ||
       (request.method === "POST" && isAssignmentCollection) ||
@@ -707,7 +705,13 @@ Deno.serve(async (request: Request) => {
           managed.ends_at,
         );
         if (!assignmentEndsAt) {
-          return fail("INVALID_ASSIGNMENT_WINDOW", "Assignments must start and end within the event's scheduled window.", 422, origin, id);
+          return fail(
+            "INVALID_ASSIGNMENT_WINDOW",
+            "Assignments must start and end within the event's scheduled window.",
+            422,
+            origin,
+            id,
+          );
         }
         const { data: team, error: teamError } = await auth.service
           .from("team")
@@ -757,7 +761,9 @@ Deno.serve(async (request: Request) => {
       }
 
       if (request.method === "POST" && isAssignmentRevoke && assignmentKind) {
-        const table = assignmentKind === "staff" ? "event_staff_assignment" : "event_team_assignment";
+        const table = assignmentKind === "staff"
+          ? "event_staff_assignment"
+          : "event_team_assignment";
         const { data: existing, error: lookupError } = await auth.service
           .from(table)
           .select("id,event_id,branch_id,starts_at,ends_at,revoked_at")
