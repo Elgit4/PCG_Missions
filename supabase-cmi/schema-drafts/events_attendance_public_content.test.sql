@@ -659,7 +659,7 @@ select ok(
   '51000000-0000-4000-8000-000000000003',
   '21000000-0000-4000-8000-000000000001',
   '61000000-0000-4000-8000-000000000020',
-  1,repeat('11',32),'Atomic Staff Attendee','+233241234567'
+  1::smallint, repeat('11',32),'Atomic Staff Attendee','+233241234567'
  )->'registration'->>'attendee_name_snapshot') = 'Atomic Staff Attendee'
  and (
   public.cmi_staff_register_event_attendee(
@@ -667,7 +667,7 @@ select ok(
    '51000000-0000-4000-8000-000000000003',
    '21000000-0000-4000-8000-000000000001',
    '61000000-0000-4000-8000-000000000020',
-   1,repeat('11',32),'Atomic Staff Attendee','+233241234567'
+   1::smallint, repeat('11',32),'Atomic Staff Attendee','+233241234567'
   )->>'replayed'
  )::boolean = true,
  'staff registration succeeds and a retry replays without creating a duplicate'
@@ -678,7 +678,7 @@ select throws_ok(
   '51000000-0000-4000-8000-000000000003',
   '21000000-0000-4000-8000-000000000001',
   '61000000-0000-4000-8000-000000000020',
-  1,repeat('22',32),'Different Attendee',null
+  1::smallint, repeat('22',32),'Different Attendee',null
  )$q$,
  '23505','EVENT_IDEMPOTENCY_KEY_REUSED',
  'same idempotency key cannot be replayed with a different request digest'
@@ -689,7 +689,7 @@ select ok(
   '51000000-0000-4000-8000-000000000003',
   '21000000-0000-4000-8000-000000000001',
   '61000000-0000-4000-8000-000000000021',
-  1,repeat('33',32),'Second Staff Attendee',null
+  1::smallint, repeat('33',32),'Second Staff Attendee',null
  )->'registration'->>'attendee_name_snapshot') = 'Second Staff Attendee',
  'a distinct idempotency key creates a second registration within capacity'
 );
@@ -703,7 +703,7 @@ select ok(
         and attendee_name_snapshot='Second Staff Attendee'
       limit 1),
     '61000000-0000-4000-8000-000000000030',
-    1,repeat('77',32)
+    1::smallint, repeat('77',32)
   )->'registration'->>'status') = 'cancelled'
   and (
     public.cmi_staff_cancel_event_registration(
@@ -715,7 +715,7 @@ select ok(
           and attendee_name_snapshot='Second Staff Attendee'
         limit 1),
       '61000000-0000-4000-8000-000000000030',
-      1,repeat('77',32)
+      1::smallint, repeat('77',32)
     )->>'replayed'
   )::boolean = true,
   'staff registration cancellation releases capacity and retries replay without duplicate effects'
@@ -726,7 +726,7 @@ select ok(
     '51000000-0000-4000-8000-000000000003',
     '21000000-0000-4000-8000-000000000001',
     '61000000-0000-4000-8000-000000000031',
-    1,repeat('88',32),'Replacement Attendee',null
+    1::smallint, repeat('88',32),'Replacement Attendee',null
   )->'registration'->>'attendee_name_snapshot') = 'Replacement Attendee',
   'released capacity can be reused by a new staff registration'
 );
@@ -760,7 +760,7 @@ select throws_ok(
   '51000000-0000-4000-8000-000000000003',
   '21000000-0000-4000-8000-000000000001',
   '61000000-0000-4000-8000-000000000032',
-  1,repeat('44',32),'Capacity Overflow Attendee',null
+  1::smallint, repeat('44',32),'Capacity Overflow Attendee',null
  )$q$,
  'P0001','EVENT_CAPACITY_REACHED',
  'finite event capacity is enforced by the database transaction'
@@ -771,7 +771,7 @@ select throws_ok(
   '51000000-0000-4000-8000-000000000003',
   '21000000-0000-4000-8000-000000000001',
   '61000000-0000-4000-8000-000000000023',
-  1,repeat('55',32),'Unauthorized Attendee',null
+  1::smallint, repeat('55',32),'Unauthorized Attendee',null
  )$q$,
  '42501','EVENT_REGISTRATION_NOT_AUTHORIZED',
  'staff without the branch registration capability cannot register attendees'
@@ -782,7 +782,7 @@ select throws_ok(
   '51000000-0000-4000-8000-000000000001',
   '21000000-0000-4000-8000-000000000001',
   '61000000-0000-4000-8000-000000000024',
-  1,repeat('66',32),'Public Event Attempt',null
+  1::smallint, repeat('66',32),'Public Event Attempt',null
  )$q$,
  'P0001','EVENT_REGISTRATION_CLOSED',
  'staff RPC refuses a public event even when its public registration state is open'
@@ -855,7 +855,7 @@ select ok(
         and attendee_name_snapshot='Atomic Staff Attendee'
       limit 1),
     '61000000-0000-4000-8000-000000000040',
-    1,repeat('99',32)
+    1::smallint, repeat('99',32)
   )->'checkin'->>'attendee_name_snapshot'
  ) = 'Atomic Staff Attendee'
  and (
@@ -868,7 +868,7 @@ select ok(
         and attendee_name_snapshot='Atomic Staff Attendee'
       limit 1),
     '61000000-0000-4000-8000-000000000040',
-    1,repeat('99',32)
+    1::smallint, repeat('99',32)
   )->>'replayed'
  )::boolean = true,
  'staff check-in records an attendee and a retry replays without another row'
@@ -883,7 +883,7 @@ select throws_ok(
       and attendee_name_snapshot='Atomic Staff Attendee'
     limit 1),
   '61000000-0000-4000-8000-000000000041',
-  1,repeat('aa',32)
+  1::smallint, repeat('aa',32)
  )$q$,
  'P0001','EVENT_REGISTRATION_ALREADY_CHECKED_IN',
  'a second independent check-in for one registration is rejected'
@@ -898,7 +898,7 @@ select throws_ok(
       and attendee_name_snapshot='Replacement Attendee'
     limit 1),
   '61000000-0000-4000-8000-000000000042',
-  1,repeat('bb',32)
+  1::smallint, repeat('bb',32)
  )$q$,
  '42501','EVENT_CHECKIN_NOT_AUTHORIZED',
  'staff without branch check-in capability cannot check in attendees'
@@ -913,7 +913,7 @@ select throws_ok(
       and attendee_name_snapshot='Atomic Staff Attendee'
     limit 1),
   '61000000-0000-4000-8000-000000000043',
-  1,repeat('cc',32)
+  1::smallint, repeat('cc',32)
  )$q$,
  'P0001','EVENT_REGISTRATION_ALREADY_CHECKED_IN',
  'a checked-in registration cannot be cancelled to manipulate attendance or capacity'
@@ -1067,7 +1067,7 @@ select ok(
     '51000000-0000-4000-8000-000000000003',
     '21000000-0000-4000-8000-000000000001',
     '61000000-0000-4000-8000-000000000050',
-    1,repeat('dd',32),'Synthetic event closeout summary'
+    1::smallint, repeat('dd',32),'Synthetic event closeout summary'
   )->'closeout'->>'status'
  ) = 'submitted'
  and (
@@ -1076,7 +1076,7 @@ select ok(
     '51000000-0000-4000-8000-000000000003',
     '21000000-0000-4000-8000-000000000001',
     '61000000-0000-4000-8000-000000000050',
-    1,repeat('dd',32),'Synthetic event closeout summary'
+    1::smallint, repeat('dd',32),'Synthetic event closeout summary'
   )->>'replayed'
  )::boolean = true,
  'event closeout submission is atomic and same-key retries replay'
@@ -1090,7 +1090,7 @@ select throws_ok(
     where event_id='51000000-0000-4000-8000-000000000003'),
   'approved',null,
   '61000000-0000-4000-8000-000000000051',
-  1,repeat('ee',32)
+  1::smallint, repeat('ee',32)
  )$q$,
  '42501','EVENT_CLOSEOUT_SELF_REVIEW',
  'the closeout submitter cannot approve their own event closeout'
@@ -1105,7 +1105,7 @@ select ok(
       where event_id='51000000-0000-4000-8000-000000000003'),
     'approved',null,
     '61000000-0000-4000-8000-000000000052',
-    1,repeat('ff',32)
+    1::smallint, repeat('ff',32)
   )->'closeout'->>'status'
  ) = 'approved'
  and (
@@ -1117,7 +1117,7 @@ select ok(
       where event_id='51000000-0000-4000-8000-000000000003'),
     'approved',null,
     '61000000-0000-4000-8000-000000000052',
-    1,repeat('ff',32)
+    1::smallint, repeat('ff',32)
   )->>'replayed'
  )::boolean = true,
  'a different authorized Admin/Pastor can approve and the review request replays'
