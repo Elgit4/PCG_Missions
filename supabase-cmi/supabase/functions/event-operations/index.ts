@@ -57,7 +57,7 @@ type ScopeMode =
   | "oversight";
 
 const EVENT_COLUMNS =
-  "id,branch_id,title,description,starts_at,ends_at,timezone,location,status,visibility,registration_state,flyer_mime_type,flyer_size_bytes,flyer_updated_at,created_at,updated_at";
+  "id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,status,visibility,registration_state,flyer_mime_type,flyer_size_bytes,flyer_updated_at,created_at,updated_at";
 
 function newRequestId(): string {
   return crypto.randomUUID();
@@ -545,7 +545,146 @@ Deno.serve(async (request: Request) => {
       isUuid(eventSuffix[1]) && eventSuffix[2] === "revoke";
     const isRegistrationCollection = isUuid(nestedEventId) &&
       eventSuffix.length === 1 && eventSuffix[0] === "registrations";
+    const isStaffRegistrationStateChange = isUuid(nestedEventId) &&
+      eventSuffix.length === 2 && eventSuffix[0] === "staff-registration" &&
+      (eventSuffix[1] === "open" || eventSuffix[1] === "close");
 
+
+
+    if (request.method === "POST" && isStaffRegistrationStateChange) {
+      const branchId = parseBranchQuery(url);
+      if (!branchId) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const managed = await loadEventForManagement(
+        auth.service,
+        auth.profileId,
+        nestedEventId,
+        branchId,
+      );
+      if (!managed.ok) {
+        return fail(
+          managed.responseCode,
+          managed.responseCode === "NOT_FOUND"
+            ? "Event not found."
+            : "The operation is not permitted.",
+          managed.statusCode,
+          origin,
+          id,
+        );
+      }
+      const { data: current, error: currentError } = await auth.service
+        .from("event")
+        .select("id,status,visibility,registration_state,capacity,starts_at")
+        .eq("id", nestedEventId)
+        .eq("branch_id", branchId)
+        .maybeSingle();
+      if (currentError) throw new Error("EVENT_REGISTRATION_STATE_LOOKUP_FAILED");
+      if (!current) {
+        return fail("NOT_FOUND", "Event not found.", 404, origin, id);
+      }
+
+      const action = eventSuffix[1];
+      if (action === "open") {
+        if (
+          current.status !== "draft" ||
+          current.visibility !== "private" ||
+          current.registration_state !== "closed"
+        ) {
+          return fail(
+            "EVENT_NOT_OPENABLE",
+            "Only a private draft with registration closed can be opened for staff registration.",
+            409,
+            origin,
+            id,
+          );
+        }
+        if (!Number.isSafeInteger(current.capacity) || current.capacity < 1) {
+          return fail(
+            "EVENT_CAPACITY_REQUIRED",
+            "Set a finite capacity before opening staff registration.",
+            422,
+            origin,
+            id,
+          );
+        }
+        if (Date.parse(current.starts_at) <= Date.now()) {
+          return fail(
+            "EVENT_ALREADY_STARTED",
+            "Staff registration can only be opened before the event starts.",
+            422,
+            origin,
+            id,
+          );
+        }
+        const { data, error } = await auth.service
+          .from("event")
+          .update({
+            status: "published",
+            visibility: "staff",
+            registration_state: "open",
+          })
+          .eq("id", nestedEventId)
+          .eq("branch_id", branchId)
+          .eq("status", "draft")
+          .eq("visibility", "private")
+          .eq("registration_state", "closed")
+          .select(EVENT_COLUMNS)
+          .maybeSingle();
+        if (error) throw new Error("EVENT_STAFF_REGISTRATION_OPEN_FAILED");
+        if (!data) {
+          return fail(
+            "EVENT_STATE_CHANGED",
+            "The event changed. Refresh and try again.",
+            409,
+            origin,
+            id,
+          );
+        }
+        return response({ data, request_id: id }, 200, origin, id);
+      }
+
+      if (
+        current.status !== "published" ||
+        current.visibility !== "staff" ||
+        current.registration_state !== "open"
+      ) {
+        return fail(
+          "EVENT_REGISTRATION_NOT_OPEN",
+          "This event does not have staff registration open.",
+          409,
+          origin,
+          id,
+        );
+      }
+      const { data, error } = await auth.service
+        .from("event")
+        .update({ registration_state: "closed" })
+        .eq("id", nestedEventId)
+        .eq("branch_id", branchId)
+        .eq("status", "published")
+        .eq("visibility", "staff")
+        .eq("registration_state", "open")
+        .select(EVENT_COLUMNS)
+        .maybeSingle();
+      if (error) throw new Error("EVENT_STAFF_REGISTRATION_CLOSE_FAILED");
+      if (!data) {
+        return fail(
+          "EVENT_STATE_CHANGED",
+          "The event changed. Refresh and try again.",
+          409,
+          origin,
+          id,
+        );
+      }
+      return response({ data, request_id: id }, 200, origin, id);
+    }
 
     if (
       (request.method === "GET" || request.method === "POST") &&
