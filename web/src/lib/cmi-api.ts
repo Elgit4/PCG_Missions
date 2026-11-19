@@ -180,6 +180,38 @@ export interface EventAssignmentWorkspace {
   team_candidates: { id: string; name: string }[];
 }
 
+
+export interface EventCloseoutRecord {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  submitted_by: string;
+  submitted_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  status: "draft" | "submitted" | "approved" | "returned";
+  attendee_count: number | null;
+  registration_count: number | null;
+  transport_seat_count: number | null;
+  summary_notes: string | null;
+}
+export interface EventCloseoutHistoryRecord {
+  id: string;
+  actor_user_id: string;
+  action: "submitted" | "approved" | "returned" | "reopened";
+  details: Record<string, unknown>;
+  created_at: string;
+}
+export interface EventCloseoutWorkspace {
+  closeout: EventCloseoutRecord | null;
+  history: EventCloseoutHistoryRecord[];
+}
+export interface EventCloseoutSubmissionResult {
+  closeout: EventCloseoutRecord;
+  replayed: boolean;
+  response_status: number;
+}
+
 export interface AssignedPrayerRequestRecord {
   id: string;
   branch_id: string;
@@ -973,6 +1005,41 @@ export class CmiApiClient {
   }
 
 
+
+
+  getEventCloseout(branchId: string, eventId: string) {
+    return this.request<EventCloseoutWorkspace>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/closeout",
+      { query: { branch_id: branchId } },
+    );
+  }
+  submitEventCloseout(
+    branchId: string,
+    eventId: string,
+    input: { idempotency_key: string; summary_notes: string | null },
+  ) {
+    return this.request<EventCloseoutSubmissionResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/closeout/submit",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+  reviewEventCloseout(
+    branchId: string,
+    eventId: string,
+    input: {
+      idempotency_key: string;
+      decision: "approved" | "returned";
+      reason: string | null;
+    },
+  ) {
+    return this.request<EventCloseoutSubmissionResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/closeout/review",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
 
   checkinEventRegistration(
     branchId: string,
