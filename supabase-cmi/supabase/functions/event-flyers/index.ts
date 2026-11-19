@@ -235,7 +235,8 @@ async function canManageEvent(
       const { data: memberships, error: membershipError } = await service.from(
         "staff_team_membership",
       )
-        .select("id").eq("staff_profile_id", profileId).eq(
+        .select("id,team:team!inner(is_active)")
+        .eq("team.is_active", true).eq("staff_profile_id", profileId).eq(
           "branch_id",
           branchId,
         )
