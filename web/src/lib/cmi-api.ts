@@ -86,6 +86,9 @@ export interface EventDraftRecord {
   registration_state: "closed";
   created_at: string;
   updated_at: string;
+  flyer_mime_type?: "image/jpeg" | "image/png" | "image/webp" | null;
+  flyer_size_bytes?: number | null;
+  flyer_updated_at?: string | null;
 }
 export interface EventDraftCreateInput {
   branch_id: string;
@@ -97,6 +100,28 @@ export interface EventDraftCreateInput {
   location: string | null;
 }
 export type EventDraftPatchInput = Partial<Omit<EventDraftCreateInput, "branch_id">>;
+
+export interface StaffNotificationRecord {
+  id: string;
+  category: "followup_assigned" | "event_assigned" | "report_reviewed" | "system";
+  title: string;
+  body: string;
+  target_type: "followup_task" | "event" | "ministry_report" | null;
+  target_id: string | null;
+  created_at: string;
+  read_at: string | null;
+}
+export interface StaffNotificationInbox {
+  notifications: StaffNotificationRecord[];
+  unread_count: number;
+}
+export interface EventFlyerResult {
+  object_path: string;
+  mime_type: "image/jpeg" | "image/png" | "image/webp";
+  size_bytes: number;
+  signed_url: string;
+  signed_url_expires_in: number;
+}
 
 export interface CalendarEntryRecord {
   id: string;
@@ -791,6 +816,53 @@ export class CmiApiClient {
   updateEventDraft(branchId: string, eventId: string, input: EventDraftPatchInput) {
     return this.request<EventDraftRecord>("event-operations", "/events/" + encodeURIComponent(eventId), {
       method: "PATCH", query: { branch_id: branchId }, body: input,
+    });
+  }
+
+  listStaffNotifications(branchId: string, limit = 30) {
+    return this.request<StaffNotificationInbox>("staff-notifications", "/notifications", {
+      query: { branch_id: branchId, limit },
+    });
+  }
+  markStaffNotificationRead(branchId: string, notificationId: string) {
+    return this.request<{ updated: boolean }>("staff-notifications", "/notifications/" + encodeURIComponent(notificationId) + "/read", {
+      method: "POST", body: { branch_id: branchId },
+    });
+  }
+  markAllStaffNotificationsRead(branchId: string) {
+    return this.request<{ updated_count: number }>("staff-notifications", "/notifications/read-all", {
+      method: "POST", body: { branch_id: branchId },
+    });
+  }
+
+  async uploadEventFlyer(branchId: string, eventId: string, file: File): Promise<ApiEnvelope<EventFlyerResult>> {
+    const token = await this.getAccessToken();
+    if (!token) throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
+    const url = new URL(`${this.baseUrl}/event-flyers/events/${encodeURIComponent(eventId)}`);
+    url.searchParams.set("branch_id", branchId);
+    const form = new FormData();
+    form.set("file", file);
+    const headers = new Headers({ apikey: this.config.publishableKey, Accept: "application/json", Authorization: `Bearer ${token}` });
+    let response: Response;
+    try {
+      response = await this.sendWithBrowserFallback(url, { method: "POST", headers, body: form, cache: "no-store" });
+    } catch {
+      throw new CmiApiError(0, "NETWORK_ERROR", "We couldn't upload the event flyer. Check your connection and try again.", null);
+    }
+    const payload = parseJson(await response.text()) as (ApiEnvelope<EventFlyerResult> & ApiErrorBody) | null;
+    const requestId = payload?.request_id ?? response.headers.get("X-Request-Id");
+    if (!response.ok) throw new CmiApiError(response.status, payload?.error?.code ?? `HTTP_${response.status}`, payload?.error?.message ?? "The flyer upload could not be completed.", requestId ?? null);
+    if (!payload || typeof payload !== "object" || !("data" in payload)) throw new CmiApiError(502, "INVALID_RESPONSE", "The server returned an unexpected response.", requestId ?? null);
+    return payload;
+  }
+  getEventFlyerPreview(branchId: string, eventId: string) {
+    return this.request<EventFlyerResult>("event-flyers", "/events/" + encodeURIComponent(eventId), {
+      query: { branch_id: branchId },
+    });
+  }
+  removeEventFlyer(branchId: string, eventId: string) {
+    return this.request<{ removed: boolean }>("event-flyers", "/events/" + encodeURIComponent(eventId) + "/remove", {
+      method: "POST", query: { branch_id: branchId },
     });
   }
 
