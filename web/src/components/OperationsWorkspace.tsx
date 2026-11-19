@@ -66,6 +66,16 @@ export function OperationsWorkspace({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [flyerFile, setFlyerFile] = useState<File | null>(null);
+  const [flyerPreview, setFlyerPreview] = useState<string | null>(null);
+  const [existingFlyerUrl, setExistingFlyerUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!flyerFile) { setFlyerPreview(null); return; }
+    const preview = URL.createObjectURL(flyerFile);
+    setFlyerPreview(preview);
+    return () => URL.revokeObjectURL(preview);
+  }, [flyerFile]);
 
   const canRead = section === "Events"
     ? hasCapability(session, "event.read.scoped", branchId)
@@ -129,6 +139,8 @@ export function OperationsWorkspace({
 
   const beginCreate = () => {
     setEditingId(null);
+    setFlyerFile(null);
+    setExistingFlyerUrl(null);
     setShowForm(true);
     setError("");
     setNotice("");
@@ -136,6 +148,12 @@ export function OperationsWorkspace({
 
   const beginEdit = (id: string) => {
     setEditingId(id);
+    setFlyerFile(null);
+    setExistingFlyerUrl(null);
+    const event = section === "Events" ? events.find((item) => item.id === id) : undefined;
+    if (event?.flyer_mime_type) {
+      void api.getEventFlyerPreview(branchId, id).then((result) => setExistingFlyerUrl(result.data.signed_url)).catch(() => setExistingFlyerUrl(null));
+    }
     setShowForm(true);
     setError("");
     setNotice("");
@@ -167,8 +185,18 @@ export function OperationsWorkspace({
           timezone: timeZone,
           location: String(form.get("location") ?? "").trim() || null,
         };
-        if (editingId) await api.updateEventDraft(branchId, editingId, input);
-        else await api.createEventDraft({ branch_id: branchId, ...input });
+        let savedEventId = editingId;
+        if (editingId) {
+          await api.updateEventDraft(branchId, editingId, input);
+        } else {
+          const created = await api.createEventDraft({ branch_id: branchId, ...input });
+          savedEventId = created.data.id;
+          setEditingId(savedEventId);
+        }
+        const selectedFlyer = form.get("flyer");
+        if (savedEventId && selectedFlyer instanceof File && selectedFlyer.size > 0) {
+          await api.uploadEventFlyer(branchId, savedEventId, selectedFlyer);
+        }
       } else if (section === "Calendar") {
         const start = branchLocalInputToIso(String(form.get("starts_at") ?? ""), timeZone);
         const endValue = String(form.get("ends_at") ?? "");
@@ -212,8 +240,10 @@ export function OperationsWorkspace({
         else await api.createWelcomeMessageDraft({ branch_id: branchId, ...input });
       }
       setEditingId(null);
+      setFlyerFile(null);
+      setExistingFlyerUrl(null);
       setShowForm(false);
-      setNotice("Saved. This item remains a private draft and is not visible to the public.");
+      setNotice(section === "Events" ? "Event draft saved. The flyer, if attached, is stored privately." : "Saved. This item remains a private draft and is not visible to the public.");
       await loadRecords();
     } catch (cause) {
       if (cause instanceof CmiApiError && cause.status === 401) {
@@ -282,6 +312,15 @@ export function OperationsWorkspace({
                 <label>Starts at ({timeZone})<input name="starts_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEvent?.starts_at, timeZone)} /></label>
                 <label>Ends at ({timeZone})<input name="ends_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEvent?.ends_at, timeZone)} /></label>
                 <label className="cmi-field-wide">Description<textarea name="description" rows={3} maxLength={12000} defaultValue={editingEvent?.description ?? ""} placeholder="Purpose, audience and instructions for staff." /></label>
+                <div className="cmi-field-wide cmi-event-flyer-field">
+                  <label htmlFor="cmi-event-flyer">Event flyer <span className="cmi-field-optional">Optional</span></label>
+                  <input id="cmi-event-flyer" name="flyer" type="file" accept="image/jpeg,image/png,image/webp"
+                    onChange={(change) => { setFlyerFile(change.currentTarget.files?.[0] ?? null); setExistingFlyerUrl(null); }} />
+                  <small>JPEG, PNG or WebP. Maximum file size: 5 MB. The flyer remains private to authorised staff.</small>
+                  {(flyerPreview || existingFlyerUrl) && <div className="cmi-flyer-preview"><img src={flyerPreview ?? existingFlyerUrl ?? ""} alt="Event flyer preview" /><span>{flyerFile?.name ?? "Current event flyer"}</span></div>}
+                  {editingEvent?.flyer_mime_type && !flyerFile && !existingFlyerUrl && <small>Existing flyer attached. Preview is being prepared or is temporarily unavailable.</small>}
+                  {flyerFile && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setFlyerFile(null); setExistingFlyerUrl(null); }}>Remove selected image</button>}
+                </div>
                 <p className="cmi-field-wide cmi-scope-note">The server saves this as a private draft with registration closed. Public registration, capacity and attendance are intentionally unavailable.</p>
               </>
             )}
