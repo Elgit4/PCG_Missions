@@ -183,10 +183,10 @@ Therefore the notification centre and flyer UI in this branch are source impleme
 
 ## Remaining implementation and release gates
 
-1. Complete the event lifecycle: staff/team assignment CRUD, registration controls and management, attendance/check-in, duplicate-safe check-in, closeout and attendance reconciliation. The current event Edge Function only supports private draft create/list/update; its UI explicitly reports registration and attendance as unavailable.
+1. Complete the event lifecycle. The PR branch now contains branch-scoped staff/team assignment listing, creation and revocation, including role allowlists, active-membership checks, event-window bounds, history retention and notification timing. Registration administration, check-in/duplicate-safe attendance, closeout and attendance reconciliation remain incomplete. The assignment work is source-only until current-head CI, authenticated integration tests and deployment gates pass.
 2. Add server-side negative integration tests for notifications and flyers: cross-branch access, non-recipient notification reads/updates, assignment changes, duplicate suppression, invalid/mismatched image signatures, replacement rollback, removal cleanup and signed URL expiry.
 3. Reconcile typed ministry report migrations against the authoritative migration history and verify report author/reviewer authorization end to end.
-4. Implement the assigned-prayer workflow for Prayer Intercessors with assignment-only access and no general CRM identity disclosure.
+4. The PR branch now contains an assigned-only Prayer Intercessor inbox API, an audited database listing function, bounded pagination and a read-only UI that omits contact/creator identity. Verify its current-head migration replay, pgTAP suite, API validation and authenticated role behavior; do not treat it as live because the migration and Edge Function are not deployed.
 5. Reconcile remaining master-spec modules (announcements publication/receipts, public content, team/service-area administration and staff access) against current hosted schema and actual capabilities.
 6. Add raster 192px/512px PWA icons and verify installation surfaces.
 7. Obtain provisioned, owner-authorised test identities for all six roles and complete authenticated desktop/mobile acceptance. Do not fabricate staff identities or bypass the first-admin bootstrap.
@@ -206,3 +206,13 @@ The hosted schema also contains an identity-consistency trigger for event check-
 However, the currently deployed `event-operations` Edge Function is version 14 and its source in the proposed PR only implements private-draft event list/create/update. It does not yet expose staff/team assignment management, registration administration, check-in or closeout endpoints. The prayer read RPC exists, but no complete Prayer Intercessor workspace/API workflow has been verified. Existing tables alone do not mean these workflows are available to staff.
 
 Do not add duplicate event/prayer tables. Build the missing server operations and UI against the existing schema after inspecting its constraints, policies, grants and audit triggers. Keep transport-related columns and historical data intact, but do not expose or implement transport features.
+
+
+## PR #82 implementation continuation — 19 November 2026
+
+The current PR branch adds the following source implementations against the existing schema:
+
+- Event staff and team assignment list/create/revoke operations. Assignment dates are constrained to the event window; staff membership must cover the full assignment window; transport assignment roles are rejected. Revocation retains history, and notification triggers only consider currently eligible assignments.
+- An assigned-only Prayer Intercessor inbox. The Edge Function validates the staff session and bounded pagination; the database function re-checks the active branch capability and active prayer assignment, returns an allowlisted narrative projection without contact identity, and inserts audit rows for disclosed narratives. The UI is read-only and only appears when the assigned-read capability is present.
+
+These changes are committed to the PR branch only. They have not been applied to hosted Supabase or deployed to Vercel. Current-head CI and full authenticated acceptance must pass before considering the workflows release-ready. Public self-registration, transport, SMS/Arkesel and Cloudflare remain out of scope or deferred under the owner-directed decisions.
