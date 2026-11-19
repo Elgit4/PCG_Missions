@@ -483,6 +483,98 @@ export function parseEventCheckin(
   return { ok: true, value: { idempotency_key: value.idempotency_key } };
 }
 
+
+export interface EventCloseoutSubmitInput {
+  idempotency_key: string;
+  summary_notes: string | null;
+}
+
+export interface EventCloseoutReviewInput {
+  idempotency_key: string;
+  decision: "approved" | "returned";
+  reason: string | null;
+}
+
+export function parseEventCloseoutSubmit(
+  value: unknown,
+): { ok: true; value: EventCloseoutSubmitInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const allowed = new Set(["idempotency_key", "summary_notes"]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    return { ok: false, error: "Unsupported event closeout submission field." };
+  }
+  if (
+    typeof value.idempotency_key !== "string" ||
+    !UUID_PATTERN.test(value.idempotency_key)
+  ) {
+    return { ok: false, error: "A valid idempotency_key is required." };
+  }
+  const notes = "summary_notes" in value
+    ? parseText(value.summary_notes, "summary_notes", 0, 4000, true)
+    : { ok: true as const, value: null };
+  if (!notes.ok) {
+    return { ok: false, error: "Closeout notes must not exceed 4,000 characters." };
+  }
+  return {
+    ok: true,
+    value: {
+      idempotency_key: value.idempotency_key,
+      summary_notes: notes.value,
+    },
+  };
+}
+
+export function parseEventCloseoutReview(
+  value: unknown,
+): { ok: true; value: EventCloseoutReviewInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const allowed = new Set(["idempotency_key", "decision", "reason"]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    return { ok: false, error: "Unsupported event closeout review field." };
+  }
+  if (
+    typeof value.idempotency_key !== "string" ||
+    !UUID_PATTERN.test(value.idempotency_key)
+  ) {
+    return { ok: false, error: "A valid idempotency_key is required." };
+  }
+  if (value.decision !== "approved" && value.decision !== "returned") {
+    return { ok: false, error: "Closeout decision must be approved or returned." };
+  }
+  let reason: string | null = null;
+  if (value.decision === "returned") {
+    const parsed = parseText(value.reason, "reason", 2, 2000);
+    if (!parsed.ok || parsed.value === null) {
+      return { ok: false, error: "A reason between 2 and 2,000 characters is required when returning a closeout." };
+    }
+    reason = parsed.value;
+  } else if ("reason" in value) {
+    const parsed = parseText(value.reason, "reason", 0, 2000, true);
+    if (!parsed.ok) {
+      return { ok: false, error: "Closeout review reason must not exceed 2,000 characters." };
+    }
+    reason = parsed.value;
+  }
+  return {
+    ok: true,
+    value: {
+      idempotency_key: value.idempotency_key,
+      decision: value.decision,
+      reason,
+    },
+  };
+}
+
 export function parseEventListQuery(
   url: URL,
 ): { ok: true; value: EventListQuery } | { ok: false; error: string } {
