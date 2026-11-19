@@ -101,6 +101,44 @@ export interface EventDraftCreateInput {
 }
 export type EventDraftPatchInput = Partial<Omit<EventDraftCreateInput, "branch_id">>;
 
+
+export type EventStaffAssignmentRole = "owner" | "organizer" | "checkin" | "support";
+export type EventTeamAssignmentRole = "organizer" | "ushering" | "support";
+export interface EventStaffAssignmentInput {
+  staff_auth_user_id: string;
+  assignment_role: EventStaffAssignmentRole;
+  starts_at: string;
+  ends_at: string | null;
+}
+export interface EventTeamAssignmentInput {
+  team_id: string;
+  assignment_role: EventTeamAssignmentRole;
+  starts_at: string;
+  ends_at: string | null;
+}
+export interface EventStaffAssignmentRecord extends EventStaffAssignmentInput {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  staff_name: string;
+  revoked_at: string | null;
+  created_at: string;
+}
+export interface EventTeamAssignmentRecord extends EventTeamAssignmentInput {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  team_name: string;
+  revoked_at: string | null;
+  created_at: string;
+}
+export interface EventAssignmentWorkspace {
+  staff_assignments: EventStaffAssignmentRecord[];
+  team_assignments: EventTeamAssignmentRecord[];
+  staff_candidates: { auth_user_id: string; full_name: string }[];
+  team_candidates: { id: string; name: string }[];
+}
+
 export interface StaffNotificationRecord {
   id: string;
   category: "followup_assigned" | "event_assigned" | "report_reviewed" | "system";
@@ -817,6 +855,38 @@ export class CmiApiClient {
     return this.request<EventDraftRecord>("event-operations", "/events/" + encodeURIComponent(eventId), {
       method: "PATCH", query: { branch_id: branchId }, body: input,
     });
+  }
+
+
+  getEventAssignments(branchId: string, eventId: string) {
+    return this.request<EventAssignmentWorkspace>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/assignments",
+      { query: { branch_id: branchId } },
+    );
+  }
+  createEventStaffAssignment(branchId: string, eventId: string, input: EventStaffAssignmentInput) {
+    return this.request<EventStaffAssignmentRecord>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/staff-assignments",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+  createEventTeamAssignment(branchId: string, eventId: string, input: EventTeamAssignmentInput) {
+    return this.request<EventTeamAssignmentRecord>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/team-assignments",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+  revokeEventAssignment(branchId: string, eventId: string, kind: "staff" | "team", assignmentId: string) {
+    const resource = kind === "staff" ? "staff-assignments" : "team-assignments";
+    return this.request<{ id: string; revoked_at: string }>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/" + resource + "/" +
+        encodeURIComponent(assignmentId) + "/revoke",
+      { method: "POST", query: { branch_id: branchId } },
+    );
   }
 
   listStaffNotifications(branchId: string, limit = 30) {
