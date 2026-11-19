@@ -242,15 +242,21 @@ export function EventCloseoutPanel({
           )}
           {!!history.length && (
             <div className="cmi-task-list cmi-operations-list">
-              {history.map((item) => (
-                <article className="cmi-task-row" key={item.id}>
-                  <div className="cmi-task-symbol"><ClipboardCheck size={17} /></div>
-                  <div className="cmi-task-copy">
-                    <strong>{item.action.replaceAll("_", " ")}</strong>
-                    <p>{formatBranchDate(item.created_at, timeZone)}</p>
-                  </div>
-                </article>
-              ))}
+              {history.map((item) => {
+                const reason = typeof item.details.reason === "string"
+                  ? item.details.reason
+                  : "";
+                return (
+                  <article className="cmi-task-row" key={item.id}>
+                    <div className="cmi-task-symbol"><ClipboardCheck size={17} /></div>
+                    <div className="cmi-task-copy">
+                      <strong>{item.action.replaceAll("_", " ")}</strong>
+                      <p>{formatBranchDate(item.created_at, timeZone)}</p>
+                      {reason && <p className="cmi-closeout-review-reason">{reason}</p>}
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
         </>
