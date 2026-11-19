@@ -274,19 +274,43 @@ async function loadEventForManagement(
   profileId: string,
   eventId: string,
   branchId: string,
-): Promise<{ ok: true; status: string } | { ok: false; responseCode: "FORBIDDEN" | "NOT_FOUND"; statusCode: 403 | 404 }> {
+): Promise<{ ok: true; status: string; starts_at: string; ends_at: string } | { ok: false; responseCode: "FORBIDDEN" | "NOT_FOUND"; statusCode: 403 | 404 }> {
   const scopes = await resolveScopes(service, profileId, branchId, "event.manage.scoped");
   if (!scopes.includes("branch")) {
     return { ok: false, responseCode: "FORBIDDEN", statusCode: 403 };
   }
   const { data, error } = await service.from("event")
-    .select("id,status")
+    .select("id,status,starts_at,ends_at")
     .eq("id", eventId)
     .eq("branch_id", branchId)
     .maybeSingle();
   if (error) throw new Error("EVENT_MANAGEMENT_LOOKUP_FAILED");
   if (!data) return { ok: false, responseCode: "NOT_FOUND", statusCode: 404 };
-  return { ok: true, status: data.status };
+  return { ok: true, status: data.status, starts_at: data.starts_at, ends_at: data.ends_at };
+}
+
+
+function resolveEventAssignmentEnd(
+  startsAt: string,
+  requestedEndsAt: string | null,
+  eventStartsAt: string,
+  eventEndsAt: string,
+): string | null {
+  const start = Date.parse(startsAt);
+  const eventStart = Date.parse(eventStartsAt);
+  const eventEnd = Date.parse(eventEndsAt);
+  const end = requestedEndsAt ? Date.parse(requestedEndsAt) : eventEnd;
+  if (
+    !Number.isFinite(start) ||
+    !Number.isFinite(eventStart) ||
+    !Number.isFinite(eventEnd) ||
+    !Number.isFinite(end) ||
+    start < eventStart ||
+    start >= eventEnd ||
+    end <= start ||
+    end > eventEnd
+  ) return null;
+  return new Date(end).toISOString();
 }
 
 async function listEventAssignmentWorkspace(
@@ -505,6 +529,15 @@ Deno.serve(async (request: Request) => {
         if (assignmentKind === "staff") {
           const parsed = parseEventStaffAssignment(body);
           if (!parsed.ok) return fail("INVALID_ASSIGNMENT", parsed.error, 400, origin, id);
+          const assignmentEndsAt = resolveEventAssignmentEnd(
+            parsed.value.starts_at,
+            parsed.value.ends_at,
+            managed.starts_at,
+            managed.ends_at,
+          );
+          if (!assignmentEndsAt) {
+            return fail("INVALID_ASSIGNMENT_WINDOW", "Assignments must start and end within the event's scheduled window.", 422, origin, id);
+          }
 
           const { data: profile, error: profileError } = await auth.service
             .from("staff_profile")
@@ -522,7 +555,7 @@ Deno.serve(async (request: Request) => {
             .eq("branch_id", branchId)
             .eq("role.is_active", true)
             .lte("starts_at", parsed.value.starts_at)
-            .or(`ends_at.is.null,ends_at.gt.${parsed.value.ends_at ?? parsed.value.starts_at}`)
+            .or(`ends_at.is.null,ends_at.gt.${assignmentEndsAt}`)
             .is("revoked_at", null)
             .limit(1)
             .maybeSingle();
@@ -537,7 +570,7 @@ Deno.serve(async (request: Request) => {
               staff_auth_user_id: parsed.value.staff_auth_user_id,
               assignment_role: parsed.value.assignment_role,
               starts_at: parsed.value.starts_at,
-              ends_at: parsed.value.ends_at,
+              ends_at: assignmentEndsAt,
               assigned_by: auth.actorId,
             })
             .select("id,event_id,branch_id,staff_auth_user_id,assignment_role,starts_at,ends_at,revoked_at,created_at")
@@ -553,6 +586,15 @@ Deno.serve(async (request: Request) => {
 
         const parsed = parseEventTeamAssignment(body);
         if (!parsed.ok) return fail("INVALID_ASSIGNMENT", parsed.error, 400, origin, id);
+        const assignmentEndsAt = resolveEventAssignmentEnd(
+          parsed.value.starts_at,
+          parsed.value.ends_at,
+          managed.starts_at,
+          managed.ends_at,
+        );
+        if (!assignmentEndsAt) {
+          return fail("INVALID_ASSIGNMENT_WINDOW", "Assignments must start and end within the event's scheduled window.", 422, origin, id);
+        }
         const { data: team, error: teamError } = await auth.service.from("team")
           .select("id").eq("id", parsed.value.team_id).eq("branch_id", branchId)
           .eq("is_active", true).maybeSingle();
@@ -567,7 +609,7 @@ Deno.serve(async (request: Request) => {
             team_id: parsed.value.team_id,
             assignment_role: parsed.value.assignment_role,
             starts_at: parsed.value.starts_at,
-            ends_at: parsed.value.ends_at,
+            ends_at: assignmentEndsAt,
             assigned_by: auth.actorId,
           })
           .select("id,event_id,branch_id,team_id,assignment_role,starts_at,ends_at,revoked_at,created_at")
