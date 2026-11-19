@@ -232,3 +232,18 @@ The current PR branch adds the following source implementations against the exis
 - An assigned-only Prayer Intercessor inbox. The Edge Function validates the staff session and bounded pagination; the database function re-checks the active branch capability and active prayer assignment, returns an allowlisted narrative projection without contact identity, and inserts audit rows for disclosed narratives. The UI is read-only and only appears when the assigned-read capability is present.
 
 These changes are committed to the PR branch only. They have not been applied to hosted Supabase or deployed to Vercel. Current-head CI, isolated migration/pgTAP replay and full authenticated acceptance must pass before considering the workflows release-ready. Public self-registration, Transport, SMS/Arkesel and Cloudflare remain out of scope or deferred under the owner-directed decisions.
+
+## Live login recovery and current status — 19 November 2026, 21:50 UTC
+
+The live login issue was traced to authorization state, not an invalid password or unavailable Supabase Auth service:
+
+- Supabase Auth had accepted the configured first-admin account's password, and the staff-session endpoint had returned HTTP 200. However, the associated active staff profile had no row in `public.staff_role_assignment`. The staff-session projection therefore contained no active branch, and the frontend correctly stopped with `NO_ACTIVE_BRANCH`.
+- The role catalogue and Admin/Pastor branch capability grants were present. The database had one configured church and one active branch.
+- A narrowly scoped data-only transaction restored the configured first-admin account's `admin_pastor` assignment in the existing active branch and inserted the corresponding `staff_access_audit` row with action `role_assigned`. The transaction verified the matching confirmed Auth identity, active staff profile, configured church, single active branch and globally empty role-assignment table before writing.
+- Verification now shows the first-admin profile is active, the branch is active, the assignment is effective, and 27 enabled capabilities are available, including the four staff/role-management controls. No credentials or other staff profile were changed. The second staff profile remains without a role assignment and was deliberately left unchanged.
+
+This supersedes the earlier "no production data changed" statements in this document: one production role-assignment row and its audit row were added as an operational login repair. No schema migration, Edge Function deployment, production frontend deployment or PR merge was performed.
+
+At PR head `b41a82b175cbc07de7ead2dbfedaa01665808f72`, CMI backend CI (isolated migration replay and pgTAP), CMI web CI and CMI frontend CI have all completed successfully. A current-head Vercel preview remains unconfirmed. The PR remains open and Draft; release gates and the separate production-approval requirement are unchanged.
+
+The browser-side acceptance step is to refresh PCG Missions and retry sign-in with the existing account. The password was not reset or changed as part of this repair.
