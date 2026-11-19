@@ -419,15 +419,27 @@ Deno.serve(async (request: Request) => {
           requestId,
         );
       }
-      const { error: updateError } = await auth.service.from("event")
+      const { data: cleared, error: updateError } = await auth.service
+        .from("event")
         .update({
           flyer_object_path: null,
           flyer_mime_type: null,
           flyer_size_bytes: null,
           flyer_updated_at: null,
         })
-        .eq("id", eventId).eq("branch_id", branchId);
+        .eq("id", eventId).eq("branch_id", branchId)
+        .eq("flyer_object_path", event.flyer_object_path)
+        .select("id").maybeSingle();
       if (updateError) throw new Error("FLYER_METADATA_UPDATE_FAILED");
+      if (!cleared) {
+        return fail(
+          "FLYER_CHANGED_RETRY",
+          "The flyer was changed by another staff member. Refresh the event and try again.",
+          409,
+          origin,
+          requestId,
+        );
+      }
       const { error: removeError } = await auth.service.storage.from(BUCKET)
         .remove([event.flyer_object_path]);
       if (removeError) {
