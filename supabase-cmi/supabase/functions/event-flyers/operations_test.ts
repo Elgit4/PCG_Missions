@@ -35,134 +35,155 @@ function fakeOperations(
   };
 }
 
-Deno.test("signed flyer previews expire after fifteen minutes", () => {
-  assertEquals(FLYER_SIGNED_URL_SECONDS, 900);
-});
+Deno.test(
+  "signed flyer previews expire after fifteen minutes",
+  () => {
+    assertEquals(FLYER_SIGNED_URL_SECONDS, 900);
+  },
+);
 
-Deno.test("replacement saves metadata before removing the previous flyer", async () => {
-  const calls: string[] = [];
-  const result = await attachFlyerReplacement(
-    "branch/event/new.webp",
-    "branch/event/old.jpg",
-    { mimeType: "image/webp", sizeBytes: 1200 },
-    fakeOperations(calls),
-  );
-
-  assertEquals(calls, [
-    "sign:branch/event/new.webp",
-    "save:branch/event/new.webp",
-    "remove:branch/event/old.jpg",
-  ]);
-  assertEquals(result, {
-    signedUrl: "https://signed.example/branch/event/new.webp",
-    previousCleanupSucceeded: true,
-  });
-});
-
-Deno.test("signing failure removes the new upload and preserves the previous flyer", async () => {
-  const calls: string[] = [];
-  let failed = false;
-  try {
-    await attachFlyerReplacement(
+Deno.test(
+  "replacement saves metadata before removing the previous flyer",
+  async () => {
+    const calls: string[] = [];
+    const result = await attachFlyerReplacement(
       "branch/event/new.webp",
       "branch/event/old.jpg",
       { mimeType: "image/webp", sizeBytes: 1200 },
-      fakeOperations(calls, { failSigning: true }),
+      fakeOperations(calls),
     );
-  } catch (error) {
-    failed = error instanceof Error && error.message === "SIGNING_FAILED";
-  }
 
-  assertEquals(failed, true);
-  assertEquals(calls, [
-    "sign:branch/event/new.webp",
-    "remove:branch/event/new.webp",
-  ]);
-});
+    assertEquals(calls, [
+      "sign:branch/event/new.webp",
+      "save:branch/event/new.webp",
+      "remove:branch/event/old.jpg",
+    ]);
+    assertEquals(result, {
+      signedUrl: "https://signed.example/branch/event/new.webp",
+      previousCleanupSucceeded: true,
+    });
+  },
+);
 
-Deno.test("metadata failure removes the new upload and preserves the previous flyer", async () => {
-  const calls: string[] = [];
-  let failed = false;
-  try {
-    await attachFlyerReplacement(
+Deno.test(
+  "signing failure removes the new upload and preserves the previous flyer",
+  async () => {
+    const calls: string[] = [];
+    let failed = false;
+    try {
+      await attachFlyerReplacement(
+        "branch/event/new.webp",
+        "branch/event/old.jpg",
+        { mimeType: "image/webp", sizeBytes: 1200 },
+        fakeOperations(calls, { failSigning: true }),
+      );
+    } catch (error) {
+      failed = error instanceof Error && error.message === "SIGNING_FAILED";
+    }
+
+    assertEquals(failed, true);
+    assertEquals(calls, [
+      "sign:branch/event/new.webp",
+      "remove:branch/event/new.webp",
+    ]);
+  },
+);
+
+Deno.test(
+  "metadata failure removes the new upload and preserves the previous flyer",
+  async () => {
+    const calls: string[] = [];
+    let failed = false;
+    try {
+      await attachFlyerReplacement(
+        "branch/event/new.webp",
+        "branch/event/old.jpg",
+        { mimeType: "image/webp", sizeBytes: 1200 },
+        fakeOperations(calls, { failMetadata: true }),
+      );
+    } catch (error) {
+      failed = error instanceof Error && error.message === "METADATA_FAILED";
+    }
+
+    assertEquals(failed, true);
+    assertEquals(calls, [
+      "sign:branch/event/new.webp",
+      "save:branch/event/new.webp",
+      "remove:branch/event/new.webp",
+    ]);
+  },
+);
+
+Deno.test(
+  "previous-flyer cleanup failure is reported without discarding the replacement",
+  async () => {
+    const calls: string[] = [];
+    const result = await attachFlyerReplacement(
       "branch/event/new.webp",
       "branch/event/old.jpg",
       { mimeType: "image/webp", sizeBytes: 1200 },
-      fakeOperations(calls, { failMetadata: true }),
+      fakeOperations(calls, { failRemovalFor: "branch/event/old.jpg" }),
     );
-  } catch (error) {
-    failed = error instanceof Error && error.message === "METADATA_FAILED";
-  }
 
-  assertEquals(failed, true);
-  assertEquals(calls, [
-    "sign:branch/event/new.webp",
-    "save:branch/event/new.webp",
-    "remove:branch/event/new.webp",
-  ]);
-});
+    assertEquals(
+      result.signedUrl,
+      "https://signed.example/branch/event/new.webp",
+    );
+    assertEquals(result.previousCleanupSucceeded, false);
+    assertEquals(calls, [
+      "sign:branch/event/new.webp",
+      "save:branch/event/new.webp",
+      "remove:branch/event/old.jpg",
+    ]);
+  },
+);
 
-Deno.test("previous-flyer cleanup failure is reported without discarding the replacement", async () => {
-  const calls: string[] = [];
-  const result = await attachFlyerReplacement(
-    "branch/event/new.webp",
-    "branch/event/old.jpg",
-    { mimeType: "image/webp", sizeBytes: 1200 },
-    fakeOperations(calls, { failRemovalFor: "branch/event/old.jpg" }),
-  );
-
-  assertEquals(
-    result.signedUrl,
-    "https://signed.example/branch/event/new.webp",
-  );
-  assertEquals(result.previousCleanupSucceeded, false);
-  assertEquals(calls, [
-    "sign:branch/event/new.webp",
-    "save:branch/event/new.webp",
-    "remove:branch/event/old.jpg",
-  ]);
-});
-
-Deno.test("initial flyer attachment does not attempt previous-object cleanup", async () => {
-  const calls: string[] = [];
-  const result = await attachFlyerReplacement(
-    "branch/event/new.webp",
-    null,
-    { mimeType: "image/webp", sizeBytes: 1200 },
-    fakeOperations(calls),
-  );
-
-  assertEquals(result.previousCleanupSucceeded, true);
-  assertEquals(calls, [
-    "sign:branch/event/new.webp",
-    "save:branch/event/new.webp",
-  ]);
-});
-
-Deno.test("rollback cleanup failure is surfaced to the request logger", async () => {
-  const calls: string[] = [];
-  let cleanupFailureReported = false;
-  try {
-    await attachFlyerReplacement(
+Deno.test(
+  "initial flyer attachment does not attempt previous-object cleanup",
+  async () => {
+    const calls: string[] = [];
+    const result = await attachFlyerReplacement(
       "branch/event/new.webp",
-      "branch/event/old.jpg",
+      null,
       { mimeType: "image/webp", sizeBytes: 1200 },
-      fakeOperations(calls, {
-        failMetadata: true,
-        failRemovalFor: "branch/event/new.webp",
-        onRollbackCleanupFailure: () => {
-          cleanupFailureReported = true;
-        },
-      }),
+      fakeOperations(calls),
     );
-  } catch {
-    // The metadata failure remains the primary failure.
-  }
 
-  assertEquals(cleanupFailureReported, true);
-  assertEquals(calls, [
-    "sign:branch/event/new.webp",
-    "save:branch/event/new.webp",
-    "remove:branch/event/new.webp",
-  ]);
-});
+    assertEquals(result.previousCleanupSucceeded, true);
+    assertEquals(calls, [
+      "sign:branch/event/new.webp",
+      "save:branch/event/new.webp",
+    ]);
+  },
+);
+
+Deno.test(
+  "rollback cleanup failure is surfaced to the request logger",
+  async () => {
+    const calls: string[] = [];
+    let cleanupFailureReported = false;
+    try {
+      await attachFlyerReplacement(
+        "branch/event/new.webp",
+        "branch/event/old.jpg",
+        { mimeType: "image/webp", sizeBytes: 1200 },
+        fakeOperations(calls, {
+          failMetadata: true,
+          failRemovalFor: "branch/event/new.webp",
+          onRollbackCleanupFailure: () => {
+            cleanupFailureReported = true;
+          },
+        }),
+      );
+    } catch {
+      // The metadata failure remains the primary failure.
+    }
+
+    assertEquals(cleanupFailureReported, true);
+    assertEquals(calls, [
+      "sign:branch/event/new.webp",
+      "save:branch/event/new.webp",
+      "remove:branch/event/new.webp",
+    ]);
+  },
+);
