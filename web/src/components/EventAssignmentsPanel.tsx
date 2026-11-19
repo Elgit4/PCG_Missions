@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { CalendarClock, RefreshCw, ShieldCheck, UserPlus, Users, X } from "lucide-react";
+import { RefreshCw, ShieldCheck, UserPlus, Users, X } from "lucide-react";
 import {
   CmiApiClient,
   CmiApiError,
