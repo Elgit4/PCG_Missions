@@ -331,25 +331,33 @@ async function listEventAssignmentWorkspace(
       .in("id", profileIds.length ? profileIds : ["00000000-0000-4000-8000-000000000000"])
       .eq("account_status", "active")
       .order("full_name", { ascending: true }).limit(200),
-    service.from("team")
-      .select("id,name,is_active")
-      .eq("branch_id", branchId)
-      .in("id", [...new Set([...(teams.data ?? []).map((row: { id: string }) => row.id), ...assignedTeamIds])])
-      .limit(250),
+    async () => {
+      const ids = [...new Set([...(teams.data ?? []).map((row: { id: string }) => row.id), ...assignedTeamIds])];
+      if (ids.length === 0) return { data: [], error: null };
+      return await service.from("team")
+        .select("id,name,is_active")
+        .eq("branch_id", branchId)
+        .in("id", ids)
+        .limit(250);
+    },
   ]);
-  if (profiles.error || historicalTeams.error) {
+  const [profileResult, historicalTeamResult] = await Promise.all([
+    profiles,
+    typeof historicalTeams === "function" ? historicalTeams() : historicalTeams,
+  ]);
+  if (profileResult.error || historicalTeamResult.error) {
     throw new Error("EVENT_ASSIGNMENT_DIRECTORY_FAILED");
   }
 
   const staffNames = new Map<string, string>();
-  for (const row of [...(profiles.data ?? [])]) {
+  for (const row of [...(profileResult.data ?? [])]) {
     staffNames.set(row.auth_user_id, row.full_name);
   }
   const teamNames = new Map<string, string>();
-  for (const row of [...(historicalTeams.data ?? [])]) {
+  for (const row of [...(historicalTeamResult.data ?? [])]) {
     teamNames.set(row.id, row.name);
   }
-  const candidates = [...(profiles.data ?? [])].map((row) => ({
+  const candidates = [...(profileResult.data ?? [])].map((row) => ({
     auth_user_id: row.auth_user_id,
     full_name: row.full_name,
   }));
