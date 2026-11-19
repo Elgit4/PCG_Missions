@@ -674,3 +674,24 @@ html[data-theme="dark"] .cmi-dashboard-trust-note { background: var(--cmi-surfac
 .cmi-detail-header-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .cmi-detail-header-actions .cmi-button { min-height: 42px; white-space: nowrap; }
 @media (max-width: 520px) { .cmi-detail-header-actions { gap: 5px; } .cmi-detail-header-actions .cmi-button { padding-inline: 9px; font-size: 12px; } }
+
+
+/* Field usability: readable minimum type and reliable touch targets. */
+.cmi-workspace :is(.cmi-eyebrow, .cmi-breadcrumb, .cmi-sidebar-label, .cmi-nav button, .cmi-button, .cmi-task-status, .cmi-user-card small, .cmi-mobile-tabbar button, small) {
+  font-size: max(12px, 0.75rem) !important;
+}
+.cmi-workspace :is(input, select, textarea),
+.cmi-detail-dialog :is(input, select, textarea) {
+  min-height: 44px;
+  font-size: 16px !important;
+}
+.cmi-workspace :is(button, [role="button"]),
+.cmi-detail-dialog :is(button, [role="button"]) {
+  min-height: 44px;
+}
+.cmi-workspace .cmi-icon-action,
+.cmi-workspace .cmi-theme-toggle,
+.cmi-detail-dialog .cmi-detail-close {
+  min-width: 44px !important;
+  min-height: 44px !important;
+}
