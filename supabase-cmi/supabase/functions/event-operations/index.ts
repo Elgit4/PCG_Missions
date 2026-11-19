@@ -1,6 +1,12 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import {
+  type CanonicalJson,
+  createRequestDigest,
+  deriveIdempotencySecret,
+} from "../_shared/idempotency.ts";
+import {
   isUuid,
+  parseEventStaffRegistration,
   parseEventCreate,
   parseEventListQuery,
   parseEventPatch,
@@ -14,6 +20,11 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
   "";
 const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+const EVENT_IDEMPOTENCY_HMAC_KEY =
+  Deno.env.get("CMI_EVENT_IDEMPOTENCY_HMAC_KEY") ?? "";
+const EVENT_IDEMPOTENCY_KEY_VERSION = Number(
+  Deno.env.get("CMI_EVENT_IDEMPOTENCY_KEY_VERSION") ?? "1",
+);
 const allowedOrigins = new Set([
   "https://pcg-missions.vercel.app",
   ...(Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "")
@@ -532,6 +543,171 @@ Deno.serve(async (request: Request) => {
     const isAssignmentRevoke = isUuid(nestedEventId) &&
       eventSuffix.length === 3 && assignmentKind !== null &&
       isUuid(eventSuffix[1]) && eventSuffix[2] === "revoke";
+    const isRegistrationCollection = isUuid(nestedEventId) &&
+      eventSuffix.length === 1 && eventSuffix[0] === "registrations";
+
+
+    if (
+      (request.method === "GET" || request.method === "POST") &&
+      isRegistrationCollection
+    ) {
+      const branchId = parseBranchQuery(url);
+      if (!branchId) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const scopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "event.registration.manage.scoped",
+      );
+      if (!scopes.includes("branch")) {
+        return fail(
+          "FORBIDDEN",
+          "The operation is not permitted.",
+          403,
+          origin,
+          id,
+        );
+      }
+      const { data: event, error: eventError } = await auth.service
+        .from("event")
+        .select("id,status,visibility,registration_state,capacity,starts_at")
+        .eq("id", nestedEventId)
+        .eq("branch_id", branchId)
+        .maybeSingle();
+      if (eventError) throw new Error("EVENT_REGISTRATION_EVENT_LOOKUP_FAILED");
+      if (!event) {
+        return fail("NOT_FOUND", "Event not found.", 404, origin, id);
+      }
+
+      if (request.method === "GET") {
+        const { data, error } = await auth.service
+          .from("event_registration")
+          .select(
+            "id,event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,status,registered_at",
+          )
+          .eq("event_id", nestedEventId)
+          .eq("branch_id", branchId)
+          .order("registered_at", { ascending: false })
+          .limit(100);
+        if (error) throw new Error("EVENT_REGISTRATION_LIST_FAILED");
+        return response({ data: data ?? [], request_id: id }, 200, origin, id);
+      }
+
+      let body: unknown;
+      try {
+        body = await readJson(request);
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "INVALID_JSON";
+        return fail(
+          code,
+          code === "CONTENT_TYPE_REQUIRED"
+            ? "Content-Type must be application/json."
+            : code === "BODY_TOO_LARGE"
+            ? "Request body is too large."
+            : "A valid JSON request body is required.",
+          code === "BODY_TOO_LARGE" ? 413 : 400,
+          origin,
+          id,
+        );
+      }
+      const parsed = parseEventStaffRegistration(body);
+      if (!parsed.ok) {
+        return fail("INVALID_REGISTRATION", parsed.error, 400, origin, id);
+      }
+      if (!Number.isSafeInteger(EVENT_IDEMPOTENCY_KEY_VERSION) ||
+        EVENT_IDEMPOTENCY_KEY_VERSION < 1
+      ) {
+        throw new Error("EVENT_IDEMPOTENCY_KEY_VERSION_INVALID");
+      }
+
+      const secret = EVENT_IDEMPOTENCY_HMAC_KEY ||
+        await deriveIdempotencySecret(SUPABASE_SERVICE_ROLE_KEY, "event");
+      const digest = await createRequestDigest({
+        operation: "staff_registration",
+        event_id: nestedEventId,
+        branch_id: branchId,
+        actor_user_id: auth.actorId,
+        attendee_name_snapshot: parsed.value.attendee_name,
+        attendee_phone_snapshot: parsed.value.attendee_phone,
+      } as CanonicalJson, secret, EVENT_IDEMPOTENCY_KEY_VERSION);
+
+      const { data, error } = await auth.service.rpc(
+        "cmi_staff_register_event_attendee",
+        {
+          p_actor_auth_user_id: auth.actorId,
+          p_event_id: nestedEventId,
+          p_branch_id: branchId,
+          p_idempotency_key: parsed.value.idempotency_key,
+          p_digest_key_version: digest.keyVersion,
+          p_request_digest_hex: digest.digestHex,
+          p_attendee_name: parsed.value.attendee_name,
+          p_attendee_phone: parsed.value.attendee_phone,
+        },
+      );
+      if (error) {
+        if (error.code === "42501") {
+          return fail(
+            "FORBIDDEN",
+            "You do not have permission to register attendees for this event.",
+            403,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "P0002") {
+          return fail("NOT_FOUND", "Event not found.", 404, origin, id);
+        }
+        if (error.code === "23505") {
+          return fail(
+            "IDEMPOTENCY_CONFLICT",
+            "This request key has already been used with different registration details.",
+            409,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "22023") {
+          return fail(
+            "INVALID_REGISTRATION",
+            "The registration details are invalid.",
+            422,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "P0001") {
+          const message = error.message ?? "";
+          const known = new Map([
+            ["EVENT_REGISTRATION_CLOSED", "Registration is not open for this event."],
+            ["EVENT_CAPACITY_REQUIRED", "Set a finite event capacity before accepting registrations."],
+            ["EVENT_CAPACITY_REACHED", "This event has reached its registration capacity."],
+          ]);
+          return fail(
+            known.has(message) ? message : "REGISTRATION_REJECTED",
+            known.get(message) ?? "The registration could not be completed.",
+            message === "EVENT_CAPACITY_REACHED" ? 409 : 422,
+            origin,
+            id,
+          );
+        }
+        throw new Error("EVENT_STAFF_REGISTRATION_FAILED");
+      }
+      const replayed = Boolean((data as { replayed?: boolean } | null)?.replayed);
+      return response(
+        { data, request_id: id, replayed },
+        replayed ? 200 : 201,
+        origin,
+        id,
+      );
+    }
 
     if (
       (request.method === "GET" && isAssignmentWorkspace) ||
