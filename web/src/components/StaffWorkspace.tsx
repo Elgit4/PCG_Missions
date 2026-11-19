@@ -118,6 +118,11 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [showContactForm, setShowContactForm] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [taskContactId, setTaskContactId] = useState("");
+  const [taskContactQuery, setTaskContactQuery] = useState("");
+  const [debouncedTaskContactQuery, setDebouncedTaskContactQuery] = useState("");
+  const [taskContactResults, setTaskContactResults] = useState<ContactRecord[]>([]);
+  const [taskContactLoading, setTaskContactLoading] = useState(false);
+  const [taskContactError, setTaskContactError] = useState("");
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const contactRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
@@ -127,6 +132,53 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
     return () => window.clearTimeout(timeout);
   }, [query]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(
+      () => setDebouncedTaskContactQuery(taskContactQuery.trim()),
+      250,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [taskContactQuery]);
+
+  useEffect(() => {
+    if (
+      !showTaskForm || !canReadContacts ||
+      debouncedTaskContactQuery.length < 2
+    ) {
+      setTaskContactLoading(false);
+      setTaskContactError("");
+      if (!taskContactId) setTaskContactResults([]);
+      return;
+    }
+    let active = true;
+    setTaskContactLoading(true);
+    setTaskContactError("");
+    api.listContacts(branchId, {
+      limit: 12,
+      offset: 0,
+      search: debouncedTaskContactQuery,
+    }).then((result) => {
+      if (active) setTaskContactResults(result.data);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      setTaskContactResults([]);
+      setTaskContactError(messageFor(error));
+    }).finally(() => {
+      if (active) setTaskContactLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [
+    api,
+    branchId,
+    canReadContacts,
+    debouncedTaskContactQuery,
+    showTaskForm,
+    taskContactId,
+  ]);
+
 
   const canReadContacts = canOpenStaffPage(session, "Contacts", branchId);
   const canReadTasks = canOpenStaffPage(session, "Follow-up", branchId);
@@ -474,11 +526,14 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     event.preventDefault();
     if (!canCreateTasks || !branchId) return;
     const form = new FormData(event.currentTarget);
-    const contactId = String(form.get("contact_id") ?? "");
+    const contactId = taskContactId || String(form.get("contact_id") ?? "");
     const taskNote = String(form.get("task_note") ?? "").trim();
     const rawPriority = Number(form.get("priority") ?? 2);
     const dueInput = String(form.get("due_at") ?? "");
-    if (!contactId || !contacts.some((contact) => contact.id === contactId)) { setActionError("Select a contact that is visible in this branch."); return; }
+    if (!contactId) {
+      setActionError("Search for and select a contact before creating the follow-up.");
+      return;
+    }
     // Without membership/assignment projections, only self-assignment can be constructed safely.
     if (!canSelfAssignTask) {
       setActionError("Task creation for this scope requires an authorised team or staff assignment target.");
@@ -507,7 +562,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       const result = await api.createFollowUpTask(input);
       setTasks((current) => [result.data, ...current.filter((item) => item.id !== result.data.id)]);
       taskRequestRef.current = null;
-      setShowTaskForm(false); setTaskContactId(""); setPage("Follow-up");
+      setShowTaskForm(false); setTaskContactId(""); setTaskContactQuery(""); setTaskContactResults([]); setPage("Follow-up");
     } catch (error) { handleActionError(error); }
     finally { setSaving(false); }
   };
@@ -728,15 +783,52 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
           {page === "Follow-up" && canReadTasks && <div className="cmi-panel">
             <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h3>Follow-up tasks</h3><p>Filter tasks in your current branch and assignment scope. Counts reflect the loaded records.</p></div>
-              {canSelfAssignTask && <button className="cmi-button cmi-button-primary" onClick={() => setShowTaskForm((value) => !value)} disabled={!canReadContacts || !contacts.length}><Plus size={16} />New task</button>}
-              {canCreateTasks && canSelfAssignTask && (!canReadContacts || !contacts.length) && <div className="cmi-task-prerequisite" role="note">
-                <span>Follow-up tasks must be attached to a visible contact before they can be created.</span>
-                {canCreateContacts && <button type="button" onClick={() => { setPage("Contacts"); setShowContactForm(true); }}>Add a contact first</button>}
+              {canSelfAssignTask && <button className="cmi-button cmi-button-primary" onClick={() => {
+                setTaskContactId("");
+                setTaskContactQuery("");
+                setTaskContactResults([]);
+                setTaskContactError("");
+                setShowTaskForm((value) => !value);
+              }}><Plus size={16} />New task</button>}
+              {canCreateTasks && canSelfAssignTask && !canReadContacts && <div className="cmi-task-prerequisite" role="note">
+                <span>Your current role cannot search the contact directory. Ask an authorised coordinator to grant the required contact access.</span>
               </div>}
               {canCreateTasks && !canSelfAssignTask && <span className="cmi-scope-note">Task creation is granted, but a supported team assignment target is not available in this workspace.</span>}
             </div>
             {showTaskForm && canCreateTasks && <form className="cmi-form-grid" onSubmit={createTask}>
-              <label className="cmi-field-wide">Contact<select name="contact_id" required defaultValue={taskContactId}><option value="" disabled>Select a visible contact</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{displayName(contact)}</option>)}</select></label>
+              <div className="cmi-field-wide cmi-task-contact-picker">
+                <label htmlFor="cmi-task-contact-search">Contact</label>
+                <input id="cmi-task-contact-search" type="search" role="combobox"
+                  aria-autocomplete="list" aria-expanded={taskContactResults.length > 0}
+                  aria-controls="cmi-task-contact-results" autoComplete="off"
+                  placeholder="Search by name or permitted phone number"
+                  value={taskContactQuery}
+                  onChange={(change) => {
+                    setTaskContactQuery(change.target.value);
+                    setTaskContactId("");
+                  }} />
+                <input type="hidden" name="contact_id" value={taskContactId} />
+                {taskContactLoading && <small role="status">Searching contacts…</small>}
+                {taskContactError && <small className="cmi-form-error" role="alert">{taskContactError}</small>}
+                {!taskContactLoading && taskContactQuery.trim().length < 2 && !taskContactId && <small>Enter at least two characters to search the authorised contact directory.</small>}
+                {!taskContactLoading && debouncedTaskContactQuery.length >= 2 && !taskContactResults.length && !taskContactError && <small>No matching contacts were found in your current access scope.</small>}
+                {taskContactResults.length > 0 && <div id="cmi-task-contact-results" className="cmi-task-contact-results" role="listbox" aria-label="Matching contacts">
+                  {taskContactResults.map((contact) => <button type="button" role="option" aria-selected={taskContactId === contact.id} key={contact.id}
+                    onClick={() => {
+                      setTaskContactId(contact.id);
+                      setTaskContactQuery(displayName(contact));
+                      setTaskContactResults([contact]);
+                      setTaskContactError("");
+                    }}>
+                    <strong>{displayName(contact)}</strong>
+                    <span>{contact.phone_display || contact.phone_e164 || "No phone displayed"} · {contact.contact_status.replaceAll("_", " ")}</span>
+                  </button>)}
+                </div>}
+                {taskContactId && <button type="button" className="cmi-button cmi-button-secondary"
+                  onClick={() => { setTaskContactId(""); setTaskContactQuery(""); setTaskContactResults([]); }}>
+                  Change selected contact
+                </button>}
+              </div>
               <label>Priority<select name="priority" defaultValue="2"><option value="1">Urgent</option><option value="2">Normal</option><option value="3">Low</option><option value="4">Very low</option><option value="5">Minimal</option></select></label>
               <label>Due date and time<input type="datetime-local" name="due_at" /></label>
               <label className="cmi-field-wide">Operational note <span>Do not enter pastoral narratives or sensitive identity data</span><textarea name="task_note" rows={3} maxLength={1000} /></label>
@@ -864,6 +956,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         canCreateFollowUp={canCreateTasks && canSelfAssignTask}
         onCreateFollowUp={(contact) => {
           setTaskContactId(contact.id);
+          setTaskContactQuery(displayName(contact));
+          setTaskContactResults([contact]);
           setSelectedContact(null);
           setPage("Follow-up");
           setShowTaskForm(true);
