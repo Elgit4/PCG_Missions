@@ -30,16 +30,6 @@ export function notificationRecipientScope(
   };
 }
 
-export function unreadNotificationRecipientScope(
-  actorId: string,
-  branchId: string,
-): NotificationRecipientScope & { read_at: null } {
-  return {
-    ...notificationRecipientScope(actorId, branchId),
-    read_at: null,
-  };
-}
-
 export function notificationPageLimit(value: string | null): number {
   const parsed = Number(value ?? "30");
   return Number.isInteger(parsed) ? Math.max(1, Math.min(50, parsed)) : 30;
