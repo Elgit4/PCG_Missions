@@ -1,6 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 
-import { parsePastoralReadInput, parsePastoralReadPath } from "./validation.ts";
+import {
+  parsePastoralAssignedListInput,
+  parsePastoralReadInput,
+  parsePastoralReadPath,
+} from "./validation.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
@@ -194,9 +198,21 @@ Deno.serve(async (request: Request) => {
     );
   }
 
-  const parsed = parsePastoralReadInput(raw);
-  if (!parsed.ok) {
-    return fail("VALIDATION_ERROR", parsed.error, 422, origin, id);
+  const assignedListInput = route.kind === "prayer_request_list"
+    ? parsePastoralAssignedListInput(raw)
+    : null;
+  const pastoralReadInput = route.kind !== "prayer_request_list"
+    ? parsePastoralReadInput(raw)
+    : null;
+  const validation = assignedListInput ?? pastoralReadInput;
+  if (!validation || !validation.ok) {
+    return fail(
+      "VALIDATION_ERROR",
+      validation && !validation.ok ? validation.error : "Invalid pastoral request.",
+      422,
+      origin,
+      id,
+    );
   }
 
   try {
@@ -257,6 +273,47 @@ Deno.serve(async (request: Request) => {
       );
     }
 
+    if (route.kind === "prayer_request_list") {
+      if (!assignedListInput?.ok) {
+        throw new Error("ASSIGNED_PRAYER_INPUT_UNAVAILABLE");
+      }
+      const { data, error } = await service.rpc(
+        "cmi_list_assigned_prayer_requests",
+        {
+          p_actor_auth_user_id: authData.user.id,
+          p_branch_id: assignedListInput.value.branch_id,
+          p_limit: assignedListInput.value.limit,
+          p_offset: assignedListInput.value.offset,
+          p_request_id: id,
+        },
+      );
+      if (error) {
+        if (error.code === "42501") {
+          return fail(
+            "FORBIDDEN",
+            "You do not have permission to view assigned prayer requests.",
+            403,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "22023") {
+          return fail(
+            "VALIDATION_ERROR",
+            "The assigned prayer inbox request is invalid.",
+            422,
+            origin,
+            id,
+          );
+        }
+        throw new Error("ASSIGNED_PRAYER_INBOX_TRANSACTION_FAILED");
+      }
+      return jsonResponse({ data, request_id: id }, 200, origin, id);
+    }
+
+    if (!pastoralReadInput?.ok) {
+      throw new Error("PASTORAL_READ_INPUT_UNAVAILABLE");
+    }
     const rpcName = route.kind === "prayer_request"
       ? "cmi_read_prayer_request"
       : "cmi_read_care_record";
@@ -265,9 +322,9 @@ Deno.serve(async (request: Request) => {
       : "p_care_record_id";
     const parameters: Record<string, unknown> = {
       p_actor_auth_user_id: authData.user.id,
-      p_branch_id: parsed.value.branch_id,
-      p_access_mode: parsed.value.access_mode,
-      p_reason: parsed.value.reason_code,
+      p_branch_id: validation.value.branch_id,
+      p_access_mode: pastoralReadInput.value.access_mode,
+      p_reason: pastoralReadInput.value.reason_code,
       p_request_id: id,
       [recordParameter]: route.recordId,
     };
