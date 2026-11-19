@@ -71,10 +71,12 @@ export function EventCloseoutPanel({
 
   const closeout = workspace?.closeout ?? null;
   const history = workspace?.history ?? [];
-  const canSubmitNow = canSubmit &&
+  const canSubmitNow = workspace !== null &&
+    canSubmit &&
     Date.parse(event.ends_at) <= Date.now() &&
     (!closeout || closeout.status === "returned");
-  const canReviewNow = canReview &&
+  const canReviewNow = workspace !== null &&
+    canReview &&
     closeout?.status === "submitted" &&
     closeout.submitted_by !== currentStaffId;
 
@@ -165,7 +167,7 @@ export function EventCloseoutPanel({
             <span><strong>{closeout?.registration_count ?? "—"}</strong> active registrations</span>
             <span><strong>{closeout?.attendee_count ?? "—"}</strong> checked in</span>
             <span className={closeout?.status === "approved" ? "is-open" : "is-closed"}>
-              {closeout ? closeout.status.replaceAll("_", " ") : "Not submitted"}
+              {workspace ? closeout ? closeout.status.replaceAll("_", " ") : "Not submitted" : "Unavailable"}
             </span>
           </div>
 
