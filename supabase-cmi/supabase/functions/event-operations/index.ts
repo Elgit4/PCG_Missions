@@ -348,10 +348,10 @@ async function listEventAssignmentWorkspace(
     staffNames.set(row.auth_user_id, row.full_name);
   }
   const teamNames = new Map<string, string>();
-  for (const row of [...(historicalTeamResult.data ?? [])]) {
+  for (const row of [...(historicalTeams.data ?? [])]) {
     teamNames.set(row.id, row.name);
   }
-  const candidates = [...(profileResult.data ?? [])].map((row) => ({
+  const candidates = [...(profiles.data ?? [])].map((row) => ({
     auth_user_id: row.auth_user_id,
     full_name: row.full_name,
   }));
@@ -522,7 +522,7 @@ Deno.serve(async (request: Request) => {
             .eq("branch_id", branchId)
             .eq("role.is_active", true)
             .lte("starts_at", parsed.value.starts_at)
-            .or(`ends_at.is.null,ends_at.gt.${parsed.value.starts_at}`)
+            .or(`ends_at.is.null,ends_at.gt.${parsed.value.ends_at ?? parsed.value.starts_at}`)
             .is("revoked_at", null)
             .limit(1)
             .maybeSingle();
