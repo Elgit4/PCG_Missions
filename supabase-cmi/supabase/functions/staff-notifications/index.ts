@@ -118,6 +118,10 @@ async function hasActiveBranch(
   profileId: string,
   branchId: string,
 ) {
+  const { data: branch, error: branchError } = await service.from("branch")
+    .select("id,is_active").eq("id", branchId).maybeSingle();
+  if (branchError) throw new Error("BRANCH_LOOKUP_FAILED");
+  if (!branch?.is_active) return false;
   const now = new Date().toISOString();
   const { data, error } = await service.from("staff_role_assignment")
     .select("id,role:role!inner(is_active)")
