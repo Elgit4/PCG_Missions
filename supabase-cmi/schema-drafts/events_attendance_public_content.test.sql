@@ -84,10 +84,15 @@ select extensions.ok(
   and has_table_privilege('service_role','public.sermon','UPDATE')
   and has_table_privilege('service_role','public.church_public_profile','SELECT')
   and not has_table_privilege('service_role','public.event','DELETE')
-  and not has_table_privilege('service_role','public.event_registration','INSERT')
+  and has_table_privilege('service_role','public.event_registration','INSERT')
+  and has_table_privilege('service_role','public.event_idempotency_receipt','INSERT')
+  and not has_table_privilege('anon','public.event_registration','INSERT')
+  and not has_table_privilege('authenticated','public.event_registration','INSERT')
+  and not has_table_privilege('anon','public.event_idempotency_receipt','INSERT')
+  and not has_table_privilege('authenticated','public.event_idempotency_receipt','INSERT')
   and not has_table_privilege('anon','public.event','SELECT')
   and not has_table_privilege('authenticated','public.sermon','SELECT'),
-  'service_role has explicit least-privilege calendar/event/content access while browser access and registration writes stay closed'
+  'service_role has the limited event transaction writes required by the server RPCs while browser registration and public-content access stay closed'
 );
 
 -- Keep the Edge Function's fixed public projections aligned with real schema columns.
@@ -971,7 +976,7 @@ select ok(
     and resource_type='event_registration'
  )
  and (
-  select count(*)=2 from public.event_idempotency_receipt
+  select count(*)=3 from public.event_idempotency_receipt
   where event_id='51000000-0000-4000-8000-000000000003'
     and operation='staff_registration'
  ),
