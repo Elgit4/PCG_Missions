@@ -421,7 +421,7 @@ export function OperationsWorkspace({
               <article className="cmi-task-row" key={item.id}>
                 <div className="cmi-task-symbol"><CalendarDays size={18} /></div>
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.starts_at, timeZone)} – {formatBranchDate(item.ends_at, timeZone)}{item.location ? " · " + item.location : ""}</p><small>{shortText(item.description ?? "No description added.")}</small></div>
-                <span className="cmi-task-status status-open">{item.status === "draft" ? "Private draft" : item.registration_state === "open" ? "Staff registration open" : "Staff event · Registration closed"}</span>
+                <span className="cmi-task-status status-open">{item.status === "draft" ? "Private draft" : item.status === "completed" ? "Completed" : item.status === "cancelled" ? "Cancelled" : item.registration_state === "open" ? "Staff registration open" : "Staff event · Registration closed"}</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setAssignmentEvent(item)} aria-label={"Manage assignments for " + item.title}><Users size={14} />Assignments</button>}
                 {canManageRegistrations && item.status === "draft" && item.visibility === "private" && item.registration_state === "closed" && (
                   <button type="button" className="cmi-button cmi-button-secondary" disabled={!item.capacity || saving} onClick={async () => {
