@@ -192,7 +192,7 @@ export function OperationsWorkspace({
           const created = await api.createEventDraft({ branch_id: branchId, ...input });
           savedEventId = created.data.id;
         }
-        const selectedFlyer = form.get("flyer");
+        const selectedFlyer = flyerFile;
         if (savedEventId && selectedFlyer instanceof File && selectedFlyer.size > 0) {
           try {
             await api.uploadEventFlyer(branchId, savedEventId, selectedFlyer);
