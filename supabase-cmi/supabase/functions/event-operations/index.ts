@@ -694,8 +694,6 @@ Deno.serve(async (request: Request) => {
       return response({ data, request_id: id }, 200, origin, id);
     }
 
-
-
     if (request.method === "POST" && isRegistrationCheckin) {
       const branchId = parseBranchQuery(url);
       if (!branchId) {
