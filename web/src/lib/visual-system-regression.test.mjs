@@ -40,9 +40,11 @@ function contrast(foreground, background) {
 
 describe('semantic text contrast', () => {
   it('keeps secondary and subtle light-theme text at WCAG AA contrast', () => {
-    const subtle = stylesheet.match(/--cmi-subtle:\s*(#[0-9a-f]{6})/i)?.[1];
-    const muted = stylesheet.match(/--cmi-muted:\s*(#[0-9a-f]{6})/i)?.[1];
-    const accent = stylesheet.match(/--cmi-brand-accent:\s*(#[0-9a-f]{6})/i)?.[1];
+    const lightBlocks = [...stylesheet.matchAll(/:root\s*\{([\s\S]*?)\n\}/g)];
+    const light = lightBlocks.at(-1)?.[1] ?? '';
+    const subtle = light.match(/--cmi-subtle:\s*(#[0-9a-f]{6})/i)?.[1];
+    const muted = light.match(/--cmi-muted:\s*(#[0-9a-f]{6})/i)?.[1];
+    const accent = light.match(/--cmi-brand-accent:\s*(#[0-9a-f]{6})/i)?.[1];
     expect(subtle).toBeTruthy();
     expect(muted).toBeTruthy();
     expect(accent).toBeTruthy();
@@ -52,7 +54,8 @@ describe('semantic text contrast', () => {
   });
 
   it('keeps dark-theme secondary text and gold accent readable', () => {
-    const dark = stylesheet.match(/html\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
+    const darkBlocks = [...stylesheet.matchAll(/html\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/g)];
+    const dark = darkBlocks.at(-1)?.[1] ?? '';
     const subtle = dark.match(/--cmi-subtle:\s*(#[0-9a-f]{6})/i)?.[1];
     const muted = dark.match(/--cmi-muted:\s*(#[0-9a-f]{6})/i)?.[1];
     const accent = dark.match(/--cmi-brand-accent:\s*(#[0-9a-f]{6})/i)?.[1];
