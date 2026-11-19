@@ -3,8 +3,8 @@ import { isUuid, sniffImage } from "./validation.ts";
 import {
   canManageFlyerInScope,
   flyerProfileDenial,
+  hasEligibleFlyerAssignment,
   isEditablePrivateEvent,
-  isFlyerAssignmentEligible,
 } from "./access.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -194,16 +194,18 @@ async function canManageEvent(
     const { data, error: eventError } = await service.from(
       "event_staff_assignment",
     )
-      .select("id,assignment_role").eq("event_id", eventId).eq(
+      .select("assignment_role").eq("event_id", eventId).eq(
         "branch_id",
         branchId,
       )
       .eq("staff_auth_user_id", actorId)
       .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
-      .is("revoked_at", null).limit(1).maybeSingle();
+      .is("revoked_at", null);
     if (eventError) throw new Error("EVENT_ASSIGNMENT_LOOKUP_FAILED");
-    directEventAssignment = Boolean(
-      data && isFlyerAssignmentEligible(data.assignment_role),
+    directEventAssignment = hasEligibleFlyerAssignment(
+      (data ?? []).map((assignment: { assignment_role: string }) =>
+        assignment.assignment_role
+      ),
     );
   }
   if (scopes.includes("team")) {
