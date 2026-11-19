@@ -789,7 +789,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                 setTaskContactResults([]);
                 setTaskContactError("");
                 setShowTaskForm((value) => !value);
-              }}><Plus size={16} />New task</button>}
+              }} disabled={!canReadContacts}><Plus size={16} />New task</button>}
               {canCreateTasks && canSelfAssignTask && !canReadContacts && <div className="cmi-task-prerequisite" role="note">
                 <span>Your current role cannot search the contact directory. Ask an authorised coordinator to grant the required contact access.</span>
               </div>}
@@ -806,6 +806,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                   onChange={(change) => {
                     setTaskContactQuery(change.target.value);
                     setTaskContactId("");
+                    setTaskContactResults([]);
                   }} />
                 <input type="hidden" name="contact_id" value={taskContactId} />
                 {taskContactLoading && <small role="status">Searching contacts…</small>}
@@ -832,7 +833,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               <label>Priority<select name="priority" defaultValue="2"><option value="1">Urgent</option><option value="2">Normal</option><option value="3">Low</option><option value="4">Very low</option><option value="5">Minimal</option></select></label>
               <label>Due date and time<input type="datetime-local" name="due_at" /></label>
               <label className="cmi-field-wide">Operational note <span>Do not enter pastoral narratives or sensitive identity data</span><textarea name="task_note" rows={3} maxLength={1000} /></label>
-              <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setShowTaskForm(false); setTaskContactId(""); }}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Create task"}</button></div>
+              <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setShowTaskForm(false); setTaskContactId(""); setTaskContactQuery(""); setTaskContactResults([]); }}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Create task"}</button></div>
             </form>}
             <div className="cmi-followup-toolbar">
               <div className="cmi-operations-tabs" role="group" aria-label="Filter follow-up tasks">
