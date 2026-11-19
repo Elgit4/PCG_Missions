@@ -1,7 +1,7 @@
 import {
   isUuid,
-  parsePastoralReadInput,
   parsePastoralAssignedListInput,
+  parsePastoralReadInput,
   parsePastoralReadPath,
 } from "./validation.ts";
 
@@ -169,4 +169,3 @@ Deno.test("validates assigned prayer inbox pagination and branch scope", () => {
     );
   }
 });
-
