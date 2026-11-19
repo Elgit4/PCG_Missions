@@ -233,7 +233,7 @@ export function OperationsWorkspace({
   const editingWelcome = section === "Content" && contentKind === "welcome-messages" ? welcomeMessages.find((item) => item.id === editingId) : undefined;
 
   const description = section === "Events"
-    ? "Create and maintain internal event drafts. Registration, transport, capacity and check-in are not enabled in this workspace."
+    ? "Create and maintain internal event drafts. Registration, capacity and check-in are not enabled in this workspace."
     : section === "Calendar"
     ? "Maintain branch calendar entries for services, events and other ministry activities."
     : section === "Announcements"
@@ -282,7 +282,7 @@ export function OperationsWorkspace({
                 <label>Starts at ({timeZone})<input name="starts_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEvent?.starts_at, timeZone)} /></label>
                 <label>Ends at ({timeZone})<input name="ends_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEvent?.ends_at, timeZone)} /></label>
                 <label className="cmi-field-wide">Description<textarea name="description" rows={3} maxLength={12000} defaultValue={editingEvent?.description ?? ""} placeholder="Purpose, audience and instructions for staff." /></label>
-                <p className="cmi-field-wide cmi-scope-note">The server saves this as a private draft with registration closed. Public registration, capacity, transport and attendance are intentionally unavailable.</p>
+                <p className="cmi-field-wide cmi-scope-note">The server saves this as a private draft with registration closed. Public registration, capacity and attendance are intentionally unavailable.</p>
               </>
             )}
             {section === "Calendar" && (
