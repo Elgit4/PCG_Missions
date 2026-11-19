@@ -10,6 +10,7 @@ export interface FlyerReplacementOperations {
   createSignedPreview(objectPath: string): Promise<string>;
   saveMetadata(metadata: FlyerMetadata): Promise<void>;
   removeObject(objectPath: string): Promise<void>;
+  onRollbackCleanupFailure?(): void;
 }
 
 export interface FlyerReplacementResult {
@@ -38,8 +39,7 @@ export async function attachFlyerReplacement(
     try {
       await operations.removeObject(newObjectPath);
     } catch {
-      // Preserve the original failure. The caller logs the request ID and
-      // returns a safe error; an orphan-cleanup process can reconcile storage.
+      operations.onRollbackCleanupFailure?.();
     }
     throw error;
   }
