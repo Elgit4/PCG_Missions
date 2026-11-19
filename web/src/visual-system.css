@@ -732,3 +732,14 @@ html[data-theme="dark"] .cmi-dashboard-trust-note { background: var(--cmi-surfac
 .cmi-flyer-preview { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 10px; border: 1px solid var(--cmi-border, #dfe4e8); border-radius: 12px; }
 .cmi-flyer-preview img { width: 92px; height: 112px; object-fit: contain; border-radius: 7px; background: #eef1f3; }
 .cmi-flyer-preview span { overflow-wrap: anywhere; color: var(--cmi-text, #172331); font-size: 12px; font-weight: 600; }
+
+
+.cmi-task-contact-picker { display: grid; gap: 8px; position: relative; }
+.cmi-task-contact-picker > label { color: var(--cmi-text); font-size: 13px; font-weight: 700; }
+.cmi-task-contact-picker > input[type="search"] { width: 100%; min-height: 46px; padding: 11px 13px; border: 1px solid var(--cmi-border); border-radius: 10px; background: var(--cmi-surface); color: var(--cmi-text); font-size: 16px; }
+.cmi-task-contact-picker > small { color: var(--cmi-muted); font-size: 12px; line-height: 1.45; }
+.cmi-task-contact-results { display: grid; gap: 4px; max-height: 220px; overflow: auto; padding: 5px; border: 1px solid var(--cmi-border); border-radius: 12px; background: var(--cmi-surface); }
+.cmi-task-contact-results button { display: grid; gap: 4px; width: 100%; min-height: 48px; padding: 9px 11px; border: 0; border-radius: 8px; background: transparent; color: var(--cmi-text); text-align: left; cursor: pointer; }
+.cmi-task-contact-results button:hover, .cmi-task-contact-results button[aria-selected="true"] { background: var(--cmi-surface-muted); }
+.cmi-task-contact-results button strong { font-size: 13px; }
+.cmi-task-contact-results button span { color: var(--cmi-muted); font-size: 12px; }
