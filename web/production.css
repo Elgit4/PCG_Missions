@@ -3790,3 +3790,161 @@ html[data-theme="dark"] .staff-login-security-label i { color: var(--cmi-brand-a
     width: 100%;
   }
 }
+
+
+/* Assigned prayer inbox — private narratives stay visually contained. */
+.cmi-prayer-workspace .cmi-panel {
+  border: 1px solid var(--cmi-border);
+  background: var(--cmi-surface);
+}
+.cmi-prayer-heading h3 {
+  margin: 3px 0 7px;
+  color: var(--cmi-text);
+  font-size: 18px;
+}
+.cmi-prayer-heading p:not(.cmi-eyebrow) {
+  margin: 0;
+  color: var(--cmi-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.cmi-prayer-privacy-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  color: var(--cmi-green);
+  font-size: 10px;
+  font-weight: 650;
+}
+.cmi-prayer-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--cmi-border-soft);
+  border-bottom: 1px solid var(--cmi-border-soft);
+  color: var(--cmi-muted);
+  font-size: 10px;
+}
+.cmi-prayer-summary strong {
+  color: var(--cmi-text);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.cmi-prayer-list {
+  display: grid;
+  gap: 11px;
+  padding-top: 14px;
+}
+.cmi-prayer-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--cmi-border-soft);
+  border-radius: 12px;
+  background: var(--cmi-surface-raised);
+}
+.cmi-prayer-card-heading,
+.cmi-prayer-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: var(--cmi-subtle);
+  font-size: 9px;
+}
+.cmi-prayer-status {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--cmi-border);
+  border-radius: 99px;
+  padding: 5px 9px;
+  background: var(--cmi-surface-soft);
+  color: var(--cmi-text);
+  font-size: 9px;
+  font-weight: 700;
+}
+.cmi-prayer-status.status-answered {
+  border-color: rgb(84 212 167 / 28%);
+  background: rgb(84 212 167 / 12%);
+  color: var(--cmi-green);
+}
+.cmi-prayer-status.status-closed {
+  color: var(--cmi-muted);
+}
+.cmi-prayer-narrative {
+  margin: 14px 0;
+  color: var(--cmi-text);
+  font-size: 13px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.cmi-prayer-card-footer {
+  justify-content: flex-start;
+  padding-top: 11px;
+  border-top: 1px solid var(--cmi-border-soft);
+}
+.cmi-prayer-empty {
+  display: grid;
+  justify-items: center;
+  padding: 42px 18px;
+  text-align: center;
+}
+.cmi-prayer-empty > div {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--cmi-border);
+  border-radius: 14px;
+  background: var(--cmi-surface-raised);
+  color: var(--cmi-green);
+}
+.cmi-prayer-empty strong {
+  margin-top: 14px;
+  color: var(--cmi-text);
+  font-size: 13px;
+}
+.cmi-prayer-empty p {
+  max-width: 430px;
+  color: var(--cmi-muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+.cmi-prayer-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--cmi-border-soft);
+  color: var(--cmi-muted);
+  font-size: 10px;
+}
+.cmi-prayer-pagination > div {
+  display: flex;
+  gap: 8px;
+}
+@media (max-width: 680px) {
+  .cmi-prayer-summary,
+  .cmi-prayer-pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .cmi-prayer-pagination > div {
+    width: 100%;
+  }
+  .cmi-prayer-pagination .cmi-button {
+    flex: 1;
+    justify-content: center;
+  }
+  .cmi-prayer-card {
+    padding: 13px;
+  }
+  .cmi-prayer-narrative {
+    font-size: 12px;
+  }
+}
