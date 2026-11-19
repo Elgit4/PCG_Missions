@@ -17,9 +17,9 @@ describe("formatApplicationError", () => {
   });
 
   it("explains validation and upload failures", () => {
-    expect(formatApplicationError(new CmiApiError(422, "INVALID_INPUT", "raw validation"))).toContain("Some information is missing or invalid");
-    expect(formatApplicationError(new CmiApiError(413, "PAYLOAD_TOO_LARGE", "raw body"))).toContain("too large");
-    expect(formatApplicationError(new CmiApiError(415, "UNSUPPORTED_MEDIA", "raw mime"))).toContain("file type isn't supported");
+    expect(formatApplicationError(new CmiApiError(422, "INVALID_INPUT", "raw validation", null))).toContain("Some information is missing or invalid");
+    expect(formatApplicationError(new CmiApiError(413, "PAYLOAD_TOO_LARGE", "raw body", null))).toContain("too large");
+    expect(formatApplicationError(new CmiApiError(415, "UNSUPPORTED_MEDIA", "raw mime", null))).toContain("file type isn't supported");
   });
 
   it("uses a generic credential message to avoid account enumeration", () => {
