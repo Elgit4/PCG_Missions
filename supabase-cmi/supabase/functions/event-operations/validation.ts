@@ -428,7 +428,6 @@ export function parseEventStaffRegistration(
   };
 }
 
-
 export interface EventRegistrationCancelInput {
   idempotency_key: string;
 }
@@ -459,7 +458,6 @@ export function parseEventRegistrationCancel(
   }
   return { ok: true, value: { idempotency_key: value.idempotency_key } };
 }
-
 
 export function parseEventCheckin(
   value: unknown,
