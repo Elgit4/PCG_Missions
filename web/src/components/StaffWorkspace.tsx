@@ -4,6 +4,7 @@ import { OperationsWorkspace } from "./OperationsWorkspace";
 import { TeamAdministrationWorkspace } from "./TeamAdministrationWorkspace";
 import { MinistryReportsWorkspace } from "./MinistryReportsWorkspace";
 import { ContactDetailDialog } from "./ContactDetailDialog";
+import { StaffNotificationCenter } from "./StaffNotificationCenter";
 import { OverviewDashboard } from "./OverviewDashboard";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
 import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
@@ -624,6 +625,10 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             <h1>{page === "Follow-up" ? "Follow-up tasks" : page}</h1>
           </div>
           <div className="cmi-topbar-actions">
+            <StaffNotificationCenter api={api} branchId={branchId} onNavigate={(target) => {
+              const destination = target === "followup_task" ? "Follow-up" : target === "event" ? "Events" : target === "ministry_report" ? "Reports" : null;
+              if (destination && availablePages.includes(destination)) setPage(destination);
+            }} />
             <ThemeToggle />
             <button type="button" className="cmi-icon-action" onClick={() => void refresh()} disabled={refreshing || loading} aria-label={refreshing ? "Refreshing workspace" : "Refresh workspace"} title={refreshing ? "Refreshing" : "Refresh"}>
               <RefreshCw size={17} className={refreshing ? "is-spinning" : undefined} />
