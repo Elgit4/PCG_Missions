@@ -1438,8 +1438,13 @@ Deno.serve(async (request: Request) => {
         const safeSearch = params.search.replace(/[%,()_"\\]/g, " ").trim();
         if (safeSearch) {
           const term = `%${safeSearch}%`;
-          const fields = ["first_name.ilike." + term, "last_name.ilike." + term];
-          if (identityIds === null) fields.push("phone_e164.ilike." + term);
+          const fields = [
+            "first_name.ilike." + term,
+            "last_name.ilike." + term,
+          ];
+          if (identityIds === null) {
+            fields.push("phone_e164.ilike." + term);
+          }
           query = query.or(fields.join(","));
         }
       }
