@@ -144,7 +144,7 @@ $$;
 
 drop trigger if exists followup_task_notify_assignment on public.followup_task;
 create trigger followup_task_notify_assignment
-after insert or update of assignee_user_id, status on public.followup_task
+after insert or update of assignee_user_id, team_id, status on public.followup_task
 for each row execute function private.cmi_notify_followup_assignment();
 
 create or replace function private.cmi_notify_event_assignment()
@@ -157,7 +157,7 @@ declare
   event_title text;
 begin
   if new.revoked_at is null
-     and new.ends_at is null
+     and (new.ends_at is null or new.ends_at > now())
      and new.assignment_role <> 'transport'
      and new.staff_auth_user_id is distinct from new.assigned_by
      and exists (
