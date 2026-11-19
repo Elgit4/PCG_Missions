@@ -9,6 +9,7 @@ import {
   RefreshCw,
   ShieldCheck,
   X,
+  Users,
 } from "lucide-react";
 import {
   CmiApiClient,
@@ -22,6 +23,7 @@ import {
 import { hasCapability } from "../lib/capabilities";
 import { formatBranchDate, toBranchLocalInput, branchLocalInputToIso } from "../lib/branch-time";
 import { formatApplicationError } from "../lib/error-messages";
+import { EventAssignmentsPanel } from "./EventAssignmentsPanel";
 
 type OperationsSection = "Events" | "Calendar" | "Announcements" | "Content";
 type ContentKind = "sermons" | "welcome-messages";
@@ -69,6 +71,7 @@ export function OperationsWorkspace({
   const [flyerFile, setFlyerFile] = useState<File | null>(null);
   const [flyerPreview, setFlyerPreview] = useState<string | null>(null);
   const [existingFlyerUrl, setExistingFlyerUrl] = useState<string | null>(null);
+  const [assignmentEvent, setAssignmentEvent] = useState<EventDraftRecord | null>(null);
 
   useEffect(() => {
     if (!flyerFile) { setFlyerPreview(null); return; }
@@ -270,7 +273,7 @@ export function OperationsWorkspace({
   const editingWelcome = section === "Content" && contentKind === "welcome-messages" ? welcomeMessages.find((item) => item.id === editingId) : undefined;
 
   const description = section === "Events"
-    ? "Create and maintain internal event drafts. Registration, capacity and check-in are not enabled in this workspace."
+    ? "Create private event drafts and manage the staff and ministry teams assigned to each event. Registration, check-in and closeout remain separately gated."
     : section === "Calendar"
     ? "Maintain branch calendar entries for services, events and other ministry activities."
     : section === "Announcements"
@@ -394,11 +397,23 @@ export function OperationsWorkspace({
                 <div className="cmi-task-symbol"><CalendarDays size={18} /></div>
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.starts_at, timeZone)} – {formatBranchDate(item.ends_at, timeZone)}{item.location ? " · " + item.location : ""}</p><small>{shortText(item.description ?? "No description added.")}</small></div>
                 <span className="cmi-task-status status-open">Private draft</span>
+                {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setAssignmentEvent(item)} aria-label={"Manage assignments for " + item.title}><Users size={14} />Assignments</button>}
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
             {!events.length && <p className="cmi-detail-muted">No event drafts are visible in this branch.</p>}
           </div>
+        )}
+
+        {section === "Events" && canManage && assignmentEvent && (
+          <EventAssignmentsPanel
+            api={api}
+            branchId={branchId}
+            timeZone={timeZone}
+            event={assignmentEvent}
+            onClose={() => setAssignmentEvent(null)}
+            onSessionExpired={onSessionExpired}
+          />
         )}
 
         {section === "Calendar" && canRead && !loading && (
