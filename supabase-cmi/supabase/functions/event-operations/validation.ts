@@ -483,7 +483,6 @@ export function parseEventCheckin(
   return { ok: true, value: { idempotency_key: value.idempotency_key } };
 }
 
-
 export interface EventCloseoutSubmitInput {
   idempotency_key: string;
   summary_notes: string | null;
