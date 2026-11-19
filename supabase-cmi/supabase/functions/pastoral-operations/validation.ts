@@ -136,7 +136,6 @@ export function parsePastoralReadInput(
   };
 }
 
-
 export function parsePastoralAssignedListInput(
   value: unknown,
 ): PastoralAssignedListParseResult {
@@ -159,10 +158,16 @@ export function parsePastoralAssignedListInput(
 
   const limit = input.limit === undefined ? 25 : input.limit;
   const offset = input.offset === undefined ? 0 : input.offset;
-  if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+  if (
+    typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 ||
+    limit > 50
+  ) {
     return { ok: false, error: "Limit must be an integer from 1 to 50." };
   }
-  if (typeof offset !== "number" || !Number.isInteger(offset) || offset < 0 || offset > 5000) {
+  if (
+    typeof offset !== "number" || !Number.isInteger(offset) || offset < 0 ||
+    offset > 5000
+  ) {
     return { ok: false, error: "Offset must be an integer from 0 to 5000." };
   }
 
