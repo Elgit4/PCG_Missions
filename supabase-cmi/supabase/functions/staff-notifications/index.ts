@@ -131,15 +131,24 @@ Deno.serve(async (request: Request) => {
       }, 200, origin, id);
     }
     const path = url.pathname.split("/").filter(Boolean);
-    if (path[path.length - 1] !== "read-all") {
+    if (path[path.length - 1] === "read-all") {
+      const { data, error } = await auth.service.from("staff_notification")
+        .update({ read_at: new Date().toISOString() })
+        .eq("recipient_user_id", auth.actorId).eq("branch_id", branchId)
+        .is("read_at", null).select("id");
+      if (error) throw new Error("NOTIFICATION_UPDATE_FAILED");
+      return respond({ data: { updated_count: data?.length ?? 0 }, request_id: id }, 200, origin, id);
+    }
+    const notificationId = path[path.length - 2] === "read" ? path[path.length - 3] : "";
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(notificationId)) {
       return fail("NOT_FOUND", "The requested notification action was not found.", 404, origin, id);
     }
     const { data, error } = await auth.service.from("staff_notification")
       .update({ read_at: new Date().toISOString() })
-      .eq("recipient_user_id", auth.actorId).eq("branch_id", branchId)
-      .is("read_at", null).select("id");
+      .eq("id", notificationId).eq("recipient_user_id", auth.actorId)
+      .eq("branch_id", branchId).is("read_at", null).select("id").maybeSingle();
     if (error) throw new Error("NOTIFICATION_UPDATE_FAILED");
-    return respond({ data: { updated_count: data?.length ?? 0 }, request_id: id }, 200, origin, id);
+    return respond({ data: { updated: Boolean(data) }, request_id: id }, 200, origin, id);
   } catch (cause) {
     const code = cause instanceof Error ? cause.message : "UNKNOWN_ERROR";
     console.error("staff-notifications failure", { request_id: id, code });
