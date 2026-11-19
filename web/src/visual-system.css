@@ -743,3 +743,35 @@ html[data-theme="dark"] .cmi-dashboard-trust-note { background: var(--cmi-surfac
 .cmi-task-contact-results button:hover, .cmi-task-contact-results button[aria-selected="true"] { background: var(--cmi-surface-muted); }
 .cmi-task-contact-results button strong { font-size: 13px; }
 .cmi-task-contact-results button span { color: var(--cmi-muted); font-size: 12px; }
+
+
+/* Accessible type and touch scale across the staff workspace */
+.cmi-workspace { font-size: 14px; }
+.cmi-workspace .cmi-sidebar-label,
+.cmi-workspace .cmi-eyebrow,
+.cmi-workspace .cmi-nav-desktop-label,
+.cmi-workspace .cmi-user-card small,
+.cmi-workspace .cmi-sidebar-attribution span,
+.cmi-workspace .cmi-table caption { font-size: 12px; line-height: 1.45; }
+.cmi-workspace .cmi-button { min-height: 44px; font-size: 13px; }
+.cmi-workspace input:not([type="checkbox"]):not([type="radio"]),
+.cmi-workspace select,
+.cmi-workspace textarea { font-size: 16px; }
+.cmi-workspace .cmi-mobile-nav button { min-height: 44px; }
+.cmi-workspace .cmi-mobile-nav button span { font-size: 12px; }
+.staff-login-password-strength { display: grid; gap: 8px; margin-top: 4px; padding: 12px; border: 1px solid var(--cmi-border, #dfe4e8); border-radius: 12px; background: var(--cmi-surface, #fff); color: var(--cmi-text, #172331); }
+.staff-login-password-strength-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; }
+.staff-login-password-strength-heading strong { font-weight: 700; }
+.staff-login-password-strength-track { height: 6px; overflow: hidden; border-radius: 99px; background: var(--cmi-surface-muted, #e9edf0); }
+.staff-login-password-strength-track span { display: block; height: 100%; border-radius: inherit; background: var(--cmi-accent, #b99a58); transition: width 160ms ease; }
+.staff-login-password-strength ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; margin: 0; padding: 0; list-style: none; }
+.staff-login-password-strength li { display: flex; align-items: center; gap: 6px; color: var(--cmi-muted, #687787); font-size: 11px; line-height: 1.35; }
+.staff-login-password-strength li.valid { color: var(--cmi-positive, #278365); }
+.staff-login-password-strength li span { font-weight: 800; }
+.staff-login-debug-action { opacity: .8; }
+@media (max-width: 520px) {
+  .staff-login-password-strength ul { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .staff-login-password-strength-track span { transition: none; }
+}
