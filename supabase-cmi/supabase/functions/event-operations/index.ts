@@ -4,6 +4,8 @@ import {
   parseEventCreate,
   parseEventListQuery,
   parseEventPatch,
+  parseEventStaffAssignment,
+  parseEventTeamAssignment,
 } from "./validation.ts";
 import { readJson } from "../_shared/request_body.ts";
 
@@ -256,6 +258,119 @@ async function eventIsVisible(
   return await isAssignedEvent(service, eventId, branchId, actorId);
 }
 
+
+function parseBranchQuery(url: URL): string | null {
+  const keys = [...url.searchParams.keys()];
+  const branchId = url.searchParams.get("branch_id") ?? "";
+  if (
+    keys.length !== 1 || keys[0] !== "branch_id" ||
+    url.searchParams.getAll("branch_id").length !== 1 || !isUuid(branchId)
+  ) return null;
+  return branchId;
+}
+
+async function loadEventForManagement(
+  service: ServiceClient,
+  profileId: string,
+  eventId: string,
+  branchId: string,
+): Promise<{ ok: true; status: string } | { ok: false; responseCode: "FORBIDDEN" | "NOT_FOUND"; statusCode: 403 | 404 }> {
+  const scopes = await resolveScopes(service, profileId, branchId, "event.manage.scoped");
+  if (!scopes.includes("branch")) {
+    return { ok: false, responseCode: "FORBIDDEN", statusCode: 403 };
+  }
+  const { data, error } = await service.from("event")
+    .select("id,status")
+    .eq("id", eventId)
+    .eq("branch_id", branchId)
+    .maybeSingle();
+  if (error) throw new Error("EVENT_MANAGEMENT_LOOKUP_FAILED");
+  if (!data) return { ok: false, responseCode: "NOT_FOUND", statusCode: 404 };
+  return { ok: true, status: data.status };
+}
+
+async function listEventAssignmentWorkspace(
+  service: ServiceClient,
+  eventId: string,
+  branchId: string,
+): Promise<{
+  staff_assignments: Record<string, unknown>[];
+  team_assignments: Record<string, unknown>[];
+  staff_candidates: { auth_user_id: string; full_name: string }[];
+  team_candidates: { id: string; name: string }[];
+}> {
+  const now = new Date().toISOString();
+  const [staffRows, teamRows, memberships, teams] = await Promise.all([
+    service.from("event_staff_assignment")
+      .select("id,event_id,branch_id,staff_auth_user_id,assignment_role,starts_at,ends_at,revoked_at,created_at")
+      .eq("event_id", eventId).eq("branch_id", branchId)
+      .order("starts_at", { ascending: true }),
+    service.from("event_team_assignment")
+      .select("id,event_id,branch_id,team_id,assignment_role,starts_at,ends_at,revoked_at,created_at")
+      .eq("event_id", eventId).eq("branch_id", branchId)
+      .order("starts_at", { ascending: true }),
+    service.from("staff_role_assignment")
+      .select("staff_profile_id,role:role!inner(is_active)")
+      .eq("branch_id", branchId).eq("role.is_active", true)
+      .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
+      .is("revoked_at", null),
+    service.from("team").select("id,name,is_active")
+      .eq("branch_id", branchId).eq("is_active", true)
+      .order("name", { ascending: true }).limit(200),
+  ]);
+  if (staffRows.error || teamRows.error || memberships.error || teams.error) {
+    throw new Error("EVENT_ASSIGNMENT_LIST_FAILED");
+  }
+
+  const profileIds = [...new Set((memberships.data ?? []).map((row: { staff_profile_id: string }) => row.staff_profile_id))];
+  const assignedStaffIds = (staffRows.data ?? []).map((row: { staff_auth_user_id: string }) => row.staff_auth_user_id);
+  const assignedTeamIds = (teamRows.data ?? []).map((row: { team_id: string }) => row.team_id);
+  const [profiles, historicalTeams] = await Promise.all([
+    service.from("staff_profile")
+      .select("id,auth_user_id,full_name,account_status")
+      .in("id", profileIds.length ? profileIds : ["00000000-0000-4000-8000-000000000000"])
+      .eq("account_status", "active")
+      .order("full_name", { ascending: true }).limit(200),
+    service.from("team")
+      .select("id,name,is_active")
+      .eq("branch_id", branchId)
+      .in("id", [...new Set([...(teams.data ?? []).map((row: { id: string }) => row.id), ...assignedTeamIds])])
+      .limit(250),
+  ]);
+  if (profiles.error || historicalTeams.error) {
+    throw new Error("EVENT_ASSIGNMENT_DIRECTORY_FAILED");
+  }
+
+  const staffNames = new Map<string, string>();
+  for (const row of [...(profiles.data ?? [])]) {
+    staffNames.set(row.auth_user_id, row.full_name);
+  }
+  const teamNames = new Map<string, string>();
+  for (const row of [...(historicalTeams.data ?? [])]) {
+    teamNames.set(row.id, row.name);
+  }
+  const candidates = [...(profiles.data ?? [])].map((row) => ({
+    auth_user_id: row.auth_user_id,
+    full_name: row.full_name,
+  }));
+  const teamCandidates = [...(teams.data ?? [])].map((row: { id: string; name: string }) => ({
+    id: row.id,
+    name: row.name,
+  }));
+  return {
+    staff_assignments: (staffRows.data ?? []).map((row: Record<string, unknown>) => ({
+      ...row,
+      staff_name: staffNames.get(String(row.staff_auth_user_id)) ?? "Inactive or unavailable staff",
+    })),
+    team_assignments: (teamRows.data ?? []).map((row: Record<string, unknown>) => ({
+      ...row,
+      team_name: teamNames.get(String(row.team_id)) ?? "Inactive team",
+    })),
+    staff_candidates: candidates,
+    team_candidates: teamCandidates,
+  };
+}
+
 Deno.serve(async (request: Request) => {
   const id = newRequestId();
   const origin = request.headers.get("Origin");
@@ -316,6 +431,177 @@ Deno.serve(async (request: Request) => {
     const isCollection = previous === "event-operations" && last === "events";
     const isItem = path[path.length - 3] === "event-operations" &&
       previous === "events" && isUuid(last);
+
+    const eventsIndex = path.lastIndexOf("events");
+    const nestedEventId = eventsIndex >= 0 ? (path[eventsIndex + 1] ?? "") : "";
+    const eventSuffix = eventsIndex >= 0 ? path.slice(eventsIndex + 2) : [];
+    const assignmentKind = eventSuffix[0] === "staff-assignments"
+      ? "staff"
+      : eventSuffix[0] === "team-assignments"
+      ? "team"
+      : null;
+    const isAssignmentWorkspace = isUuid(nestedEventId) &&
+      eventSuffix.length === 1 && eventSuffix[0] === "assignments";
+    const isAssignmentCollection = isUuid(nestedEventId) &&
+      eventSuffix.length === 1 && assignmentKind !== null;
+    const isAssignmentRevoke = isUuid(nestedEventId) &&
+      eventSuffix.length === 3 && assignmentKind !== null &&
+      isUuid(eventSuffix[1]) && eventSuffix[2] === "revoke";
+
+
+
+    if (
+      (request.method === "GET" && isAssignmentWorkspace) ||
+      (request.method === "POST" && isAssignmentCollection) ||
+      (request.method === "POST" && isAssignmentRevoke)
+    ) {
+      const branchId = parseBranchQuery(url);
+      if (!branchId) {
+        return fail("INVALID_QUERY", "A single valid branch_id is required.", 400, origin, id);
+      }
+      const managed = await loadEventForManagement(
+        auth.service,
+        auth.profileId,
+        nestedEventId,
+        branchId,
+      );
+      if (!managed.ok) {
+        return fail(
+          managed.responseCode,
+          managed.responseCode === "NOT_FOUND" ? "Event not found." : "The operation is not permitted.",
+          managed.statusCode,
+          origin,
+          id,
+        );
+      }
+
+      if (request.method === "GET" && isAssignmentWorkspace) {
+        const data = await listEventAssignmentWorkspace(auth.service, nestedEventId, branchId);
+        return response({ data, request_id: id }, 200, origin, id);
+      }
+
+      if (request.method === "POST" && isAssignmentCollection) {
+        if (managed.status === "cancelled" || managed.status === "completed") {
+          return fail("EVENT_NOT_ASSIGNABLE", "Assignments cannot be changed for a cancelled or completed event.", 409, origin, id);
+        }
+        let body: unknown;
+        try {
+          body = await readJson(request);
+        } catch (error) {
+          const code = error instanceof Error ? error.message : "INVALID_JSON";
+          return fail(
+            code,
+            code === "CONTENT_TYPE_REQUIRED" ? "Content-Type must be application/json." :
+              code === "BODY_TOO_LARGE" ? "Request body is too large." :
+              "A valid JSON request body is required.",
+            code === "BODY_TOO_LARGE" ? 413 : 400,
+            origin,
+            id,
+          );
+        }
+
+        if (assignmentKind === "staff") {
+          const parsed = parseEventStaffAssignment(body);
+          if (!parsed.ok) return fail("INVALID_ASSIGNMENT", parsed.error, 400, origin, id);
+
+          const { data: profile, error: profileError } = await auth.service
+            .from("staff_profile")
+            .select("id,account_status")
+            .eq("auth_user_id", parsed.value.staff_auth_user_id)
+            .maybeSingle();
+          if (profileError) throw new Error("EVENT_ASSIGNEE_LOOKUP_FAILED");
+          if (!profile || profile.account_status !== "active") {
+            return fail("STAFF_NOT_ASSIGNABLE", "Choose an active staff member assigned to this branch.", 422, origin, id);
+          }
+          const { data: membership, error: membershipError } = await auth.service
+            .from("staff_role_assignment")
+            .select("id,role:role!inner(is_active)")
+            .eq("staff_profile_id", profile.id)
+            .eq("branch_id", branchId)
+            .eq("role.is_active", true)
+            .lte("starts_at", parsed.value.starts_at)
+            .or(`ends_at.is.null,ends_at.gt.${parsed.value.starts_at}`)
+            .is("revoked_at", null)
+            .limit(1)
+            .maybeSingle();
+          if (membershipError) throw new Error("EVENT_ASSIGNEE_SCOPE_LOOKUP_FAILED");
+          if (!membership) {
+            return fail("STAFF_NOT_IN_BRANCH", "The selected staff member is not active in this branch for the assignment period.", 422, origin, id);
+          }
+          const { data, error } = await auth.service.from("event_staff_assignment")
+            .insert({
+              event_id: nestedEventId,
+              branch_id: branchId,
+              staff_auth_user_id: parsed.value.staff_auth_user_id,
+              assignment_role: parsed.value.assignment_role,
+              starts_at: parsed.value.starts_at,
+              ends_at: parsed.value.ends_at,
+              assigned_by: auth.actorId,
+            })
+            .select("id,event_id,branch_id,staff_auth_user_id,assignment_role,starts_at,ends_at,revoked_at,created_at")
+            .single();
+          if (error) {
+            if (error.code === "23505" || error.code === "23P01") {
+              return fail("ASSIGNMENT_CONFLICT", "This staff member already has an overlapping assignment for that role.", 409, origin, id);
+            }
+            throw new Error("EVENT_STAFF_ASSIGNMENT_CREATE_FAILED");
+          }
+          return response({ data, request_id: id }, 201, origin, id);
+        }
+
+        const parsed = parseEventTeamAssignment(body);
+        if (!parsed.ok) return fail("INVALID_ASSIGNMENT", parsed.error, 400, origin, id);
+        const { data: team, error: teamError } = await auth.service.from("team")
+          .select("id").eq("id", parsed.value.team_id).eq("branch_id", branchId)
+          .eq("is_active", true).maybeSingle();
+        if (teamError) throw new Error("EVENT_TEAM_LOOKUP_FAILED");
+        if (!team) {
+          return fail("TEAM_NOT_ASSIGNABLE", "Choose an active team in this branch.", 422, origin, id);
+        }
+        const { data, error } = await auth.service.from("event_team_assignment")
+          .insert({
+            event_id: nestedEventId,
+            branch_id: branchId,
+            team_id: parsed.value.team_id,
+            assignment_role: parsed.value.assignment_role,
+            starts_at: parsed.value.starts_at,
+            ends_at: parsed.value.ends_at,
+            assigned_by: auth.actorId,
+          })
+          .select("id,event_id,branch_id,team_id,assignment_role,starts_at,ends_at,revoked_at,created_at")
+          .single();
+        if (error) {
+          if (error.code === "23505" || error.code === "23P01") {
+            return fail("ASSIGNMENT_CONFLICT", "This team already has an overlapping assignment for that role.", 409, origin, id);
+          }
+          throw new Error("EVENT_TEAM_ASSIGNMENT_CREATE_FAILED");
+        }
+        return response({ data, request_id: id }, 201, origin, id);
+      }
+
+      if (request.method === "POST" && isAssignmentRevoke && assignmentKind) {
+        const table = assignmentKind === "staff" ? "event_staff_assignment" : "event_team_assignment";
+        const { data: existing, error: lookupError } = await auth.service.from(table)
+          .select("id,event_id,branch_id,starts_at,ends_at,revoked_at")
+          .eq("id", eventSuffix[1]).eq("event_id", nestedEventId)
+          .eq("branch_id", branchId).maybeSingle();
+        if (lookupError) throw new Error("EVENT_ASSIGNMENT_REVOKE_LOOKUP_FAILED");
+        if (!existing) return fail("NOT_FOUND", "Assignment not found.", 404, origin, id);
+        if (existing.revoked_at) {
+          return response({ data: existing, already_revoked: true, request_id: id }, 200, origin, id);
+        }
+        const revokedAt = new Date(Math.max(Date.now(), Date.parse(existing.starts_at))).toISOString();
+        const { data, error } = await auth.service.from(table)
+          .update({ revoked_at: revokedAt })
+          .eq("id", eventSuffix[1]).eq("event_id", nestedEventId)
+          .eq("branch_id", branchId).is("revoked_at", null)
+          .select("id,event_id,branch_id,starts_at,ends_at,revoked_at")
+          .maybeSingle();
+        if (error) throw new Error("EVENT_ASSIGNMENT_REVOKE_FAILED");
+        if (!data) return fail("ASSIGNMENT_CHANGED", "The assignment changed. Refresh and try again.", 409, origin, id);
+        return response({ data, already_revoked: false, request_id: id }, 200, origin, id);
+      }
+    }
 
     if (request.method === "GET" && isCollection) {
       const parsed = parseEventListQuery(url);
