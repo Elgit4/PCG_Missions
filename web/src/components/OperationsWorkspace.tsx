@@ -161,6 +161,8 @@ export function OperationsWorkspace({
 
   const cancelEdit = () => {
     setEditingId(null);
+    setFlyerFile(null);
+    setExistingFlyerUrl(null);
     setShowForm(false);
   };
 
