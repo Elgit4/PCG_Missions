@@ -98,6 +98,7 @@ The product owner has directed completion of the non-transport event workflows i
 
 - event.registration.manage.scoped: staff-only registration, registration cancellation and finite-capacity administration. Public self-registration and contact-directory lookup remain disabled.
 - event.checkin.scoped: staff-assisted check-in of active registrations. One check-in per registration, atomic idempotency receipts, and no offline check-in.
+- event.closeout.submit and event.closeout.review: branch-scoped closeout submission and independent review, restricted to Admin/Pastor. The submitter cannot review their own closeout; registration and check-in counts are calculated from the event ledger, and transport counts remain null.
 - Transport remains excluded. No transport reservation, boarding, seat capacity or dispatch UI is enabled.
 - No check-in or registration capability is added to Coordinator, Team Leader, Field Worker, Follow-up Volunteer or Prayer Intercessor in this release.
 - Check-in requires a published event and an active branch-scoped Admin/Pastor assignment. A checked-in registration cannot be cancelled. Registration cancellation is atomic and releases capacity only before the event starts.
