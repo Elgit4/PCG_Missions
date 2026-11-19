@@ -115,7 +115,7 @@ Deno.test(
 );
 
 Deno.test(
-  "previous-flyer cleanup failure is reported without discarding the replacement",
+  "old-flyer cleanup failure is reported without discarding the replacement",
   async () => {
     const calls: string[] = [];
     const result = await attachFlyerReplacement(
