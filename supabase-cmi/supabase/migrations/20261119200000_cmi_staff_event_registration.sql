@@ -79,6 +79,9 @@ begin
      ) then
     raise exception using errcode = '22023', message = 'INVALID_STAFF_REGISTRATION_INPUT';
   end if;
+
+  v_name := pg_catalog.btrim(p_attendee_name);
+  v_phone := case
     when p_attendee_phone is null or pg_catalog.btrim(p_attendee_phone) = ''
       then null
     else pg_catalog.btrim(p_attendee_phone)
