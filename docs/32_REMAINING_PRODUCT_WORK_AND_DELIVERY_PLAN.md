@@ -100,6 +100,12 @@ Reconcile each module against docs/00_MASTER_PRODUCT_SPECIFICATION.md, docs/01_F
 ## Current branch progress
 
 - Added a shared staff-facing error formatter with safe, consistent messages and request-reference handling.
-- Replaced the duplicated Staff Workspace and Operations Workspace formatters.
+- Replaced duplicated error formatters in App, Staff Workspace, Operations Workspace, Contact Detail, Team Administration and Ministry Reports.
 - Added focused tests for authentication, network, permission, validation, upload and server errors.
-- Remaining product features and their secure server/storage integrations are not yet implemented by this first branch commit series.
+- Expanded contact search to first name and last name, plus phone only for branch-wide identity readers; added 250 ms debounce.
+- Added Follow-up Overdue / Today / Upcoming / In-progress quick filters, overdue-first ordering, per-task pending state and contact-detail follow-up creation.
+- Added a static app-shell service worker and offline fallback. API routes and all staff/ministry data are excluded from caches; offline workflows remain disabled.
+- Added manifest id/scope and synchronised browser theme metadata with the selected theme.
+- Increased minimum field typography and touch targets in the workspace.
+- Internal notifications and private event-flyer storage/upload are designed but not yet implemented.
+- Public registration, attendance/check-in, event assignment/closeout, publication, and restricted pastoral mutations remain separate implementation tracks with their documented security gates.
