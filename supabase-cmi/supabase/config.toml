@@ -77,3 +77,7 @@ verify_jwt = true
 # Public recovery request + one-time bootstrap routes use dedicated abuse controls
 # and a server-only bootstrap token. Authenticated admin routes validate JWTs in code.
 verify_jwt = false
+
+[functions.staff-notifications]
+# Private per-recipient notification inbox; branch and recipient ownership are checked in code.
+verify_jwt = true
