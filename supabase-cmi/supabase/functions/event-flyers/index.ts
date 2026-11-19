@@ -227,9 +227,9 @@ async function canManageEvent(
       .is("revoked_at", null);
     if (eventTeamError) throw new Error("EVENT_TEAM_LOOKUP_FAILED");
     const teamIds = [
-      ...new Set((eventTeams ?? []).map((row: { team_id: string }) =>
-        row.team_id
-      )),
+      ...new Set(
+        (eventTeams ?? []).map((row: { team_id: string }) => row.team_id),
+      ),
     ];
     if (teamIds.length) {
       const { data: memberships, error: membershipError } = await service.from(
