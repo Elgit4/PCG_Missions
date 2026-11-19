@@ -1,3 +1,99 @@
+
+/* Event closeout panel */
+.cmi-event-closeout-panel {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  border-color: var(--cmi-border);
+  background: var(--cmi-surface);
+}
+.cmi-event-closeout-panel .cmi-panel-heading {
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+.cmi-event-closeout-panel .cmi-panel-heading h4 {
+  margin: 3px 0 7px;
+  color: var(--cmi-text);
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -.025em;
+}
+.cmi-event-closeout-panel .cmi-panel-heading p:not(.cmi-eyebrow) {
+  max-width: 680px;
+  color: var(--cmi-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.cmi-event-closeout-panel .cmi-registration-summary {
+  margin: 0;
+}
+.cmi-event-closeout-panel .cmi-form-grid {
+  margin: 0;
+  border-color: var(--cmi-border-soft);
+  background: var(--cmi-surface-raised);
+}
+.cmi-event-closeout-panel .cmi-form-grid label {
+  color: var(--cmi-muted);
+  font-size: 11px;
+}
+.cmi-event-closeout-panel .cmi-form-grid textarea,
+.cmi-event-closeout-panel .cmi-form-grid select {
+  min-height: 44px;
+  border-color: var(--cmi-border);
+  background: var(--cmi-bg-raised);
+  color: var(--cmi-text);
+  font-size: 12px;
+}
+.cmi-event-closeout-panel .cmi-form-grid textarea {
+  resize: vertical;
+}
+.cmi-event-closeout-panel .cmi-detail-card {
+  padding: 14px 15px;
+  border: 1px solid var(--cmi-border-soft);
+  border-radius: 11px;
+  background: var(--cmi-surface-raised);
+  color: var(--cmi-text);
+}
+.cmi-event-closeout-panel .cmi-detail-card strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 750;
+}
+.cmi-event-closeout-panel .cmi-detail-card p {
+  margin: 0;
+  color: var(--cmi-muted);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cmi-event-closeout-panel .cmi-scope-note {
+  color: var(--cmi-muted);
+}
+@media (max-width: 680px) {
+  .cmi-event-closeout-panel .cmi-panel-heading {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .cmi-event-closeout-panel .cmi-operations-actions {
+    width: 100%;
+  }
+  .cmi-event-closeout-panel .cmi-operations-actions .cmi-button {
+    flex: 1 1 0;
+    min-height: 44px;
+  }
+  .cmi-event-closeout-panel .cmi-form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .cmi-event-closeout-panel .cmi-form-actions .cmi-button {
+    width: 100%;
+    min-height: 44px;
+  }
+}
+
 /* Production staff workspace */
 .cmi-app-loading,.cmi-no-branch{min-height:100svh;display:grid;place-content:center;justify-items:center;gap:14px;padding:28px;text-align:center;color:#41515f;background:#f7f9fb}
 .cmi-spinner{width:28px;height:28px;border:3px solid #e2eaef;border-top-color:#123a63;border-radius:50%;animation:cmi-spin .8s linear infinite}
