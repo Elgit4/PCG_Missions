@@ -266,7 +266,7 @@ declare
   event_title text;
 begin
   if new.revoked_at is null
-     and new.ends_at is null
+     and (new.ends_at is null or new.ends_at > now())
      and new.assignment_role <> 'transport' then
     select e.title into event_title
       from public.event e
