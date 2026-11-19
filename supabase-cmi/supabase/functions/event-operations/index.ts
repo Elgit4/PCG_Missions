@@ -1758,7 +1758,13 @@ Deno.serve(async (request: Request) => {
           .maybeSingle();
         if (closeoutError) throw new Error("EVENT_CLOSEOUT_LOOKUP_FAILED");
         if (!closeout) {
-          return fail("NOT_FOUND", "Event closeout not found.", 404, origin, id);
+          return fail(
+            "NOT_FOUND",
+            "Event closeout not found.",
+            404,
+            origin,
+            id,
+          );
         }
         if (
           !Number.isSafeInteger(EVENT_IDEMPOTENCY_KEY_VERSION) ||
@@ -1809,7 +1815,13 @@ Deno.serve(async (request: Request) => {
             );
           }
           if (error.code === "P0002") {
-            return fail("NOT_FOUND", "Event closeout not found.", 404, origin, id);
+            return fail(
+            "NOT_FOUND",
+            "Event closeout not found.",
+            404,
+            origin,
+            id,
+          );
           }
           if (error.code === "23505") {
             return fail(
