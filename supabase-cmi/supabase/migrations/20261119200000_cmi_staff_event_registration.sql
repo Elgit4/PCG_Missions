@@ -75,7 +75,8 @@ begin
      or pg_catalog.length(pg_catalog.btrim(p_attendee_name)) not between 2 and 180
      or (
        p_attendee_phone is not null
-       and p_attendee_phone !~ '^\+[1-9][0-9]{7,14}
+       and p_attendee_phone !~ '^[+][1-9][0-9]{7,14}$'
+     ) then
   end if;
 
   v_name := pg_catalog.btrim(p_attendee_name);
