@@ -7,14 +7,17 @@ Deno.test("accepts valid event UUIDs and rejects malformed IDs", () => {
 });
 
 Deno.test("accepts JPEG only when the image markers are present", () => {
-  assertEquals(sniffImage(new Uint8Array([0xff, 0xd8, 0xff, 0x00, 0xff, 0xd9])), {
+  assertEquals(
+    sniffImage(new Uint8Array([0xff, 0xd8, 0xff, 0x00, 0xff, 0xd9])),
     mime: "image/jpeg",
     ext: "jpg",
   });
   assertEquals(sniffImage(new Uint8Array([0xff, 0xd8, 0xff, 0x00])), null);
 });
 
-Deno.test("accepts bounded PNG dimensions and rejects zero or oversized images", () => {
+Deno.test(
+  "accepts bounded PNG dimensions and rejects zero or oversized images",
+  () => {
   const makePngHeader = (width: number, height: number) => {
     const bytes = new Uint8Array(24);
     bytes.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
