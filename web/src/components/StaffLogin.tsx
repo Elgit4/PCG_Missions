@@ -97,6 +97,18 @@ export function StaffLogin({
   };
 
   const isPasswordSetup = view === "recovery" || view === "change-password";
+  const debugMode = typeof window !== "undefined" &&
+    new URLSearchParams(window.location.search).get("debug") === "1";
+  const showConnectionDiagnostics = debugMode ||
+    Boolean(error || configurationError);
+  const passwordChecks = [
+    { label: "At least 12 characters", valid: newPassword.length >= 12 },
+    { label: "An uppercase letter", valid: /[A-Z]/.test(newPassword) },
+    { label: "A lowercase letter", valid: /[a-z]/.test(newPassword) },
+    { label: "A number", valid: /[0-9]/.test(newPassword) },
+    { label: "A symbol", valid: /[^A-Za-z0-9]/.test(newPassword) },
+  ];
+  const passwordStrength = passwordChecks.filter((check) => check.valid).length;
   const title = view === "sign-in"
     ? "Welcome back."
     : view === "forgot-password"
@@ -247,6 +259,21 @@ export function StaffLogin({
                 <p className="staff-login-password-hint">
                   Use 12 or more characters, including uppercase and lowercase letters, a number and a symbol.
                 </p>
+                <div className="staff-login-password-strength" aria-live="polite">
+                  <div className="staff-login-password-strength-heading">
+                    <span>Password strength</span>
+                    <strong>{newPassword.length === 0 ? "Not entered" : passwordStrength < 3 ? "Weak" : passwordStrength < 5 ? "Good" : "Strong"}</strong>
+                  </div>
+                  <div className="staff-login-password-strength-track" role="progressbar"
+                    aria-label="Password strength" aria-valuemin={0} aria-valuemax={5} aria-valuenow={passwordStrength}>
+                    <span style={{ width: String(passwordStrength * 20) + "%" }} />
+                  </div>
+                  <ul>
+                    {passwordChecks.map((check) => <li key={check.label} className={check.valid ? "valid" : ""}>
+                      <span aria-hidden="true">{check.valid ? "✓" : "○"}</span>{check.label}
+                    </li>)}
+                  </ul>
+                </div>
                 <button
                   type="button"
                   className="staff-login-inline-link staff-login-show-password"
@@ -283,17 +310,17 @@ export function StaffLogin({
                 Forgot password?
               </button>
             )}
-            {view === "sign-in" && (
+            {view === "sign-in" && showConnectionDiagnostics && (
               <button
                 type="button"
-                className="staff-login-inline-link"
+                className="staff-login-inline-link staff-login-debug-action"
                 disabled={busy}
                 onClick={() => void onTestConnection()}
               >
-                Test sign-in connection
+                Run connection diagnostics
               </button>
             )}
-            {view === "sign-in" && onRetryWorkspace && (
+            {view === "sign-in" && showConnectionDiagnostics && onRetryWorkspace && (
               <button
                 type="button"
                 className="staff-login-inline-link"
