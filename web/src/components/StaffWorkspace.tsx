@@ -513,14 +513,18 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const updateTaskStatus = async (task: FollowUpTask, status: FollowUpTask["status"]) => {
     if (!canUpdateTasks || !branchId || task.status === status || task.status === "completed" || task.status === "cancelled") return;
     setActionError("");
+    setUpdatingTaskId(task.id);
     try {
       const result = await api.updateFollowUpTask(branchId, task.id, { status });
       setTasks((current) => current.map((item) => item.id === task.id ? result.data : item));
+      setActionNotice(status === "completed" ? "Follow-up task completed." : "Follow-up task started.");
     } catch (error) {
       handleActionError(error);
       if (error instanceof CmiApiError && (error.status === 409 || error.status === 0)) {
         await refresh();
       }
+    } finally {
+      setUpdatingTaskId(null);
     }
   };
   const signOut = async () => {
@@ -753,8 +757,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                 <div className="cmi-task-copy"><strong>{contact ? displayName(contact) : "Contact details restricted"}</strong><p>{task.task_note || "No operational note"}</p><small>{formatDate(task.due_at, branchTimeZone)} · Priority {task.priority}</small></div>
                 <span className={`cmi-task-status status-${isOverdue(task) ? "overdue" : task.status}`}>{isOverdue(task) ? "Overdue" : statusLabel(task.status)}</span>
                 {canUpdateTasks && (task.status === "open" || task.status === "in_progress") && <div className="cmi-task-actions">
-                  {task.status === "open" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => void updateTaskStatus(task, "in_progress")}>Start</button>}
-                  <button type="button" className="cmi-button cmi-button-primary" onClick={() => void updateTaskStatus(task, "completed")}><CheckCircle2 size={14} /> Complete</button>
+                  {task.status === "open" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => void updateTaskStatus(task, "in_progress")} disabled={updatingTaskId !== null}>{updatingTaskId === task.id ? "Saving…" : "Start"}</button>}
+                  <button type="button" className="cmi-button cmi-button-primary" onClick={() => void updateTaskStatus(task, "completed")} disabled={updatingTaskId !== null}>{updatingTaskId === task.id ? "Saving…" : <><CheckCircle2 size={14} /> Complete</>}</button>
                 </div>}
               </article>;
             })}{!filteredTasks.length && !loading && <p className="cmi-empty-row">{tasks.length ? "No tasks match this filter in the loaded records." : "No follow-up tasks are visible in this branch scope."}</p>}</div>
