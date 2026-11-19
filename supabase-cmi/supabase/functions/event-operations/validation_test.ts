@@ -295,7 +295,6 @@ Deno.test("rejects invalid assignment dates and caller-controlled actors", () =>
   );
 });
 
-
 Deno.test("validates minimized staff event registration input", () => {
   const input = {
     idempotency_key: "61000000-0000-4000-8000-000000000099",
@@ -306,20 +305,32 @@ Deno.test("validates minimized staff event registration input", () => {
   assert(result.ok);
   assertEquals(result.value.attendee_name, "Synthetic Attendee");
   assertEquals(result.value.attendee_phone, "+233241234567");
-  assertEquals(parseEventStaffRegistration({
-    ...input,
-    contact_id: branchId,
-  }).ok, false);
-  assertEquals(parseEventStaffRegistration({
-    ...input,
-    attendee_phone: "0241234567",
-  }).ok, false);
-  assertEquals(parseEventStaffRegistration({
-    ...input,
-    idempotency_key: "not-a-uuid",
-  }).ok, false);
-  assertEquals(parseEventStaffRegistration({
-    ...input,
-    attendee_name: " ",
-  }).ok, false);
+  assertEquals(
+    parseEventStaffRegistration({
+      ...input,
+      contact_id: branchId,
+    }).ok,
+    false,
+  );
+  assertEquals(
+    parseEventStaffRegistration({
+      ...input,
+      attendee_phone: "0241234567",
+    }).ok,
+    false,
+  );
+  assertEquals(
+    parseEventStaffRegistration({
+      ...input,
+      idempotency_key: "not-a-uuid",
+    }).ok,
+    false,
+  );
+  assertEquals(
+    parseEventStaffRegistration({
+      ...input,
+      attendee_name: " ",
+    }).ok,
+    false,
+  );
 });
