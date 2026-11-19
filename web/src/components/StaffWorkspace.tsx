@@ -141,6 +141,26 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     return () => window.clearTimeout(timeout);
   }, [taskContactQuery]);
 
+
+
+
+  const canReadContacts = canOpenStaffPage(session, "Contacts", branchId);
+  const canReadTasks = canOpenStaffPage(session, "Follow-up", branchId);
+  const canCreateContacts = hasCapability(session, "contact.capture.create", branchId);
+  const canReadContactNotes = hasCapability(session, "contact.note.read.scoped", branchId);
+  const canCreateContactNotes = hasCapability(session, "contact.note.create", branchId);
+  const canRecordContactInteraction = hasCapability(session, "contact.interaction.record", branchId);
+  const taskCreateGrant = session.capabilities.find((grant) =>
+    grant.code === "followup.task.create" && grant.branch_id === branchId
+  );
+  const canCreateTasks = !!taskCreateGrant;
+  const canSelfAssignTask = !!taskCreateGrant &&
+    (taskCreateGrant.scope_mode === "assigned" || taskCreateGrant.scope_mode === "branch");
+  const canUpdateTasks = hasCapability(session, "followup.task.update.scoped", branchId);
+  const canManagePasswordResets = hasCapability(session, "staff.password_reset.manage", branchId);
+  const canReadStaffDirectory = hasCapability(session, "staff.directory.read", branchId);
+  const canManageStaffAccounts = hasCapability(session, "staff.account.manage", branchId);
+  const canCreateStaffAccounts = hasCapability(session, "staff.account.manage", branchId) && hasCapability(session, "access.role.assign", branchId);
   useEffect(() => {
     if (
       !showTaskForm || !canReadContacts ||
@@ -179,24 +199,6 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     taskContactId,
   ]);
 
-
-  const canReadContacts = canOpenStaffPage(session, "Contacts", branchId);
-  const canReadTasks = canOpenStaffPage(session, "Follow-up", branchId);
-  const canCreateContacts = hasCapability(session, "contact.capture.create", branchId);
-  const canReadContactNotes = hasCapability(session, "contact.note.read.scoped", branchId);
-  const canCreateContactNotes = hasCapability(session, "contact.note.create", branchId);
-  const canRecordContactInteraction = hasCapability(session, "contact.interaction.record", branchId);
-  const taskCreateGrant = session.capabilities.find((grant) =>
-    grant.code === "followup.task.create" && grant.branch_id === branchId
-  );
-  const canCreateTasks = !!taskCreateGrant;
-  const canSelfAssignTask = !!taskCreateGrant &&
-    (taskCreateGrant.scope_mode === "assigned" || taskCreateGrant.scope_mode === "branch");
-  const canUpdateTasks = hasCapability(session, "followup.task.update.scoped", branchId);
-  const canManagePasswordResets = hasCapability(session, "staff.password_reset.manage", branchId);
-  const canReadStaffDirectory = hasCapability(session, "staff.directory.read", branchId);
-  const canManageStaffAccounts = hasCapability(session, "staff.account.manage", branchId);
-  const canCreateStaffAccounts = hasCapability(session, "staff.account.manage", branchId) && hasCapability(session, "access.role.assign", branchId);
   const availablePages = useMemo(() => {
     const pages: Page[] = getAvailableStaffPages(session, branchId)
       .filter((candidate): candidate is Exclude<Page, "Staff" | "Access requests"> =>
