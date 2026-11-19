@@ -1,4 +1,4 @@
-export type FlyerScopeMode = "branch" | "event" | "team" | string;
+export type FlyerScopeMode = string;
 
 export interface FlyerStaffProfile {
   account_status: string;
@@ -12,8 +12,12 @@ export type FlyerProfileDenial =
 export function flyerProfileDenial(
   profile: FlyerStaffProfile | null,
 ): FlyerProfileDenial | null {
-  if (!profile || profile.account_status !== "active") return "not_active";
-  if (profile.must_change_password) return "password_change_required";
+  if (!profile || profile.account_status !== "active") {
+    return "not_active";
+  }
+  if (profile.must_change_password) {
+    return "password_change_required";
+  }
   return null;
 }
 
