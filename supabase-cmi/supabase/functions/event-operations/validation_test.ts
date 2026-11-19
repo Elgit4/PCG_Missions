@@ -228,7 +228,6 @@ Deno.test("rejects duplicate and unsupported event-list parameters", () => {
   );
 });
 
-
 Deno.test("validates staff event assignments and excludes transport", () => {
   const input = {
     staff_auth_user_id: "20000000-0000-4000-8000-000000000002",
@@ -240,14 +239,20 @@ Deno.test("validates staff event assignments and excludes transport", () => {
   assert(result.ok);
   assertEquals(result.value.starts_at, "2026-11-20T08:00:00.000Z");
   assertEquals(result.value.ends_at, "2026-11-20T12:00:00.000Z");
-  assertEquals(parseEventStaffAssignment({ ...input, assignment_role: "transport" }), {
-    ok: false,
-    error: "Invalid staff assignment role.",
-  });
-  assertEquals(parseEventStaffAssignment({ ...input, branch_id: branchId }), {
-    ok: false,
-    error: "Unsupported staff assignment field.",
-  });
+  assertEquals(
+    parseEventStaffAssignment({ ...input, assignment_role: "transport" }),
+    {
+      ok: false,
+      error: "Invalid staff assignment role.",
+    },
+  );
+  assertEquals(
+    parseEventStaffAssignment({ ...input, branch_id: branchId }),
+    {
+      ok: false,
+      error: "Unsupported staff assignment field.",
+    },
+  );
 });
 
 Deno.test("validates team event assignments and excludes transport", () => {
@@ -259,23 +264,32 @@ Deno.test("validates team event assignments and excludes transport", () => {
   const result = parseEventTeamAssignment(input);
   assert(result.ok);
   assertEquals(result.value.ends_at, null);
-  assertEquals(parseEventTeamAssignment({ ...input, assignment_role: "transport" }), {
-    ok: false,
-    error: "Invalid team assignment role.",
-  });
+  assertEquals(
+    parseEventTeamAssignment({ ...input, assignment_role: "transport" }),
+    {
+      ok: false,
+      error: "Invalid team assignment role.",
+    },
+  );
 });
 
 Deno.test("rejects invalid assignment dates and caller-controlled actors", () => {
-  assertEquals(parseEventStaffAssignment({
-    staff_auth_user_id: "20000000-0000-4000-8000-000000000002",
-    assignment_role: "support",
-    starts_at: "2026-11-20T08:00:00Z",
-    ends_at: "2026-11-20T07:00:00Z",
-  }), { ok: false, error: "ends_at must be later than starts_at." });
-  assertEquals(parseEventTeamAssignment({
-    team_id: "30000000-0000-4000-8000-000000000003",
-    assignment_role: "support",
-    starts_at: "2026-11-20T08:00:00Z",
-    assigned_by: "20000000-0000-4000-8000-000000000002",
-  }), { ok: false, error: "Unsupported team assignment field." });
+  assertEquals(
+    parseEventStaffAssignment({
+      staff_auth_user_id: "20000000-0000-4000-8000-000000000002",
+      assignment_role: "support",
+      starts_at: "2026-11-20T08:00:00Z",
+      ends_at: "2026-11-20T07:00:00Z",
+    }),
+    { ok: false, error: "ends_at must be later than starts_at." },
+  );
+  assertEquals(
+    parseEventTeamAssignment({
+      team_id: "30000000-0000-4000-8000-000000000003",
+      assignment_role: "support",
+      starts_at: "2026-11-20T08:00:00Z",
+      assigned_by: "20000000-0000-4000-8000-000000000002",
+    }),
+    { ok: false, error: "Unsupported team assignment field." },
+  );
 });
