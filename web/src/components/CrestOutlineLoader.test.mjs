@@ -17,8 +17,14 @@ describe('CrestOutlineLoader', () => {
  });
  it('uses one stroke colour and supports reduced motion', () => {
   expect(visualSystem).toContain('.cmi-crest-outline-path');
-  expect(visualSystem).toContain('stroke: var(--cmi-brand-accent)');
+  expect(visualSystem).toContain('--cmi-loader-accent: #c7b06d');
+  expect(visualSystem).toContain('stroke: var(--cmi-loader-accent)');
+  expect(visualSystem).toContain('stroke-width: 2.6');
+  expect(visualSystem).toContain('background: #090d18');
+  expect(visualSystem).toContain('color: #eef3f7');
+  expect(visualSystem).toContain('stroke-dashoffset: .995');
   expect(visualSystem).toContain('stroke-dashoffset: 0');
+  expect(visualSystem).toContain('from { stroke-dashoffset: .995; }');
   expect(visualSystem).toContain('prefers-reduced-motion: reduce');
  });
 });
