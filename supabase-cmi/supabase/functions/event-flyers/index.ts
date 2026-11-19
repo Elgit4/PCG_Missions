@@ -400,7 +400,7 @@ Deno.serve(async (request: Request) => {
             mime_type: event.flyer_mime_type,
             size_bytes: event.flyer_size_bytes,
             signed_url: signedUrl,
-            signed_url_expires_in: SIGNED_URL_SECONDS,
+            signed_url_expires_in: FLYER_SIGNED_URL_SECONDS,
           },
           request_id: requestId,
         },
@@ -492,18 +492,29 @@ Deno.serve(async (request: Request) => {
       {
         createSignedPreview: (path) => signedPreview(auth.service, path),
         saveMetadata: async (metadata) => {
-          const { error } = await auth.service.from("event").update({
+          let update = auth.service.from("event").update({
             flyer_object_path: metadata.objectPath,
             flyer_mime_type: metadata.mimeType,
             flyer_size_bytes: metadata.sizeBytes,
             flyer_updated_at: new Date().toISOString(),
           }).eq("id", eventId).eq("branch_id", branchId);
+          update = event.flyer_object_path
+            ? update.eq("flyer_object_path", event.flyer_object_path)
+            : update.is("flyer_object_path", null);
+          const { data, error } = await update.select("id").maybeSingle();
           if (error) throw new Error("FLYER_METADATA_UPDATE_FAILED");
+          if (!data) throw new Error("FLYER_CHANGED_RETRY");
         },
         removeObject: async (path) => {
           const { error } = await auth.service.storage.from(BUCKET)
             .remove([path]);
           if (error) throw new Error("FLYER_CLEANUP_FAILED");
+        },
+        onRollbackCleanupFailure: () => {
+          console.error("event flyer rollback cleanup failed", {
+            request_id: requestId,
+            code: "FLYER_ROLLBACK_CLEANUP_FAILED",
+          });
         },
       },
     );
@@ -530,6 +541,15 @@ Deno.serve(async (request: Request) => {
     );
   } catch (cause) {
     const code = cause instanceof Error ? cause.message : "UNKNOWN_ERROR";
+    if (code === "FLYER_CHANGED_RETRY") {
+      return fail(
+        code,
+        "The flyer was changed by another staff member. Refresh the event and try again.",
+        409,
+        origin,
+        requestId,
+      );
+    }
     console.error("event-flyers failure", { request_id: requestId, code });
     return fail(
       "EVENT_FLYER_UNAVAILABLE",
