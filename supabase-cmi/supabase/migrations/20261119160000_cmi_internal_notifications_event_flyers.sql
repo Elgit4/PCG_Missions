@@ -60,7 +60,7 @@ begin
         or
         (
           flyer_object_path is not null
-          and flyer_object_path ~ ('^' || branch_id::text || '/' || id::text || '/[0-9a-f-]{36}\\.(jpg|png|webp)$')
+          and flyer_object_path ~ ('^' || branch_id::text || '/' || id::text || '/[0-9a-f-]{36}\.(jpg|png|webp)$')
           and flyer_mime_type in ('image/jpeg','image/png','image/webp')
           and flyer_size_bytes between 1 and 5242880
           and flyer_updated_at is not null
