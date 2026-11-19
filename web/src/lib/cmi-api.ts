@@ -114,7 +114,25 @@ export interface EventRegistrationRecord {
   attendee_phone_snapshot: string | null;
   status: "registered" | "cancelled" | "attended" | "no_show";
   registered_at: string;
+  checked_in_at: string | null;
 }
+
+export interface EventCheckinRecord {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  registration_id: string;
+  attendee_name_snapshot: string;
+  checked_in_at: string;
+  recorded_by: string;
+  source: "staff";
+}
+export interface EventStaffCheckinResult {
+  checkin: EventCheckinRecord;
+  replayed: boolean;
+  response_status: number;
+}
+
 export interface EventStaffRegistrationInput {
   idempotency_key: string;
   attendee_name: string;
@@ -954,6 +972,25 @@ export class CmiApiClient {
     );
   }
 
+
+
+  checkinEventRegistration(
+    branchId: string,
+    eventId: string,
+    registrationId: string,
+    idempotencyKey: string,
+  ) {
+    return this.request<EventStaffCheckinResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/registrations/" +
+        encodeURIComponent(registrationId) + "/check-in",
+      {
+        method: "POST",
+        query: { branch_id: branchId },
+        body: { idempotency_key: idempotencyKey },
+      },
+    );
+  }
 
   cancelEventRegistration(
     branchId: string,
