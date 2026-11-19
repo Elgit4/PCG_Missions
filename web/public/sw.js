@@ -1,5 +1,5 @@
-const CACHE_NAME = "pcg-missions-shell-v1";
-const SHELL_URLS = ["/", "/offline.html", "/logo.svg"];
+const CACHE_NAME = "pcg-missions-shell-v2";
+const SHELL_URLS = ["/", "/offline.html", "/logo.svg", "/manifest.webmanifest", "/pwa-icon-192.svg", "/pwa-icon-maskable.svg"];
 const API_PREFIXES = ["/api/", "/functions/v1/", "/auth/v1/", "/rest/v1/", "/storage/v1/"];
 
 self.addEventListener("install", (event) => {
