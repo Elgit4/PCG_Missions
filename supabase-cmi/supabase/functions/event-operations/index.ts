@@ -1072,7 +1072,7 @@ Deno.serve(async (request: Request) => {
       }
 
       if (request.method === "GET") {
-        const [registrations, checkins] = await Promise.all([
+        const [registrations, checkins, activeCount] = await Promise.all([
           auth.service
             .from("event_registration")
             .select(
@@ -1087,8 +1087,14 @@ Deno.serve(async (request: Request) => {
             .select("registration_id,checked_in_at")
             .eq("event_id", nestedEventId)
             .eq("branch_id", branchId),
+          auth.service
+            .from("event_registration")
+            .select("id", { count: "exact", head: true })
+            .eq("event_id", nestedEventId)
+            .eq("branch_id", branchId)
+            .neq("status", "cancelled"),
         ]);
-        if (registrations.error || checkins.error) {
+        if (registrations.error || checkins.error || activeCount.error) {
           throw new Error("EVENT_REGISTRATION_LIST_FAILED");
         }
         const checkedInAt = new Map(
@@ -1097,11 +1103,22 @@ Deno.serve(async (request: Request) => {
             row.checked_in_at,
           ]),
         );
-        const data = (registrations.data ?? []).map((registration) => ({
+        const registrationRows = (registrations.data ?? []).map((registration) => ({
           ...registration,
           checked_in_at: checkedInAt.get(registration.id) ?? null,
         }));
-        return response({ data, request_id: id }, 200, origin, id);
+        return response(
+          {
+            data: {
+              registrations: registrationRows,
+              active_count: activeCount.count ?? 0,
+            },
+            request_id: id,
+          },
+          200,
+          origin,
+          id,
+        );
       }
 
       let body: unknown;
