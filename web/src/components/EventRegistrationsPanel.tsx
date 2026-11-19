@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { RefreshCw, UserPlus, Users, XCircle } from "lucide-react";
+import { CalendarCheck, RefreshCw, UserPlus, Users, XCircle } from "lucide-react";
 import {
   CmiApiClient,
   CmiApiError,
@@ -34,6 +34,7 @@ export function EventRegistrationsPanel({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [checkingInId, setCheckingInId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [attendeeName, setAttendeeName] = useState("");
@@ -91,6 +92,34 @@ export function EventRegistrationsPanel({
     }
   };
 
+
+
+  const checkIn = async (registration: EventRegistrationRecord) => {
+    if (saving || checkingInId || cancellingId) return;
+    setCheckingInId(registration.id);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api.checkinEventRegistration(
+        branchId,
+        event.id,
+        registration.id,
+        createRequestKey(),
+      );
+      setNotice(result.data.replayed
+        ? "This attendee was already checked in."
+        : "Attendee checked in successfully.");
+      await load();
+    } catch (cause) {
+      if (cause instanceof CmiApiError && cause.status === 401) {
+        onSessionExpired();
+      } else {
+        setError(formatApplicationError(cause));
+      }
+    } finally {
+      setCheckingInId(null);
+    }
+  };
 
   const cancel = async (registration: EventRegistrationRecord) => {
     if (saving || cancellingId) return;
@@ -187,15 +216,28 @@ export function EventRegistrationsPanel({
                 <strong>{item.attendee_name_snapshot}</strong>
                 <p>Registered {formatBranchDate(item.registered_at, timeZone)}</p>
               </div>
-              <span className={"cmi-task-status " + (item.status === "registered" ? "status-open" : "status-muted")}>
-                {item.status.replaceAll("_", " ")}
+              <span className={"cmi-task-status " + (item.checked_in_at ? "status-open" : item.status === "registered" ? "status-open" : "status-muted")}>
+                {item.checked_in_at ? "Checked in" : item.status.replaceAll("_", " ")}
               </span>
-              {item.status === "registered" && Date.parse(event.starts_at) > Date.now() && (
+              {item.checked_in_at && <p>Checked in {formatBranchDate(item.checked_in_at, timeZone)}</p>}
+              {item.status === "registered" && !item.checked_in_at &&
+                event.status === "published" && Date.parse(event.ends_at) > Date.now() && (
+                  <button
+                    className="cmi-button cmi-button-primary"
+                    type="button"
+                    onClick={() => void checkIn(item)}
+                    disabled={saving || checkingInId !== null || cancellingId !== null || loading}
+                    aria-label={"Check in " + item.attendee_name_snapshot}
+                  >
+                    <CalendarCheck size={14} />{checkingInId === item.id ? "Checking in…" : "Check in"}
+                  </button>
+                )}
+              {item.status === "registered" && !item.checked_in_at && Date.parse(event.starts_at) > Date.now() && (
                 <button
                   className="cmi-button cmi-button-secondary"
                   type="button"
                   onClick={() => void cancel(item)}
-                  disabled={saving || cancellingId !== null || loading}
+                  disabled={saving || cancellingId !== null || checkingInId !== null || loading}
                   aria-label={"Cancel registration for " + item.attendee_name_snapshot}
                 >
                   <XCircle size={14} />{cancellingId === item.id ? "Cancelling…" : "Cancel"}
