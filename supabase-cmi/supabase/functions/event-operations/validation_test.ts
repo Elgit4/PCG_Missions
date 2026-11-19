@@ -86,7 +86,6 @@ Deno.test("rejects caller-controlled event lifecycle fields", () => {
   }
 });
 
-
 Deno.test("accepts finite event capacity and rejects invalid capacity values", () => {
   const base = {
     branch_id: branchId,
