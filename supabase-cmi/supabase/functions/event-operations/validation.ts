@@ -403,7 +403,10 @@ export function parseEventStaffRegistration(
   }
   const name = parseText(value.attendee_name, "attendee_name", 2, 180);
   if (!name.ok || name.value === null) {
-    return { ok: false, error: "Enter an attendee name between 2 and 180 characters." };
+    return {
+      ok: false,
+      error: "Enter an attendee name between 2 and 180 characters.",
+    };
   }
   let phone: string | null = null;
   if (value.attendee_phone !== undefined && value.attendee_phone !== null) {
