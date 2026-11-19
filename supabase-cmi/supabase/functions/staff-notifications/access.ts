@@ -36,7 +36,5 @@ export function notificationRecipientScope(
 
 export function notificationPageLimit(value: string | null): number {
   const parsed = Number(value ?? "30");
-  return Number.isInteger(parsed)
-    ? Math.max(1, Math.min(50, parsed))
-    : 30;
+  return Number.isInteger(parsed) ? Math.max(1, Math.min(50, parsed)) : 30;
 }
