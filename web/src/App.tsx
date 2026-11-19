@@ -2,7 +2,7 @@ import { CrestOutlineLoader } from "./components/CrestOutlineLoader";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { StaffLogin, type StaffAuthView } from "./components/StaffLogin";
 import { StaffWorkspace } from "./components/StaffWorkspace";
-import { AuthClientError, PcgAuthClient } from "./lib/auth";
+import { PcgAuthClient } from "./lib/auth";
 import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
 import { ThemeToggle } from "./lib/theme";
 import { formatApplicationError } from "./lib/error-messages";
@@ -38,7 +38,7 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [workspaceRetryAvailable, setWorkspaceRetryAvailable] = useState(false);
 
-  const messageFor = useCallback((cause: unknown): string => formatApplicationError(cause, "We could not complete the sign-in request. Please try again."), []);;
+  const messageFor = useCallback((cause: unknown): string => formatApplicationError(cause, "We could not complete the sign-in request. Please try again."), []);
 
   const clearAuthentication = useCallback(async () => {
     try {
