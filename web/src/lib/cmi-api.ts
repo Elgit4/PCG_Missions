@@ -139,6 +139,26 @@ export interface EventAssignmentWorkspace {
   team_candidates: { id: string; name: string }[];
 }
 
+export interface AssignedPrayerRequestRecord {
+  id: string;
+  branch_id: string;
+  request_text: string;
+  status: "open" | "assigned" | "in_progress" | "answered" | "closed";
+  sensitivity: "restricted" | "highly_restricted";
+  expires_at: string | null;
+  answered_at: string | null;
+  created_at: string;
+  updated_at: string;
+  assignment_starts_at: string;
+  assignment_ends_at: string | null;
+}
+export interface AssignedPrayerInbox {
+  requests: AssignedPrayerRequestRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface StaffNotificationRecord {
   id: string;
   category: "followup_assigned" | "event_assigned" | "report_reviewed" | "system";
@@ -857,6 +877,25 @@ export class CmiApiClient {
     });
   }
 
+
+
+  listAssignedPrayerRequests(
+    branchId: string,
+    options: { limit?: number; offset?: number } = {},
+  ) {
+    return this.request<AssignedPrayerInbox>(
+      "pastoral-operations",
+      "/prayer/requests/assigned",
+      {
+        method: "POST",
+        body: {
+          branch_id: branchId,
+          limit: options.limit ?? 25,
+          offset: options.offset ?? 0,
+        },
+      },
+    );
+  }
 
   getEventAssignments(branchId: string, eventId: string) {
     return this.request<EventAssignmentWorkspace>(
