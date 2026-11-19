@@ -20,6 +20,7 @@ const PAGE_CAPABILITIES: Partial<Record<StaffPage, readonly string[]>> = {
   Announcements: ["announcement.read.scoped", "announcement.create.scoped"],
   Content: ["content.manage.draft"],
   "Teams & Areas": ["team.manage", "area.manage"],
+  Prayer: ["prayer.request.read.assigned"],
 };
 
 /**
@@ -50,7 +51,6 @@ export function canOpenStaffPage(
   }
   if (session.staff.account_status !== "active") return false;
   if (page === "Overview") return true;
-  if (page === "Prayer") return false;
   if (page === "Reports") {
     return hasCapability(session, "report.read.own", branchId) ||
       hasCapability(session, "report.review.branch", branchId) ||
@@ -72,6 +72,7 @@ export function getAvailableStaffPages(session: StaffSession, branchId?: string)
     "Announcements",
     "Content",
     "Teams & Areas",
+    "Prayer",
     "Reports",
   ];
   return candidates.filter((page) => canOpenStaffPage(session, page, branchId));
