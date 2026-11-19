@@ -518,7 +518,10 @@ export function parseEventCloseoutSubmit(
     ? parseText(value.summary_notes, "summary_notes", 0, 4000, true)
     : { ok: true as const, value: null };
   if (!notes.ok) {
-    return { ok: false, error: "Closeout notes must not exceed 4,000 characters." };
+    return {
+      ok: false,
+      error: "Closeout notes must not exceed 4,000 characters.",
+    };
   }
   return {
     ok: true,
@@ -549,19 +552,29 @@ export function parseEventCloseoutReview(
     return { ok: false, error: "A valid idempotency_key is required." };
   }
   if (value.decision !== "approved" && value.decision !== "returned") {
-    return { ok: false, error: "Closeout decision must be approved or returned." };
+    return {
+      ok: false,
+      error: "Closeout decision must be approved or returned.",
+    };
   }
   let reason: string | null = null;
   if (value.decision === "returned") {
     const parsed = parseText(value.reason, "reason", 2, 2000);
     if (!parsed.ok || parsed.value === null) {
-      return { ok: false, error: "A reason between 2 and 2,000 characters is required when returning a closeout." };
+      return {
+        ok: false,
+        error:
+          "A reason between 2 and 2,000 characters is required when returning a closeout.",
+      };
     }
     reason = parsed.value;
   } else if ("reason" in value) {
     const parsed = parseText(value.reason, "reason", 0, 2000, true);
     if (!parsed.ok) {
-      return { ok: false, error: "Closeout review reason must not exceed 2,000 characters." };
+      return {
+        ok: false,
+        error: "Closeout review reason must not exceed 2,000 characters.",
+      };
     }
     reason = parsed.value;
   }
