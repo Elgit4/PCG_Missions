@@ -99,7 +99,7 @@ export interface EventDraftCreateInput {
   ends_at: string;
   timezone: string;
   location: string | null;
-  capacity: number | null;
+  capacity?: number | null;
 }
 export type EventDraftPatchInput = Partial<Omit<EventDraftCreateInput, "branch_id">>;
 
