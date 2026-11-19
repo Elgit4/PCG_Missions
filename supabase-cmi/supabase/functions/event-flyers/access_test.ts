@@ -3,6 +3,7 @@ import {
   canManageFlyerInScope,
   flyerProfileDenial,
   isEditablePrivateEvent,
+  isFlyerAssignmentEligible,
 } from "./access.ts";
 
 Deno.test(
@@ -94,7 +95,25 @@ Deno.test(
 );
 
 Deno.test(
-  "transport assignments do not satisfy event flyer scope",
+  "only non-transport event assignments qualify for flyer management",
+  () => {
+    assertEquals(isFlyerAssignmentEligible("support"), true);
+    assertEquals(isFlyerAssignmentEligible("host"), true);
+    assertEquals(isFlyerAssignmentEligible("transport"), false);
+    assertEquals(
+      canManageFlyerInScope({
+        branchActive: true,
+        scopeModes: ["event"],
+        directEventAssignment: isFlyerAssignmentEligible("transport"),
+        teamEventMembership: false,
+      }),
+      false,
+    );
+  },
+);
+
+Deno.test(
+  "transport-only capability does not satisfy event flyer scope",
   () => {
     assertEquals(
       canManageFlyerInScope({
