@@ -1509,7 +1509,6 @@ Deno.serve(async (request: Request) => {
       }
     }
 
-
     if (
       (request.method === "GET" && isEventCloseout) ||
       (request.method === "POST" && isEventCloseoutSubmit) ||
