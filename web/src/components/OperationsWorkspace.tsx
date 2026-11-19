@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   X,
   Users,
+  ClipboardList,
 } from "lucide-react";
 import {
   CmiApiClient,
@@ -24,6 +25,7 @@ import { hasCapability } from "../lib/capabilities";
 import { formatBranchDate, toBranchLocalInput, branchLocalInputToIso } from "../lib/branch-time";
 import { formatApplicationError } from "../lib/error-messages";
 import { EventAssignmentsPanel } from "./EventAssignmentsPanel";
+import { EventRegistrationsPanel } from "./EventRegistrationsPanel";
 
 type OperationsSection = "Events" | "Calendar" | "Announcements" | "Content";
 type ContentKind = "sermons" | "welcome-messages";
@@ -72,6 +74,7 @@ export function OperationsWorkspace({
   const [flyerPreview, setFlyerPreview] = useState<string | null>(null);
   const [existingFlyerUrl, setExistingFlyerUrl] = useState<string | null>(null);
   const [assignmentEvent, setAssignmentEvent] = useState<EventDraftRecord | null>(null);
+  const [registrationEvent, setRegistrationEvent] = useState<EventDraftRecord | null>(null);
 
   useEffect(() => {
     if (!flyerFile) { setFlyerPreview(null); return; }
@@ -87,6 +90,9 @@ export function OperationsWorkspace({
     : section === "Announcements"
     ? hasCapability(session, "announcement.read.scoped", branchId)
     : hasCapability(session, "content.manage.draft", branchId);
+
+  const canManageRegistrations = section === "Events" &&
+    hasCapability(session, "event.registration.manage.scoped", branchId);
 
   const canManage = section === "Events"
     ? hasCapability(session, "event.manage.scoped", branchId)
@@ -182,6 +188,14 @@ export function OperationsWorkspace({
         const end = branchLocalInputToIso(String(form.get("ends_at") ?? ""), timeZone);
         if (!start || !end) throw new Error("Enter valid start and end times in the branch time zone.");
         if (Date.parse(end) <= Date.parse(start)) throw new Error("The event end must be later than its start.");
+        const capacityValue = String(form.get("capacity") ?? "").trim();
+        const capacity = capacityValue === "" ? null : Number(capacityValue);
+        if (
+          capacity !== null &&
+          (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 2147483647)
+        ) {
+          throw new Error("Capacity must be a positive whole number.");
+        }
         const input = {
           title: String(form.get("title") ?? "").trim(),
           description: String(form.get("description") ?? "").trim() || null,
@@ -189,6 +203,7 @@ export function OperationsWorkspace({
           ends_at: end,
           timezone: timeZone,
           location: String(form.get("location") ?? "").trim() || null,
+          capacity,
         };
         let savedEventId = editingId;
         if (editingId) {
@@ -319,6 +334,7 @@ export function OperationsWorkspace({
               <>
                 <label>Event title<input name="title" required minLength={2} maxLength={220} defaultValue={editingEvent?.title ?? ""} placeholder="e.g. Sunday evangelism outreach" /></label>
                 <label>Location<input name="location" maxLength={250} defaultValue={editingEvent?.location ?? ""} placeholder="Venue or meeting point" /></label>
+                <label>Capacity <span className="cmi-field-optional">Optional · Required for staff registration</span><input name="capacity" type="number" min={1} max={2147483647} step={1} defaultValue={editingEvent?.capacity ?? ""} placeholder="e.g. 120" /></label>
                 <label>Starts at ({timeZone})<input name="starts_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEvent?.starts_at, timeZone)} /></label>
                 <label>Ends at ({timeZone})<input name="ends_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEvent?.ends_at, timeZone)} /></label>
                 <label className="cmi-field-wide">Description<textarea name="description" rows={3} maxLength={12000} defaultValue={editingEvent?.description ?? ""} placeholder="Purpose, audience and instructions for staff." /></label>
@@ -396,9 +412,30 @@ export function OperationsWorkspace({
               <article className="cmi-task-row" key={item.id}>
                 <div className="cmi-task-symbol"><CalendarDays size={18} /></div>
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.starts_at, timeZone)} – {formatBranchDate(item.ends_at, timeZone)}{item.location ? " · " + item.location : ""}</p><small>{shortText(item.description ?? "No description added.")}</small></div>
-                <span className="cmi-task-status status-open">Private draft</span>
+                <span className="cmi-task-status status-open">{item.status === "draft" ? "Private draft" : item.registration_state === "open" ? "Staff registration open" : "Staff event · Registration closed"}</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setAssignmentEvent(item)} aria-label={"Manage assignments for " + item.title}><Users size={14} />Assignments</button>}
-                {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+                {canManageRegistrations && item.status === "draft" && item.visibility === "private" && item.registration_state === "closed" && (
+                  <button type="button" className="cmi-button cmi-button-secondary" disabled={!item.capacity || saving} onClick={async () => {
+                    setSaving(true); setError(""); setNotice("");
+                    try { await api.openStaffEventRegistration(branchId, item.id); setNotice("Event published to staff visibility. Staff registration is now open."); await loadRecords(); }
+                    catch (cause) { setError(errorMessage(cause)); }
+                    finally { setSaving(false); }
+                  }} title={!item.capacity ? "Set a finite capacity before opening registration." : "Publish this event to staff only"}>
+                    Open staff registration
+                  </button>
+                )}
+                {canManageRegistrations && item.status === "published" && item.visibility === "staff" && (
+                  <>
+                    <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setRegistrationEvent(item)} aria-label={"Manage registrations for " + item.title}><ClipboardList size={14} />Registrations</button>
+                    {item.registration_state === "open" && <button type="button" className="cmi-button cmi-button-secondary" disabled={saving} onClick={async () => {
+                      setSaving(true); setError(""); setNotice("");
+                      try { await api.closeStaffEventRegistration(branchId, item.id); setNotice("Staff registration closed."); await loadRecords(); }
+                      catch (cause) { setError(errorMessage(cause)); }
+                      finally { setSaving(false); }
+                    }}>Close registration</button>}
+                  </>
+                )}
+                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
             {!events.length && <p className="cmi-detail-muted">No event drafts are visible in this branch.</p>}
@@ -413,6 +450,18 @@ export function OperationsWorkspace({
             timeZone={timeZone}
             event={assignmentEvent}
             onClose={() => setAssignmentEvent(null)}
+            onSessionExpired={onSessionExpired}
+          />
+        )}
+
+        {section === "Events" && canManageRegistrations && registrationEvent && (
+          <EventRegistrationsPanel
+            key={registrationEvent.id + ":" + registrationEvent.registration_state}
+            api={api}
+            branchId={branchId}
+            timeZone={timeZone}
+            event={registrationEvent}
+            onClose={() => setRegistrationEvent(null)}
             onSessionExpired={onSessionExpired}
           />
         )}
