@@ -666,7 +666,8 @@ Deno.serve(async (request: Request) => {
               id,
             );
           }
-          const { data, error } = await auth.service.from("event_staff_assignment")
+          const { data, error } = await auth.service
+            .from("event_staff_assignment")
             .insert({
               event_id: nestedEventId,
               branch_id: branchId,
@@ -676,11 +677,19 @@ Deno.serve(async (request: Request) => {
               ends_at: assignmentEndsAt,
               assigned_by: auth.actorId,
             })
-            .select("id,event_id,branch_id,staff_auth_user_id,assignment_role,starts_at,ends_at,revoked_at,created_at")
+            .select(
+              "id,event_id,branch_id,staff_auth_user_id,assignment_role,starts_at,ends_at,revoked_at,created_at",
+            )
             .single();
           if (error) {
             if (error.code === "23505" || error.code === "23P01") {
-              return fail("ASSIGNMENT_CONFLICT", "This staff member already has an overlapping assignment for that role.", 409, origin, id);
+              return fail(
+                "ASSIGNMENT_CONFLICT",
+                "This staff member already has an overlapping assignment for that role.",
+                409,
+                origin,
+                id,
+              );
             }
             throw new Error("EVENT_STAFF_ASSIGNMENT_CREATE_FAILED");
           }
@@ -700,14 +709,25 @@ Deno.serve(async (request: Request) => {
         if (!assignmentEndsAt) {
           return fail("INVALID_ASSIGNMENT_WINDOW", "Assignments must start and end within the event's scheduled window.", 422, origin, id);
         }
-        const { data: team, error: teamError } = await auth.service.from("team")
-          .select("id").eq("id", parsed.value.team_id).eq("branch_id", branchId)
-          .eq("is_active", true).maybeSingle();
+        const { data: team, error: teamError } = await auth.service
+          .from("team")
+          .select("id")
+          .eq("id", parsed.value.team_id)
+          .eq("branch_id", branchId)
+          .eq("is_active", true)
+          .maybeSingle();
         if (teamError) throw new Error("EVENT_TEAM_LOOKUP_FAILED");
         if (!team) {
-          return fail("TEAM_NOT_ASSIGNABLE", "Choose an active team in this branch.", 422, origin, id);
+          return fail(
+            "TEAM_NOT_ASSIGNABLE",
+            "Choose an active team in this branch.",
+            422,
+            origin,
+            id,
+          );
         }
-        const { data, error } = await auth.service.from("event_team_assignment")
+        const { data, error } = await auth.service
+          .from("event_team_assignment")
           .insert({
             event_id: nestedEventId,
             branch_id: branchId,
@@ -717,11 +737,19 @@ Deno.serve(async (request: Request) => {
             ends_at: assignmentEndsAt,
             assigned_by: auth.actorId,
           })
-          .select("id,event_id,branch_id,team_id,assignment_role,starts_at,ends_at,revoked_at,created_at")
+          .select(
+            "id,event_id,branch_id,team_id,assignment_role,starts_at,ends_at,revoked_at,created_at",
+          )
           .single();
         if (error) {
           if (error.code === "23505" || error.code === "23P01") {
-            return fail("ASSIGNMENT_CONFLICT", "This team already has an overlapping assignment for that role.", 409, origin, id);
+            return fail(
+              "ASSIGNMENT_CONFLICT",
+              "This team already has an overlapping assignment for that role.",
+              409,
+              origin,
+              id,
+            );
           }
           throw new Error("EVENT_TEAM_ASSIGNMENT_CREATE_FAILED");
         }
@@ -733,8 +761,10 @@ Deno.serve(async (request: Request) => {
         const { data: existing, error: lookupError } = await auth.service
           .from(table)
           .select("id,event_id,branch_id,starts_at,ends_at,revoked_at")
-          .eq("id", eventSuffix[1]).eq("event_id", nestedEventId)
-          .eq("branch_id", branchId).maybeSingle();
+          .eq("id", eventSuffix[1])
+          .eq("event_id", nestedEventId)
+          .eq("branch_id", branchId)
+          .maybeSingle();
         if (lookupError) {
           throw new Error("EVENT_ASSIGNMENT_REVOKE_LOOKUP_FAILED");
         }
@@ -754,8 +784,10 @@ Deno.serve(async (request: Request) => {
         ).toISOString();
         const { data, error } = await auth.service.from(table)
           .update({ revoked_at: revokedAt })
-          .eq("id", eventSuffix[1]).eq("event_id", nestedEventId)
-          .eq("branch_id", branchId).is("revoked_at", null)
+          .eq("id", eventSuffix[1])
+          .eq("event_id", nestedEventId)
+          .eq("branch_id", branchId)
+          .is("revoked_at", null)
           .select("id,event_id,branch_id,starts_at,ends_at,revoked_at")
           .maybeSingle();
         if (error) throw new Error("EVENT_ASSIGNMENT_REVOKE_FAILED");
