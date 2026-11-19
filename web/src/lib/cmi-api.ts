@@ -81,9 +81,10 @@ export interface EventDraftRecord {
   ends_at: string;
   timezone: string;
   location: string | null;
-  status: "draft";
-  visibility: "private";
-  registration_state: "closed";
+  capacity: number | null;
+  status: "draft" | "published" | "cancelled" | "completed";
+  visibility: "private" | "staff" | "public";
+  registration_state: "closed" | "open";
   created_at: string;
   updated_at: string;
   flyer_mime_type?: "image/jpeg" | "image/png" | "image/webp" | null;
@@ -98,11 +99,33 @@ export interface EventDraftCreateInput {
   ends_at: string;
   timezone: string;
   location: string | null;
+  capacity: number | null;
 }
 export type EventDraftPatchInput = Partial<Omit<EventDraftCreateInput, "branch_id">>;
 
 
 export type EventStaffAssignmentRole = "owner" | "organizer" | "checkin" | "support";
+
+export interface EventRegistrationRecord {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  attendee_name_snapshot: string;
+  attendee_phone_snapshot: string | null;
+  status: "registered" | "cancelled" | "attended" | "no_show";
+  registered_at: string;
+}
+export interface EventStaffRegistrationInput {
+  idempotency_key: string;
+  attendee_name: string;
+  attendee_phone: string | null;
+}
+export interface EventStaffRegistrationResult {
+  registration: EventRegistrationRecord;
+  replayed: boolean;
+  response_status: number;
+}
+
 export type EventTeamAssignmentRole = "organizer" | "ushering" | "support";
 export interface EventStaffAssignmentInput {
   staff_auth_user_id: string;
@@ -894,6 +917,40 @@ export class CmiApiClient {
           offset: options.offset ?? 0,
         },
       },
+    );
+  }
+
+
+  openStaffEventRegistration(branchId: string, eventId: string) {
+    return this.request<EventDraftRecord>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/staff-registration/open",
+      { method: "POST", query: { branch_id: branchId } },
+    );
+  }
+  closeStaffEventRegistration(branchId: string, eventId: string) {
+    return this.request<EventDraftRecord>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/staff-registration/close",
+      { method: "POST", query: { branch_id: branchId } },
+    );
+  }
+  listEventRegistrations(branchId: string, eventId: string) {
+    return this.request<EventRegistrationRecord[]>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/registrations",
+      { query: { branch_id: branchId } },
+    );
+  }
+  registerEventAttendee(
+    branchId: string,
+    eventId: string,
+    input: EventStaffRegistrationInput,
+  ) {
+    return this.request<EventStaffRegistrationResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/registrations",
+      { method: "POST", query: { branch_id: branchId }, body: input },
     );
   }
 
