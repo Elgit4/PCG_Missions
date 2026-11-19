@@ -1,0 +1,18 @@
+/* Staff sign-in uses ministry brand accents; danger red remains reserved for errors. */
+.staff-login-overline span {
+  background: var(--cmi-brand-accent) !important;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--cmi-brand-accent) 14%, transparent) !important;
+}
+.staff-login-aside-content h1 em { color: var(--cmi-brand-accent) !important; }
+.staff-login-security-label i {
+  border-color: color-mix(in srgb, var(--cmi-brand-accent) 36%, transparent) !important;
+  background: var(--cmi-brand-soft) !important;
+  color: var(--cmi-brand-accent) !important;
+}
+.staff-login-page a:not(.staff-login-submit) { color: var(--cmi-primary) !important; }
+.staff-login-page a:not(.staff-login-submit):hover { color: var(--cmi-primary-hover) !important; }
+html[data-theme="dark"] .staff-login-aside-content h1 em,
+html[data-theme="dark"] .staff-login-overline span,
+html[data-theme="dark"] .staff-login-security-label i { color: var(--cmi-brand-accent) !important; }
+.staff-login-page .staff-login-inline-link { color: var(--cmi-primary) !important; }
+.staff-login-page .staff-login-inline-link:hover { color: var(--cmi-primary-hover) !important; }
