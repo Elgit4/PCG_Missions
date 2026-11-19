@@ -91,7 +91,7 @@ values ('21000000-0000-4000-8000-000000000031','11000000-0000-4000-8000-00000000
 insert into public.team(id,branch_id,name)
 values ('31000000-0000-4000-8000-000000000031','21000000-0000-4000-8000-000000000031','Notification Test Team');
 insert into public.event(id,branch_id,title,starts_at,ends_at,created_by,status,visibility,registration_state)
-values ('51000000-0000-4000-8000-000000000031','21000000-0000-4000-8000-000000000031','Synthetic Notification Event',now()+interval '3 days',now()+interval '3 days 2 hours','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa31','published','staff','closed');
+values ('51000000-0000-4000-8000-000000000031','21000000-0000-4000-8000-000000000031','Synthetic Notification Event',now()-interval '2 days',now()+interval '3 days','aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa31','published','staff','closed');
 
 insert into public.staff_team_membership(id,staff_profile_id,team_id,branch_id,starts_at,ends_at,created_by)
 values
