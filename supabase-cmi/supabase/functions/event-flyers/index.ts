@@ -68,7 +68,13 @@ async function resolveStaff(token: string) {
   if (profile.must_change_password) return { ok: false as const, status: 403, code: "PASSWORD_CHANGE_REQUIRED", message: "Change your temporary password before managing event flyers." };
   return { ok: true as const, actorId: auth.user.id, profileId: profile.id, service };
 }
-async function canManageEvent(service: ReturnType<typeof serviceClient>, profileId: string, branchId: string) {
+async function canManageEvent(
+  service: ReturnType<typeof serviceClient>,
+  profileId: string,
+  actorId: string,
+  branchId: string,
+  eventId: string,
+) {
   const now = new Date().toISOString();
   const { data: branch, error: branchError } = await service.from("branch")
     .select("id,is_active").eq("id", branchId).maybeSingle();
@@ -86,10 +92,38 @@ async function canManageEvent(service: ReturnType<typeof serviceClient>, profile
     .select("scope_mode,capability:capability!inner(code,is_active)")
     .in("role_id", roleIds).eq("capability.code", "event.manage.scoped");
   if (grantError) throw new Error("CAPABILITY_LOOKUP_FAILED");
-  return (grants ?? []).some((grant: { scope_mode: string; capability?: { code: string; is_active: boolean } | Array<{ code: string; is_active: boolean }> | null }) => {
+  const scopes = (grants ?? []).flatMap((grant: { scope_mode: string; capability?: { code: string; is_active: boolean } | Array<{ code: string; is_active: boolean }> | null }) => {
     const cap = Array.isArray(grant.capability) ? grant.capability[0] : grant.capability;
-    return cap?.is_active && grant.scope_mode === "branch";
+    return cap?.is_active ? [grant.scope_mode] : [];
   });
+  if (scopes.includes("branch")) return true;
+  if (scopes.includes("event")) {
+    const { data, error: eventError } = await service.from("event_staff_assignment")
+      .select("id").eq("event_id", eventId).eq("branch_id", branchId)
+      .eq("staff_auth_user_id", actorId).lte("starts_at", now)
+      .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null)
+      .limit(1).maybeSingle();
+    if (eventError) throw new Error("EVENT_ASSIGNMENT_LOOKUP_FAILED");
+    if (data) return true;
+  }
+  if (scopes.includes("team")) {
+    const { data: eventTeams, error: eventTeamError } = await service.from("event_team_assignment")
+      .select("team_id").eq("event_id", eventId).eq("branch_id", branchId)
+      .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
+      .is("revoked_at", null);
+    if (eventTeamError) throw new Error("EVENT_TEAM_LOOKUP_FAILED");
+    const teamIds = [...new Set((eventTeams ?? []).map((row: { team_id: string }) => row.team_id))];
+    if (teamIds.length) {
+      const { data: memberships, error: membershipError } = await service.from("staff_team_membership")
+        .select("id").eq("staff_profile_id", profileId).eq("branch_id", branchId)
+        .in("team_id", teamIds).lte("starts_at", now)
+        .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null)
+        .limit(1).maybeSingle();
+      if (membershipError) throw new Error("TEAM_MEMBERSHIP_LOOKUP_FAILED");
+      if (memberships) return true;
+    }
+  }
+  return false;
 }
 async function signedPreview(service: ReturnType<typeof serviceClient>, path: string) {
   const { data, error } = await service.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_SECONDS);
@@ -123,7 +157,7 @@ Deno.serve(async (request: Request) => {
     const removing = parts[parts.length - 1] === "remove";
     const branchId = url.searchParams.get("branch_id") ?? "";
     if (!isUuid(eventId) || !isUuid(branchId)) return fail("INVALID_EVENT", "Select a valid event and ministry workspace.", 400, origin, requestId);
-    if (!await canManageEvent(auth.service, auth.profileId, branchId)) return fail("FORBIDDEN", "You don't have permission to manage flyers for this event.", 403, origin, requestId);
+    if (!await canManageEvent(auth.service, auth.profileId, auth.actorId, branchId, eventId)) return fail("FORBIDDEN", "You don't have permission to manage flyers for this event.", 403, origin, requestId);
     const { data: event, error: eventError } = await auth.service.from("event")
       .select("id,branch_id,flyer_object_path,flyer_mime_type,flyer_size_bytes,flyer_updated_at")
       .eq("id", eventId).eq("branch_id", branchId).maybeSingle();
