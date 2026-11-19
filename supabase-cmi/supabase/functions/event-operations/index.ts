@@ -9,6 +9,7 @@ import {
   parseEventCreate,
   parseEventListQuery,
   parseEventPatch,
+  parseEventRegistrationCancel,
   parseEventStaffAssignment,
   parseEventStaffRegistration,
   parseEventTeamAssignment,
@@ -545,6 +546,9 @@ Deno.serve(async (request: Request) => {
       isUuid(eventSuffix[1]) && eventSuffix[2] === "revoke";
     const isRegistrationCollection = isUuid(nestedEventId) &&
       eventSuffix.length === 1 && eventSuffix[0] === "registrations";
+    const isRegistrationCancel = isUuid(nestedEventId) &&
+      eventSuffix.length === 3 && eventSuffix[0] === "registrations" &&
+      isUuid(eventSuffix[1]) && eventSuffix[2] === "cancel";
     const isStaffRegistrationStateChange = isUuid(nestedEventId) &&
       eventSuffix.length === 2 && eventSuffix[0] === "staff-registration" &&
       (eventSuffix[1] === "open" || eventSuffix[1] === "close");
@@ -684,6 +688,163 @@ Deno.serve(async (request: Request) => {
         );
       }
       return response({ data, request_id: id }, 200, origin, id);
+    }
+
+
+    if (request.method === "POST" && isRegistrationCancel) {
+      const branchId = parseBranchQuery(url);
+      if (!branchId) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+      const scopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "event.registration.manage.scoped",
+      );
+      if (!scopes.includes("branch")) {
+        return fail(
+          "FORBIDDEN",
+          "The operation is not permitted.",
+          403,
+          origin,
+          id,
+        );
+      }
+      let body: unknown;
+      try {
+        body = await readJson(request);
+      } catch (error) {
+        const code = error instanceof Error ? error.message : "INVALID_JSON";
+        return fail(
+          code,
+          code === "CONTENT_TYPE_REQUIRED"
+            ? "Content-Type must be application/json."
+            : code === "BODY_TOO_LARGE"
+            ? "Request body is too large."
+            : "A valid JSON request body is required.",
+          code === "BODY_TOO_LARGE" ? 413 : 400,
+          origin,
+          id,
+        );
+      }
+      const parsed = parseEventRegistrationCancel(body);
+      if (!parsed.ok) {
+        return fail("INVALID_REGISTRATION_CANCEL", parsed.error, 400, origin, id);
+      }
+      if (
+        !Number.isSafeInteger(EVENT_IDEMPOTENCY_KEY_VERSION) ||
+        EVENT_IDEMPOTENCY_KEY_VERSION < 1
+      ) {
+        throw new Error("EVENT_IDEMPOTENCY_KEY_VERSION_INVALID");
+      }
+
+      const secret = EVENT_IDEMPOTENCY_HMAC_KEY ||
+        await deriveIdempotencySecret(SUPABASE_SERVICE_ROLE_KEY, "event");
+      const digest = await createRequestDigest(
+        {
+          operation: "registration_cancel",
+          event_id: nestedEventId,
+          branch_id: branchId,
+          actor_user_id: auth.actorId,
+          registration_id: eventSuffix[1],
+        } as CanonicalJson,
+        secret,
+        EVENT_IDEMPOTENCY_KEY_VERSION,
+      );
+      const { data, error } = await auth.service.rpc(
+        "cmi_staff_cancel_event_registration",
+        {
+          p_actor_auth_user_id: auth.actorId,
+          p_event_id: nestedEventId,
+          p_branch_id: branchId,
+          p_registration_id: eventSuffix[1],
+          p_idempotency_key: parsed.value.idempotency_key,
+          p_digest_key_version: digest.keyVersion,
+          p_request_digest_hex: digest.digestHex,
+        },
+      );
+      if (error) {
+        if (error.code === "42501") {
+          return fail(
+            "FORBIDDEN",
+            "You do not have permission to cancel registrations for this event.",
+            403,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "P0002") {
+          return fail("NOT_FOUND", "Event or registration not found.", 404, origin, id);
+        }
+        if (error.code === "23505") {
+          return fail(
+            "IDEMPOTENCY_CONFLICT",
+            "This request key has already been used for a different cancellation.",
+            409,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "22023") {
+          return fail(
+            "INVALID_REGISTRATION_CANCEL",
+            "The cancellation request is invalid.",
+            422,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "P0001") {
+          const message = error.message ?? "";
+          const known = new Map([
+            [
+              "EVENT_REGISTRATION_ALREADY_CHECKED_IN",
+              "A checked-in attendee cannot be cancelled.",
+            ],
+            [
+              "EVENT_REGISTRATION_NOT_CANCELLABLE",
+              "Only an active registration can be cancelled.",
+            ],
+            [
+              "EVENT_REGISTRATION_CANCELLATION_CLOSED",
+              "Registration cancellation is closed because the event has started.",
+            ],
+          ]);
+          return fail(
+            known.has(message) ? message : "REGISTRATION_CANCELLATION_REJECTED",
+            known.get(message) ?? "The registration could not be cancelled.",
+            409,
+            origin,
+            id,
+          );
+        }
+        if (error.code === "40001") {
+          return fail(
+            "REGISTRATION_CHANGED",
+            "The registration changed. Refresh and try again.",
+            409,
+            origin,
+            id,
+          );
+        }
+        throw new Error("EVENT_STAFF_REGISTRATION_CANCEL_FAILED");
+      }
+      const replayed = Boolean(
+        (data as { replayed?: boolean } | null)?.replayed,
+      );
+      return response(
+        { data, request_id: id, replayed },
+        200,
+        origin,
+        id,
+      );
     }
 
     if (
