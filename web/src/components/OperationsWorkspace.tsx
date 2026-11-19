@@ -444,7 +444,7 @@ export function OperationsWorkspace({
                     }}>Close registration</button>}
                   </>
                 )}
-                {(canSubmitCloseout || canReviewCloseout) && item.status !== "cancelled" && Date.parse(item.ends_at) <= Date.now() && (
+                {(canSubmitCloseout || canReviewCloseout) && (item.status === "published" || item.status === "completed") && Date.parse(item.ends_at) <= Date.now() && (
                   <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setCloseoutEvent(item)} aria-label={"Open closeout for " + item.title}><ClipboardCheck size={14} />Closeout</button>
                 )}
                 {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
