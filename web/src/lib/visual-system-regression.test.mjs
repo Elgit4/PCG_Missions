@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const stylesheet = readFileSync(new URL('../visual-system.css', import.meta.url), 'utf8');
+const stylesheet = readFileSync(new URL('../../production.css', import.meta.url), 'utf8');
 
 describe('visual system regression contracts', () => {
   it('uses a valid focus-ring colour token rather than a box-shadow token as an outline colour', () => {
