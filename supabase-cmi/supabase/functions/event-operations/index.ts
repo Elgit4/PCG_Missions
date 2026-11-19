@@ -1816,12 +1816,12 @@ Deno.serve(async (request: Request) => {
           }
           if (error.code === "P0002") {
             return fail(
-            "NOT_FOUND",
-            "Event closeout not found.",
-            404,
-            origin,
-            id,
-          );
+              "NOT_FOUND",
+              "Event closeout not found.",
+              404,
+              origin,
+              id,
+            );
           }
           if (error.code === "23505") {
             return fail(
