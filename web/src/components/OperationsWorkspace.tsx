@@ -96,6 +96,8 @@ export function OperationsWorkspace({
 
   const canManageRegistrations = section === "Events" &&
     hasCapability(session, "event.registration.manage.scoped", branchId);
+  const canCheckIn = section === "Events" &&
+    hasCapability(session, "event.checkin.scoped", branchId);
   const canSubmitCloseout = section === "Events" &&
     hasCapability(session, "event.closeout.submit", branchId);
   const canReviewCloseout = section === "Events" &&
@@ -471,6 +473,7 @@ export function OperationsWorkspace({
             branchId={branchId}
             timeZone={timeZone}
             event={registrationEvent}
+            canCheckIn={canCheckIn}
             onClose={() => setRegistrationEvent(null)}
             onSessionExpired={onSessionExpired}
           />
