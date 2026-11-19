@@ -2,7 +2,7 @@
 
 **Date:** 19 November 2026  
 **Baseline:** main at b83d1feb44fe5cca1e2ddc7d8026a7126a10d385  
-**Implementation branch:** feat/pcg-missions-complete-workflows
+**Implementation branch:** feat/cmi-pcg-missions-final-review-v6 (PR #82)
 
 ## Product-owner direction
 
@@ -15,20 +15,20 @@ This is a source audit, not a browser or deployment certification.
 | Area | Current source evidence | Assessment |
 |---|---|---|
 | Staff authentication | Supabase Auth email/password, temporary-password gate, reset workflow | Present in source; hosted email delivery and end-to-end auth still require operational verification |
-| Contacts | Capture, scoped listing, details, notes/interactions, follow-up task creation | Partially complete; contact search is first-name-oriented and task creation relies on currently loaded contacts |
-| Follow-up | Task listing, status filtering, start/complete actions, pagination | Partially complete; overdue/today quick views, server-backed contact picker, per-action pending state and contact-context task creation need completion |
-| Events | Private draft create/list/update only | Incomplete; no flyer upload; registration, attendance/check-in, assignment and closeout are not in the staff workspace |
+| Contacts | Contact capture, scoped listing/details, notes/interactions and follow-up task creation | Implemented in source; first/last-name search, permission-scoped phone search and server-backed task picker are present. Authenticated role acceptance remains pending |
+| Follow-up | Assigned work, due dates, overdue/today/upcoming filters, start/complete actions and contact-context task creation | Implemented in source; verify full six-role scope and authenticated desktop/mobile behavior |
+| Events | Private drafts/flyers, staff/team assignments, staff-only registration/cancellation, check-in and closeout | Full non-transport event lifecycle is implemented in PR #82 source with capability checks, transactional capacity/idempotency, attendance reconciliation and independent review. Public registration and Transport remain disabled; hosted deployment and authenticated acceptance are pending |
 | Calendar | Branch-scoped create/list/update | Present for the approved private branch workflow |
 | Announcements | Private draft create/list/update | Present; publication/delivery remain separately gated |
 | Visitor content | Sermon and welcome-message private drafts | Present; publication and public-site administration need their authorised workflows |
 | Teams and service areas | Team/area administration components and Edge Function | Implemented in source; verify all permission and edge cases |
 | Reports | Typed ministry reports and review workspace/API | Present in source; verify role/scope coverage and report-type completeness |
-| Prayer and care | Restricted read operations only | Intentionally incomplete under the current six-role grant baseline; mutation/assignment cannot be exposed without the matching grants and audited server workflows |
-| Internal notifications | No notification centre or notification API in the current web source tree | Missing |
-| Event flyers | No flyer metadata or upload flow in current event draft API/UI | Missing |
+| Prayer and care | Assigned-only Prayer Intercessor read workflow with audited access; restricted pastoral oversight remains separate | Assigned inbox API, database read/audit function and read-only UI are implemented in source. Intercessor request creation/assignment and care mutation remain disabled under the approved six-role defaults; authenticated role acceptance and hosted deployment are pending |
+| Internal notifications | Private per-recipient inbox, read/unread operations and assignment/review triggers | Implemented in source with recipient/branch filters and no direct browser table access; hosted migration/function deployment and negative integration tests remain pending |
+| Event flyers | Private bucket, scoped upload/preview/removal, signed URLs and image validation | Implemented in source. JPEG/PNG/WebP validation enforces a 5 MiB limit and bounded dimensions; cross-branch, cleanup/rollback and signed-URL-expiry tests remain release gates |
 | Transport | Existing schema contains transport tables and event transport fields | Explicitly out of scope for this delivery; do not build UI or workflows |
 | Error messages | Three separate error formatters expose inconsistent copy; network errors include low-level diagnostic details | Shared formatter added on this branch; further screen-by-screen audit remains |
-| PWA | Manifest has only an SVG icon; no service worker in web source tree | Incomplete; offline data must remain disabled |
+| PWA | Static app-shell service worker, offline fallback, manifest metadata and original-crest vector icons | Implemented in source without caching staff data; raster PNG compatibility and installation-surface verification remain pending. Offline workflows remain disabled |
 | Accessibility | Existing Radix dialogs, skip link, status/alert semantics | Good foundation; typography/touch-target audit still required |
 
 ## Delivery architecture
@@ -108,7 +108,7 @@ Reconcile each module against docs/00_MASTER_PRODUCT_SPECIFICATION.md, docs/01_F
 - Added manifest id/scope and synchronised browser theme metadata with the selected theme.
 - Increased minimum field typography and touch targets in the workspace.
 - Internal notification inbox and private event-flyer upload are implemented in source on this branch: database migration, recipient-isolated Edge Function, assignment/review notification triggers, private Storage bucket, signed previews and event-form upload/preview/remove controls. These changes have not been deployed to hosted Supabase.
-- Public registration, attendance/check-in, event assignment/closeout, publication, and restricted pastoral mutations remain separate implementation tracks with their documented security gates.
+- Staff event assignment, staff registration/cancellation, online check-in and closeout are implemented in PR #82 source. Public self-registration, Transport, offline check-in, publication outside separately authorised flows, restricted pastoral mutation and SMS remain disabled.
 
 
 ## 19 November implementation update
@@ -120,7 +120,7 @@ Reconcile each module against docs/00_MASTER_PRODUCT_SPECIFICATION.md, docs/01_F
 - Added event form flyer selection, image preview, replacement and removal.
 - Transport assignment notifications are excluded. SMS/Arkesel, Cloudflare migration and existing screen loader remain untouched.
 - Source changes only: no hosted migration or function deployment, no production release.
-- Remaining: event assignment/registration/check-in/closeout workflows, report schema reconciliation, PWA icon assets, focused tests, current-head CI and browser/role acceptance.
+- Remaining: authenticated negative integration tests for notifications/flyers/event endpoints; typed-report migration reconciliation against hosted history; six-role desktop/mobile acceptance with provisioned non-production identities; raster PWA compatibility checks; and separately authorised staging/release verification.
 
 
 ## 19 November final-review update
@@ -136,7 +136,7 @@ Reconcile each module against docs/00_MASTER_PRODUCT_SPECIFICATION.md, docs/01_F
 - Added a visually-hidden level-two heading to establish the staff workspace heading hierarchy.
 - No hosted Supabase migration or Edge Function deployment has been performed. No production deployment or merge.
 - Transport remains excluded; Arkesel SMS remains deferred; the screen loader is unchanged; Cloudflare migration remains cancelled.
-- Remaining release gates: complete non-transport event registration/check-in/closeout workflows, reconcile typed ministry report migration history, add Edge Function authorization integration tests, confirm current-head migration replay and perform authenticated role-based browser acceptance.
+- Remaining release gates: authenticated negative authorization/integration tests for notifications, flyers and event operations; reconcile typed-report migration history with the intended hosted environment; complete six-role desktop/mobile acceptance; verify raster PWA install assets; and obtain separate staging/production approval. The event lifecycle is implemented in source and remains undeployed.
 
 - The notification centre clears prior-branch rows immediately on workspace changes and ignores stale in-flight responses, preventing notifications from a previously selected branch from appearing in the new workspace.
 
@@ -183,14 +183,13 @@ Therefore the notification centre and flyer UI in this branch are source impleme
 
 ## Remaining implementation and release gates
 
-1. Complete the event lifecycle. The PR branch now contains branch-scoped staff/team assignment listing, creation and revocation, including role allowlists, active-membership checks, event-window bounds, history retention and notification timing. Registration administration, check-in/duplicate-safe attendance, closeout and attendance reconciliation remain incomplete. The assignment work is source-only until current-head CI, authenticated integration tests and deployment gates pass.
-2. Add server-side negative integration tests for notifications and flyers: cross-branch access, non-recipient notification reads/updates, assignment changes, duplicate suppression, invalid/mismatched image signatures, replacement rollback, removal cleanup and signed URL expiry.
-3. Reconcile typed ministry report migrations against the authoritative migration history and verify report author/reviewer authorization end to end.
-4. The PR branch now contains an assigned-only Prayer Intercessor inbox API, an audited database listing function, bounded pagination and a read-only UI that omits contact/creator identity. Verify its current-head migration replay, pgTAP suite, API validation and authenticated role behavior; do not treat it as live because the migration and Edge Function are not deployed.
-5. Reconcile remaining master-spec modules (announcements publication/receipts, public content, team/service-area administration and staff access) against current hosted schema and actual capabilities.
-6. Add raster 192px/512px PWA icons and verify installation surfaces.
-7. Obtain provisioned, owner-authorised test identities for all six roles and complete authenticated desktop/mobile acceptance. Do not fabricate staff identities or bypass the first-admin bootstrap.
-8. Only after the above pass, apply the reviewed migration to the intended environment, deploy the two new functions, verify the live API, and request a separate production release approval.
+1. Complete negative server-side integration/authorization tests for notifications, event flyers and event operations: cross-branch access, non-recipient notification reads/updates, capability separation, duplicate suppression, check-in replay, concurrent capacity, flyer signature spoofing, replacement rollback, removal cleanup and signed-URL expiry.
+2. Reconcile typed ministry-report migrations and hosted migration history; verify report author/reviewer scope for all permitted roles. The schema, report API and review/resubmission workspace exist in source and pass the isolated local migration/pgTAP suite.
+3. Verify the assigned-only Prayer Intercessor workflow against the six-role model using authenticated test identities. The inbox API and UI are read-only; no request creation, assignment management, linked contact identity or broad CRM access is granted to Intercessors.
+4. Reconcile remaining master-spec modules (announcements publication/receipts, public content, team/service-area administration and staff access) against the current hosted schema and actual capabilities.
+5. Add raster 192px/512px PWA icons if required by the target install surfaces and complete installation checks. Keep offline staff data/workflows disabled.
+6. Obtain provisioned, owner-authorised non-production identities for all six roles and complete authenticated desktop/mobile acceptance. Do not fabricate staff identities or bypass first-admin bootstrap.
+7. Only after those gates pass, apply reviewed migrations to the intended environment, deploy the approved Edge Functions, verify live APIs and request separate staging/production release approval. No hosted migration, function deployment or production release is authorised by this PR.
 
 The production app, hosted database, deployed Edge Functions, current screen loader, SMS/Arkesel configuration and existing Supabase/Vercel architecture remain unchanged. Transport remains excluded; Cloudflare migration remains cancelled.
 
@@ -208,6 +207,18 @@ However, the currently deployed `event-operations` Edge Function is version 14 a
 Do not add duplicate event/prayer tables. Build the missing server operations and UI against the existing schema after inspecting its constraints, policies, grants and audit triggers. Keep transport-related columns and historical data intact, but do not expose or implement transport features.
 
 
+
+
+## Current continuation status — 19 November 2026
+
+- Implementation branch: `feat/cmi-pcg-missions-final-review-v6`, PR #82.
+- Event staff/team assignments, staff-only registration and cancellation, online check-in, and independent event closeout are implemented in source. Public registration, Transport and offline check-in remain disabled.
+- The private notification inbox and private event flyer upload/preview/removal flows are implemented in source. Flyer validation applies signature, file-size and dimension checks to JPEG, PNG and WebP.
+- Typed ministry reports/review and the assigned-only Prayer Intercessor read workflow are present in source; the latter remains read-only and discloses no linked contact identity.
+- Read GitHub Actions results from the PR's current head before declaring a check passed. A Vercel account-level deployment-rate limit has prevented a fresh preview; no preview is certified.
+- All changes remain source-only. No hosted Supabase migrations/functions, production merge or deployment have been performed. SMS/Arkesel is deferred, Cloudflare migration remains cancelled, and the existing screen loader is unchanged.
+- Release is still gated on authenticated negative integration tests, intended-environment migration reconciliation, provisioned six-role desktop/mobile acceptance, and separate staging/production approval.
+
 ## PR #82 implementation continuation — 19 November 2026
 
 The current PR branch adds the following source implementations against the existing schema:
@@ -216,6 +227,8 @@ The current PR branch adds the following source implementations against the exis
 - Staff-only event registration with finite capacity, an Admin/Pastor branch-scoped capability, an atomic event-row lock, HMAC-backed idempotency receipt, same-payload replay, changed-payload conflict and capacity enforcement. No public self-registration or automatic contact creation is enabled.
 - Staff registration cancellation with an atomic receipt, duplicate-safe replay, a check-in guard and capacity release. A checked-in attendee cannot be cancelled.
 - Admin/Pastor branch-scoped check-in of active registrations. The RPC rechecks the capability, locks the event and registration, writes a single staff check-in and HMAC receipt atomically, and rejects a second independent check-in. The registration list now displays check-in state and exposes a check-in action. Offline mode remains disabled.
+- Event closeout and reconciliation: ended events snapshot non-cancelled registrations and check-ins, set the event completed, and record an idempotent submission. A different authorised Admin/Pastor must approve or return it; self-review is rejected and submitted/reviewed history is append-only. Transport seat counts remain null.
+- Flyer validation now rejects malformed JPEG/PNG/WebP headers and enforces 12,000-pixel per-axis and 40-megapixel limits in addition to the 5 MiB upload limit.
 - An assigned-only Prayer Intercessor inbox. The Edge Function validates the staff session and bounded pagination; the database function re-checks the active branch capability and active prayer assignment, returns an allowlisted narrative projection without contact identity, and inserts audit rows for disclosed narratives. The UI is read-only and only appears when the assigned-read capability is present.
 
 These changes are committed to the PR branch only. They have not been applied to hosted Supabase or deployed to Vercel. Current-head CI, isolated migration/pgTAP replay and full authenticated acceptance must pass before considering the workflows release-ready. Public self-registration, Transport, SMS/Arkesel and Cloudflare remain out of scope or deferred under the owner-directed decisions.
