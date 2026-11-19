@@ -133,6 +133,9 @@ jobs:
       - name: Test event flyer validation
         run: deno test supabase-cmi/supabase/functions/event-flyers/validation_test.ts
 
+      - name: Test event flyer replacement rollback and cleanup
+        run: deno test supabase-cmi/supabase/functions/event-flyers/operations_test.ts
+
       - name: Test event flyer authorization scopes
         run: deno test supabase-cmi/supabase/functions/event-flyers/access_test.ts
 
