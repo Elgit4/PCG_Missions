@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 const workspace = readFileSync(new URL('./StaffWorkspace.tsx', import.meta.url), 'utf8');
 const theme = readFileSync(new URL('../lib/theme.tsx', import.meta.url), 'utf8');
-const styles = readFileSync(new URL('../visual-system.css', import.meta.url), 'utf8');
+const styles = readFileSync(new URL('../../production.css', import.meta.url), 'utf8');
 
 describe('staff workspace shell layout contract', () => {
   it('keeps the attribution in the desktop sidebar and out of the page footer', () => {
