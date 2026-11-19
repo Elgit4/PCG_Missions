@@ -33,6 +33,8 @@ interface ContactDetailDialogProps {
   canReadNotes: boolean;
   canCreateNotes: boolean;
   canRecordInteraction: boolean;
+  canCreateFollowUp: boolean;
+  onCreateFollowUp: (contact: ContactRecord) => void;
   onSessionExpired: () => void;
 }
 
@@ -76,6 +78,8 @@ export function ContactDetailDialog({
   canReadNotes,
   canCreateNotes,
   canRecordInteraction,
+  canCreateFollowUp,
+  onCreateFollowUp,
   onSessionExpired,
 }: ContactDetailDialogProps) {
   const [contact, setContact] = useState(initialContact);
@@ -223,9 +227,12 @@ export function ContactDetailDialog({
                 Contact details and ordinary follow-up history available within your current access scope.
               </Dialog.Description>
             </div>
-            <Dialog.Close asChild>
-              <button type="button" className="cmi-detail-close" aria-label="Close contact details"><X size={19} /></button>
-            </Dialog.Close>
+            <div className="cmi-detail-header-actions">
+              {canCreateFollowUp && <button type="button" className="cmi-button cmi-button-primary" onClick={() => onCreateFollowUp(contact)}><Plus size={14} /> Create follow-up</button>}
+              <Dialog.Close asChild>
+                <button type="button" className="cmi-detail-close" aria-label="Close contact details"><X size={19} /></button>
+              </Dialog.Close>
+            </div>
           </header>
 
           <div className="cmi-detail-scroll">
