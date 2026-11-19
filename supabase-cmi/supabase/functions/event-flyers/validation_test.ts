@@ -9,31 +9,31 @@ Deno.test("accepts valid event UUIDs and rejects malformed IDs", () => {
 Deno.test("accepts JPEG only when the image markers are present", () => {
   assertEquals(
     sniffImage(new Uint8Array([0xff, 0xd8, 0xff, 0x00, 0xff, 0xd9])),
-    mime: "image/jpeg",
-    ext: "jpg",
-  });
+    { mime: "image/jpeg", ext: "jpg" },
+  );
   assertEquals(sniffImage(new Uint8Array([0xff, 0xd8, 0xff, 0x00])), null);
 });
 
 Deno.test(
   "accepts bounded PNG dimensions and rejects zero or oversized images",
   () => {
-  const makePngHeader = (width: number, height: number) => {
-    const bytes = new Uint8Array(24);
-    bytes.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
-    bytes.set([73, 72, 68, 82], 12);
-    const view = new DataView(bytes.buffer);
-    view.setUint32(16, width);
-    view.setUint32(20, height);
-    return bytes;
-  };
-  assertEquals(sniffImage(makePngHeader(1200, 1600)), {
-    mime: "image/png",
-    ext: "png",
-  });
-  assertEquals(sniffImage(makePngHeader(0, 1600)), null);
-  assertEquals(sniffImage(makePngHeader(12000, 12000)), null);
-});
+    const makePngHeader = (width: number, height: number) => {
+      const bytes = new Uint8Array(24);
+      bytes.set([137, 80, 78, 71, 13, 10, 26, 10], 0);
+      bytes.set([73, 72, 68, 82], 12);
+      const view = new DataView(bytes.buffer);
+      view.setUint32(16, width);
+      view.setUint32(20, height);
+      return bytes;
+    };
+    assertEquals(sniffImage(makePngHeader(1200, 1600)), {
+      mime: "image/png",
+      ext: "png",
+    });
+    assertEquals(sniffImage(makePngHeader(0, 1600)), null);
+    assertEquals(sniffImage(makePngHeader(12000, 12000)), null);
+  },
+);
 
 Deno.test("accepts only structurally consistent WebP RIFF headers", () => {
   const bytes = new Uint8Array(12);
