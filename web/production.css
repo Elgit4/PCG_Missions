@@ -3948,3 +3948,108 @@ html[data-theme="dark"] .staff-login-security-label i { color: var(--cmi-brand-a
     font-size: 12px;
   }
 }
+
+
+/* Staff registration administration */
+.cmi-event-registration-panel {
+  display: grid;
+  gap: 16px;
+  margin-top: 18px;
+  border: 1px solid var(--cmi-border);
+  background: var(--cmi-surface);
+}
+.cmi-event-registration-panel .cmi-panel-heading h4 {
+  margin: 3px 0 7px;
+  color: var(--cmi-text);
+  font-size: 16px;
+}
+.cmi-event-registration-panel .cmi-panel-heading p:not(.cmi-eyebrow) {
+  max-width: 680px;
+  color: var(--cmi-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.cmi-registration-summary {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px 16px;
+  padding: 12px;
+  border: 1px solid var(--cmi-border-soft);
+  border-radius: 10px;
+  background: var(--cmi-surface-raised);
+  color: var(--cmi-muted);
+  font-size: 10px;
+}
+.cmi-registration-summary strong {
+  color: var(--cmi-text);
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+.cmi-registration-summary .is-open {
+  color: var(--cmi-green);
+  font-weight: 700;
+}
+.cmi-registration-summary .is-closed {
+  color: var(--cmi-muted);
+  font-weight: 700;
+}
+.cmi-event-registration-panel .cmi-form-grid {
+  margin: 0;
+  border-color: var(--cmi-border-soft);
+  background: var(--cmi-surface-raised);
+}
+.cmi-event-registration-panel .cmi-form-grid input {
+  min-height: 42px;
+  border-color: var(--cmi-border);
+  background: var(--cmi-bg-raised);
+  color: var(--cmi-text);
+  font-size: 12px;
+}
+.cmi-registration-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.cmi-registration-list-heading h5 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--cmi-text);
+  font-size: 12px;
+}
+.cmi-registration-list-heading span {
+  color: var(--cmi-muted);
+  font-size: 10px;
+}
+.cmi-event-registration-panel .cmi-task-row {
+  align-items: center;
+  gap: 10px;
+}
+.cmi-event-registration-panel .cmi-task-copy strong {
+  color: var(--cmi-text);
+  font-size: 12px;
+}
+.cmi-event-registration-panel .cmi-task-copy p {
+  color: var(--cmi-muted);
+  font-size: 10px;
+}
+@media (max-width: 680px) {
+  .cmi-registration-summary,
+  .cmi-registration-list-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .cmi-event-registration-panel .cmi-panel-heading {
+    gap: 12px;
+  }
+  .cmi-event-registration-panel .cmi-form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .cmi-event-registration-panel .cmi-form-actions .cmi-button {
+    width: 100%;
+  }
+}
