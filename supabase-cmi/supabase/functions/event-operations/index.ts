@@ -258,7 +258,6 @@ async function eventIsVisible(
   return await isAssignedEvent(service, eventId, branchId, actorId);
 }
 
-
 function parseBranchQuery(url: URL): string | null {
   const keys = [...url.searchParams.keys()];
   const branchId = url.searchParams.get("branch_id") ?? "";
