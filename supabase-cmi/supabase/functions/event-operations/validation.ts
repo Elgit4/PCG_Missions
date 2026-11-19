@@ -233,11 +233,17 @@ export interface EventTeamAssignmentInput {
 
 function parseAssignmentWindow(
   value: Record<string, unknown>,
-): { ok: true; starts_at: string; ends_at: string | null } | { ok: false; error: string } {
+): { ok: true; starts_at: string; ends_at: string | null } | {
+  ok: false;
+  error: string;
+} {
   const start = parseTimestamp(value.starts_at, "starts_at");
   if (!start.ok) return start;
   let end: string | null = null;
-  if (value.ends_at !== undefined && value.ends_at !== null && value.ends_at !== "") {
+  if (
+    value.ends_at !== undefined && value.ends_at !== null &&
+    value.ends_at !== ""
+  ) {
     const parsedEnd = parseTimestamp(value.ends_at, "ends_at");
     if (!parsedEnd.ok) return parsedEnd;
     end = parsedEnd.value;
@@ -250,17 +256,33 @@ function parseAssignmentWindow(
 
 export function parseEventStaffAssignment(
   value: unknown,
-): { ok: true; value: EventStaffAssignmentInput } | { ok: false; error: string } {
-  if (!isRecord(value)) return { ok: false, error: "A JSON object is required." };
-  const allowed = new Set(["staff_auth_user_id", "assignment_role", "starts_at", "ends_at"]);
+): { ok: true; value: EventStaffAssignmentInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const allowed = new Set([
+    "staff_auth_user_id",
+    "assignment_role",
+    "starts_at",
+    "ends_at",
+  ]);
   if (Object.keys(value).some((key) => !allowed.has(key))) {
     return { ok: false, error: "Unsupported staff assignment field." };
   }
-  if (typeof value.staff_auth_user_id !== "string" || !UUID_PATTERN.test(value.staff_auth_user_id)) {
+  if (
+    typeof value.staff_auth_user_id !== "string" ||
+    !UUID_PATTERN.test(value.staff_auth_user_id)
+  ) {
     return { ok: false, error: "Invalid staff member." };
   }
   const roles = new Set(["owner", "organizer", "checkin", "support"]);
-  if (typeof value.assignment_role !== "string" || !roles.has(value.assignment_role)) {
+  if (
+    typeof value.assignment_role !== "string" ||
+    !roles.has(value.assignment_role)
+  ) {
     return { ok: false, error: "Invalid staff assignment role." };
   }
   const window = parseAssignmentWindow(value);
@@ -269,7 +291,8 @@ export function parseEventStaffAssignment(
     ok: true,
     value: {
       staff_auth_user_id: value.staff_auth_user_id,
-      assignment_role: value.assignment_role as EventStaffAssignmentInput["assignment_role"],
+      assignment_role: value
+        .assignment_role as EventStaffAssignmentInput["assignment_role"],
       starts_at: window.starts_at,
       ends_at: window.ends_at,
     },
@@ -278,9 +301,19 @@ export function parseEventStaffAssignment(
 
 export function parseEventTeamAssignment(
   value: unknown,
-): { ok: true; value: EventTeamAssignmentInput } | { ok: false; error: string } {
-  if (!isRecord(value)) return { ok: false, error: "A JSON object is required." };
-  const allowed = new Set(["team_id", "assignment_role", "starts_at", "ends_at"]);
+): { ok: true; value: EventTeamAssignmentInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const allowed = new Set([
+    "team_id",
+    "assignment_role",
+    "starts_at",
+    "ends_at",
+  ]);
   if (Object.keys(value).some((key) => !allowed.has(key))) {
     return { ok: false, error: "Unsupported team assignment field." };
   }
@@ -288,7 +321,10 @@ export function parseEventTeamAssignment(
     return { ok: false, error: "Invalid team." };
   }
   const roles = new Set(["organizer", "ushering", "support"]);
-  if (typeof value.assignment_role !== "string" || !roles.has(value.assignment_role)) {
+  if (
+    typeof value.assignment_role !== "string" ||
+    !roles.has(value.assignment_role)
+  ) {
     return { ok: false, error: "Invalid team assignment role." };
   }
   const window = parseAssignmentWindow(value);
@@ -297,7 +333,8 @@ export function parseEventTeamAssignment(
     ok: true,
     value: {
       team_id: value.team_id,
-      assignment_role: value.assignment_role as EventTeamAssignmentInput["assignment_role"],
+      assignment_role: value
+        .assignment_role as EventTeamAssignmentInput["assignment_role"],
       starts_at: window.starts_at,
       ends_at: window.ends_at,
     },
