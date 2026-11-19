@@ -247,3 +247,27 @@ This supersedes the earlier "no production data changed" statements in this docu
 At PR head `b41a82b175cbc07de7ead2dbfedaa01665808f72`, CMI backend CI (isolated migration replay and pgTAP), CMI web CI and CMI frontend CI have all completed successfully. A current-head Vercel preview remains unconfirmed. The PR remains open and Draft; release gates and the separate production-approval requirement are unchanged.
 
 The browser-side acceptance step is to refresh PCG Missions and retry sign-in with the existing account. The password was not reset or changed as part of this repair.
+
+
+## Verified PR and hosted-environment status — 19 November 2026, 21:56 UTC
+
+This section supersedes earlier same-day notes that the current preview was unconfirmed or that current-head CI was still running.
+
+- **PR:** #82 remains open and Draft on `feat/cmi-pcg-missions-final-review-v6`, head `af40ac88a37ee813d686b0099079e31cdd8ae6f8`. It has no submitted review or inline review threads at the time of this check.
+- **CI:** CMI backend CI, CMI web CI and CMI frontend CI all completed successfully on this exact head. The backend workflow applied the isolated CMI migration set and completed the pgTAP test step successfully. This proves the branch's isolated tests pass; it does not prove the hosted project has been migrated or that the live six-role flows have passed acceptance.
+- **Preview:** Vercel preview deployment `dpl_8DVnTCoQyyWTQYnSfEjqaWkWbJ2y` is READY for this exact head at https://pcg-missions-oxllfh1ft-eltech.vercel.app. The current production deployment remains READY on `main` at `b83d1feb44fe5cca1e2ddc7d8026a7126a10d385`; PR #82 is not in production. The preview build emits a Vite warning because the main JavaScript chunk is about 506.75 kB (146.52 kB gzip).
+- **Hosted Supabase:** the migration ledger contains 17 versions through `20261112220204`. The PR's seven migrations dated 19 November are not applied. The deployed `event-operations` function remains version 14; `staff-notifications` and `event-flyers` are absent from the deployed function list. The PR's notification/flyer/event-operation source is therefore not live.
+- **Login:** the product owner confirmed the first Admin/Pastor account now signs in after the guarded role-assignment and audit-row repair. The repair was data-only; it did not deploy the PR or modify the other staff profile.
+- **Security review:** Supabase reports leaked-password protection disabled, 52 informational RLS-enabled/no-policy findings, and the private bootstrap-lease table without RLS. The private schema/table privilege check previously confirmed no anon/authenticated schema usage or SELECT on that table. No RLS or Auth setting was altered as part of this review.
+
+### Remaining gates
+
+1. Complete authenticated desktop/mobile acceptance using owner-authorised non-production identities for all six roles; do not fabricate identities or grant the second staff profile a role without the owner's direction.
+2. Complete negative hosted/integration authorization checks for cross-branch access, non-recipient notification reads/updates, flyer ownership/signature validation, cleanup/rollback, signed-URL expiry, event capacity/replay/check-in and independent closeout review.
+3. Reconcile the report schema and all seven PR migrations against the intended hosted environment before rollout. Deploy the paired Edge Functions only after migration and security review.
+4. Verify server-side idempotency secrets for contact/follow-up creation and the production email sender/domain before real intake and invitation/recovery acceptance. Never disclose or store secret values in repository documentation.
+5. Review the leaked-password protection and bootstrap-lease RLS advisories. These settings remain unchanged pending a deliberate security decision; do not add broad RLS policies merely to silence informational lints.
+6. Finish PWA install-surface checks and decide whether to split the main JavaScript bundle to clear the Vite chunk warning.
+7. Complete privacy/controller readiness, backup/restore rehearsal, monitoring and separately authorised staging/production approval before release.
+
+No migration, Edge Function deployment, production merge or production frontend release was performed in this continuation. SMS/Arkesel, Cloudflare migration, Transport and offline staff workflows remain unchanged or excluded; the existing screen loader remains untouched.
