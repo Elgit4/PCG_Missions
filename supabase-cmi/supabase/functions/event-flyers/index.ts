@@ -215,7 +215,8 @@ async function canManageEvent(
     const { data: eventTeams, error: eventTeamError } = await service.from(
       "event_team_assignment",
     )
-      .select("team_id,assignment_role").eq("event_id", eventId).eq(
+      .select("team_id,assignment_role,team:team!inner(is_active)")
+      .eq("team.is_active", true).eq("event_id", eventId).eq(
         "branch_id",
         branchId,
       ).lte("starts_at", now)
