@@ -34,11 +34,19 @@ export function StaffNotificationCenter({ api, branchId, onNavigate }: Props) {
       setUnread(result.data.unread_count);
       setError("");
     } catch {
+      setItems([]);
+      setUnread(0);
       if (!quiet) setError("Notifications are temporarily unavailable. Try refreshing.");
     } finally {
       if (!quiet) setLoading(false);
     }
   }, [api, branchId]);
+
+  useEffect(() => {
+    setItems([]);
+    setUnread(0);
+    setError("");
+  }, [branchId]);
 
   useEffect(() => {
     void load();
