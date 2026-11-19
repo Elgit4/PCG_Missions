@@ -1,7 +1,11 @@
 import { CrestOutlineLoader } from "./components/CrestOutlineLoader";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { StaffLogin, type StaffAuthView } from "./components/StaffLogin";
-import { StaffWorkspace } from "./components/StaffWorkspace";
+
+const StaffWorkspace = lazy(async () => {
+  const module = await import("./components/StaffWorkspace");
+  return { default: module.StaffWorkspace };
+});
 import { PcgAuthClient } from "./lib/auth";
 import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
 import { ThemeToggle } from "./lib/theme";
@@ -233,7 +237,11 @@ export default function App() {
   }
 
   if (staffSession && !staffSession.must_change_password && api) {
-    return <StaffWorkspace api={api} session={staffSession} onSignOut={async () => await signOut()} />;
+    return (
+      <Suspense fallback={<CrestOutlineLoader />}>
+        <StaffWorkspace api={api} session={staffSession} onSignOut={async () => await signOut()} />
+      </Suspense>
+    );
   }
 
   return (
