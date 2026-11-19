@@ -413,7 +413,7 @@ export function parseEventStaffRegistration(
       return { ok: false, error: "Enter a valid international phone number." };
     }
     const normalized = value.attendee_phone.trim();
-    if (normalized !== "" && !/^\\+[1-9][0-9]{7,14}$/.test(normalized)) {
+    if (normalized !== "" && !/^\+[1-9][0-9]{7,14}$/.test(normalized)) {
       return { ok: false, error: "Enter a valid international phone number." };
     }
     phone = normalized || null;
