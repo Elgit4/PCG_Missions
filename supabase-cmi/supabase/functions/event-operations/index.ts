@@ -380,9 +380,9 @@ async function listEventAssignmentWorkspace(
     ),
   ];
   const assignedTeamIds = [
-    ...new Set((teamRows.data ?? []).map((row: { team_id: string }) =>
-      row.team_id
-    )),
+    ...new Set(
+      (teamRows.data ?? []).map((row: { team_id: string }) => row.team_id),
+    ),
   ];
   const historicalTeamIds = [
     ...new Set([
