@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
+import {
+  notificationPageLimit,
+  notificationProfileDenial,
+  notificationRecipientScope,
+} from "./access.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
@@ -95,7 +100,8 @@ async function resolveStaff(token: string): Promise<
     .select("id,account_status,must_change_password")
     .eq("auth_user_id", auth.user.id).maybeSingle();
   if (error) throw new Error("STAFF_PROFILE_LOOKUP_FAILED");
-  if (!profile || profile.account_status !== "active") {
+  const profileDenial = notificationProfileDenial(profile);
+  if (profileDenial === "not_active") {
     return {
       ok: false,
       status: 403,
@@ -104,7 +110,7 @@ async function resolveStaff(token: string): Promise<
         "Your staff account is not active. Contact an authorised administrator.",
     };
   }
-  if (profile.must_change_password) {
+  if (profileDenial === "password_change_required") {
     return {
       ok: false,
       status: 403,
@@ -206,20 +212,17 @@ Deno.serve(async (request: Request) => {
       );
     }
     if (request.method === "GET") {
-      const requestedLimit = Number(url.searchParams.get("limit") ?? "30");
-      const limit = Number.isInteger(requestedLimit)
-        ? Math.max(1, Math.min(50, requestedLimit))
-        : 30;
+      const limit = notificationPageLimit(url.searchParams.get("limit"));
       const [items, unread] = await Promise.all([
         auth.service.from("staff_notification")
           .select(
             "id,category,title,body,target_type,target_id,created_at,read_at",
           )
-          .eq("recipient_user_id", auth.actorId).eq("branch_id", branchId)
+          .match(notificationRecipientScope(auth.actorId, branchId))
           .order("created_at", { ascending: false }).limit(limit),
         auth.service.from("staff_notification")
           .select("id", { count: "exact", head: true })
-          .eq("recipient_user_id", auth.actorId).eq("branch_id", branchId)
+          .match(notificationRecipientScope(auth.actorId, branchId))
           .is("read_at", null),
       ]);
       if (items.error || unread.error) {
@@ -242,7 +245,7 @@ Deno.serve(async (request: Request) => {
     if (path[path.length - 1] === "read-all") {
       const { data, error } = await auth.service.from("staff_notification")
         .update({ read_at: new Date().toISOString() })
-        .eq("recipient_user_id", auth.actorId).eq("branch_id", branchId)
+        .match(notificationRecipientScope(auth.actorId, branchId))
         .is("read_at", null).select("id");
       if (error) throw new Error("NOTIFICATION_UPDATE_FAILED");
       return respond(
@@ -269,8 +272,9 @@ Deno.serve(async (request: Request) => {
     }
     const { data, error } = await auth.service.from("staff_notification")
       .update({ read_at: new Date().toISOString() })
-      .eq("id", notificationId).eq("recipient_user_id", auth.actorId)
-      .eq("branch_id", branchId).is("read_at", null).select("id").maybeSingle();
+      .eq("id", notificationId)
+      .match(notificationRecipientScope(auth.actorId, branchId))
+      .is("read_at", null).select("id").maybeSingle();
     if (error) throw new Error("NOTIFICATION_UPDATE_FAILED");
     return respond(
       { data: { updated: Boolean(data) }, request_id: id },
