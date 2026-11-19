@@ -1,0 +1,105 @@
+# PCG Missions — Remaining Product Work and Delivery Plan
+
+**Date:** 19 November 2026  
+**Baseline:** main at b83d1feb44fe5cca1e2ddc7d8026a7126a10d385  
+**Implementation branch:** feat/pcg-missions-complete-workflows
+
+## Product-owner direction
+
+Complete the product workflows defined by the CMI v2.1 requirements except transport. Add an in-app internal notification centre and event flyer upload. SMS/Arkesel remains deferred. Do not change the existing screen loader. Do not restart the Cloudflare migration.
+
+## Verified repository findings
+
+This is a source audit, not a browser or deployment certification.
+
+| Area | Current source evidence | Assessment |
+|---|---|---|
+| Staff authentication | Supabase Auth email/password, temporary-password gate, reset workflow | Present in source; hosted email delivery and end-to-end auth still require operational verification |
+| Contacts | Capture, scoped listing, details, notes/interactions, follow-up task creation | Partially complete; contact search is first-name-oriented and task creation relies on currently loaded contacts |
+| Follow-up | Task listing, status filtering, start/complete actions, pagination | Partially complete; overdue/today quick views, server-backed contact picker, per-action pending state and contact-context task creation need completion |
+| Events | Private draft create/list/update only | Incomplete; no flyer upload; registration, attendance/check-in, assignment and closeout are not in the staff workspace |
+| Calendar | Branch-scoped create/list/update | Present for the approved private branch workflow |
+| Announcements | Private draft create/list/update | Present; publication/delivery remain separately gated |
+| Visitor content | Sermon and welcome-message private drafts | Present; publication and public-site administration need their authorised workflows |
+| Teams and service areas | Team/area administration components and Edge Function | Implemented in source; verify all permission and edge cases |
+| Reports | Typed ministry reports and review workspace/API | Present in source; verify role/scope coverage and report-type completeness |
+| Prayer and care | Restricted read operations only | Intentionally incomplete under the current six-role grant baseline; mutation/assignment cannot be exposed without the matching grants and audited server workflows |
+| Internal notifications | No notification centre or notification API in the current web source tree | Missing |
+| Event flyers | No flyer metadata or upload flow in current event draft API/UI | Missing |
+| Transport | Existing schema contains transport tables and event transport fields | Explicitly out of scope for this delivery; do not build UI or workflows |
+| Error messages | Three separate error formatters expose inconsistent copy; network errors include low-level diagnostic details | Shared formatter added on this branch; further screen-by-screen audit remains |
+| PWA | Manifest has only an SVG icon; no service worker in web source tree | Incomplete; offline data must remain disabled |
+| Accessibility | Existing Radix dialogs, skip link, status/alert semantics | Good foundation; typography/touch-target audit still required |
+
+## Delivery architecture
+
+### 1. Internal notification centre
+
+Use a database-backed, in-app notification inbox. It is independent of SMS, email, WhatsApp and browser push.
+
+- Store one notification per recipient, with branch, category, short title/body, optional typed target reference, created/read timestamps and an idempotency key.
+- Resolve recipients on the trusted server from current staff assignments; never accept a recipient user ID from the browser as authorization evidence.
+- Keep notification rows inaccessible through direct browser table access. Use a dedicated Edge Function that verifies Supabase Auth, active staff profile, current branch assignment and recipient ownership for list/read operations.
+- Support unread count, newest-first list, mark one read, mark all read, and safe navigation to an authorised target.
+- Use bounded polling while the workspace is open, with manual refresh. This avoids introducing a new browser SDK dependency and does not expose sensitive row payloads through broad realtime channels. Realtime can be considered later if load measurements justify it.
+- Generate notifications only for operational events with a clear recipient: follow-up task assignment/reassignment, contact assignment where permitted, event staff assignment, and report review/return. Do not put prayer/care narrative, contact phone/email, credentials or SMS contents into notification payloads.
+- Make notification creation idempotent and non-blocking where possible; a notification failure must not roll back a successfully committed business action unless the workflow explicitly requires atomic notification delivery.
+- Enforce retention by archival/read state only; do not invent an automatic purge period.
+
+### 2. Event flyer upload
+
+- Keep event drafts private. Flyers are private objects in a dedicated Supabase Storage bucket, not public URLs.
+- Accept raster image formats suitable for event artwork (JPEG, PNG, WebP); reject SVG, HTML, PDF, executables and unknown types.
+- Enforce a strict server-side byte limit (initial default: 5 MiB), MIME sniffing, image dimension limits, random object names and branch/event-scoped paths.
+- Upload and signed-preview operations must go through a trusted Edge Function after verifying the caller's active staff profile, event.manage.scoped grant and branch scope. Do not expose the service-role key or allow browser-supplied object paths.
+- Store only the storage object path and safe display metadata on the event record. Generate short-lived signed URLs for authorised staff previews.
+- Replacing a flyer must be safe: upload new object, update event metadata, then remove the old object only after the metadata update succeeds. Never allow one branch to reference another branch's object.
+- Add image preview, file name/size, replace/remove actions, keyboard-accessible upload control and actionable validation messages.
+- Do not publish flyers publicly until a separately authorised event-publication workflow exists.
+
+### 3. Event and ministry workflows
+
+Build the intended non-transport event workflows as distinct, server-authorised operations:
+- Event draft management and flyer attachment.
+- Event-specific staff/team assignments.
+- Registration controls and registration management.
+- Attendance/check-in.
+- Event closeout and review.
+
+Do not enable public registration until privacy notice, lawful purpose/basis, minimum intake, abuse/rate limiting and canonical contact-link review are satisfied. Capacity reservation must be transactional and idempotent before any registration-open state is possible. Do not add a waitlist. Keep event publication/public projections separate from private drafts.
+
+### 4. Remaining product modules
+
+Reconcile each module against docs/00_MASTER_PRODUCT_SPECIFICATION.md, docs/01_FUNCTIONAL_REQUIREMENTS_AND_WORKFLOWS.md, docs/02_ROLES_PERMISSIONS_AND_SECURITY.md, docs/31_CMI_OWNER_DIRECTED_SAFE_DEFAULT_DECISIONS.md and the API contracts. Implement missing authorised workflows, not merely navigation labels. Prayer/care mutation, exports, SMS and offline remain disabled until their documented security and approval gates are met. Transport remains excluded by explicit owner instruction.
+
+### 5. Cross-cutting quality
+
+- Use one error formatter; never expose SQL, stack traces, proxy internals or provider diagnostics to staff. Show request references for traceable server failures.
+- Use clear success confirmations that distinguish saved draft, published item, queued message and delivered message.
+- Debounce contact search and support first name, last name and phone search through the server API.
+- Replace the contact select with an accessible server-backed searchable combobox.
+- Add overdue/today/upcoming task quick filters and stable overdue-first sorting.
+- Provide per-row pending states and prevent duplicate task transitions.
+- Add create-follow-up action in the contact detail context.
+- Establish a readable type scale and 44px minimum touch targets where practical; 16px form input text on iOS.
+- Consolidate dead/duplicated CSS only after visual regression coverage exists.
+- Add PWA icons, manifest metadata, and a minimal static app-shell service worker. Cache no staff data, API responses, contact records, attendance or pastoral content. Offline workflows remain disabled.
+- Update document title/theme metadata from the active theme and maintain semantic heading order.
+
+## Release gates
+
+1. Unit, integration and negative authorization tests for every new endpoint.
+2. Migration replay from an empty local Supabase database and pgTAP RLS/role-scope checks.
+3. Deno formatting/lint/type checks and frontend typecheck/lint/build/tests.
+4. Storage tests for MIME spoofing, oversize files, cross-branch object access, replacement rollback and signed URL expiry.
+5. Notification tests for recipient isolation, duplicate suppression, read state and branch changes.
+6. Desktop/mobile browser walkthrough using seeded non-production staff accounts for all six roles.
+7. Staging deployment and operational verification before production.
+8. No hosted database migration, live SMS, Cloudflare migration or production deployment is performed as part of source-code changes unless separately authorised.
+
+## Current branch progress
+
+- Added a shared staff-facing error formatter with safe, consistent messages and request-reference handling.
+- Replaced the duplicated Staff Workspace and Operations Workspace formatters.
+- Added focused tests for authentication, network, permission, validation, upload and server errors.
+- Remaining product features and their secure server/storage integrations are not yet implemented by this first branch commit series.
