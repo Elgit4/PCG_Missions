@@ -137,3 +137,5 @@ Reconcile each module against docs/00_MASTER_PRODUCT_SPECIFICATION.md, docs/01_F
 - No hosted Supabase migration or Edge Function deployment has been performed. No production deployment or merge.
 - Transport remains excluded; Arkesel SMS remains deferred; the screen loader is unchanged; Cloudflare migration remains cancelled.
 - Remaining release gates: complete non-transport event registration/check-in/closeout workflows, reconcile typed ministry report migration history, add Edge Function authorization integration tests, confirm current-head migration replay and perform authenticated role-based browser acceptance.
+
+- The notification centre clears prior-branch rows immediately on workspace changes and ignores stale in-flight responses, preventing notifications from a previously selected branch from appearing in the new workspace.
