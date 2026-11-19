@@ -37,7 +37,8 @@ Deno.test("notification list and read filters always bind to the authenticated r
   assertEquals(notificationRecipientScope(actorId, branchId), {
     recipient_user_id: actorId,
     branch_id: branchId,
-  });});
+  });
+});
 
 Deno.test("notification page size is bounded to one through fifty", () => {
   assertEquals(notificationPageLimit(null), 30);
