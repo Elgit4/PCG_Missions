@@ -9,33 +9,14 @@ import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCap
 import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 import { ThemeToggle } from "../lib/theme";
+import { formatApplicationError } from "../lib/error-messages";
 
 type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Reports" | "Staff" | "Access requests";
 type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue";
 interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void> }
 
 function messageFor(error: unknown): string {
-  if (error instanceof CmiApiError) {
-    if (error.status === 401) return "Your staff session has expired. Sign in again.";
-    if (error.status === 403) return "Your account is signed in, but it does not have permission for this operation.";
-    if (error.status === 404) return "The requested record is unavailable or outside your access scope.";
-    if (error.status === 409) return "This operation conflicts with an existing request or a recent record change. Refresh the data before trying again.";
-    if (error.status === 422) return "Some submitted fields need correction. Review the form and try again.";
-    if (error.status === 429) return "Too many requests were made. Wait a moment before trying again.";
-    if (error.code === "IDEMPOTENCY_NOT_CONFIGURED") {
-      return "This operation is disabled because its secure request-signing secret is missing or invalid in Supabase Edge Function secrets. Configure CMI_CONTACT_IDEMPOTENCY_HMAC_KEY for contact capture and CMI_FOLLOWUP_IDEMPOTENCY_HMAC_KEY for follow-up creation (each at least 32 characters). No record was saved.";
-    }
-    if (error.code === "STAFF_INVITATION_EMAIL_FAILED") {
-      return "The staff account was created, but its invitation email was not delivered. Do not create the account again. Check the Staff list, then have the person use Forgot password after the church email sender has been fixed.";
-    }
-    if (error.code === "AUTH_EMAIL_NOT_CONFIGURED") {
-      return "Staff account creation is blocked because the church email sender is not configured for invitations. No new staff account was created.";
-    }
-    if (error.status === 503) return "This service is temporarily unavailable. Try again later.";
-    if (error.status === 0) return error.message;
-    return `${error.message}${error.requestId ? ` (Reference: ${error.requestId})` : ""}`;
-  }
-  return "Something went wrong. Please try again.";
+  return formatApplicationError(error);
 }
 function displayName(contact: ContactRecord): string {
   return contact.preferred_name?.trim() || [contact.first_name, contact.last_name].filter(Boolean).join(" ");
