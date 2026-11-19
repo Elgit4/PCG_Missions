@@ -70,6 +70,7 @@ export function EventCloseoutPanel({
   }, [load]);
 
   const closeout = workspace?.closeout ?? null;
+  const history = workspace?.history ?? [];
   const canSubmitNow = canSubmit &&
     Date.parse(event.ends_at) <= Date.now() &&
     (!closeout || closeout.status === "returned");
@@ -232,14 +233,14 @@ export function EventCloseoutPanel({
             <div className="cmi-success-note" role="status"><CheckCircle2 size={16} /> Closeout approved and event reconciled.</div>
           )}
 
-          {!!workspace.history.length && (
+          {!!history.length && (
             <div className="cmi-registration-list-heading">
               <h5>Closeout history</h5>
             </div>
           )}
-          {!!workspace.history.length && (
+          {!!history.length && (
             <div className="cmi-task-list cmi-operations-list">
-              {workspace.history.map((item) => (
+              {history.map((item) => (
                 <article className="cmi-task-row" key={item.id}>
                   <div className="cmi-task-symbol"><ClipboardCheck size={17} /></div>
                   <div className="cmi-task-copy">
