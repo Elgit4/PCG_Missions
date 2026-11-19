@@ -1,7 +1,7 @@
 -- Private notification inbox and event flyer storage security contract.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(15);
+select plan(19);
 
 select has_table('public','staff_notification','private staff notification inbox exists');
 select extensions.ok(
@@ -55,6 +55,17 @@ select extensions.ok(
 select has_trigger('public','followup_task','followup_task_notify_assignment','follow-up assignment notification trigger exists');
 select has_trigger('public','event_staff_assignment','event_staff_assignment_notify','individual event assignment notification trigger exists');
 select has_trigger('public','event_team_assignment','event_team_assignment_notify','team event assignment notification trigger exists');
+select has_trigger('public','event_staff_assignment','event_staff_assignment_notify_update','individual assignment changes refresh notification eligibility');
+select has_trigger('public','event_team_assignment','event_team_assignment_notify_update','team assignment changes refresh notification eligibility');
+select extensions.ok(
+  position('starts_at' in pg_get_functiondef('private.cmi_notify_event_assignment()'::regprocedure)) > 0,
+  'individual assignment notifications require the assignment start time'
+);
+select extensions.ok(
+  position('starts_at' in pg_get_functiondef('private.cmi_notify_event_team_assignment()'::regprocedure)) > 0,
+  'team assignment notifications require the assignment start time'
+);
+
 
 select * from finish();
 rollback;
