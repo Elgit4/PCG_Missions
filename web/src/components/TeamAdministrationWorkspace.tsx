@@ -19,6 +19,7 @@ import {
   type TeamMemberRecord,
 } from "../lib/cmi-api";
 import { hasCapability } from "../lib/capabilities";
+import { formatApplicationError } from "../lib/error-messages";
 
 type WorkspaceTab = "teams" | "areas";
 
@@ -32,21 +33,12 @@ interface TeamAdministrationWorkspaceProps {
 
 function apiMessage(error: unknown): string {
   if (error instanceof CmiApiError) {
-    if (error.status === 401) return "Your staff session has expired. Sign in again.";
-    if (error.code === "TEAM_LEADER_ROLE_REQUIRED") {
-      return "This staff member must first be assigned the Team Leader role in this branch.";
-    }
-    if (error.code === "ACTIVE_ASSIGNMENTS_EXIST") return error.message;
-    if (error.code === "DUPLICATE_RECORD") return "A team, area code or membership with these details already exists.";
-    if (error.status === 403) return "Your account does not have permission for this operation in the selected branch.";
-    if (error.status === 404) return "The selected team, staff membership or service area is no longer available.";
-    if (error.status === 422) return error.message;
-    if (error.status === 0) return "The service could not be reached. Check your connection and retry.";
-    return error.message + (error.requestId ? " (Reference: " + error.requestId + ")" : "");
+    if (error.code === "TEAM_LEADER_ROLE_REQUIRED") return "Assign this staff member the Team Leader role in this branch before adding them as a team leader.";
+    if (error.code === "ACTIVE_ASSIGNMENTS_EXIST") return "This team or service area still has active assignments. Reassign or revoke those assignments before deactivating it.";
+    if (error.code === "DUPLICATE_RECORD") return "A team, service-area code or membership with these details already exists. Review the existing records and try again.";
   }
-  return "The operation could not be completed. Please try again.";
-}
-
+  return formatApplicationError(error, "We could not save the team or service-area change. Please try again.");
+} 
 function isLeader(staff: StaffDirectoryEntry | undefined): boolean {
   return !!staff?.roles.some((role) => role.code === "team_leader");
 }
