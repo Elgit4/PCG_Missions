@@ -225,7 +225,7 @@ async function canManageEvent(
       ...new Set(
         (eventTeams ?? [])
           .filter((row: { assignment_role: string }) =>
-            isFlyerAssignmentEligible(row.assignment_role)
+            hasEligibleFlyerAssignment([row.assignment_role])
           )
           .map((row: { team_id: string }) => row.team_id),
       ),
