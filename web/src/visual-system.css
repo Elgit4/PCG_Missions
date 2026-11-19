@@ -370,15 +370,41 @@ html[data-theme="dark"] .cmi-loading, html[data-theme="dark"] .cmi-no-branch { b
 }
 
 /* Startup: one compound crest path, one stroke colour, one drawing pass. */
-.cmi-outline-loading { display: grid; place-content: center; justify-items: center; gap: 22px; min-height: 100svh; padding: 28px; }
+.cmi-auth-loading.cmi-outline-loading {
+  --cmi-loader-accent: #c7b06d;
+  --cmi-text: #eef3f7;
+  --cmi-muted: #c0cbd5;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 22px;
+  min-height: 100svh;
+  padding: 28px;
+  background: #090d18;
+  color: #eef3f7;
+}
 .cmi-outline-loading .cmi-loading-brand { display: grid; justify-items: center; gap: 11px; }
 .cmi-crest-outline { display: block; width: min(54vw, 230px); height: auto; overflow: visible; }
-.cmi-crest-outline-path { fill: none; stroke: var(--cmi-brand-accent); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; animation: cmi-crest-draw 2.8s cubic-bezier(.45,.05,.25,1) forwards; }
+.cmi-crest-outline-path {
+  fill: none;
+  stroke: var(--cmi-loader-accent);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: .995;
+  animation: cmi-crest-draw 2.8s cubic-bezier(.45,.05,.25,1) forwards;
+}
 .cmi-outline-loading .cmi-loading-name { color: var(--cmi-text); font-size: 12px; font-weight: 800; letter-spacing: .2em; }
 .cmi-outline-loading .cmi-loading-caption { color: var(--cmi-muted); font-size: 9px; font-weight: 650; letter-spacing: .16em; }
 .cmi-outline-loading .cmi-loading-message { color: var(--cmi-muted); font-size: 13px; }
-@keyframes cmi-crest-draw { to { stroke-dashoffset: 0; } }
-@media (prefers-reduced-motion: reduce) { .cmi-crest-outline-path { animation: none; stroke-dashoffset: 0; } }
+@keyframes cmi-crest-draw {
+  from { stroke-dashoffset: .995; }
+  to { stroke-dashoffset: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cmi-crest-outline-path { animation: none; stroke-dashoffset: 0; }
+}
 
 /* Operational Overview — purposeful hierarchy, honest data labels, compact work queue. */
 .cmi-dashboard { display: grid; gap: 18px; min-width: 0; color: var(--cmi-text); }
