@@ -208,7 +208,9 @@ Deno.serve(async (request: Request) => {
   if (!validation || !validation.ok) {
     return fail(
       "VALIDATION_ERROR",
-      validation && !validation.ok ? validation.error : "Invalid pastoral request.",
+      validation && !validation.ok
+        ? validation.error
+        : "Invalid pastoral request.",
       422,
       origin,
       id,
