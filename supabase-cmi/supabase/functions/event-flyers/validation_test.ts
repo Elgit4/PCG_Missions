@@ -1,10 +1,21 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import { isUuid, sniffImage } from "./validation.ts";
+import { isUuid, sniffImage, validateFlyerImage } from "./validation.ts";
 
 Deno.test("accepts valid event UUIDs and rejects malformed IDs", () => {
   assertEquals(isUuid("10000000-0000-4000-8000-000000000001"), true);
   assertEquals(isUuid("not-a-uuid"), false);
 });
+
+function crc32(bytes: Uint8Array): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
 
 function pngChunk(type: string, data: Uint8Array) {
   const chunk = new Uint8Array(12 + data.length);
@@ -12,6 +23,10 @@ function pngChunk(type: string, data: Uint8Array) {
   view.setUint32(0, data.length);
   chunk.set(new TextEncoder().encode(type), 4);
   chunk.set(data, 8);
+  view.setUint32(
+    8 + data.length,
+    crc32(chunk.subarray(4, 8 + data.length)),
+  );
   return chunk;
 }
 
@@ -145,6 +160,26 @@ Deno.test("accepts only complete WebP bitstreams with bounded dimensions", () =>
     true,
   );
   assertEquals(sniffImage(inconsistentLength), null);
+});
+
+Deno.test("rejects PNG chunks with a corrupted CRC", () => {
+  const bytes = makePng(1200, 1600);
+  bytes[32] ^= 0x01;
+  assertEquals(sniffImage(bytes), null);
+});
+
+Deno.test("rejects declared MIME types that do not match the detected signature", () => {
+  const png = makePng(1200, 1600);
+  assertEquals(validateFlyerImage(png, "image/png"), {
+    mime: "image/png",
+    ext: "png",
+  });
+  assertEquals(validateFlyerImage(png, "image/jpeg"), null);
+  assertEquals(validateFlyerImage(makeJpeg(1200, 1600), "image/webp"), null);
+  assertEquals(
+    validateFlyerImage(new TextEncoder().encode("not an image"), "image/png"),
+    null,
+  );
 });
 
 Deno.test("rejects unsupported image content", () => {
