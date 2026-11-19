@@ -736,7 +736,13 @@ Deno.serve(async (request: Request) => {
       }
       const parsed = parseEventRegistrationCancel(body);
       if (!parsed.ok) {
-        return fail("INVALID_REGISTRATION_CANCEL", parsed.error, 400, origin, id);
+        return fail(
+          "INVALID_REGISTRATION_CANCEL",
+          parsed.error,
+          400,
+          origin,
+          id,
+        );
       }
       if (
         !Number.isSafeInteger(EVENT_IDEMPOTENCY_KEY_VERSION) ||
@@ -781,7 +787,13 @@ Deno.serve(async (request: Request) => {
           );
         }
         if (error.code === "P0002") {
-          return fail("NOT_FOUND", "Event or registration not found.", 404, origin, id);
+          return fail(
+            "NOT_FOUND",
+            "Event or registration not found.",
+            404,
+            origin,
+            id,
+          );
         }
         if (error.code === "23505") {
           return fail(
