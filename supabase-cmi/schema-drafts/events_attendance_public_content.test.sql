@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(93);
+select plan(97);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -668,12 +668,73 @@ select ok(
  )->'registration'->>'attendee_name_snapshot') = 'Second Staff Attendee',
  'a distinct idempotency key creates a second registration within capacity'
 );
+select ok(
+  (public.cmi_staff_cancel_event_registration(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    (select id from public.event_registration
+      where event_id='51000000-0000-4000-8000-000000000003'
+        and attendee_name_snapshot='Second Staff Attendee'
+      limit 1),
+    '61000000-0000-4000-8000-000000000030',
+    1,repeat('77',32)
+  )->'registration'->>'status') = 'cancelled'
+  and (
+    public.cmi_staff_cancel_event_registration(
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      '51000000-0000-4000-8000-000000000003',
+      '21000000-0000-4000-8000-000000000001',
+      (select id from public.event_registration
+        where event_id='51000000-0000-4000-8000-000000000003'
+          and attendee_name_snapshot='Second Staff Attendee'
+        limit 1),
+      '61000000-0000-4000-8000-000000000030',
+      1,repeat('77',32)
+    )->>'replayed'
+  )::boolean = true,
+  'staff registration cancellation releases capacity and retries replay without duplicate effects'
+);
+select ok(
+  (public.cmi_staff_register_event_attendee(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    '61000000-0000-4000-8000-bbbbbbbbb031',
+    1,repeat('88',32),'Replacement Attendee',null
+  )->'registration'->>'attendee_name_snapshot') = 'Replacement Attendee',
+  'released capacity can be reused by a new staff registration'
+);
+select ok(
+  (
+    select count(*)=2
+    from public.event_registration
+    where event_id='51000000-0000-4000-8000-000000000003'
+      and status <> 'cancelled'
+  ),
+  'cancelled registrations are excluded from active capacity counts'
+);
+select ok(
+  exists(
+    select 1 from public.event_idempotency_receipt
+    where event_id='51000000-0000-4000-8000-000000000003'
+      and operation='registration_cancel'
+      and caller_class='staff'
+      and actor_user_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+      and idempotency_key='61000000-0000-4000-8000-000000000030'
+      and digest_key_version=1
+      and request_digest=decode(repeat('77',32),'hex')
+      and resource_type='event_registration'
+      and response_status=200
+  ),
+  'registration cancellation writes its idempotency receipt atomically'
+);
 select throws_ok(
  $q$select public.cmi_staff_register_event_attendee(
   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   '51000000-0000-4000-8000-000000000003',
   '21000000-0000-4000-8000-000000000001',
-  '61000000-0000-4000-8000-000000000022',
+  '61000000-0000-4000-8000-000000000032',
   1,repeat('44',32),'Capacity Overflow Attendee',null
  )$q$,
  'P0001','EVENT_CAPACITY_REACHED',
