@@ -1,5 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import { isUuid, sniffImage } from "./validation.ts";
+import {
+  canManageFlyerInScope,
+  flyerProfileDenial,
+  isEditablePrivateEvent,
+} from "./access.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
@@ -94,7 +99,8 @@ async function resolveStaff(token: string) {
     .select("id,account_status,must_change_password")
     .eq("auth_user_id", auth.user.id).maybeSingle();
   if (error) throw new Error("STAFF_PROFILE_LOOKUP_FAILED");
-  if (!profile || profile.account_status !== "active") {
+  const profileDenial = flyerProfileDenial(profile);
+  if (profileDenial === "not_active") {
     return {
       ok: false as const,
       status: 403,
@@ -102,7 +108,7 @@ async function resolveStaff(token: string) {
       message: "Your staff account is not active.",
     };
   }
-  if (profile.must_change_password) {
+  if (profileDenial === "password_change_required") {
     return {
       ok: false as const,
       status: 403,
@@ -128,7 +134,15 @@ async function canManageEvent(
   const { data: branch, error: branchError } = await service.from("branch")
     .select("id,is_active").eq("id", branchId).maybeSingle();
   if (branchError) throw new Error("BRANCH_LOOKUP_FAILED");
-  if (!branch?.is_active) return false;
+  const branchActive = Boolean(branch?.is_active);
+  if (!branchActive) {
+    return canManageFlyerInScope({
+      branchActive,
+      scopeModes: [],
+      directEventAssignment: false,
+      teamEventMembership: false,
+    });
+  }
   const { data: assignments, error } = await service.from(
     "staff_role_assignment",
   )
@@ -165,7 +179,8 @@ async function canManageEvent(
       return cap?.is_active ? [grant.scope_mode] : [];
     },
   );
-  if (scopes.includes("branch")) return true;
+  let directEventAssignment = false;
+  let teamEventMembership = false;
   if (scopes.includes("event")) {
     const { data, error: eventError } = await service.from(
       "event_staff_assignment",
@@ -175,7 +190,7 @@ async function canManageEvent(
       .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
       .is("revoked_at", null).limit(1).maybeSingle();
     if (eventError) throw new Error("EVENT_ASSIGNMENT_LOOKUP_FAILED");
-    if (data) return true;
+    directEventAssignment = Boolean(data);
   }
   if (scopes.includes("team")) {
     const { data: eventTeams, error: eventTeamError } = await service.from(
@@ -202,10 +217,15 @@ async function canManageEvent(
         .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null)
         .limit(1).maybeSingle();
       if (membershipError) throw new Error("TEAM_MEMBERSHIP_LOOKUP_FAILED");
-      if (memberships) return true;
+      teamEventMembership = Boolean(memberships);
     }
   }
-  return false;
+  return canManageFlyerInScope({
+    branchActive,
+    scopeModes: scopes,
+    directEventAssignment,
+    teamEventMembership,
+  });
 }
 async function signedPreview(
   service: ReturnType<typeof serviceClient>,
@@ -324,7 +344,7 @@ Deno.serve(async (request: Request) => {
         requestId,
       );
     }
-    if (event.status !== "draft" || event.visibility !== "private") {
+    if (!isEditablePrivateEvent(event)) {
       return fail(
         "EVENT_NOT_EDITABLE",
         "Flyers can only be changed on private event drafts.",
