@@ -1,3 +1,4 @@
+import { CrestOutlineLoader } from "./components/CrestOutlineLoader";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { StaffLogin, type StaffAuthView } from "./components/StaffLogin";
 import { StaffWorkspace } from "./components/StaffWorkspace";
@@ -240,17 +241,7 @@ export default function App() {
   };
 
   if (initializing) {
-    return (
-      <main className="cmi-auth-loading" role="status" aria-live="polite">
-        <div className="cmi-loading-brand">
-          <div className="cmi-loading-mark"><img src="/logo.svg" alt="" /></div>
-          <span className="cmi-loading-name">PCG MISSIONS</span>
-          <span className="cmi-loading-caption">PEOPLE · CARE · COMMUNITY</span>
-          <span className="cmi-auth-spinner" aria-hidden="true" />
-        </div>
-        <p className="cmi-loading-message">Preparing your ministry workspace</p>
-      </main>
-    );
+    return <CrestOutlineLoader />;
   }
 
   if (staffSession && !staffSession.must_change_password && api) {
