@@ -263,7 +263,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $event_team$
 declare
   event_title text;
 begin
@@ -298,7 +298,7 @@ begin
   end if;
   return new;
 end;
-$;
+$event_team$;
 
 drop trigger if exists event_team_assignment_notify on public.event_team_assignment;
 create trigger event_team_assignment_notify
