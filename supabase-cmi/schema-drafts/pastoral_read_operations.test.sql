@@ -105,7 +105,7 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  76,
+  80,
   'the owner-directed visitor MVP role baseline exists before synthetic fixtures'
 );
 select ok(
