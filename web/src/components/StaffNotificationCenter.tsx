@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, CheckCheck, Circle, LoaderCircle } from "lucide-react";
 import type { CmiApiClient, StaffNotificationRecord } from "../lib/cmi-api";
 
@@ -24,21 +24,35 @@ export function StaffNotificationCenter({ api, branchId, onNavigate }: Props) {
   const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const requestVersion = useRef(0);
 
   const load = useCallback(async (quiet = false) => {
     if (!branchId) return;
+    const version = ++requestVersion.current;
     if (!quiet) setLoading(true);
     try {
       const result = await api.listStaffNotifications(branchId, 30);
+      if (version !== requestVersion.current) return;
       setItems(result.data.notifications);
       setUnread(result.data.unread_count);
       setError("");
     } catch {
+      if (version !== requestVersion.current) return;
+      setItems([]);
+      setUnread(0);
       if (!quiet) setError("Notifications are temporarily unavailable. Try refreshing.");
     } finally {
-      if (!quiet) setLoading(false);
+      if (version === requestVersion.current && !quiet) setLoading(false);
     }
   }, [api, branchId]);
+
+  useEffect(() => {
+    requestVersion.current += 1;
+    setItems([]);
+    setUnread(0);
+    setError("");
+    setLoading(false);
+  }, [branchId]);
 
   useEffect(() => {
     void load();
