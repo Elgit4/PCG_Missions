@@ -43,7 +43,7 @@ export function PrayerRequestsWorkspace({
   const [error, setError] = useState("");
 
   const pageSize = 25;
-  const load = useCallback(async (nextOffset = offset) => {
+  const load = useCallback(async (nextOffset: number) => {
     setLoading(true);
     setError("");
     try {
@@ -63,7 +63,7 @@ export function PrayerRequestsWorkspace({
     } finally {
       setLoading(false);
     }
-  }, [api, branchId, offset, onSessionExpired]);
+  }, [api, branchId, onSessionExpired]);
 
   useEffect(() => {
     void load(0);
