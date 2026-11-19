@@ -158,3 +158,38 @@ Transport remains explicitly excluded, including transport reservation UI, assig
 ## Additional release correction
 
 The notification, flyer and event Edge Functions now always include the canonical production origin `https://pcg-missions.vercel.app` in their CORS allow-list, while preserving explicitly configured preview/development origins. This prevents a configured `CMI_ALLOWED_ORIGINS` value from accidentally excluding the production application.
+
+
+## Current-head verification update — 19 November 2026
+
+Commit `2a0bb538f0cc0d29dbd937ad33e1445956b03336` has completed all three GitHub Actions workflows successfully:
+
+- CMI backend CI run [44568887402](https://github.com/Elgit4/PCG_Missions/actions/runs/44568887402): passed, including local migration replay and the CMI pgTAP database suite.
+- CMI web CI run [44568887547](https://github.com/Elgit4/PCG_Missions/actions/runs/44568887547): passed.
+- CMI frontend CI run [44568887511](https://github.com/Elgit4/PCG_Missions/actions/runs/44568887511): passed.
+
+The Vercel check still reports an account-level build-rate-limit failure. A new Vercel preview for this commit is not confirmed.
+
+## Verified hosted-environment blockers
+
+Read-only inspection of the linked production Supabase project confirms:
+- Hosted migration history currently ends at `20261112220204`; the new `20261119160000` notification/flyer migration is not applied.
+- `public.staff_notification` does not exist.
+- The hosted `public.event` table does not yet contain `flyer_object_path`.
+- The private `event-flyers` Storage bucket does not exist.
+- The new `staff-notifications` and `event-flyers` Edge Functions are not deployed.
+
+Therefore the notification centre and flyer UI in this branch are source implementations only, not live features. Do not enable them in production until the migration, functions, and authenticated authorization tests are complete.
+
+## Remaining implementation and release gates
+
+1. Complete the event lifecycle: staff/team assignment CRUD, registration controls and management, attendance/check-in, duplicate-safe check-in, closeout and attendance reconciliation. The current event Edge Function only supports private draft create/list/update; its UI explicitly reports registration and attendance as unavailable.
+2. Add server-side negative integration tests for notifications and flyers: cross-branch access, non-recipient notification reads/updates, assignment changes, duplicate suppression, invalid/mismatched image signatures, replacement rollback, removal cleanup and signed URL expiry.
+3. Reconcile typed ministry report migrations against the authoritative migration history and verify report author/reviewer authorization end to end.
+4. Implement the assigned-prayer workflow for Prayer Intercessors with assignment-only access and no general CRM identity disclosure.
+5. Reconcile remaining master-spec modules (announcements publication/receipts, public content, team/service-area administration and staff access) against current hosted schema and actual capabilities.
+6. Add raster 192px/512px PWA icons and verify installation surfaces.
+7. Obtain provisioned, owner-authorised test identities for all six roles and complete authenticated desktop/mobile acceptance. Do not fabricate staff identities or bypass the first-admin bootstrap.
+8. Only after the above pass, apply the reviewed migration to the intended environment, deploy the two new functions, verify the live API, and request a separate production release approval.
+
+The production app, hosted database, deployed Edge Functions, current screen loader, SMS/Arkesel configuration and existing Supabase/Vercel architecture remain unchanged. Transport remains excluded; Cloudflare migration remains cancelled.
