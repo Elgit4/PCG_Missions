@@ -11,12 +11,19 @@ export interface EventCreateInput {
   ends_at: string;
   timezone: string;
   location: string | null;
+  capacity: number | null;
 }
 
 export type EventPatchInput = Partial<
   Pick<
     EventCreateInput,
-    "title" | "description" | "starts_at" | "ends_at" | "timezone" | "location"
+    | "title"
+    | "description"
+    | "starts_at"
+    | "ends_at"
+    | "timezone"
+    | "location"
+    | "capacity"
   >
 >;
 
@@ -139,6 +146,24 @@ function parseEventFields(
     result.location = parsed.value;
   }
 
+  if ("capacity" in value) {
+    if (value.capacity === null) {
+      result.capacity = null;
+    } else if (
+      typeof value.capacity !== "number" ||
+      !Number.isSafeInteger(value.capacity) ||
+      value.capacity < 1 ||
+      value.capacity > 2147483647
+    ) {
+      return {
+        ok: false,
+        error: "Capacity must be a positive whole number or blank.",
+      };
+    } else {
+      result.capacity = value.capacity;
+    }
+  }
+
   if (
     result.starts_at && result.ends_at &&
     Date.parse(result.ends_at) <= Date.parse(result.starts_at)
@@ -168,6 +193,7 @@ export function parseEventCreate(
     "ends_at",
     "timezone",
     "location",
+    "capacity",
   ]);
   if (Object.keys(value).some((key) => !allowed.has(key))) {
     return { ok: false, error: "Unsupported event field." };
@@ -191,6 +217,7 @@ export function parseEventCreate(
       ends_at: parsed.value.ends_at!,
       timezone: parsed.value.timezone ?? "Africa/Accra",
       location: parsed.value.location ?? null,
+      capacity: parsed.value.capacity ?? null,
     },
   };
 }
@@ -208,6 +235,7 @@ export function parseEventPatch(
     "ends_at",
     "timezone",
     "location",
+    "capacity",
   ]);
   const keys = Object.keys(value);
   if (keys.length === 0 || keys.some((key) => !allowed.has(key))) {
