@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(97);
+select plan(107);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -73,8 +73,8 @@ select extensions.ok(
   ),
   'no client policies exist before trusted public projections and reviewed role grants'
 );
-select extensions.is((select count(*)::integer from public.role_capability),77,
-  'the owner-directed visitor role grants include the staff-registration capability');
+select extensions.is((select count(*)::integer from public.role_capability),78,
+  'the owner-directed role grants include staff registration and Admin/Pastor check-in');
 
 select extensions.ok(
   has_table_privilege('service_role','public.event','SELECT')
@@ -762,6 +762,159 @@ select throws_ok(
  'P0001','EVENT_REGISTRATION_CLOSED',
  'staff RPC refuses a public event even when its public registration state is open'
 );
+
+select has_function(
+ 'public','cmi_staff_checkin_event_registration',
+ array['uuid','uuid','uuid','uuid','uuid','smallint','text'],
+ 'staff event check-in transaction function exists'
+);
+select ok(
+ not has_function_privilege(
+  'anon',
+  'public.cmi_staff_checkin_event_registration(uuid,uuid,uuid,uuid,uuid,smallint,text)',
+  'EXECUTE'
+ ),
+ 'anonymous role cannot execute staff check-in transaction'
+);
+select ok(
+ not has_function_privilege(
+  'authenticated',
+  'public.cmi_staff_checkin_event_registration(uuid,uuid,uuid,uuid,uuid,smallint,text)',
+  'EXECUTE'
+ ),
+ 'authenticated browser role cannot execute staff check-in transaction directly'
+);
+select ok(
+ has_function_privilege(
+  'service_role',
+  'public.cmi_staff_checkin_event_registration(uuid,uuid,uuid,uuid,uuid,smallint,text)',
+  'EXECUTE'
+ ),
+ 'trusted service role can execute staff check-in transaction'
+);
+select is(
+ (
+  select count(*)::integer
+  from public.role_capability rc
+  join public.role r on r.id=rc.role_id
+  join public.capability c on c.id=rc.capability_id
+  where c.code='event.checkin.scoped'
+    and rc.scope_mode='branch'
+    and r.code='admin_pastor'
+ ),
+ 1,
+ 'only Admin/Pastor receives branch-scoped event check-in'
+);
+select is(
+ (
+  select count(*)::integer
+  from public.role_capability rc
+  join public.role r on r.id=rc.role_id
+  join public.capability c on c.id=rc.capability_id
+  where c.code='event.checkin.scoped'
+    and r.code <> 'admin_pastor'
+ ),
+ 0,
+ 'no lower role receives event check-in access in the initial release'
+);
+
+set local role service_role;
+select ok(
+ (
+  public.cmi_staff_checkin_event_registration(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    (select id from public.event_registration
+      where event_id='51000000-0000-4000-8000-000000000003'
+        and attendee_name_snapshot='Atomic Staff Attendee'
+      limit 1),
+    '61000000-0000-4000-8000-000000000040',
+    1,repeat('99',32)
+  )->'checkin'->>'attendee_name_snapshot'
+ ) = 'Atomic Staff Attendee'
+ and (
+  public.cmi_staff_checkin_event_registration(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    (select id from public.event_registration
+      where event_id='51000000-0000-4000-8000-000000000003'
+        and attendee_name_snapshot='Atomic Staff Attendee'
+      limit 1),
+    '61000000-0000-4000-8000-000000000040',
+    1,repeat('99',32)
+  )->>'replayed'
+ )::boolean = true,
+ 'staff check-in records an attendee and a retry replays without another row'
+);
+select throws_ok(
+ $q$select public.cmi_staff_checkin_event_registration(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  (select id from public.event_registration
+    where event_id='51000000-0000-4000-8000-000000000003'
+      and attendee_name_snapshot='Atomic Staff Attendee'
+    limit 1),
+  '61000000-0000-4000-8000-000000000041',
+  1,repeat('aa',32)
+ )$q$,
+ 'P0001','EVENT_REGISTRATION_ALREADY_CHECKED_IN',
+ 'a second independent check-in for one registration is rejected'
+);
+select throws_ok(
+ $q$select public.cmi_staff_checkin_event_registration(
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  (select id from public.event_registration
+    where event_id='51000000-0000-4000-8000-000000000003'
+      and attendee_name_snapshot='Replacement Attendee'
+    limit 1),
+  '61000000-0000-4000-8000-000000000042',
+  1,repeat('bb',32)
+ )$q$,
+ '42501','EVENT_CHECKIN_NOT_AUTHORIZED',
+ 'staff without branch check-in capability cannot check in attendees'
+);
+select throws_ok(
+ $q$select public.cmi_staff_cancel_event_registration(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  (select id from public.event_registration
+    where event_id='51000000-0000-4000-8000-000000000003'
+      and attendee_name_snapshot='Atomic Staff Attendee'
+    limit 1),
+  '61000000-0000-4000-8000-000000000043',
+  1,repeat('cc',32)
+ )$q$,
+ 'P0001','EVENT_REGISTRATION_ALREADY_CHECKED_IN',
+ 'a checked-in registration cannot be cancelled to manipulate attendance or capacity'
+);
+reset role;
+select ok(
+ exists(
+  select 1 from public.event_checkin
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and attendee_name_snapshot='Atomic Staff Attendee'
+    and source='staff'
+ )
+ and exists(
+  select 1 from public.event_idempotency_receipt
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and operation='event_checkin'
+    and caller_class='staff'
+    and actor_user_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    and idempotency_key='61000000-0000-4000-8000-000000000040'
+    and digest_key_version=1
+    and request_digest=decode(repeat('99',32),'hex')
+    and resource_type='event_checkin'
+ ),
+ 'check-in and its HMAC receipt are committed together'
+);
+
 reset role;
 select ok(
  exists(
