@@ -5,6 +5,7 @@ import { StaffWorkspace } from "./components/StaffWorkspace";
 import { AuthClientError, PcgAuthClient } from "./lib/auth";
 import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
 import { ThemeToggle } from "./lib/theme";
+import { formatApplicationError } from "./lib/error-messages";
 
 export default function App() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
@@ -37,20 +38,7 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [workspaceRetryAvailable, setWorkspaceRetryAvailable] = useState(false);
 
-  const messageFor = useCallback((cause: unknown): string => {
-    if (cause instanceof AuthClientError) return cause.message;
-    if (cause instanceof CmiApiError) {
-      if (cause.status === 401) return "Your sign-in session has expired. Please sign in again.";
-      if (cause.code === "STAFF_PROFILE_NOT_FOUND") return "This email is not provisioned as a PCG Missions staff account. Contact an authorised church administrator.";
-      if (cause.code === "STAFF_ACCOUNT_NOT_ACTIVE") return "This staff account is not active. Contact an authorised church administrator.";
-      if (cause.code === "PASSWORD_SETUP_EXPIRED") return "The temporary setup password has expired. Use Forgot password to request a new administrator-approved recovery link.";
-      if (cause.status === 403) return "Your account cannot access the staff workspace. Contact an authorised church administrator.";
-      if (cause.code === "NO_ACTIVE_BRANCH") return "Your account is active, but it has no active branch assignment. Contact an authorised church administrator.";
-      if (cause.status === 0) return cause.message;
-      if (cause.status >= 500) return "Your credentials were accepted, but the staff workspace service could not complete the request. Retry the workspace connection.";
-    }
-    return "We could not complete that request. Please try again.";
-  }, []);
+  const messageFor = useCallback((cause: unknown): string => formatApplicationError(cause, "We could not complete the sign-in request. Please try again."), []);;
 
   const clearAuthentication = useCallback(async () => {
     try {
