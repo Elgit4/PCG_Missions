@@ -116,6 +116,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [showContactForm, setShowContactForm] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
+  const [taskContactId, setTaskContactId] = useState("");
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const contactRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
@@ -505,7 +506,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       const result = await api.createFollowUpTask(input);
       setTasks((current) => [result.data, ...current.filter((item) => item.id !== result.data.id)]);
       taskRequestRef.current = null;
-      setShowTaskForm(false); setPage("Follow-up");
+      setShowTaskForm(false); setTaskContactId(""); setPage("Follow-up");
     } catch (error) { handleActionError(error); }
     finally { setSaving(false); }
   };
@@ -730,11 +731,11 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               {canCreateTasks && !canSelfAssignTask && <span className="cmi-scope-note">Task creation is granted, but a supported team assignment target is not available in this workspace.</span>}
             </div>
             {showTaskForm && canCreateTasks && <form className="cmi-form-grid" onSubmit={createTask}>
-              <label className="cmi-field-wide">Contact<select name="contact_id" required defaultValue=""><option value="" disabled>Select a visible contact</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{displayName(contact)}</option>)}</select></label>
+              <label className="cmi-field-wide">Contact<select name="contact_id" required defaultValue={taskContactId}><option value="" disabled>Select a visible contact</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{displayName(contact)}</option>)}</select></label>
               <label>Priority<select name="priority" defaultValue="2"><option value="1">Urgent</option><option value="2">Normal</option><option value="3">Low</option><option value="4">Very low</option><option value="5">Minimal</option></select></label>
               <label>Due date and time<input type="datetime-local" name="due_at" /></label>
               <label className="cmi-field-wide">Operational note <span>Do not enter pastoral narratives or sensitive identity data</span><textarea name="task_note" rows={3} maxLength={1000} /></label>
-              <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowTaskForm(false)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Create task"}</button></div>
+              <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setShowTaskForm(false); setTaskContactId(""); }}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Create task"}</button></div>
             </form>}
             <div className="cmi-followup-toolbar">
               <div className="cmi-operations-tabs" role="group" aria-label="Filter follow-up tasks">
@@ -855,6 +856,14 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         canReadNotes={canReadContactNotes}
         canCreateNotes={canCreateContactNotes}
         canRecordInteraction={canRecordContactInteraction}
+        canCreateFollowUp={canCreateTasks && canSelfAssignTask}
+        onCreateFollowUp={(contact) => {
+          setTaskContactId(contact.id);
+          setSelectedContact(null);
+          setPage("Follow-up");
+          setShowTaskForm(true);
+          setActionError("");
+        }}
         onSessionExpired={expireSession}
       />}
     </div>
