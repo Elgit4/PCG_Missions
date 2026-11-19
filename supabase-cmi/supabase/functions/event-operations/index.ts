@@ -6,11 +6,11 @@ import {
 } from "../_shared/idempotency.ts";
 import {
   isUuid,
-  parseEventStaffRegistration,
   parseEventCreate,
   parseEventListQuery,
   parseEventPatch,
   parseEventStaffAssignment,
+  parseEventStaffRegistration,
   parseEventTeamAssignment,
 } from "./validation.ts";
 import { readJson } from "../_shared/request_body.ts";
@@ -549,8 +549,6 @@ Deno.serve(async (request: Request) => {
       eventSuffix.length === 2 && eventSuffix[0] === "staff-registration" &&
       (eventSuffix[1] === "open" || eventSuffix[1] === "close");
 
-
-
     if (request.method === "POST" && isStaffRegistrationStateChange) {
       const branchId = parseBranchQuery(url);
       if (!branchId) {
@@ -585,7 +583,9 @@ Deno.serve(async (request: Request) => {
         .eq("id", nestedEventId)
         .eq("branch_id", branchId)
         .maybeSingle();
-      if (currentError) throw new Error("EVENT_REGISTRATION_STATE_LOOKUP_FAILED");
+      if (currentError) {
+        throw new Error("EVENT_REGISTRATION_STATE_LOOKUP_FAILED");
+      }
       if (!current) {
         return fail("NOT_FOUND", "Event not found.", 404, origin, id);
       }
@@ -761,7 +761,8 @@ Deno.serve(async (request: Request) => {
       if (!parsed.ok) {
         return fail("INVALID_REGISTRATION", parsed.error, 400, origin, id);
       }
-      if (!Number.isSafeInteger(EVENT_IDEMPOTENCY_KEY_VERSION) ||
+      if (
+        !Number.isSafeInteger(EVENT_IDEMPOTENCY_KEY_VERSION) ||
         EVENT_IDEMPOTENCY_KEY_VERSION < 1
       ) {
         throw new Error("EVENT_IDEMPOTENCY_KEY_VERSION_INVALID");
@@ -769,14 +770,18 @@ Deno.serve(async (request: Request) => {
 
       const secret = EVENT_IDEMPOTENCY_HMAC_KEY ||
         await deriveIdempotencySecret(SUPABASE_SERVICE_ROLE_KEY, "event");
-      const digest = await createRequestDigest({
-        operation: "staff_registration",
-        event_id: nestedEventId,
-        branch_id: branchId,
-        actor_user_id: auth.actorId,
-        attendee_name_snapshot: parsed.value.attendee_name,
-        attendee_phone_snapshot: parsed.value.attendee_phone,
-      } as CanonicalJson, secret, EVENT_IDEMPOTENCY_KEY_VERSION);
+      const digest = await createRequestDigest(
+        {
+          operation: "staff_registration",
+          event_id: nestedEventId,
+          branch_id: branchId,
+          actor_user_id: auth.actorId,
+          attendee_name_snapshot: parsed.value.attendee_name,
+          attendee_phone_snapshot: parsed.value.attendee_phone,
+        } as CanonicalJson,
+        secret,
+        EVENT_IDEMPOTENCY_KEY_VERSION,
+      );
 
       const { data, error } = await auth.service.rpc(
         "cmi_staff_register_event_attendee",
@@ -825,9 +830,18 @@ Deno.serve(async (request: Request) => {
         if (error.code === "P0001") {
           const message = error.message ?? "";
           const known = new Map([
-            ["EVENT_REGISTRATION_CLOSED", "Registration is not open for this event."],
-            ["EVENT_CAPACITY_REQUIRED", "Set a finite event capacity before accepting registrations."],
-            ["EVENT_CAPACITY_REACHED", "This event has reached its registration capacity."],
+            [
+              "EVENT_REGISTRATION_CLOSED",
+              "Registration is not open for this event.",
+            ],
+            [
+              "EVENT_CAPACITY_REQUIRED",
+              "Set a finite event capacity before accepting registrations.",
+            ],
+            [
+              "EVENT_CAPACITY_REACHED",
+              "This event has reached its registration capacity.",
+            ],
           ]);
           return fail(
             known.has(message) ? message : "REGISTRATION_REJECTED",
@@ -839,7 +853,9 @@ Deno.serve(async (request: Request) => {
         }
         throw new Error("EVENT_STAFF_REGISTRATION_FAILED");
       }
-      const replayed = Boolean((data as { replayed?: boolean } | null)?.replayed);
+      const replayed = Boolean(
+        (data as { replayed?: boolean } | null)?.replayed,
+      );
       return response(
         { data, request_id: id, replayed },
         replayed ? 200 : 201,
