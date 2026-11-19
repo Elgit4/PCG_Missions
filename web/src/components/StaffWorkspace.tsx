@@ -112,12 +112,18 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [showContactForm, setShowContactForm] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const contactRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
   const taskRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => window.clearTimeout(timeout);
+  }, [query]);
 
   const canReadContacts = canOpenStaffPage(session, "Contacts", branchId);
   const canReadTasks = canOpenStaffPage(session, "Follow-up", branchId);
@@ -198,7 +204,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setLoading(true); setLoadError("");
     const requests: Promise<void>[] = [];
     if (canReadContacts) {
-      requests.push(api.listContacts(branchId, { limit: 50, offset: 0, search: query.trim() || undefined })
+      requests.push(api.listContacts(branchId, { limit: 50, offset: 0, search: debouncedQuery || undefined })
         .then((result) => {
           if (current) {
             setContacts(result.data);
@@ -256,7 +262,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     }
     void Promise.all(requests).finally(() => { if (current) setLoading(false); });
     return () => { current = false; };
-  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, query, expireSession]);
+  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, debouncedQuery, expireSession]);
 
   const visibleContacts = contacts;
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
