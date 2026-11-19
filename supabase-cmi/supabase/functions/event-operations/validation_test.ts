@@ -30,6 +30,7 @@ Deno.test("creates a private draft event with the Accra timezone default", () =>
     ends_at: "2026-11-15T12:00:00.000Z",
     timezone: "Africa/Accra",
     location: null,
+    capacity: null,
   });
 });
 
