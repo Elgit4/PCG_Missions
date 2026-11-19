@@ -127,6 +127,15 @@ jobs:
       - name: Test event draft request validation
         run: deno test supabase-cmi/supabase/functions/event-operations/validation_test.ts
 
+      - name: Type-check event flyer Edge Function
+        run: deno check supabase-cmi/supabase/functions/event-flyers/index.ts
+
+      - name: Test event flyer validation
+        run: deno test supabase-cmi/supabase/functions/event-flyers/validation_test.ts
+
+      - name: Type-check staff notifications Edge Function
+        run: deno check supabase-cmi/supabase/functions/staff-notifications/index.ts
+
       - name: Type-check announcement operations Edge Function
         run: deno check supabase-cmi/supabase/functions/announcement-operations/index.ts
 
