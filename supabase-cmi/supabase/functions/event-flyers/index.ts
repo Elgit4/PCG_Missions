@@ -4,6 +4,7 @@ import {
   canManageFlyerInScope,
   flyerProfileDenial,
   isEditablePrivateEvent,
+  isFlyerAssignmentEligible,
 } from "./access.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -193,24 +194,35 @@ async function canManageEvent(
     const { data, error: eventError } = await service.from(
       "event_staff_assignment",
     )
-      .select("id").eq("event_id", eventId).eq("branch_id", branchId)
-      .eq("staff_auth_user_id", actorId).neq("assignment_role", "transport")
+      .select("id,assignment_role").eq("event_id", eventId).eq(
+        "branch_id",
+        branchId,
+      )
+      .eq("staff_auth_user_id", actorId)
       .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
       .is("revoked_at", null).limit(1).maybeSingle();
     if (eventError) throw new Error("EVENT_ASSIGNMENT_LOOKUP_FAILED");
-    directEventAssignment = Boolean(data);
+    directEventAssignment = Boolean(
+      data && isFlyerAssignmentEligible(data.assignment_role),
+    );
   }
   if (scopes.includes("team")) {
     const { data: eventTeams, error: eventTeamError } = await service.from(
       "event_team_assignment",
     )
-      .select("team_id").eq("event_id", eventId).eq("branch_id", branchId)
-      .neq("assignment_role", "transport").lte("starts_at", now)
+      .select("team_id,assignment_role").eq("event_id", eventId).eq(
+        "branch_id",
+        branchId,
+      ).lte("starts_at", now)
       .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null);
     if (eventTeamError) throw new Error("EVENT_TEAM_LOOKUP_FAILED");
     const teamIds = [
       ...new Set(
-        (eventTeams ?? []).map((row: { team_id: string }) => row.team_id),
+        (eventTeams ?? [])
+          .filter((row: { assignment_role: string }) =>
+            isFlyerAssignmentEligible(row.assignment_role)
+          )
+          .map((row: { team_id: string }) => row.team_id),
       ),
     ];
     if (teamIds.length) {
