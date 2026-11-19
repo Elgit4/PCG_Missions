@@ -216,6 +216,94 @@ export function parseEventPatch(
   return parseEventFields(value, false);
 }
 
+
+export interface EventStaffAssignmentInput {
+  staff_auth_user_id: string;
+  assignment_role: "owner" | "organizer" | "checkin" | "support";
+  starts_at: string;
+  ends_at: string | null;
+}
+
+export interface EventTeamAssignmentInput {
+  team_id: string;
+  assignment_role: "organizer" | "ushering" | "support";
+  starts_at: string;
+  ends_at: string | null;
+}
+
+function parseAssignmentWindow(
+  value: Record<string, unknown>,
+): { ok: true; starts_at: string; ends_at: string | null } | { ok: false; error: string } {
+  const start = parseTimestamp(value.starts_at, "starts_at");
+  if (!start.ok) return start;
+  let end: string | null = null;
+  if (value.ends_at !== undefined && value.ends_at !== null && value.ends_at !== "") {
+    const parsedEnd = parseTimestamp(value.ends_at, "ends_at");
+    if (!parsedEnd.ok) return parsedEnd;
+    end = parsedEnd.value;
+  }
+  if (end && Date.parse(end) <= Date.parse(start.value)) {
+    return { ok: false, error: "ends_at must be later than starts_at." };
+  }
+  return { ok: true, starts_at: start.value, ends_at: end };
+}
+
+export function parseEventStaffAssignment(
+  value: unknown,
+): { ok: true; value: EventStaffAssignmentInput } | { ok: false; error: string } {
+  if (!isRecord(value)) return { ok: false, error: "A JSON object is required." };
+  const allowed = new Set(["staff_auth_user_id", "assignment_role", "starts_at", "ends_at"]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    return { ok: false, error: "Unsupported staff assignment field." };
+  }
+  if (typeof value.staff_auth_user_id !== "string" || !UUID_PATTERN.test(value.staff_auth_user_id)) {
+    return { ok: false, error: "Invalid staff member." };
+  }
+  const roles = new Set(["owner", "organizer", "checkin", "support"]);
+  if (typeof value.assignment_role !== "string" || !roles.has(value.assignment_role)) {
+    return { ok: false, error: "Invalid staff assignment role." };
+  }
+  const window = parseAssignmentWindow(value);
+  if (!window.ok) return window;
+  return {
+    ok: true,
+    value: {
+      staff_auth_user_id: value.staff_auth_user_id,
+      assignment_role: value.assignment_role as EventStaffAssignmentInput["assignment_role"],
+      starts_at: window.starts_at,
+      ends_at: window.ends_at,
+    },
+  };
+}
+
+export function parseEventTeamAssignment(
+  value: unknown,
+): { ok: true; value: EventTeamAssignmentInput } | { ok: false; error: string } {
+  if (!isRecord(value)) return { ok: false, error: "A JSON object is required." };
+  const allowed = new Set(["team_id", "assignment_role", "starts_at", "ends_at"]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    return { ok: false, error: "Unsupported team assignment field." };
+  }
+  if (typeof value.team_id !== "string" || !UUID_PATTERN.test(value.team_id)) {
+    return { ok: false, error: "Invalid team." };
+  }
+  const roles = new Set(["organizer", "ushering", "support"]);
+  if (typeof value.assignment_role !== "string" || !roles.has(value.assignment_role)) {
+    return { ok: false, error: "Invalid team assignment role." };
+  }
+  const window = parseAssignmentWindow(value);
+  if (!window.ok) return window;
+  return {
+    ok: true,
+    value: {
+      team_id: value.team_id,
+      assignment_role: value.assignment_role as EventTeamAssignmentInput["assignment_role"],
+      starts_at: window.starts_at,
+      ends_at: window.ends_at,
+    },
+  };
+}
+
 export function parseEventListQuery(
   url: URL,
 ): { ok: true; value: EventListQuery } | { ok: false; error: string } {
