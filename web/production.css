@@ -3697,3 +3697,96 @@ html[data-theme="dark"] .staff-login-security-label i { color: var(--cmi-brand-a
 .staff-login-page .staff-login-inline-link { color: var(--cmi-primary) !important; }
 .staff-login-page .staff-login-inline-link:hover { color: var(--cmi-primary-hover) !important; }
 
+
+
+/* Event assignment workspace */
+.cmi-event-assignment-panel {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+  border: 1px solid var(--cmi-border);
+  background: var(--cmi-surface);
+}
+.cmi-event-assignment-panel .cmi-panel-heading h4 {
+  margin: 3px 0 7px;
+  color: var(--cmi-text);
+  font-size: 16px;
+}
+.cmi-event-assignment-panel .cmi-panel-heading p:not(.cmi-eyebrow) {
+  max-width: 660px;
+  color: var(--cmi-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.cmi-event-assignment-panel .cmi-form-grid {
+  margin: 0;
+  border-color: var(--cmi-border-soft);
+  background: var(--cmi-surface-raised);
+}
+.cmi-event-assignment-panel .cmi-form-grid label {
+  color: var(--cmi-muted);
+  font-size: 11px;
+}
+.cmi-event-assignment-panel .cmi-form-grid input,
+.cmi-event-assignment-panel .cmi-form-grid select {
+  min-height: 42px;
+  border-color: var(--cmi-border);
+  background: var(--cmi-bg-raised);
+  color: var(--cmi-text);
+  font-size: 12px;
+}
+.cmi-event-assignment-lists {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.cmi-event-assignment-lists h5 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: var(--cmi-text);
+  font-size: 12px;
+  font-weight: 700;
+}
+.cmi-event-assignment-lists .cmi-task-row {
+  align-items: center;
+  gap: 10px;
+}
+.cmi-event-assignment-lists .cmi-task-copy strong {
+  color: var(--cmi-text);
+  font-size: 12px;
+}
+.cmi-event-assignment-lists .cmi-task-copy p {
+  color: var(--cmi-muted);
+  font-size: 10px;
+  white-space: normal;
+}
+.cmi-task-status.status-muted {
+  border-color: var(--cmi-border);
+  background: var(--cmi-surface-soft);
+  color: var(--cmi-muted);
+}
+.cmi-task-status.status-open {
+  border-color: rgb(84 212 167 / 28%);
+  background: rgb(84 212 167 / 12%);
+  color: var(--cmi-green);
+}
+@media (max-width: 760px) {
+  .cmi-event-assignment-lists { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 680px) {
+  .cmi-event-assignment-panel .cmi-panel-heading {
+    gap: 12px;
+  }
+  .cmi-event-assignment-panel .cmi-operations-actions {
+    width: 100%;
+  }
+  .cmi-event-assignment-panel .cmi-form-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .cmi-event-assignment-panel .cmi-form-actions .cmi-button {
+    width: 100%;
+  }
+}
