@@ -4,13 +4,13 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   isUuid,
-  parseEventCreate,
   parseEventCheckin,
+  parseEventCreate,
   parseEventListQuery,
   parseEventPatch,
+  parseEventRegistrationCancel,
   parseEventStaffAssignment,
   parseEventStaffRegistration,
-  parseEventRegistrationCancel,
   parseEventTeamAssignment,
 } from "./validation.ts";
 
@@ -361,7 +361,6 @@ Deno.test("validates minimized staff event registration input", () => {
   );
 });
 
-
 Deno.test("validates a minimal event registration cancellation request", () => {
   const valid = parseEventRegistrationCancel({
     idempotency_key: "61000000-0000-4000-8000-000000000100",
@@ -379,7 +378,6 @@ Deno.test("validates a minimal event registration cancellation request", () => {
     false,
   );
 });
-
 
 Deno.test("validates an idempotent event check-in request", () => {
   const valid = parseEventCheckin({
