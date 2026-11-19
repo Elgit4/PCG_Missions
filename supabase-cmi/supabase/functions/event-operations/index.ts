@@ -7,6 +7,8 @@ import {
 import {
   isUuid,
   parseEventCheckin,
+  parseEventCloseoutReview,
+  parseEventCloseoutSubmit,
   parseEventCreate,
   parseEventListQuery,
   parseEventPatch,
@@ -556,6 +558,14 @@ Deno.serve(async (request: Request) => {
     const isStaffRegistrationStateChange = isUuid(nestedEventId) &&
       eventSuffix.length === 2 && eventSuffix[0] === "staff-registration" &&
       (eventSuffix[1] === "open" || eventSuffix[1] === "close");
+    const isEventCloseout = isUuid(nestedEventId) &&
+      eventSuffix.length === 1 && eventSuffix[0] === "closeout";
+    const isEventCloseoutSubmit = isUuid(nestedEventId) &&
+      eventSuffix.length === 2 && eventSuffix[0] === "closeout" &&
+      eventSuffix[1] === "submit";
+    const isEventCloseoutReview = isUuid(nestedEventId) &&
+      eventSuffix.length === 2 && eventSuffix[0] === "closeout" &&
+      eventSuffix[1] === "review";
 
     if (request.method === "POST" && isStaffRegistrationStateChange) {
       const branchId = parseBranchQuery(url);
@@ -1492,6 +1502,358 @@ Deno.serve(async (request: Request) => {
         }
         return response(
           { data, already_revoked: false, request_id: id },
+          200,
+          origin,
+          id,
+        );
+      }
+    }
+
+
+    if (
+      (request.method === "GET" && isEventCloseout) ||
+      (request.method === "POST" && isEventCloseoutSubmit) ||
+      (request.method === "POST" && isEventCloseoutReview)
+    ) {
+      const branchId = parseBranchQuery(url);
+      if (!branchId) {
+        return fail(
+          "INVALID_QUERY",
+          "A single valid branch_id is required.",
+          400,
+          origin,
+          id,
+        );
+      }
+
+      const submitScopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "event.closeout.submit",
+      );
+      const reviewScopes = await resolveScopes(
+        auth.service,
+        auth.profileId,
+        branchId,
+        "event.closeout.review",
+      );
+
+      if (request.method === "GET" && isEventCloseout) {
+        if (
+          !submitScopes.includes("branch") &&
+          !reviewScopes.includes("branch")
+        ) {
+          return fail(
+            "FORBIDDEN",
+            "The operation is not permitted.",
+            403,
+            origin,
+            id,
+          );
+        }
+        const { data: closeout, error: closeoutError } = await auth.service
+          .from("event_closeout")
+          .select(
+            "id,event_id,branch_id,submitted_by,submitted_at,reviewed_by,reviewed_at,status,attendee_count,registration_count,transport_seat_count,summary_notes",
+          )
+          .eq("event_id", nestedEventId)
+          .eq("branch_id", branchId)
+          .maybeSingle();
+        if (closeoutError) throw new Error("EVENT_CLOSEOUT_LOOKUP_FAILED");
+        let history: Record<string, unknown>[] = [];
+        if (closeout) {
+          const historyResult = await auth.service
+            .from("event_closeout_event")
+            .select("id,actor_user_id,action,details,created_at")
+            .eq("closeout_id", closeout.id)
+            .order("created_at", { ascending: true });
+          if (historyResult.error) {
+            throw new Error("EVENT_CLOSEOUT_HISTORY_LOOKUP_FAILED");
+          }
+          history = historyResult.data ?? [];
+        }
+        return response(
+          { data: { closeout: closeout ?? null, history }, request_id: id },
+          200,
+          origin,
+          id,
+        );
+      }
+
+      if (request.method === "POST" && isEventCloseoutSubmit) {
+        if (!submitScopes.includes("branch")) {
+          return fail(
+            "FORBIDDEN",
+            "You do not have permission to submit this event closeout.",
+            403,
+            origin,
+            id,
+          );
+        }
+        let body: unknown;
+        try {
+          body = await readJson(request);
+        } catch (error) {
+          const code = error instanceof Error ? error.message : "INVALID_JSON";
+          return fail(
+            code,
+            code === "CONTENT_TYPE_REQUIRED"
+              ? "Content-Type must be application/json."
+              : code === "BODY_TOO_LARGE"
+              ? "Request body is too large."
+              : "A valid JSON request body is required.",
+            code === "BODY_TOO_LARGE" ? 413 : 400,
+            origin,
+            id,
+          );
+        }
+        const parsed = parseEventCloseoutSubmit(body);
+        if (!parsed.ok) {
+          return fail(
+            "INVALID_EVENT_CLOSEOUT",
+            parsed.error,
+            400,
+            origin,
+            id,
+          );
+        }
+        if (
+          !Number.isSafeInteger(EVENT_IDEMPOTENCY_KEY_VERSION) ||
+          EVENT_IDEMPOTENCY_KEY_VERSION < 1
+        ) {
+          throw new Error("EVENT_IDEMPOTENCY_KEY_VERSION_INVALID");
+        }
+        const secret = EVENT_IDEMPOTENCY_HMAC_KEY ||
+          await deriveIdempotencySecret(SUPABASE_SERVICE_ROLE_KEY, "event");
+        const digest = await createRequestDigest(
+          {
+            operation: "closeout_submit",
+            event_id: nestedEventId,
+            branch_id: branchId,
+            actor_user_id: auth.actorId,
+            summary_notes: parsed.value.summary_notes,
+          } as CanonicalJson,
+          secret,
+          EVENT_IDEMPOTENCY_KEY_VERSION,
+        );
+        const { data, error } = await auth.service.rpc(
+          "cmi_staff_submit_event_closeout",
+          {
+            p_actor_auth_user_id: auth.actorId,
+            p_event_id: nestedEventId,
+            p_branch_id: branchId,
+            p_idempotency_key: parsed.value.idempotency_key,
+            p_digest_key_version: digest.keyVersion,
+            p_request_digest_hex: digest.digestHex,
+            p_summary_notes: parsed.value.summary_notes,
+          },
+        );
+        if (error) {
+          if (error.code === "42501") {
+            return fail(
+              "FORBIDDEN",
+              "You do not have permission to submit this event closeout.",
+              403,
+              origin,
+              id,
+            );
+          }
+          if (error.code === "P0002") {
+            return fail("NOT_FOUND", "Event not found.", 404, origin, id);
+          }
+          if (error.code === "23505") {
+            return fail(
+              "IDEMPOTENCY_CONFLICT",
+              "This closeout request key was used with different details.",
+              409,
+              origin,
+              id,
+            );
+          }
+          if (error.code === "22023") {
+            return fail(
+              "INVALID_EVENT_CLOSEOUT",
+              "The closeout submission is invalid.",
+              422,
+              origin,
+              id,
+            );
+          }
+          if (error.code === "P0001") {
+            const message = error.message ?? "";
+            const known = new Map([
+              [
+                "EVENT_CLOSEOUT_NOT_READY",
+                "Closeout is available after the event has ended.",
+              ],
+              [
+                "EVENT_CLOSEOUT_ALREADY_SUBMITTED",
+                "This closeout is already submitted or approved.",
+              ],
+            ]);
+            return fail(
+              known.has(message) ? message : "EVENT_CLOSEOUT_REJECTED",
+              known.get(message) ?? "The closeout could not be submitted.",
+              409,
+              origin,
+              id,
+            );
+          }
+          throw new Error("EVENT_CLOSEOUT_SUBMIT_FAILED");
+        }
+        const replayed = Boolean(
+          (data as { replayed?: boolean } | null)?.replayed,
+        );
+        return response(
+          { data, request_id: id, replayed },
+          replayed ? 200 : 201,
+          origin,
+          id,
+        );
+      }
+
+      if (request.method === "POST" && isEventCloseoutReview) {
+        if (!reviewScopes.includes("branch")) {
+          return fail(
+            "FORBIDDEN",
+            "You do not have permission to review this event closeout.",
+            403,
+            origin,
+            id,
+          );
+        }
+        let body: unknown;
+        try {
+          body = await readJson(request);
+        } catch (error) {
+          const code = error instanceof Error ? error.message : "INVALID_JSON";
+          return fail(
+            code,
+            code === "CONTENT_TYPE_REQUIRED"
+              ? "Content-Type must be application/json."
+              : code === "BODY_TOO_LARGE"
+              ? "Request body is too large."
+              : "A valid JSON request body is required.",
+            code === "BODY_TOO_LARGE" ? 413 : 400,
+            origin,
+            id,
+          );
+        }
+        const parsed = parseEventCloseoutReview(body);
+        if (!parsed.ok) {
+          return fail(
+            "INVALID_EVENT_CLOSEOUT_REVIEW",
+            parsed.error,
+            400,
+            origin,
+            id,
+          );
+        }
+        const { data: closeout, error: closeoutError } = await auth.service
+          .from("event_closeout")
+          .select("id")
+          .eq("event_id", nestedEventId)
+          .eq("branch_id", branchId)
+          .maybeSingle();
+        if (closeoutError) throw new Error("EVENT_CLOSEOUT_LOOKUP_FAILED");
+        if (!closeout) {
+          return fail("NOT_FOUND", "Event closeout not found.", 404, origin, id);
+        }
+        if (
+          !Number.isSafeInteger(EVENT_IDEMPOTENCY_KEY_VERSION) ||
+          EVENT_IDEMPOTENCY_KEY_VERSION < 1
+        ) {
+          throw new Error("EVENT_IDEMPOTENCY_KEY_VERSION_INVALID");
+        }
+        const secret = EVENT_IDEMPOTENCY_HMAC_KEY ||
+          await deriveIdempotencySecret(SUPABASE_SERVICE_ROLE_KEY, "event");
+        const digest = await createRequestDigest(
+          {
+            operation: "closeout_review",
+            event_id: nestedEventId,
+            branch_id: branchId,
+            actor_user_id: auth.actorId,
+            closeout_id: closeout.id,
+            decision: parsed.value.decision,
+            reason: parsed.value.reason,
+          } as CanonicalJson,
+          secret,
+          EVENT_IDEMPOTENCY_KEY_VERSION,
+        );
+        const { data, error } = await auth.service.rpc(
+          "cmi_staff_review_event_closeout",
+          {
+            p_actor_auth_user_id: auth.actorId,
+            p_event_id: nestedEventId,
+            p_branch_id: branchId,
+            p_closeout_id: closeout.id,
+            p_decision: parsed.value.decision,
+            p_reason: parsed.value.reason,
+            p_idempotency_key: parsed.value.idempotency_key,
+            p_digest_key_version: digest.keyVersion,
+            p_request_digest_hex: digest.digestHex,
+          },
+        );
+        if (error) {
+          if (error.code === "42501") {
+            const selfReview = error.message === "EVENT_CLOSEOUT_SELF_REVIEW";
+            return fail(
+              selfReview ? "EVENT_CLOSEOUT_SELF_REVIEW" : "FORBIDDEN",
+              selfReview
+                ? "The closeout submitter cannot review their own submission."
+                : "You do not have permission to review this event closeout.",
+              403,
+              origin,
+              id,
+            );
+          }
+          if (error.code === "P0002") {
+            return fail("NOT_FOUND", "Event closeout not found.", 404, origin, id);
+          }
+          if (error.code === "23505") {
+            return fail(
+              "IDEMPOTENCY_CONFLICT",
+              "This closeout review key was used with different details.",
+              409,
+              origin,
+              id,
+            );
+          }
+          if (error.code === "22023") {
+            return fail(
+              "INVALID_EVENT_CLOSEOUT_REVIEW",
+              "The closeout review request is invalid.",
+              422,
+              origin,
+              id,
+            );
+          }
+          if (error.code === "P0001") {
+            return fail(
+              "EVENT_CLOSEOUT_NOT_REVIEWABLE",
+              "This closeout is no longer awaiting review.",
+              409,
+              origin,
+              id,
+            );
+          }
+          if (error.code === "40001") {
+            return fail(
+              "EVENT_CLOSEOUT_CHANGED",
+              "The closeout changed. Refresh and try again.",
+              409,
+              origin,
+              id,
+            );
+          }
+          throw new Error("EVENT_CLOSEOUT_REVIEW_FAILED");
+        }
+        const replayed = Boolean(
+          (data as { replayed?: boolean } | null)?.replayed,
+        );
+        return response(
+          { data, request_id: id, replayed },
           200,
           origin,
           id,
