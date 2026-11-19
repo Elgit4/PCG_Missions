@@ -1,6 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import { isUuid, sniffImage } from "./validation.ts";
 import {
+  attachFlyerReplacement,
+  FLYER_SIGNED_URL_SECONDS,
+} from "./operations.ts";
+import {
   canManageFlyerInScope,
   flyerProfileDenial,
   hasEligibleFlyerAssignment,
@@ -14,7 +18,6 @@ const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const BUCKET = "event-flyers";
 const MAX_BYTES = 5 * 1024 * 1024;
-const SIGNED_URL_SECONDS = 15 * 60;
 const allowedOrigins = new Set([
   "https://pcg-missions.vercel.app",
   ...(Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "")
@@ -255,7 +258,7 @@ async function signedPreview(
 ) {
   const { data, error } = await service.storage.from(BUCKET).createSignedUrl(
     path,
-    SIGNED_URL_SECONDS,
+    FLYER_SIGNED_URL_SECONDS,
   );
   if (error || !data?.signedUrl) throw new Error("FLYER_SIGNED_URL_FAILED");
   return data.signedUrl;
@@ -482,35 +485,42 @@ Deno.serve(async (request: Request) => {
         cacheControl: "3600",
       });
     if (uploadError) throw new Error("FLYER_UPLOAD_FAILED");
-    const { error: updateError } = await auth.service.from("event").update({
-      flyer_object_path: objectPath,
-      flyer_mime_type: detected.mime,
-      flyer_size_bytes: file.size,
-      flyer_updated_at: new Date().toISOString(),
-    }).eq("id", eventId).eq("branch_id", branchId);
-    if (updateError) {
-      await auth.service.storage.from(BUCKET).remove([objectPath]);
-      throw new Error("FLYER_METADATA_UPDATE_FAILED");
+    const replacement = await attachFlyerReplacement(
+      objectPath,
+      event.flyer_object_path,
+      { mimeType: detected.mime, sizeBytes: file.size },
+      {
+        createSignedPreview: (path) => signedPreview(auth.service, path),
+        saveMetadata: async (metadata) => {
+          const { error } = await auth.service.from("event").update({
+            flyer_object_path: metadata.objectPath,
+            flyer_mime_type: metadata.mimeType,
+            flyer_size_bytes: metadata.sizeBytes,
+            flyer_updated_at: new Date().toISOString(),
+          }).eq("id", eventId).eq("branch_id", branchId);
+          if (error) throw new Error("FLYER_METADATA_UPDATE_FAILED");
+        },
+        removeObject: async (path) => {
+          const { error } = await auth.service.storage.from(BUCKET)
+            .remove([path]);
+          if (error) throw new Error("FLYER_CLEANUP_FAILED");
+        },
+      },
+    );
+    if (!replacement.previousCleanupSucceeded && event.flyer_object_path) {
+      console.error("event flyer replacement cleanup failed", {
+        request_id: requestId,
+        code: "FLYER_CLEANUP_FAILED",
+      });
     }
-    if (event.flyer_object_path) {
-      const { error: cleanupError } = await auth.service.storage.from(BUCKET)
-        .remove([event.flyer_object_path]);
-      if (cleanupError) {
-        console.error("event flyer replacement cleanup failed", {
-          request_id: requestId,
-          code: "FLYER_CLEANUP_FAILED",
-        });
-      }
-    }
-    const signedUrl = await signedPreview(auth.service, objectPath);
     return response(
       {
         data: {
           object_path: objectPath,
           mime_type: detected.mime,
           size_bytes: file.size,
-          signed_url: signedUrl,
-          signed_url_expires_in: SIGNED_URL_SECONDS,
+          signed_url: replacement.signedUrl,
+          signed_url_expires_in: FLYER_SIGNED_URL_SECONDS,
         },
         request_id: requestId,
       },
