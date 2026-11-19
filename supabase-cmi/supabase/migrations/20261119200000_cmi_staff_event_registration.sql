@@ -75,7 +75,12 @@ begin
      or pg_catalog.length(pg_catalog.btrim(p_attendee_name)) not between 2 and 180
      or (
        p_attendee_phone is not null
-       and p_attendee_phone !~ '^[+][1-9][0-9]{7,14}$'
+       and (
+         pg_catalog.length(p_attendee_phone) not between 9 and 16
+         or pg_catalog.left(p_attendee_phone, 1) <> '+'
+         or pg_catalog.substr(p_attendee_phone, 2, 1) not between '1' and '9'
+         or pg_catalog.substr(p_attendee_phone, 2) ~ '[^0-9]'
+       )
      ) then
     raise exception using errcode = '22023', message = 'INVALID_STAFF_REGISTRATION_INPUT';
   end if;
