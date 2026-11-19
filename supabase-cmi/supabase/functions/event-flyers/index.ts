@@ -73,23 +73,43 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     .test(value);
 }
-function sniffImage(bytes: Uint8Array): { mime: "image/jpeg" | "image/png" | "image/webp"; ext: "jpg" | "png" | "webp" } | null {
-  if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
-      bytes[2] === 0xff && bytes[bytes.length - 2] === 0xff &&
-      bytes[bytes.length - 1] === 0xd9) return { mime: "image/jpeg", ext: "jpg" };
-  if (bytes.length >= 24 && [137,80,78,71,13,10,26,10].every((value, index) => bytes[index] === value) &&
-      String.fromCharCode(...bytes.slice(12, 16)) === "IHDR") {
+function sniffImage(
+  bytes: Uint8Array,
+): {
+  mime: "image/jpeg" | "image/png" | "image/webp";
+  ext: "jpg" | "png" | "webp";
+} | null {
+  if (
+    bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 &&
+    bytes[2] === 0xff && bytes[bytes.length - 2] === 0xff &&
+    bytes[bytes.length - 1] === 0xd9
+  ) return { mime: "image/jpeg", ext: "jpg" };
+  if (
+    bytes.length >= 24 &&
+    [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) =>
+      bytes[index] === value
+    ) &&
+    String.fromCharCode(...bytes.slice(12, 16)) === "IHDR"
+  ) {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     const width = view.getUint32(16);
     const height = view.getUint32(20);
-    if (width > 0 && height > 0 && width <= 12000 && height <= 12000 && width * height <= 40000000) {
+    if (
+      width > 0 && height > 0 && width <= 12000 && height <= 12000 &&
+      width * height <= 40000000
+    ) {
       return { mime: "image/png", ext: "png" };
     }
   }
-  if (bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
-      String.fromCharCode(...bytes.slice(8, 12)) === "WEBP") {
+  if (
+    bytes.length >= 12 &&
+    String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
+    String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
+  ) {
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-    if (view.getUint32(4, true) === bytes.length - 8) return { mime: "image/webp", ext: "webp" };
+    if (view.getUint32(4, true) === bytes.length - 8) {
+      return { mime: "image/webp", ext: "webp" };
+    }
   }
   return null;
 }
@@ -331,7 +351,9 @@ Deno.serve(async (request: Request) => {
       );
     }
     const { data: event, error: eventError } = await auth.service.from("event")
-      .select("id,branch_id,status,visibility,flyer_object_path,flyer_mime_type,flyer_size_bytes,flyer_updated_at")
+      .select(
+        "id,branch_id,status,visibility,flyer_object_path,flyer_mime_type,flyer_size_bytes,flyer_updated_at",
+      )
       .eq("id", eventId).eq("branch_id", branchId).maybeSingle();
     if (eventError) throw new Error("EVENT_LOOKUP_FAILED");
     if (!event) {
@@ -344,7 +366,13 @@ Deno.serve(async (request: Request) => {
       );
     }
     if (event.status !== "draft" || event.visibility !== "private") {
-      return fail("EVENT_NOT_EDITABLE", "Flyers can only be changed on private event drafts.", 409, origin, requestId);
+      return fail(
+        "EVENT_NOT_EDITABLE",
+        "Flyers can only be changed on private event drafts.",
+        409,
+        origin,
+        requestId,
+      );
     }
 
     if (request.method === "GET") {
