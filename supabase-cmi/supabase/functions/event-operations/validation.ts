@@ -368,7 +368,6 @@ export function parseEventTeamAssignment(
   };
 }
 
-
 export interface EventStaffRegistrationInput {
   idempotency_key: string;
   attendee_name: string;
