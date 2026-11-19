@@ -133,8 +133,14 @@ jobs:
       - name: Test event flyer validation
         run: deno test supabase-cmi/supabase/functions/event-flyers/validation_test.ts
 
+      - name: Test event flyer authorization scopes
+        run: deno test supabase-cmi/supabase/functions/event-flyers/access_test.ts
+
       - name: Type-check staff notifications Edge Function
         run: deno check supabase-cmi/supabase/functions/staff-notifications/index.ts
+
+      - name: Test staff notification recipient isolation
+        run: deno test supabase-cmi/supabase/functions/staff-notifications/access_test.ts
 
       - name: Type-check announcement operations Edge Function
         run: deno check supabase-cmi/supabase/functions/announcement-operations/index.ts
