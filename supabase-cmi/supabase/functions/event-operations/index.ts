@@ -43,7 +43,7 @@ type ScopeMode =
   | "oversight";
 
 const EVENT_COLUMNS =
-  "id,branch_id,title,description,starts_at,ends_at,timezone,location,status,visibility,registration_state,created_at,updated_at";
+  "id,branch_id,title,description,starts_at,ends_at,timezone,location,status,visibility,registration_state,flyer_mime_type,flyer_size_bytes,flyer_updated_at,created_at,updated_at";
 
 function newRequestId(): string {
   return crypto.randomUUID();
