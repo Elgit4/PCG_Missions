@@ -548,7 +548,8 @@ Deno.serve(async (request: Request) => {
           if (!profile || profile.account_status !== "active") {
             return fail("STAFF_NOT_ASSIGNABLE", "Choose an active staff member assigned to this branch.", 422, origin, id);
           }
-          const { data: membership, error: membershipError } = await auth.service
+          const { data: membership, error: membershipError } = await auth
+            .service
             .from("staff_role_assignment")
             .select("id,role:role!inner(is_active)")
             .eq("staff_profile_id", profile.id)
@@ -625,7 +626,8 @@ Deno.serve(async (request: Request) => {
 
       if (request.method === "POST" && isAssignmentRevoke && assignmentKind) {
         const table = assignmentKind === "staff" ? "event_staff_assignment" : "event_team_assignment";
-        const { data: existing, error: lookupError } = await auth.service.from(table)
+        const { data: existing, error: lookupError } = await auth.service
+          .from(table)
           .select("id,event_id,branch_id,starts_at,ends_at,revoked_at")
           .eq("id", eventSuffix[1]).eq("event_id", nestedEventId)
           .eq("branch_id", branchId).maybeSingle();
