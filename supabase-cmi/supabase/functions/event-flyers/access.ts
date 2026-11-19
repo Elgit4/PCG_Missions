@@ -32,6 +32,10 @@ export function isEditablePrivateEvent(
   return event?.status === "draft" && event.visibility === "private";
 }
 
+export function isFlyerAssignmentEligible(assignmentRole: string): boolean {
+  return assignmentRole !== "transport";
+}
+
 export interface FlyerScopeDecision {
   branchActive: boolean;
   scopeModes: readonly FlyerScopeMode[];
