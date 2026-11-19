@@ -691,6 +691,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           </div>
         </header>
         <section className="cmi-content" id="cmi-content" tabIndex={-1} aria-busy={loading}>
+          <h2 className="cmi-sr-only">Workspace sections</h2>
           {loadError && <div className="cmi-alert" role="alert">{loadError}</div>}
           {actionError && <div className="cmi-alert" role="alert">{actionError}<button onClick={() => setActionError("")} aria-label="Dismiss message">×</button></div>}
           {actionNotice && <div className="cmi-success-note" role="status">{actionNotice}<button onClick={() => setActionNotice("")} aria-label="Dismiss message">×</button></div>}
