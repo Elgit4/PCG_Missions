@@ -12,7 +12,7 @@ import { ThemeToggle } from "../lib/theme";
 import { formatApplicationError } from "../lib/error-messages";
 
 type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Reports" | "Staff" | "Access requests";
-type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue";
+type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue" | "today" | "upcoming";
 interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void> }
 
 function messageFor(error: unknown): string {
@@ -95,6 +95,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
   const [tasks, setTasks] = useState<FollowUpTask[]>([]);
   const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatusFilter>("all");
+  const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
   const [resetRequests, setResetRequests] = useState<StaffPasswordResetRequest[]>([]);
   const [staffMembers, setStaffMembers] = useState<StaffDirectoryEntry[]>([]);
   const [showStaffForm, setShowStaffForm] = useState(false);
@@ -267,9 +268,17 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const visibleContacts = contacts;
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
   const openTasks = tasks.filter((task) => task.status === "open" || task.status === "in_progress");
+  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: branchTimeZone }).format(new Date());
   const filteredTasks = tasks.filter((task) => {
     if (taskStatusFilter === "overdue") return isOverdue(task);
+    if (taskStatusFilter === "today") return !!task.due_at && new Intl.DateTimeFormat("en-CA", { timeZone: branchTimeZone }).format(new Date(task.due_at)) === todayKey && (task.status === "open" || task.status === "in_progress");
+    if (taskStatusFilter === "upcoming") return !!task.due_at && new Date(task.due_at).getTime() > Date.now() && (task.status === "open" || task.status === "in_progress");
     return taskStatusFilter === "all" || task.status === taskStatusFilter;
+  }).sort((a, b) => {
+    const overdueOrder = Number(isOverdue(b)) - Number(isOverdue(a));
+    if (overdueOrder) return overdueOrder;
+    return (a.due_at ? new Date(a.due_at).getTime() : Number.MAX_SAFE_INTEGER) -
+      (b.due_at ? new Date(b.due_at).getTime() : Number.MAX_SAFE_INTEGER);
   });
 
   const refresh = async () => {
@@ -277,7 +286,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setRefreshing(true); setActionError("");
     try {
       const [contactResult, taskResult, resetResult, staffResult] = await Promise.all([
-        canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0, search: query.trim() || undefined }) : Promise.resolve(null),
+        canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0, search: debouncedQuery || undefined }) : Promise.resolve(null),
         canReadTasks ? api.listFollowUpTasks(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
         canManagePasswordResets ? api.listStaffPasswordResetRequests(branchId) : Promise.resolve(null),
         canReadStaffDirectory ? api.listStaffDirectory(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
@@ -396,7 +405,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       const result = await api.listContacts(branchId, {
         limit: 50,
         offset: contacts.length,
-        search: query.trim() || undefined,
+        search: debouncedQuery || undefined,
       });
       setContacts((current) => [...current, ...result.data]);
       setContactsHasMore(result.data.length === 50);
@@ -724,16 +733,18 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowTaskForm(false)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Create task"}</button></div>
             </form>}
             <div className="cmi-followup-toolbar">
-              <label>Show
-                <select aria-label="Filter follow-up tasks" value={taskStatusFilter} onChange={(event) => setTaskStatusFilter(event.target.value as TaskStatusFilter)}>
-                  <option value="all">All tasks</option>
-                  <option value="open">Open</option>
-                  <option value="in_progress">In progress</option>
-                  <option value="overdue">Overdue</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </label>
+              <div className="cmi-operations-tabs" role="group" aria-label="Filter follow-up tasks">
+                {([
+                  ["all", "All"],
+                  ["overdue", "Overdue"],
+                  ["today", "Today"],
+                  ["upcoming", "Upcoming"],
+                  ["in_progress", "In progress"],
+                  ["completed", "Completed"],
+                ] as const).map(([value, label]) => (
+                  <button key={value} type="button" className={taskStatusFilter === value ? "active" : ""} aria-pressed={taskStatusFilter === value} onClick={() => setTaskStatusFilter(value)}>{label}</button>
+                ))}
+              </div>
               <span>{filteredTasks.length} shown · {tasks.length} loaded</span>
             </div>
             <div className="cmi-task-list">{filteredTasks.map((task) => {
