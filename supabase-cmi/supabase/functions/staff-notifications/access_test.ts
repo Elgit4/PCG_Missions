@@ -1,7 +1,9 @@
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  notificationBranchAccess,
   notificationPageLimit,
   notificationProfileDenial,
+  notificationReadScope,
   notificationRecipientScope,
 } from "./access.ts";
 
@@ -43,6 +45,34 @@ Deno.test(
       recipient_user_id: actorId,
       branch_id: branchId,
     });
+  },
+);
+
+Deno.test(
+  "notification read mutation is constrained by ID, authenticated recipient and branch",
+  () => {
+    assertEquals(
+      notificationReadScope(
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      ),
+      {
+        id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+        recipient_user_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        branch_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      },
+    );
+  },
+);
+
+Deno.test(
+  "notification access requires both an active branch and current staff assignment",
+  () => {
+    assertEquals(notificationBranchAccess(true, true), true);
+    assertEquals(notificationBranchAccess(false, true), false);
+    assertEquals(notificationBranchAccess(true, false), false);
+    assertEquals(notificationBranchAccess(false, false), false);
   },
 );
 
