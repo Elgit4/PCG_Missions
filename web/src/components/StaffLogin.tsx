@@ -352,6 +352,7 @@ export function StaffLogin({
         </div>
 
         <footer className="staff-login-footer">
+          <a className="staff-login-visitor-link" href="/visit">Visit public site</a>
           <span>PCG Missions</span><i aria-hidden="true">·</i><span>Powered by ElTech</span>
         </footer>
       </section>
