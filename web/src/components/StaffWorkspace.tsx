@@ -116,6 +116,12 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [resetRequests, setResetRequests] = useState<StaffPasswordResetRequest[]>([]);
   const [staffMembers, setStaffMembers] = useState<StaffDirectoryEntry[]>([]);
   const [showStaffForm, setShowStaffForm] = useState(false);
+  const [credentialHandoff, setCredentialHandoff] = useState<{
+    email: string;
+    password: string;
+    expiresInHours: number;
+  } | null>(null);
+  const [credentialCopied, setCredentialCopied] = useState(false);
   const [showMobileMore, setShowMobileMore] = useState(false);
   const [staffStatusEdit, setStaffStatusEdit] = useState<{ profileId: string; nextStatus: "active" | "inactive" } | null>(null);
   const [staffStatusReason, setStaffStatusReason] = useState("");
@@ -403,26 +409,25 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setSaving(true); setActionError(""); setActionNotice("");
     try {
       const result = await api.createStaffAccount(input);
-      setActionNotice(`Staff account created. The temporary sign-in details were emailed to ${result.data.email}. The user must change the temporary password at first sign-in.`);
       setShowStaffForm(false);
+      if (result.data.invitation_email_sent) {
+        setCredentialHandoff(null);
+        setActionNotice(`Staff account created. The invitation and one-time sign-in details were emailed to ${result.data.email}. The user must change the temporary password at first sign-in.`);
+      } else if (result.data.manual_handoff_required && result.data.temporary_password) {
+        setCredentialCopied(false);
+        setCredentialHandoff({
+          email: result.data.email,
+          password: result.data.temporary_password,
+          expiresInHours: result.data.password_expires_in_hours ?? 24,
+        });
+        setActionNotice(`The staff account for ${result.data.email} was created, but the invitation email was not delivered. Use the secure one-time handoff below; do not create this account again.`);
+      } else {
+        setActionNotice(`The staff account for ${result.data.email} was created, but no invitation was delivered and no manual credential was returned. Do not create it again. Resolve the email sender or use the password-reset process.`);
+      }
       const directory = await api.listStaffDirectory(branchId, { limit: 50, offset: 0 });
       setStaffMembers(directory.data);
     } catch (error) {
-      if (error instanceof CmiApiError && error.code === "STAFF_INVITATION_EMAIL_FAILED") {
-        setShowStaffForm(false);
-        setActionError("");
-        setActionNotice(
-          `The staff account for ${input.email} was created, but the invitation email was not delivered. Do not create it again. Fix the church email sender, then ask this staff member to use Forgot password so you can approve a temporary-password reset.`,
-        );
-        try {
-          const directory = await api.listStaffDirectory(branchId, { limit: 50, offset: 0 });
-          setStaffMembers(directory.data);
-        } catch (refreshError) {
-          setLoadError(messageFor(refreshError));
-        }
-      } else {
-        handleActionError(error);
-      }
+      handleActionError(error);
     }
     finally { setSaving(false); }
   };
@@ -987,6 +992,56 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         </section>
 
       </main>
+      {credentialHandoff && (
+        <div className="cmi-credential-backdrop" role="presentation">
+          <section
+            className="cmi-credential-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cmi-credential-title"
+            aria-describedby="cmi-credential-description"
+          >
+            <div className="cmi-credential-icon"><KeyRound size={22} /></div>
+            <p className="cmi-eyebrow">ONE-TIME STAFF CREDENTIAL</p>
+            <h2 id="cmi-credential-title">Invitation email not delivered</h2>
+            <p id="cmi-credential-description">
+              The account exists. Share this temporary password with the intended staff member through a private, verified channel. It expires in {credentialHandoff.expiresInHours} hours and must be changed immediately after first sign-in.
+            </p>
+            <label className="cmi-credential-email">
+              Staff sign-in email
+              <input value={credentialHandoff.email} readOnly />
+            </label>
+            <div className="cmi-credential-password">
+              <span>Temporary password</span>
+              <code>{credentialHandoff.password}</code>
+            </div>
+            <div className="cmi-credential-warning">
+              Do not send this password in a group chat or leave it visible. Closing this panel clears it from the workspace.
+            </div>
+            <div className="cmi-credential-actions">
+              <button
+                className="cmi-button cmi-button-secondary"
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(credentialHandoff.password).then(() => setCredentialCopied(true)).catch(() => setCredentialCopied(false));
+                }}
+              >
+                {credentialCopied ? "Copied" : "Copy temporary password"}
+              </button>
+              <button
+                className="cmi-button cmi-button-primary"
+                type="button"
+                onClick={() => {
+                  setCredentialHandoff(null);
+                  setCredentialCopied(false);
+                }}
+              >
+                Close & clear credential
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
       {selectedContact && <Suspense fallback={null}><ContactDetailDialog
         key={`${branchId}:${selectedContact.id}`}
         open={!!selectedContact}
