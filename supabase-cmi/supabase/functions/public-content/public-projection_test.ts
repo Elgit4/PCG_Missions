@@ -22,13 +22,13 @@ Deno.test("public event projection excludes private workflow fields", () => {
 Deno.test(
   "public content projections remain limited to approved published resources",
   () => {
-  const resourceNames = Object.keys(PUBLIC_RESOURCES);
-  assert(resourceNames.includes("sermons"));
-  assert(resourceNames.includes("daily-words"));
-  assert(resourceNames.includes("tracts"));
-  assert(resourceNames.includes("announcements"));
-  assert(resourceNames.includes("events"));
-  assert(!resourceNames.includes("contacts"));
+    const resourceNames = Object.keys(PUBLIC_RESOURCES);
+    assert(resourceNames.includes("sermons"));
+    assert(resourceNames.includes("daily-words"));
+    assert(resourceNames.includes("tracts"));
+    assert(resourceNames.includes("announcements"));
+    assert(resourceNames.includes("events"));
+    assert(!resourceNames.includes("contacts"));
     assert(!resourceNames.includes("prayer-requests"));
   },
 );
