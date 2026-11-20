@@ -280,7 +280,6 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canCaptureIdentity = hasIdentityCapture(session, branchId);
   const canReadIdentity = hasIdentityRead(session, branchId);
   const activeBranch = session.branches.find((branch) => branch.id === branchId);
-  const branchName = activeBranch?.name || "Ministry workspace";
   const branchTimeZone = activeBranch?.timezone || "Africa/Accra";
 
   const expireSession = useCallback(() => {
@@ -824,7 +823,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           {page === "Overview" && (
             <OverviewDashboard
               staffName={session.staff.full_name}
-              branchName={branchName}
+              branchName={activeBranch?.name ?? "your branch"}
               branchTimeZone={branchTimeZone}
               contacts={contacts}
               tasks={tasks}
