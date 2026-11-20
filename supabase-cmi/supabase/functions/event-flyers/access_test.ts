@@ -4,7 +4,8 @@ import {
   flyerProfileDenial,
   hasEligibleFlyerAssignment,
   isEditablePrivateEvent,
-  isFlyerAssignmentEligible,
+  isFlyerStaffAssignmentEligible,
+  isFlyerTeamAssignmentEligible,
 } from "./access.ts";
 
 Deno.test(
@@ -96,28 +97,39 @@ Deno.test(
 );
 
 Deno.test(
-  "only non-transport event assignments qualify for flyer management",
+  "flyer staff assignment eligibility uses the approved staff-role allowlist",
   () => {
-    assertEquals(isFlyerAssignmentEligible("support"), true);
-    assertEquals(isFlyerAssignmentEligible("host"), true);
-    assertEquals(isFlyerAssignmentEligible("transport"), false);
+    assertEquals(isFlyerStaffAssignmentEligible("owner"), true);
+    assertEquals(isFlyerStaffAssignmentEligible("organizer"), true);
+    assertEquals(isFlyerStaffAssignmentEligible("checkin"), true);
+    assertEquals(isFlyerStaffAssignmentEligible("support"), true);
+    assertEquals(isFlyerStaffAssignmentEligible("ushering"), false);
+    assertEquals(isFlyerStaffAssignmentEligible("host"), false);
+    assertEquals(isFlyerStaffAssignmentEligible("transport"), false);
+    assertEquals(isFlyerStaffAssignmentEligible("unexpected-role"), false);
     assertEquals(
       hasEligibleFlyerAssignment(["transport", "support"]),
       true,
     );
     assertEquals(
-      hasEligibleFlyerAssignment(["transport"]),
+      hasEligibleFlyerAssignment(["transport", "host"]),
       false,
     );
-    assertEquals(
-      canManageFlyerInScope({
-        branchActive: true,
-        scopeModes: ["event"],
-        directEventAssignment: isFlyerAssignmentEligible("transport"),
-        teamEventMembership: false,
-      }),
-      false,
-    );
+    assertEquals(hasEligibleFlyerAssignment(["transport"]), false);
+  },
+);
+
+Deno.test(
+  "flyer team assignment eligibility uses the approved team-role allowlist",
+  () => {
+    assertEquals(isFlyerTeamAssignmentEligible("organizer"), true);
+    assertEquals(isFlyerTeamAssignmentEligible("ushering"), true);
+    assertEquals(isFlyerTeamAssignmentEligible("support"), true);
+    assertEquals(isFlyerTeamAssignmentEligible("owner"), false);
+    assertEquals(isFlyerTeamAssignmentEligible("checkin"), false);
+    assertEquals(isFlyerTeamAssignmentEligible("host"), false);
+    assertEquals(isFlyerTeamAssignmentEligible("transport"), false);
+    assertEquals(isFlyerTeamAssignmentEligible("unexpected-role"), false);
   },
 );
 
