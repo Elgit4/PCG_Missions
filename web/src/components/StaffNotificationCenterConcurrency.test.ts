@@ -11,7 +11,7 @@ describe("notification mutation branch isolation", () => {
   });
 
   it("does not apply stale mark-read or mark-all results to a new branch", () => {
-    expect(source).toContain("if (activeBranchId.current === branchId) setUnread");
+    expect(source).toContain("if (activeBranchId.current !== actionBranchId) return");
     expect(source).toContain("if (activeBranchId.current === branchId) setSavingId(null)");
     expect(source).toContain("setSavingId(null);\n  }, [branchId])");
   });
