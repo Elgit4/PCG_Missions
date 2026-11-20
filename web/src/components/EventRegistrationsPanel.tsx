@@ -175,9 +175,10 @@ export function EventRegistrationsPanel({
   const remaining = event.capacity === null
     ? null
     : Math.max(0, event.capacity - activeCount);
-  const canRegister = event.status === "published" &&
+  const registrationOpen = event.status === "published" &&
     event.visibility === "staff" &&
     event.registration_state === "open";
+  const canRegister = registrationOpen && event.capacity !== null;
 
   return (
     <section className="cmi-panel cmi-event-registration-panel" aria-label={"Registrations for " + event.title}>
@@ -201,7 +202,7 @@ export function EventRegistrationsPanel({
       <div className="cmi-registration-summary">
         <span><strong>{activeCount}</strong> active registrations</span>
         <span>{event.capacity === null ? "Finite capacity not configured" : `${remaining} of ${event.capacity} places remaining`}</span>
-        <span className={canRegister ? "is-open" : "is-closed"}>{canRegister ? "Registration open" : "Registration closed"}</span>
+        <span className={canRegister ? "is-open" : "is-closed"}>{canRegister ? "Registration open" : registrationOpen && event.capacity === null ? "Capacity required" : "Registration closed"}</span>
       </div>
 
       {canRegister && (
