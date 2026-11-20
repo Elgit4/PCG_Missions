@@ -23,3 +23,9 @@ describe("event registration mutation concurrency", () => {
     expect(submit.indexOf("setRequestKey(createRequestKey())")).toBeLessThan(submit.indexOf("} catch (cause)"));
   });
 });
+
+it("does not offer registration while the backend-required finite capacity is unset", () => {
+  expect(source).toContain("const registrationOpen = event.status === \"published\"");
+  expect(source).toContain("const canRegister = registrationOpen && event.capacity !== null");
+  expect(source).toContain('registrationOpen && event.capacity === null ? "Capacity required"');
+});
