@@ -69,7 +69,9 @@ export function hasEligibleFlyerTeamMembership(
   assignments: readonly FlyerTeamAssignment[],
   memberships: readonly FlyerTeamMembership[],
 ): boolean {
-  const memberTeamIds = new Set(memberships.map((membership) => membership.team_id));
+  const memberTeamIds = new Set(
+    memberships.map((membership) => membership.team_id),
+  );
   return assignments.some((assignment) =>
     isFlyerTeamAssignmentEligible(assignment.assignment_role) &&
     memberTeamIds.has(assignment.team_id)
