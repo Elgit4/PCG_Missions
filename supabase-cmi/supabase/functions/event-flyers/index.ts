@@ -8,6 +8,7 @@ import {
   canManageFlyerInScope,
   flyerProfileDenial,
   hasEligibleFlyerAssignment,
+  hasEligibleFlyerTeamMembership,
   isEditablePrivateEvent,
   isFlyerTeamAssignmentEligible,
 } from "./access.ts";
@@ -223,29 +224,31 @@ async function canManageEvent(
       ).lte("starts_at", now)
       .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null);
     if (eventTeamError) throw new Error("EVENT_TEAM_LOOKUP_FAILED");
+    const eligibleEventTeams = (eventTeams ?? []).filter((
+      row: { assignment_role: string },
+    ) => isFlyerTeamAssignmentEligible(row.assignment_role));
     const teamIds = [
       ...new Set(
-        (eventTeams ?? [])
-          .filter((row: { assignment_role: string }) =>
-            isFlyerTeamAssignmentEligible(row.assignment_role)
-          )
-          .map((row: { team_id: string }) => row.team_id),
+        eligibleEventTeams.map((row: { team_id: string }) => row.team_id),
       ),
     ];
     if (teamIds.length) {
       const { data: memberships, error: membershipError } = await service.from(
         "staff_team_membership",
       )
-        .select("id,team:team!inner(is_active)")
+        .select("id,team_id,team:team!inner(is_active)")
         .eq("team.is_active", true).eq("staff_profile_id", profileId).eq(
           "branch_id",
           branchId,
         )
         .in("team_id", teamIds).lte("starts_at", now)
         .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null)
-        .limit(1).maybeSingle();
+        .limit(1);
       if (membershipError) throw new Error("TEAM_MEMBERSHIP_LOOKUP_FAILED");
-      teamEventMembership = Boolean(memberships);
+      teamEventMembership = hasEligibleFlyerTeamMembership(
+        eligibleEventTeams,
+        memberships ?? [],
+      );
     }
   }
   return canManageFlyerInScope({
