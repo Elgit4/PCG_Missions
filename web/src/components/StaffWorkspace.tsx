@@ -823,7 +823,6 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           {page === "Overview" && (
             <OverviewDashboard
               staffName={session.staff.full_name}
-              branchName={activeBranch?.name ?? "your branch"}
               branchTimeZone={branchTimeZone}
               contacts={contacts}
               tasks={tasks}
