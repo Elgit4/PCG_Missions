@@ -10,7 +10,7 @@ The CMI Follow-up v2.1 target scope covers church field capture, contacts, follo
 
 **Production and PR #82 are separate release states.** Vercel production remains READY on `main` at `b83d1feb44fe5cca1e2ddc7d8026a7126a10d385`. PR #82 remains open and Draft; its source changes are not in production.
 
-The current PR head is `c46c3a57e3ba411fcbd73897eb6145786ebb1b8c`. CMI backend CI (including isolated migration replay and pgTAP), CMI web CI and CMI frontend CI all passed on this exact commit. Vercel preview deployment `dpl_EZmk91DXmEQjNTqV73LVzjtEwidq` is READY at [the exact-head preview](https://pcg-missions-gritteoxo-eltech.vercel.app).
+The current PR head is `c58510620502a3a206142543742f42dc53d5cfed`. CMI frontend CI (run `44714873214`), CMI web CI (run `44714873048`) and CMI backend CI (run `44714873024`) all passed on this exact commit. Backend CI includes successful isolated Supabase migration replay and pgTAP execution. The latest Vercel preview is blocked by the provider build-rate limit; the earlier READY preview is not an exact-head preview and is not evidence for this commit.
 
 Recent flyer hardening separates the approved staff-role and team-role allowlists, rejects Transport and unknown assignment roles, and protects replacement/removal with compare-and-set metadata updates. Stale concurrent updates return HTTP 409 and roll back only the new upload. Tests cover authorization allowlists and stale-replacement rollback.
 
