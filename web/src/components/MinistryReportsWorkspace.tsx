@@ -130,8 +130,10 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session, o
     if (reportType === "event_evangelism") {
       void api.listReportEvents(branchId).then((result) => {
         if (current) setEvents(result.data);
-      }).catch(() => {
-        if (current) setEvents([]);
+      }).catch((cause) => {
+        if (!current) return;
+        if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+        setEvents([]);
       });
     }
     return () => { current = false; };
@@ -195,7 +197,8 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session, o
       setEditingReportId(null);
       await load(true);
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
     } finally {
       setSaving(false);
     }
@@ -235,7 +238,8 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session, o
       setReviewComment("");
       await load(true);
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
     } finally {
       setSaving(false);
     }
