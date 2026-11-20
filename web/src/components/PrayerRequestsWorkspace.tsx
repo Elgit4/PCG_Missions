@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { HeartHandshake, RefreshCw, ShieldCheck } from "lucide-react";
 import {
   CmiApiClient,
@@ -41,9 +41,11 @@ export function PrayerRequestsWorkspace({
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const requestVersion = useRef(0);
 
   const pageSize = 25;
   const load = useCallback(async (nextOffset: number) => {
+    const requestId = ++requestVersion.current;
     setLoading(true);
     setError("");
     try {
@@ -51,22 +53,25 @@ export function PrayerRequestsWorkspace({
         limit: pageSize,
         offset: nextOffset,
       });
+      if (requestId !== requestVersion.current) return;
       setRequests(result.data.requests);
       setTotal(result.data.total);
       setOffset(result.data.offset);
     } catch (cause) {
+      if (requestId !== requestVersion.current) return;
       if (cause instanceof CmiApiError && cause.status === 401) {
         onSessionExpired();
       } else {
         setError(formatApplicationError(cause));
       }
     } finally {
-      setLoading(false);
+      if (requestId === requestVersion.current) setLoading(false);
     }
   }, [api, branchId, onSessionExpired]);
 
   useEffect(() => {
     void load(0);
+    return () => { requestVersion.current += 1; };
   }, [branchId, load]);
 
   return (
