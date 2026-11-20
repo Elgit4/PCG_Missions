@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Bell, CheckCheck, Circle, LoaderCircle } from "lucide-react";
 import { CmiApiError, type CmiApiClient, type StaffNotificationRecord } from "../lib/cmi-api";
 
@@ -27,7 +27,6 @@ export function StaffNotificationCenter({ api, branchId, onNavigate, onSessionEx
   const [error, setError] = useState("");
   const requestVersion = useRef(0);
   const activeBranchId = useRef(branchId);
-  activeBranchId.current = branchId;
 
   const load = useCallback(async (quiet = false) => {
     if (!branchId) return;
@@ -53,7 +52,8 @@ export function StaffNotificationCenter({ api, branchId, onNavigate, onSessionEx
     }
   }, [api, branchId, onSessionExpired]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    activeBranchId.current = branchId;
     requestVersion.current += 1;
     setItems([]);
     setUnread(0);
