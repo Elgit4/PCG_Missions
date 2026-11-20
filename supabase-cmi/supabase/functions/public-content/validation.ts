@@ -141,7 +141,6 @@ export function parsePublicContentRequest(
   };
 }
 
-
 /** Returns the fixed PostgREST OR expression for scheduled public resources. */
 export function getScheduledPublicationFilter(
   resource: PublicResource,
