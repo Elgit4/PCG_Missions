@@ -2,12 +2,10 @@ export function manualCredentialHandoff(
   emailSent: boolean,
   temporaryPassword: string,
 ): Record<string, unknown> {
-  return emailSent
-    ? {}
-    : {
-      manual_handoff_required: true,
-      temporary_password: temporaryPassword,
-    };
+  return emailSent ? {} : {
+    manual_handoff_required: true,
+    temporary_password: temporaryPassword,
+  };
 }
 
 export function canSendPasswordResetNotification(config: {
