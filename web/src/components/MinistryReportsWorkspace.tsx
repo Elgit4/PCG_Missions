@@ -64,6 +64,7 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
   const requestVersion = useRef(0);
   const loadMoreRequestVersion = useRef(0);
   const detailRequestVersion = useRef(0);
+  const mutationInFlight = useRef(false);
 
   const load = useCallback(async (quiet = false) => {
     loadMoreRequestVersion.current += 1;
@@ -167,7 +168,8 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!canSubmit) return;
+    if (mutationInFlight.current || !canSubmit) return;
+    mutationInFlight.current = true;
     setSaving(true);
     setError("");
     setNotice("");
@@ -192,12 +194,14 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
       if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
       else setError(errorMessage(cause));
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
 
   const resubmit = async (report: MinistryReportRecord) => {
-    if (!canSubmit || editingReportId !== report.id) return;
+    if (mutationInFlight.current || !canSubmit || editingReportId !== report.id) return;
+    mutationInFlight.current = true;
     setSaving(true);
     setError("");
     try {
@@ -214,6 +218,7 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
       if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
       else setError(errorMessage(cause));
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
@@ -246,7 +251,8 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
   };
 
   const review = async (report: MinistryReportRecord, decision: "approved" | "returned") => {
-    if (!canReview || reviewingId !== report.id) return;
+    if (mutationInFlight.current || !canReview || reviewingId !== report.id) return;
+    mutationInFlight.current = true;
     setSaving(true);
     setError("");
     try {
@@ -262,6 +268,7 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
       if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
       else setError(errorMessage(cause));
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
