@@ -309,3 +309,10 @@ This checkpoint supersedes earlier head, preview and pending-CI notes above.
 Hosted Supabase still records 17 migrations through `20261112220204`. It is missing the three Ministry Report migrations (`20261113090000`, `20261113100000`, `20261113110000`) and all seven PR #82 migrations. The hosted `report-operations`, `staff-notifications` and `event-flyers` functions are not deployed; `event-operations` remains version 14.
 
 No PR merge, hosted migration, Edge Function deployment or production frontend release was performed in this continuation. The first-admin role-assignment plus audit-row repair remains the only recorded live production-data change. SMS/Arkesel stays deferred, Cloudflare migration stays cancelled, Transport and offline staff workflows remain excluded, and the existing crest loader remains unchanged.
+
+
+## 20 November continuation — event workspace consistency
+
+- Added request-version guards to event assignment, registration and closeout panels. Responses from an earlier event/branch context are ignored, and prior workspace data is cleared when the context changes.
+- Added a Vitest regression contract covering stale-response rejection, unmount/context invalidation and loading-state ownership for all three panels.
+- These changes are source-only and require the updated frontend CI run before they can be marked verified.
