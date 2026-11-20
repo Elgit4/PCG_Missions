@@ -1,3 +1,5 @@
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./supabase-config";
+
 /**
  * PCG Missions CMI v2.1 browser API adapter.
  *
@@ -1312,10 +1314,10 @@ export class CmiApiClient {
 }
 
 export function createConfiguredCmiApiClient(getAccessToken: AccessTokenProvider): CmiApiClient {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const supabaseUrl = SUPABASE_URL;
+  const publishableKey = SUPABASE_PUBLISHABLE_KEY;
   if (!supabaseUrl || !publishableKey) {
-    throw new Error("Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY before connecting the staff API.");
+    throw new Error("The Supabase browser connection is not configured.");
   }
   return new CmiApiClient({ supabaseUrl, publishableKey }, getAccessToken);
 }
