@@ -121,6 +121,46 @@ Deno.test(
 );
 
 Deno.test(
+  "stale concurrent replacement removes only its new upload and preserves the current flyer",
+  async () => {
+    const calls: string[] = [];
+    let conflictCode = "";
+    try {
+      await attachFlyerReplacement(
+        "branch/event/stale-upload.webp",
+        "branch/event/previously-read.jpg",
+        { mimeType: "image/webp", sizeBytes: 1400 },
+        {
+          createSignedPreview(objectPath) {
+            calls.push(`sign:${objectPath}`);
+            return Promise.resolve(
+              `https://signed.example/${objectPath}`,
+            );
+          },
+          saveMetadata(metadata) {
+            calls.push(`save:${metadata.objectPath}`);
+            return Promise.reject(new Error("FLYER_CHANGED_RETRY"));
+          },
+          removeObject(objectPath) {
+            calls.push(`remove:${objectPath}`);
+            return Promise.resolve();
+          },
+        },
+      );
+    } catch (error) {
+      conflictCode = error instanceof Error ? error.message : "UNKNOWN_ERROR";
+    }
+
+    assertEquals(conflictCode, "FLYER_CHANGED_RETRY");
+    assertEquals(calls, [
+      "sign:branch/event/stale-upload.webp",
+      "save:branch/event/stale-upload.webp",
+      "remove:branch/event/stale-upload.webp",
+    ]);
+  },
+);
+
+Deno.test(
   "old-flyer cleanup failure is reported without discarding the replacement",
   async () => {
     const calls: string[] = [];
