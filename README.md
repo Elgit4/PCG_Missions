@@ -6,17 +6,19 @@
 
 The CMI Follow-up v2.1 target scope covers church field capture, contacts, follow-up, prayer and care, events, attendance, calendar, announcements, visitor-facing content, ministry reports and team administration. The scope below describes intended product capability; see the deployment snapshot before treating a feature as operational.
 
-## Verified release status — 19 November 2026
+## Verified release status — 20 November 2026
 
-**Production and PR #82 are different release states.** Vercel currently reports the production deployment as READY on `main` at commit `b83d1feb44fe5cca1e2ddc7d8026a7126a10d385`. PR #82 is still an open Draft targeting `main`; its changes are not part of production.
+**Production and PR #82 are separate release states.** Vercel production remains READY on `main` at `b83d1feb44fe5cca1e2ddc7d8026a7126a10d385`. PR #82 remains open and Draft; its source changes are not in production.
 
-The PR #82 head is `af40ac88a37ee813d686b0099079e31cdd8ae6f8`. Its backend CI (including isolated migration replay and pgTAP), web CI and frontend CI all passed. Its Vercel preview is READY at [the PR preview](https://pcg-missions-oxllfh1ft-eltech.vercel.app). The preview build reports a main JavaScript chunk slightly above Vite's 500 kB warning threshold; this is a performance follow-up, not a failed build.
+The current PR head is `c46c3a57e3ba411fcbd73897eb6145786ebb1b8c`. CMI backend CI (including isolated migration replay and pgTAP), CMI web CI and CMI frontend CI all passed on this exact commit. Vercel preview deployment `dpl_EZmk91DXmEQjNTqV73LVzjtEwidq` is READY at [the exact-head preview](https://pcg-missions-gritteoxo-eltech.vercel.app).
 
-The linked production Supabase project currently records 17 migrations, with the latest version `20261112220204`. The seven newer PR #82 migrations are not applied to the hosted database, and the `staff-notifications` and `event-flyers` Edge Functions are not deployed. Production therefore does not yet include the PR's notification inbox, flyer upload, expanded event registration/check-in/closeout, or assigned Prayer Intercessor inbox workflows.
+Recent flyer hardening separates the approved staff-role and team-role allowlists, rejects Transport and unknown assignment roles, and protects replacement/removal with compare-and-set metadata updates. Stale concurrent updates return HTTP 409 and roll back only the new upload. Tests cover authorization allowlists and stale-replacement rollback.
 
-The first Admin/Pastor login issue was repaired through a narrowly guarded role-assignment restore and the account owner has confirmed that login now works. That data repair did not merge PR #82, deploy code, or apply schema migrations. SMS/Arkesel remains deferred, the Cloudflare migration remains cancelled, Transport remains excluded, and the existing screen loader remains unchanged.
+Hosted Supabase still has 17 migrations through `20261112220204`. It does not yet include the three source-controlled Ministry Report migrations or the seven PR #82 migrations. The `report-operations`, `staff-notifications` and `event-flyers` Edge Functions are not deployed; `event-operations` remains on hosted version 14. These workflows remain source-only until intended-environment migration/function rollout is separately planned and approved.
 
-Do not treat a green CI run or READY preview as production release approval. Authenticated six-role acceptance, negative authorization tests, hosted migration/function rollout planning, operational configuration, and separate staging/production approval remain open. See [the current implementation status](supabase-cmi/IMPLEMENTATION_STATUS.md) and [the delivery plan](docs/32_REMAINING_PRODUCT_WORK_AND_DELIVERY_PLAN.md).
+The first Admin/Pastor login issue was repaired through a narrowly guarded role-assignment restore and matching audit entry; the account owner confirmed sign-in works. SMS/Arkesel remains deferred, Cloudflare migration remains cancelled, Transport remains excluded, offline staff data/workflows remain disabled, and the existing crest loader remains unchanged.
+
+A green CI run or READY preview is not production release approval. Authenticated negative integration tests, six-role acceptance, hosted schema/function reconciliation, security-advisory review, PWA install-surface checks, operational configuration, privacy/restore readiness and separate staging/production approval remain open. See [the current implementation status](supabase-cmi/IMPLEMENTATION_STATUS.md) and [the delivery plan](docs/32_REMAINING_PRODUCT_WORK_AND_DELIVERY_PLAN.md).
 
 ## Current product baseline
 
