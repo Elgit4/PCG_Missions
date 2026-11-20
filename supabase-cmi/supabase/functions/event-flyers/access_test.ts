@@ -3,6 +3,7 @@ import {
   canManageFlyerInScope,
   flyerProfileDenial,
   hasEligibleFlyerAssignment,
+  hasEligibleFlyerTeamMembership,
   isEditablePrivateEvent,
   isFlyerStaffAssignmentEligible,
   isFlyerTeamAssignmentEligible,
@@ -130,6 +131,57 @@ Deno.test(
     assertEquals(isFlyerTeamAssignmentEligible("host"), false);
     assertEquals(isFlyerTeamAssignmentEligible("transport"), false);
     assertEquals(isFlyerTeamAssignmentEligible("unexpected-role"), false);
+  },
+);
+
+Deno.test(
+  "team flyer access requires an eligible assignment and membership in that same team",
+  () => {
+    assertEquals(
+      hasEligibleFlyerTeamMembership(
+        [{ team_id: "team-a", assignment_role: "support" }],
+        [{ team_id: "team-a" }],
+      ),
+      true,
+    );
+    assertEquals(
+      hasEligibleFlyerTeamMembership(
+        [{ team_id: "team-a", assignment_role: "support" }],
+        [{ team_id: "team-b" }],
+      ),
+      false,
+    );
+    assertEquals(
+      hasEligibleFlyerTeamMembership(
+        [{ team_id: "team-a", assignment_role: "transport" }],
+        [{ team_id: "team-a" }],
+      ),
+      false,
+    );
+    assertEquals(
+      hasEligibleFlyerTeamMembership(
+        [{ team_id: "team-a", assignment_role: "support" }],
+        [],
+      ),
+      false,
+    );
+    assertEquals(
+      hasEligibleFlyerTeamMembership(
+        [{ team_id: "team-a", assignment_role: "owner" }],
+        [{ team_id: "team-a" }],
+      ),
+      false,
+    );
+    assertEquals(
+      hasEligibleFlyerTeamMembership(
+        [
+          { team_id: "team-a", assignment_role: "transport" },
+          { team_id: "team-b", assignment_role: "organizer" },
+        ],
+        [{ team_id: "team-a" }, { team_id: "team-b" }],
+      ),
+      true,
+    );
   },
 );
 
