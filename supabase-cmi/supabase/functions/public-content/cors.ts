@@ -1,4 +1,7 @@
-const FIRST_PARTY_ORIGINS = ["https://pcg-missions.vercel.app"] as const;
+const FIRST_PARTY_ORIGINS = [
+  "https://pcg-missions.vercel.app",
+  "https://pcg-missions-git-feat-cmi-pcg-missions-final-review-v6-eltech.vercel.app",
+] as const;
 
 export const PUBLIC_CONTENT_CORS_ALLOWED_METHODS = "GET, OPTIONS";
 export const PUBLIC_CONTENT_CORS_ALLOWED_HEADERS =
