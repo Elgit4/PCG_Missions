@@ -17,7 +17,7 @@ describe("ministry report detail request concurrency", () => {
 
   it("invalidates pending detail lookups when the branch-scoped workspace changes or unmounts", () => {
     expect(source).toContain("detailRequestVersion.current += 1;\n    setDetailReport(null);");
-    expect(source).toContain("requestVersion.current += 1;\n      detailRequestVersion.current += 1;");
+    expect(source).toContain("requestVersion.current += 1;\n      loadMoreRequestVersion.current += 1;\n      detailRequestVersion.current += 1;");
   });
 });
 
