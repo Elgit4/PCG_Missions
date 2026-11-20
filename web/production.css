@@ -4161,3 +4161,13 @@ html[data-theme="dark"] .staff-login-security-label i { color: var(--cmi-brand-a
     width: 100%;
   }
 }
+
+
+.staff-login-visitor-link {
+  color: #1d5f8f;
+  font-size: 10px;
+  font-weight: 750;
+  text-decoration: none;
+}
+.staff-login-visitor-link:hover { color: #ed1c2e; text-decoration: underline; }
+html[data-theme="dark"] .staff-login-visitor-link { color: #b6d7ef; }
