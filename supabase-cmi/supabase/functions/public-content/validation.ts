@@ -39,7 +39,7 @@ export const PUBLIC_RESOURCES = {
   },
   events: {
     table: "event",
-    columns: "id,title,description,starts_at,ends_at,timezone,location,registration_state,transport_enabled",
+    columns: "id,title,description,starts_at,ends_at,timezone,location",
     filters: [
       { column: "status", value: "published" },
       { column: "visibility", value: "public" },
