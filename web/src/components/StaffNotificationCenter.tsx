@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bell, CheckCheck, Circle, LoaderCircle } from "lucide-react";
-import type { CmiApiClient, StaffNotificationRecord } from "../lib/cmi-api";
+import { CmiApiError, type CmiApiClient, type StaffNotificationRecord } from "../lib/cmi-api";
 
 type Target = StaffNotificationRecord["target_type"];
 interface Props {
   api: CmiApiClient;
   branchId: string;
   onNavigate: (target: Target) => void;
+  onSessionExpired: () => void;
 }
 function relativeTime(value: string) {
   const date = new Date(value);
@@ -17,7 +18,7 @@ function relativeTime(value: string) {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
 }
-export function StaffNotificationCenter({ api, branchId, onNavigate }: Props) {
+export function StaffNotificationCenter({ api, branchId, onNavigate, onSessionExpired }: Props) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<StaffNotificationRecord[]>([]);
   const [unread, setUnread] = useState(0);
@@ -36,15 +37,19 @@ export function StaffNotificationCenter({ api, branchId, onNavigate }: Props) {
       setItems(result.data.notifications);
       setUnread(result.data.unread_count);
       setError("");
-    } catch {
+    } catch (cause) {
       if (version !== requestVersion.current) return;
+      if (cause instanceof CmiApiError && cause.status === 401) {
+        onSessionExpired();
+        return;
+      }
       setItems([]);
       setUnread(0);
       if (!quiet) setError("Notifications are temporarily unavailable. Try refreshing.");
     } finally {
       if (version === requestVersion.current && !quiet) setLoading(false);
     }
-  }, [api, branchId]);
+  }, [api, branchId, onSessionExpired]);
 
   useEffect(() => {
     requestVersion.current += 1;
@@ -69,8 +74,9 @@ export function StaffNotificationCenter({ api, branchId, onNavigate }: Props) {
       await api.markAllStaffNotificationsRead(branchId);
       setItems((current) => current.map((item) => ({ ...item, read_at: item.read_at ?? new Date().toISOString() })));
       setUnread(0);
-    } catch {
-      setError("We couldn't update your notifications. Please try again.");
+    } catch (cause) {
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError("We couldn't update your notifications. Please try again.");
     } finally {
       setSavingId(null);
     }
@@ -83,8 +89,9 @@ export function StaffNotificationCenter({ api, branchId, onNavigate }: Props) {
         await api.markStaffNotificationRead(branchId, item.id);
         setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, read_at: new Date().toISOString() } : entry));
         setUnread((count) => Math.max(0, count - 1));
-      } catch {
-        setError("We couldn't update this notification. Please try again.");
+      } catch (cause) {
+        if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+        else setError("We couldn't update this notification. Please try again.");
         setSavingId(null);
         return;
       }
