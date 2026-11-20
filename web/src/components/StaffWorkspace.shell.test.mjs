@@ -36,7 +36,12 @@ it('keeps the current page title visible beneath the compact mobile brand row', 
 
 
 it('expires the staff session when the task contact picker receives HTTP 401', () => {
-  const picker = workspace.match(/api\\.listContacts\\(branchId, \\{[\\s\\S]*?\\n    \\}, \\[\\s\\S]*?taskContactId,\\n  \\]\\);/)?.[0] ?? '';
+  const pickerStart = workspace.indexOf(
+    'api.listContacts(branchId, {',
+    workspace.indexOf('debouncedTaskContactQuery'),
+  );
+  const pickerEnd = workspace.indexOf('const availablePages', pickerStart);
+  const picker = workspace.slice(pickerStart, pickerEnd);
   expect(picker).toContain('error instanceof CmiApiError && error.status === 401');
   expect(picker).toContain('expireSession();');
 });
