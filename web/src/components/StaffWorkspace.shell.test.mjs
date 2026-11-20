@@ -62,3 +62,18 @@ it('invalidates in-flight pagination before a manual workspace refresh', () => {
   expect(refresh).toContain('paginationVersion.current += 1');
   expect(refresh).toContain('setLoadingMore(false)');
 });
+
+it('distinguishes delivered staff invitations from one-time manual credential handoff', () => {
+  const createHandler = workspace.slice(
+    workspace.indexOf('const createStaffAccount ='),
+    workspace.indexOf('const updateStaffAccountStatus ='),
+  );
+  expect(createHandler).toContain('if (result.data.invitation_email_sent)');
+  expect(createHandler).toContain('result.data.manual_handoff_required && result.data.temporary_password');
+  expect(createHandler).toContain('setCredentialHandoff({');
+  expect(createHandler).toContain('invitation email was not delivered');
+  expect(createHandler).not.toContain('The temporary sign-in details were emailed');
+  expect(workspace).toContain('aria-modal="true"');
+  expect(workspace).toContain('Close & clear credential');
+  expect(workspace).toContain('setCredentialHandoff(null)');
+});
