@@ -62,6 +62,7 @@ export function EventAssignmentsPanel({
   );
 
   const requestVersion = useRef(0);
+  const mutationInFlight = useRef(false);
   const load = useCallback(async () => {
     const requestId = ++requestVersion.current;
     setLoading(true);
@@ -90,20 +91,24 @@ export function EventAssignmentsPanel({
 
   const submit = async (formEvent: FormEvent<HTMLFormElement>) => {
     formEvent.preventDefault();
-    if (saving) return;
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
     const selectedId = targetId || targetOptions[0]?.id || "";
     if (!selectedId) {
       setError(kind === "staff" ? "There are no active staff members available in this branch." : "There are no active teams available in this branch.");
+      mutationInFlight.current = false;
       return;
     }
     const starts = branchLocalInputToIso(startsAt, timeZone);
     const ends = endsAt ? branchLocalInputToIso(endsAt, timeZone) : null;
     if (!starts || (endsAt && !ends)) {
       setError("Enter valid assignment dates in the branch time zone.");
+      mutationInFlight.current = false;
       return;
     }
     if (ends && Date.parse(ends) <= Date.parse(starts)) {
       setError("The assignment end must be later than its start.");
+      mutationInFlight.current = false;
       return;
     }
 
@@ -136,12 +141,14 @@ export function EventAssignmentsPanel({
         setError(formatApplicationError(cause));
       }
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
 
   const revoke = async (assignmentKind: "staff" | "team", assignmentId: string) => {
-    if (saving || !window.confirm("Revoke this event assignment? The assignment history will be retained.")) return;
+    if (mutationInFlight.current || !window.confirm("Revoke this event assignment? The assignment history will be retained.")) return;
+    mutationInFlight.current = true;
     setSaving(true);
     setError("");
     setNotice("");
@@ -156,6 +163,7 @@ export function EventAssignmentsPanel({
         setError(formatApplicationError(cause));
       }
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
