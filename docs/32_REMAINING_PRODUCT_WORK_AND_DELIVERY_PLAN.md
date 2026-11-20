@@ -271,3 +271,41 @@ This section supersedes earlier same-day notes that the current preview was unco
 7. Complete privacy/controller readiness, backup/restore rehearsal, monitoring and separately authorised staging/production approval before release.
 
 No migration, Edge Function deployment, production merge or production frontend release was performed in this continuation. SMS/Arkesel, Cloudflare migration, Transport and offline staff workflows remain unchanged or excluded; the existing screen loader remains untouched.
+
+
+## Verified continuation checkpoint — 20 November 2026, 08:10 UTC
+
+This checkpoint supersedes earlier head, preview and pending-CI notes above.
+
+### Current PR verification
+
+- PR #82 remains open and Draft on `feat/cmi-pcg-missions-final-review-v6`, exact head `c46c3a57e3ba411fcbd73897eb6145786ebb1b8c`.
+- CMI backend CI run `44700059491`, CMI web CI run `44700059447` and CMI frontend CI run `44700059495` all completed successfully on this commit.
+- The backend workflow passed Deno formatting/lint, Edge Function type checks, validation/access tests, isolated Supabase stack startup, migration replay, pgTAP and stack shutdown.
+- Vercel preview deployment `dpl_EZmk91DXmEQjNTqV73LVzjtEwidq` is READY for this exact commit at https://pcg-missions-gritteoxo-eltech.vercel.app. It is a preview only; production remains on `main` at `b83d1feb44fe5cca1e2ddc7d8026a7126a10d385`.
+
+### Flyer access and concurrency hardening
+
+- Staff-scoped flyer authorization now accepts only `owner`, `organizer`, `checkin` and `support`.
+- Team-scoped flyer authorization now accepts only `organizer`, `ushering` and `support`.
+- Transport and unknown role strings are denied by default. The staff and team allowlists are separate so a role valid for one assignment type is not implicitly valid for the other.
+- Flyer replacement and removal compare the event's flyer object path with the value read before the operation. If another staff member changes the flyer first, the stale operation returns HTTP 409 rather than overwriting/deleting the newer object.
+- Replacement signs the new preview and commits new metadata before cleaning up the previous object. Signing/metadata failure rolls back only the new upload. A stale replacement therefore leaves the currently attached flyer intact.
+- Added Deno tests for exact staff/team role allowlists, unknown/Transport denial and stale concurrent replacement rollback. Existing tests cover the 15-minute preview duration, signing/metadata failure rollback and cleanup failures.
+- These are CI-verified helper/operation tests. Authenticated endpoint-level tests against the intended hosted service are still required for cross-user/cross-branch reads, signature spoofing, expiry and provider/storage edge cases.
+
+### Remaining delivery gates
+
+1. Add authenticated endpoint-level negative integration tests for notifications, cross-branch event access, capacity concurrency/replay, duplicate check-in, closeout self-review, and flyer upload/signature/spoofing/expiry/cleanup behavior. Do not claim helper tests are equivalent to hosted endpoint acceptance.
+2. Reconcile and plan deployment of the three source-controlled Ministry Report migrations and the seven PR #82 migrations against the intended hosted Supabase environment. Do not apply them until reviewed and separately authorised.
+3. Complete desktop/mobile authenticated acceptance with owner-authorised non-production identities for all six roles. Do not fabricate identities or alter the second production staff profile.
+4. Verify PWA installation surfaces; current manifest uses SVG icons, so raster compatibility remains a target-platform follow-up.
+5. Review leaked-password protection and the private bootstrap-lease RLS advisory deliberately; no automatic setting or broad policy changes have been made.
+6. Verify server-side idempotency secrets and the production email sender/domain without writing secret values to repository documentation.
+7. Complete privacy/controller readiness, backup/restore rehearsal, monitoring, staging acceptance and separately authorised production approval.
+
+### Hosted and production boundary
+
+Hosted Supabase still records 17 migrations through `20261112220204`. It is missing the three Ministry Report migrations (`20261113090000`, `20261113100000`, `20261113110000`) and all seven PR #82 migrations. The hosted `report-operations`, `staff-notifications` and `event-flyers` functions are not deployed; `event-operations` remains version 14.
+
+No PR merge, hosted migration, Edge Function deployment or production frontend release was performed in this continuation. The first-admin role-assignment plus audit-row repair remains the only recorded live production-data change. SMS/Arkesel stays deferred, Cloudflare migration stays cancelled, Transport and offline staff workflows remain excluded, and the existing crest loader remains unchanged.
