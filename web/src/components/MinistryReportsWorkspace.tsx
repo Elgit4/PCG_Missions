@@ -86,7 +86,7 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session, o
         setRefreshing(false);
       }
     }
-  }, [api, branchId]);
+  }, [api, branchId, onSessionExpired]);
 
   const loadMore = async () => {
     if (loadingMore || reports.length >= totalReports) return;
@@ -137,7 +137,7 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session, o
       });
     }
     return () => { current = false; };
-  }, [api, branchId, showForm, reportType]);
+  }, [api, branchId, onSessionExpired, showForm, reportType]);
 
   useEffect(() => {
     if (reportType === "weekly_ministry") {
