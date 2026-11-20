@@ -95,8 +95,6 @@ describe("public visitor data helpers", () => {
     ends_at: endsAt,
     timezone: "Africa/Accra",
     location: null,
-    registration_state: "closed",
-    transport_enabled: false,
   });
 
   it("filters expired events and sorts remaining events chronologically", () => {
