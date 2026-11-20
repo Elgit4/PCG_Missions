@@ -287,22 +287,23 @@ export function PublicVisitorSite() {
             )}
           </section>
 
-          {(content.sermons.length > 0 || loading) && (
-            <section className="visitor-section" id="messages" aria-labelledby="visitor-messages-title">
+          <section className="visitor-section" id="messages" aria-labelledby="visitor-messages-title">
               <div className="visitor-section-heading">
                 <div><span className="visitor-section-kicker">TEACHING & ENCOURAGEMENT</span><h2 id="visitor-messages-title">Recent messages</h2><p>Thoughts and teaching to encourage your walk of faith.</p></div>
                 <BookOpen className="visitor-section-icon" size={27} />
               </div>
               {loading ? <div className="visitor-loading-grid"><i /><i /></div> : (
-                <div className="visitor-content-grid">
-                  {content.sermons.slice(0, 4).map((item) => <ContentCard key={item.id} item={item} eyebrow="SERMON" />)}
-                </div>
+                content.sermons.length > 0 ? (
+                  <div className="visitor-content-grid">
+                    {content.sermons.slice(0, 4).map((item) => <ContentCard key={item.id} item={item} eyebrow="SERMON" />)}
+                  </div>
+                ) : (
+                  <div className="visitor-empty-state"><BookOpen size={22} /><p>Messages will appear here when they are published.</p></div>
+                )
               )}
-            </section>
-          )}
+          </section>
 
-          {(content.dailyWords.length > 0 || loading) && (
-            <section className="visitor-section visitor-daily-word" id="daily-word" aria-labelledby="visitor-daily-title">
+          <section className="visitor-section visitor-daily-word" id="daily-word" aria-labelledby="visitor-daily-title">
               <div className="visitor-daily-word-copy">
                 <span className="visitor-section-kicker">A MOMENT IN THE WORD</span>
                 <h2 id="visitor-daily-title">Daily Word</h2>
@@ -321,22 +322,23 @@ export function PublicVisitorSite() {
                 ) : <p>Daily encouragement will appear here when it is published.</p>}
               </div>
               <div className="visitor-daily-word-mark" aria-hidden="true"><BookOpen size={64} strokeWidth={1.2} /></div>
-            </section>
-          )}
+          </section>
 
-          {(content.tracts.length > 0 || loading) && (
-            <section className="visitor-section" id="resources" aria-labelledby="visitor-resources-title">
+          <section className="visitor-section" id="resources" aria-labelledby="visitor-resources-title">
               <div className="visitor-section-heading">
                 <div><span className="visitor-section-kicker">EXPLORE & SHARE</span><h2 id="visitor-resources-title">Resources</h2><p>Helpful reading for your personal journey and conversations.</p></div>
                 <Globe2 className="visitor-section-icon" size={27} />
               </div>
               {loading ? <div className="visitor-loading-grid"><i /><i /></div> : (
-                <div className="visitor-content-grid">
-                  {content.tracts.slice(0, 4).map((item) => <ContentCard key={item.id} item={item} eyebrow="DIGITAL RESOURCE" />)}
-                </div>
+                content.tracts.length > 0 ? (
+                  <div className="visitor-content-grid">
+                    {content.tracts.slice(0, 4).map((item) => <ContentCard key={item.id} item={item} eyebrow="DIGITAL RESOURCE" />)}
+                  </div>
+                ) : (
+                  <div className="visitor-empty-state"><Globe2 size={22} /><p>Digital resources will appear here when they are published.</p></div>
+                )
               )}
-            </section>
-          )}
+          </section>
 
           <section className="visitor-contact-section" id="contact" aria-labelledby="visitor-contact-title">
             <div className="visitor-contact-copy">
