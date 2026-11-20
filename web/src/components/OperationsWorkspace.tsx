@@ -182,8 +182,10 @@ export function OperationsWorkspace({
     if (event?.flyer_mime_type) {
       void api.getEventFlyerPreview(branchId, id).then((result) => {
         if (previewRequestId === flyerPreviewRequest.current) setExistingFlyerUrl(result.data.signed_url);
-      }).catch(() => {
-        if (previewRequestId === flyerPreviewRequest.current) setExistingFlyerUrl(null);
+      }).catch((cause: unknown) => {
+        if (previewRequestId !== flyerPreviewRequest.current) return;
+        if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+        setExistingFlyerUrl(null);
       });
     }
     setShowForm(true);
