@@ -12,14 +12,15 @@ const PublicVisitorSite = lazy(async () => {
   return { default: module.PublicVisitorSite };
 });
 import { PcgAuthClient } from "./lib/auth";
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./lib/supabase-config";
 import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
 import { ThemeToggle } from "./lib/theme";
 import { formatApplicationError } from "./lib/error-messages";
 import { hasSingleWorkspaceBranch } from "./lib/workspace-context";
 
 function StaffApp() {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
-  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "";
+  const supabaseUrl = SUPABASE_URL;
+  const publishableKey = SUPABASE_PUBLISHABLE_KEY;
   const configurationError = !supabaseUrl || !publishableKey
     ? "This portal is not connected to its secure sign-in service. Contact a church administrator."
     : "";
