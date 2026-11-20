@@ -10,6 +10,7 @@ import { PcgAuthClient } from "./lib/auth";
 import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
 import { ThemeToggle } from "./lib/theme";
 import { formatApplicationError } from "./lib/error-messages";
+import { hasSingleWorkspaceBranch } from "./lib/workspace-context";
 
 export default function App() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
@@ -234,6 +235,47 @@ export default function App() {
 
   if (initializing) {
     return <CrestOutlineLoader />;
+  }
+
+  if (
+    staffSession &&
+    !staffSession.must_change_password &&
+    api &&
+    !hasSingleWorkspaceBranch(staffSession.branches)
+  ) {
+    return (
+      <main className="staff-login-page">
+        <aside className="staff-login-aside" aria-label="PCG Missions workspace security">
+          <div className="staff-login-brand">
+            <span className="staff-login-brand-mark"><img src="/logo.svg" alt="" /></span>
+            <span className="staff-login-brand-copy"><strong>PCG MISSIONS</strong><small>STAFF WORKSPACE</small></span>
+          </div>
+          <div className="staff-login-aside-content">
+            <p className="staff-login-overline">SECURE WORKSPACE ACCESS</p>
+            <h1>Clear access. <em>Safer ministry.</em></h1>
+            <p className="staff-login-aside-description">
+              Your staff workspace is protected by active role and branch assignments.
+            </p>
+          </div>
+        </aside>
+        <section className="staff-login-main" aria-labelledby="workspace-context-title">
+          <div className="staff-login-mobile-brand">
+            <span className="staff-login-brand-mark"><img src="/logo.svg" alt="" /></span>
+            <span className="staff-login-brand-copy"><strong>PCG MISSIONS</strong><small>STAFF WORKSPACE</small></span>
+          </div>
+          <div className="staff-login-form-wrap staff-login-auth-wrap">
+            <div className="staff-login-security-label">WORKSPACE ACCESS CHECK</div>
+            <h1 id="workspace-context-title">Workspace access needs review</h1>
+            <p role="alert">
+              This account has more than one active workspace assignment. To prevent opening the wrong ministry records, access is paused until an administrator confirms the correct assignment.
+            </p>
+            <button type="button" className="cmi-button cmi-button-primary" onClick={() => void signOut()} disabled={busy}>
+              Sign out
+            </button>
+          </div>
+        </section>
+      </main>
+    );
   }
 
   if (staffSession && !staffSession.must_change_password && api) {
