@@ -569,3 +569,27 @@
     transition-duration: .01ms !important;
   }
 }
+
+
+.visitor-read-more { margin-top: 13px; }
+.visitor-read-more summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  color: #1d5f8f;
+  font-size: 11px;
+  font-weight: 760;
+  cursor: pointer;
+}
+.visitor-read-more summary:hover { color: #ed1c2e; }
+.visitor-read-more > p {
+  margin-top: 9px;
+  padding-top: 11px;
+  border-top: 1px solid var(--visitor-line);
+  color: #52675b;
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+.visitor-daily-word .visitor-read-more summary { color: #365f48; }
+.visitor-daily-word .visitor-read-more > p { border-top-color: #cbded0; }
