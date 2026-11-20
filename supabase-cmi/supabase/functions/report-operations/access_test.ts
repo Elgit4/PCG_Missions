@@ -96,7 +96,16 @@ Deno.test("team and event references require active assignment", () => {
   if (isReportEventAssignmentEligible("transport")) {
     throw new Error("Transport assignments must not enable event reports");
   }
-  if (!isReportEventAssignmentEligible("support")) {
+  for (const unknownRole of ["", "admin", "viewer", "unknown-role"]) {
+    if (isReportEventAssignmentEligible(unknownRole)) {
+      throw new Error("Unknown event assignment roles must be denied");
+    }
+  }
+  if (!isReportEventAssignmentEligible("owner") ||
+    !isReportEventAssignmentEligible("organizer") ||
+    !isReportEventAssignmentEligible("checkin") ||
+    !isReportEventAssignmentEligible("ushering") ||
+    !isReportEventAssignmentEligible("support")) {
     throw new Error("Support assignments should remain eligible");
   }
   if (hasEligibleReportEventAssignment(["transport"])) {
