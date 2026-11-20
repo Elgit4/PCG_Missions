@@ -9,6 +9,7 @@ import {
   flyerProfileDenial,
   hasEligibleFlyerAssignment,
   isEditablePrivateEvent,
+  isFlyerTeamAssignmentEligible,
 } from "./access.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -226,7 +227,7 @@ async function canManageEvent(
       ...new Set(
         (eventTeams ?? [])
           .filter((row: { assignment_role: string }) =>
-            hasEligibleFlyerAssignment([row.assignment_role])
+            isFlyerTeamAssignmentEligible(row.assignment_role)
           )
           .map((row: { team_id: string }) => row.team_id),
       ),
