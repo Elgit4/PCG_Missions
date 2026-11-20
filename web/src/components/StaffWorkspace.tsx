@@ -150,6 +150,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const contactRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
   const taskRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
   const paginationVersion = useRef(0);
+  const taskMutationInFlight = useRef(false);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
@@ -630,7 +631,12 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   };
 
   const updateTaskStatus = async (task: FollowUpTask, status: FollowUpTask["status"]) => {
-    if (!canUpdateTasks || !branchId || task.status === status || task.status === "completed" || task.status === "cancelled") return;
+    if (
+      taskMutationInFlight.current || !canUpdateTasks || !branchId ||
+      task.status === status || task.status === "completed" ||
+      task.status === "cancelled"
+    ) return;
+    taskMutationInFlight.current = true;
     setActionError("");
     setUpdatingTaskId(task.id);
     try {
@@ -643,6 +649,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         await refresh();
       }
     } finally {
+      taskMutationInFlight.current = false;
       setUpdatingTaskId(null);
     }
   };
