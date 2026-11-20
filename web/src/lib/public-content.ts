@@ -68,7 +68,7 @@ export function createPublicContentClient(
   config: { supabaseUrl: string; publishableKey: string },
   fetcher: typeof fetch = fetch,
 ): PublicContentClient {
-  const baseUrl = config.supabaseUrl.replace(/\\/+$/, "");
+  const baseUrl = config.supabaseUrl.replace(/\/+$/, "");
 
   async function request<T>(
     resource: string,
@@ -202,6 +202,6 @@ export function safeExternalUrl(value: string | null | undefined): string | null
 
 export function publicPhoneHref(value: string | null | undefined): string | null {
   if (!value) return null;
-  const normalized = value.replace(/[^+\\d]/g, "");
+  const normalized = value.replace(/[^+\d]/g, "");
   return normalized.length >= 7 ? `tel:${normalized}` : null;
 }
