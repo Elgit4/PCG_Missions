@@ -32,14 +32,34 @@ export function isEditablePrivateEvent(
   return event?.status === "draft" && event.visibility === "private";
 }
 
-export function isFlyerAssignmentEligible(assignmentRole: string): boolean {
-  return assignmentRole !== "transport";
+const FLYER_STAFF_ASSIGNMENT_ROLES = new Set([
+  "owner",
+  "organizer",
+  "checkin",
+  "support",
+]);
+const FLYER_TEAM_ASSIGNMENT_ROLES = new Set([
+  "organizer",
+  "ushering",
+  "support",
+]);
+
+export function isFlyerStaffAssignmentEligible(
+  assignmentRole: string,
+): boolean {
+  return FLYER_STAFF_ASSIGNMENT_ROLES.has(assignmentRole);
+}
+
+export function isFlyerTeamAssignmentEligible(
+  assignmentRole: string,
+): boolean {
+  return FLYER_TEAM_ASSIGNMENT_ROLES.has(assignmentRole);
 }
 
 export function hasEligibleFlyerAssignment(
   assignmentRoles: readonly string[],
 ): boolean {
-  return assignmentRoles.some(isFlyerAssignmentEligible);
+  return assignmentRoles.some(isFlyerStaffAssignmentEligible);
 }
 
 export interface FlyerScopeDecision {
