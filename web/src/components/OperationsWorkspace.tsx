@@ -79,6 +79,7 @@ export function OperationsWorkspace({
   const [registrationEvent, setRegistrationEvent] = useState<EventDraftRecord | null>(null);
   const [closeoutEvent, setCloseoutEvent] = useState<EventDraftRecord | null>(null);
   const loadVersion = useRef(0);
+  const flyerPreviewRequest = useRef(0);
 
   useEffect(() => {
     if (!flyerFile) { setFlyerPreview(null); return; }
@@ -165,6 +166,7 @@ export function OperationsWorkspace({
   }, [loadRecords]);
 
   const beginCreate = () => {
+    flyerPreviewRequest.current += 1;
     setEditingId(null);
     setFlyerFile(null);
     setExistingFlyerUrl(null);
@@ -174,12 +176,17 @@ export function OperationsWorkspace({
   };
 
   const beginEdit = (id: string) => {
+    const previewRequestId = ++flyerPreviewRequest.current;
     setEditingId(id);
     setFlyerFile(null);
     setExistingFlyerUrl(null);
     const event = section === "Events" ? events.find((item) => item.id === id) : undefined;
     if (event?.flyer_mime_type) {
-      void api.getEventFlyerPreview(branchId, id).then((result) => setExistingFlyerUrl(result.data.signed_url)).catch(() => setExistingFlyerUrl(null));
+      void api.getEventFlyerPreview(branchId, id).then((result) => {
+        if (previewRequestId === flyerPreviewRequest.current) setExistingFlyerUrl(result.data.signed_url);
+      }).catch(() => {
+        if (previewRequestId === flyerPreviewRequest.current) setExistingFlyerUrl(null);
+      });
     }
     setShowForm(true);
     setError("");
@@ -187,6 +194,7 @@ export function OperationsWorkspace({
   };
 
   const cancelEdit = () => {
+    flyerPreviewRequest.current += 1;
     setEditingId(null);
     setFlyerFile(null);
     setExistingFlyerUrl(null);
