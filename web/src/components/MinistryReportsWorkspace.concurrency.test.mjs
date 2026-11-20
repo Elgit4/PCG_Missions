@@ -20,3 +20,10 @@ describe("ministry report detail request concurrency", () => {
     expect(source).toContain("requestVersion.current += 1;\n      detailRequestVersion.current += 1;");
   });
 });
+
+it("ignores stale pagination responses after a refresh or branch change", () => {
+  expect(source).toContain("const loadMoreRequestVersion = useRef(0)");
+  expect(source).toContain("const requestId = ++loadMoreRequestVersion.current");
+  expect(source).toContain("if (requestId !== loadMoreRequestVersion.current) return");
+  expect(source).toContain("loadMoreRequestVersion.current += 1");
+});
