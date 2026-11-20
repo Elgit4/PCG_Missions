@@ -48,3 +48,8 @@ Only after these checks pass should the custom production domain be attached to 
 ## Important runtime boundary
 
 The `/api/auth` Pages Function is a compatibility replacement for the existing Vercel auth proxy. Other application operations continue to call the existing Supabase Edge Functions directly. SMS provider configuration remains external and is not changed by this hosting migration.
+
+
+## Preview build verification
+
+For Git-connected Preview deployments, confirm the deployment record includes `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` in its build environment before testing sign-in. An ad-hoc retry can omit the project's configured build variables; use a Git push-triggered Preview build after changing Pages environment settings.
