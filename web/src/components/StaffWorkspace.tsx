@@ -473,9 +473,24 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setActionError("");
     try {
       if (action === "approve") {
-        await api.approveStaffPasswordResetRequest(branchId, request.id, reason);
+        const result = await api.approveStaffPasswordResetRequest(branchId, request.id, reason);
+        if (result.data.temporary_password_sent) {
+          setCredentialHandoff(null);
+          setActionNotice(`The temporary password was emailed to ${result.data.email}. The staff member must change it before accessing PCG Missions.`);
+        } else if (result.data.manual_handoff_required && result.data.temporary_password) {
+          setCredentialCopied(false);
+          setCredentialHandoff({
+            email: result.data.email,
+            password: result.data.temporary_password,
+            expiresInHours: 24,
+          });
+          setActionNotice(`The reset was approved, but the email was not delivered to ${result.data.email}. Use the secure one-time handoff below; do not approve another reset for this request.`);
+        } else {
+          setActionNotice(`The reset was approved for ${result.data.email}, but no email or manual credential was delivered. Contact the system administrator before asking for another reset.`);
+        }
       } else {
         await api.denyStaffPasswordResetRequest(branchId, request.id, reason);
+        setActionNotice(`The password-reset request for ${request.email} was denied.`);
       }
       setResetRequests((current) => current.filter((item) => item.id !== request.id));
       setResetReasons((current) => {
