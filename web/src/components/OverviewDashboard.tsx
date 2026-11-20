@@ -64,7 +64,7 @@ function todayInTimeZone(timeZone: string): string {
 }
 
 export function OverviewDashboard({
-  staffName, branchName, branchTimeZone, contacts, tasks, contactsHasMore, tasksHasMore,
+  staffName, branchName: workspaceLabel, branchTimeZone, contacts, tasks, contactsHasMore, tasksHasMore,
   canReadContacts, canCreateContacts, canReadTasks, canCreateTasks,
   canReadStaffDirectory, canManagePasswordResets, canAccessTeams, canAccessReports,
   onOpenContacts, onCreateContact, onOpenFollowUp, onCreateTask,
@@ -94,11 +94,11 @@ export function OverviewDashboard({
         <div className="cmi-dashboard-hero-copy">
           <p className="cmi-dashboard-eyebrow">{todayInTimeZone(branchTimeZone)}</p>
           <h2 id="cmi-dashboard-title">Welcome back, {firstName}</h2>
-          <p>Your ministry workspace for <strong>{branchName}</strong>. Here is what needs your attention today.</p>
+          <p>Your ministry workspace for <strong>{workspaceLabel}</strong>. Here is what needs your attention today.</p>
         </div>
         <div className="cmi-dashboard-hero-meta">
           <span className="cmi-dashboard-branch-mark"><ShieldCheck size={19} /></span>
-          <span><small>ACTIVE WORKSPACE</small><strong>{branchName}</strong></span>
+          <span><small>ACTIVE WORKSPACE</small><strong>{workspaceLabel}</strong></span>
         </div>
       </section>
 
