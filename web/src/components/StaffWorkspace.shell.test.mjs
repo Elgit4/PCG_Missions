@@ -77,3 +77,15 @@ it('distinguishes delivered staff invitations from one-time manual credential ha
   expect(workspace).toContain('Close & clear credential');
   expect(workspace).toContain('setCredentialHandoff(null)');
 });
+
+it('handles password-reset approval when notification delivery fails', () => {
+  const reviewHandler = workspace.slice(
+    workspace.indexOf('const reviewPasswordReset ='),
+    workspace.indexOf('const loadMoreContacts ='),
+  );
+  expect(reviewHandler).toContain('result.data.temporary_password_sent');
+  expect(reviewHandler).toContain('result.data.manual_handoff_required && result.data.temporary_password');
+  expect(reviewHandler).toContain('setCredentialHandoff({');
+  expect(reviewHandler).toContain('email was not delivered');
+  expect(reviewHandler).toContain('setResetRequests((current) => current.filter');
+});
