@@ -26,6 +26,8 @@ export function StaffNotificationCenter({ api, branchId, onNavigate, onSessionEx
   const [savingId, setSavingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const requestVersion = useRef(0);
+  const activeBranchId = useRef(branchId);
+  activeBranchId.current = branchId;
 
   const load = useCallback(async (quiet = false) => {
     if (!branchId) return;
@@ -57,6 +59,7 @@ export function StaffNotificationCenter({ api, branchId, onNavigate, onSessionEx
     setUnread(0);
     setError("");
     setLoading(false);
+    setSavingId(null);
   }, [branchId]);
 
   useEffect(() => {
@@ -71,14 +74,16 @@ export function StaffNotificationCenter({ api, branchId, onNavigate, onSessionEx
     if (!unread || savingId) return;
     setSavingId("all");
     try {
-      await api.markAllStaffNotificationsRead(branchId);
+      const actionBranchId = branchId;
+      await api.markAllStaffNotificationsRead(actionBranchId);
+      if (activeBranchId.current !== actionBranchId) return;
       setItems((current) => current.map((item) => ({ ...item, read_at: item.read_at ?? new Date().toISOString() })));
       setUnread(0);
     } catch (cause) {
       if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
-      else setError("We couldn't update your notifications. Please try again.");
+      else if (activeBranchId.current === branchId) setError("We couldn't update your notifications. Please try again.");
     } finally {
-      setSavingId(null);
+      if (activeBranchId.current === branchId) setSavingId(null);
     }
   };
 
@@ -86,16 +91,18 @@ export function StaffNotificationCenter({ api, branchId, onNavigate, onSessionEx
     if (!item.read_at) {
       setSavingId(item.id);
       try {
-        await api.markStaffNotificationRead(branchId, item.id);
+        const actionBranchId = branchId;
+        await api.markStaffNotificationRead(actionBranchId, item.id);
+        if (activeBranchId.current !== actionBranchId) return;
         setItems((current) => current.map((entry) => entry.id === item.id ? { ...entry, read_at: new Date().toISOString() } : entry));
         setUnread((count) => Math.max(0, count - 1));
       } catch (cause) {
         if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
-        else setError("We couldn't update this notification. Please try again.");
-        setSavingId(null);
+        else if (activeBranchId.current === branchId) setError("We couldn't update this notification. Please try again.");
+        if (activeBranchId.current === branchId) setSavingId(null);
         return;
       }
-      setSavingId(null);
+      if (activeBranchId.current === branchId) setSavingId(null);
     }
     setOpen(false);
     if (item.target_type) onNavigate(item.target_type);
