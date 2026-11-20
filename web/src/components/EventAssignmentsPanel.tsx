@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { RefreshCw, ShieldCheck, UserPlus, Users, X } from "lucide-react";
 import {
   CmiApiClient,
@@ -61,26 +61,32 @@ export function EventAssignmentsPanel({
     [kind, staffCandidates, teamCandidates],
   );
 
+  const requestVersion = useRef(0);
   const load = useCallback(async () => {
+    const requestId = ++requestVersion.current;
     setLoading(true);
     setError("");
     try {
       const result = await api.getEventAssignments(branchId, event.id);
+      if (requestId !== requestVersion.current) return;
       setWorkspace(result.data);
     } catch (cause) {
+      if (requestId !== requestVersion.current) return;
       if (cause instanceof CmiApiError && cause.status === 401) {
         onSessionExpired();
       } else {
         setError(formatApplicationError(cause));
       }
     } finally {
-      setLoading(false);
+      if (requestId === requestVersion.current) setLoading(false);
     }
   }, [api, branchId, event.id, onSessionExpired]);
 
   useEffect(() => {
+    setWorkspace(null);
     void load();
-  }, [load]);
+    return () => { requestVersion.current += 1; };
+  }, [branchId, event.id, load]);
 
   const submit = async (formEvent: FormEvent<HTMLFormElement>) => {
     formEvent.preventDefault();
