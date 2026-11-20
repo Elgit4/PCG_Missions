@@ -674,25 +674,25 @@ Deno.serve(async (request: Request) => {
           })
         ) {
           try {
-          const name = escapeHtml(record.staff_name ?? "A staff member");
-          const email = escapeHtml(record.staff_email ?? "");
-          const requestLink = `${APP_URL}/?view=access-requests`;
-          await sendEmail(
-            recipients,
-            "PCG Missions — staff password reset request",
-            `<p>A staff member has requested help accessing PCG Missions.</p>
-             <p><strong>Staff member:</strong> ${name}<br><strong>Account:</strong> ${email}</p>
-             <p>Review the request in the authenticated staff workspace. Do not reply with or request the user's password.</p>
-             <p><a href="${
-              escapeHtml(requestLink)
-            }">Open password-reset requests</a></p>`,
-            `A staff member has requested help accessing PCG Missions.\nStaff member: ${
-              record.staff_name ?? "A staff member"
-            }\nAccount: ${
-              record.staff_email ?? ""
-            }\nReview the request in the authenticated staff workspace. Do not share or request passwords.\n${requestLink}`,
-          );
-          sent = true;
+            const name = escapeHtml(record.staff_name ?? "A staff member");
+            const email = escapeHtml(record.staff_email ?? "");
+            const requestLink = `${APP_URL}/?view=access-requests`;
+            await sendEmail(
+              recipients,
+              "PCG Missions — staff password reset request",
+              `<p>A staff member has requested help accessing PCG Missions.</p>
+               <p><strong>Staff member:</strong> ${name}<br><strong>Account:</strong> ${email}</p>
+               <p>Review the request in the authenticated staff workspace. Do not reply with or request the user's password.</p>
+               <p><a href="${
+                escapeHtml(requestLink)
+              }">Open password-reset requests</a></p>`,
+              `A staff member has requested help accessing PCG Missions.\nStaff member: ${
+                record.staff_name ?? "A staff member"
+              }\nAccount: ${
+                record.staff_email ?? ""
+              }\nReview the request in the authenticated staff workspace. Do not share or request passwords.\n${requestLink}`,
+            );
+            sent = true;
           } catch {
             console.error("staff password-reset notification failed", {
               request_id: id,
