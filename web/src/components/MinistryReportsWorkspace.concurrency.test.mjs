@@ -27,3 +27,12 @@ it("ignores stale pagination responses after a refresh or branch change", () => 
   expect(source).toContain("if (requestId !== loadMoreRequestVersion.current) return");
   expect(source).toContain("loadMoreRequestVersion.current += 1");
 });
+
+it("clears the pagination loading state when a fresh report list supersedes it", () => {
+  const loadStart = source.slice(
+    source.indexOf("const load = useCallback"),
+    source.indexOf("const loadMore ="),
+  );
+  expect(loadStart).toContain("loadMoreRequestVersion.current += 1");
+  expect(loadStart).toContain("setLoadingMore(false)");
+});
