@@ -2333,3 +2333,52 @@ html[data-theme="dark"] .cmi-feedback-card.is-success .cmi-feedback-art { backgr
   .cmi-dashboard-hero h2 { font-size: 31px; }
   .cmi-dashboard-hero-art { width: 48%; height: 42%; opacity: .42; }
 }
+
+
+/* Restored, minimal overview welcome panel. */
+.cmi-dashboard-hero {
+  display: block;
+  min-height: 0;
+  padding: 24px 26px;
+  overflow: visible;
+  border: 1px solid var(--line-strong);
+  border-radius: 16px;
+  background: var(--surface, var(--cmi-surface));
+  color: var(--ink, var(--cmi-text));
+  box-shadow: var(--shadow-sm, var(--cmi-shadow-sm));
+}
+.cmi-dashboard-hero-copy { max-width: 100%; }
+.cmi-dashboard-hero .cmi-dashboard-eyebrow {
+  display: block;
+  margin: 0 0 9px;
+  color: var(--muted, var(--cmi-muted));
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.cmi-dashboard-hero h2 {
+  margin: 0;
+  color: var(--ink, var(--cmi-text));
+  font-size: clamp(25px, 2.6vw, 32px);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.025em;
+}
+.cmi-dashboard-hero h2 span { color: inherit; }
+.cmi-dashboard-hero-copy > p:last-child {
+  margin: 8px 0 0;
+  color: var(--muted, var(--cmi-muted));
+  font-size: 14px;
+  line-height: 1.6;
+}
+html[data-theme="dark"] .cmi-dashboard-hero {
+  background: var(--surface, #101820);
+  border-color: var(--line-strong, #40515c);
+  color: var(--ink, #f7faf8);
+}
+html[data-theme="dark"] .cmi-dashboard-hero .cmi-dashboard-eyebrow,
+html[data-theme="dark"] .cmi-dashboard-hero-copy > p:last-child {
+  color: var(--muted, #c6d2d9);
+}
+html[data-theme="dark"] .cmi-dashboard-hero h2 { color: var(--ink, #f7faf8); }
