@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   BookOpen,
   CalendarClock,
@@ -78,6 +78,7 @@ export function OperationsWorkspace({
   const [assignmentEvent, setAssignmentEvent] = useState<EventDraftRecord | null>(null);
   const [registrationEvent, setRegistrationEvent] = useState<EventDraftRecord | null>(null);
   const [closeoutEvent, setCloseoutEvent] = useState<EventDraftRecord | null>(null);
+  const loadVersion = useRef(0);
 
   useEffect(() => {
     if (!flyerFile) { setFlyerPreview(null); return; }
@@ -112,6 +113,7 @@ export function OperationsWorkspace({
     : hasCapability(session, "content.manage.draft", branchId);
 
   const loadRecords = useCallback(async () => {
+    const requestId = ++loadVersion.current;
     setError("");
     if (!canRead) {
       setEvents([]);
@@ -126,33 +128,40 @@ export function OperationsWorkspace({
     try {
       if (section === "Events") {
         const result = await api.listEventDrafts(branchId, { limit: 50, offset: 0 });
+        if (requestId !== loadVersion.current) return;
         setEvents(result.data);
       } else if (section === "Calendar") {
         const result = await api.listCalendarEntries(branchId, { limit: 50, offset: 0 });
+        if (requestId !== loadVersion.current) return;
         setEntries(result.data);
       } else if (section === "Announcements") {
         const result = await api.listAnnouncementDrafts(branchId, { limit: 50, offset: 0 });
+        if (requestId !== loadVersion.current) return;
         setAnnouncements(result.data);
       } else if (contentKind === "sermons") {
         const result = await api.listSermonDrafts(branchId, { limit: 50, offset: 0 });
+        if (requestId !== loadVersion.current) return;
         setSermons(result.data);
       } else {
         const result = await api.listWelcomeMessageDrafts(branchId, { limit: 50, offset: 0 });
+        if (requestId !== loadVersion.current) return;
         setWelcomeMessages(result.data);
       }
     } catch (cause) {
+      if (requestId !== loadVersion.current) return;
       if (cause instanceof CmiApiError && cause.status === 401) {
         onSessionExpired();
       } else {
         setError(errorMessage(cause));
       }
     } finally {
-      setLoading(false);
+      if (requestId === loadVersion.current) setLoading(false);
     }
   }, [api, branchId, canRead, contentKind, onSessionExpired, section]);
 
   useEffect(() => {
     void loadRecords();
+    return () => { loadVersion.current += 1; };
   }, [loadRecords]);
 
   const beginCreate = () => {
