@@ -29,8 +29,6 @@ export interface PublicEvent {
   ends_at: string;
   timezone: string;
   location: string | null;
-  registration_state: "open" | "closed";
-  transport_enabled: boolean;
 }
 
 export interface PublicSiteContent {
