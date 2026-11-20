@@ -56,6 +56,26 @@ export function isFlyerTeamAssignmentEligible(
   return FLYER_TEAM_ASSIGNMENT_ROLES.has(assignmentRole);
 }
 
+export interface FlyerTeamAssignment {
+  team_id: string;
+  assignment_role: string;
+}
+
+export interface FlyerTeamMembership {
+  team_id: string;
+}
+
+export function hasEligibleFlyerTeamMembership(
+  assignments: readonly FlyerTeamAssignment[],
+  memberships: readonly FlyerTeamMembership[],
+): boolean {
+  const memberTeamIds = new Set(memberships.map((membership) => membership.team_id));
+  return assignments.some((assignment) =>
+    isFlyerTeamAssignmentEligible(assignment.assignment_role) &&
+    memberTeamIds.has(assignment.team_id)
+  );
+}
+
 export function hasEligibleFlyerAssignment(
   assignmentRoles: readonly string[],
 ): boolean {
