@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { AlertCircle, CheckCircle2, ClipboardCheck, FilePlus2, RefreshCw, Send, ShieldCheck } from "lucide-react";
 import { CmiApiClient, type MinistryReportCreateInput, type MinistryReportRecord, type MinistryReportType, type StaffSession } from "../lib/cmi-api";
 import { hasCapability } from "../lib/capabilities";
@@ -61,8 +61,10 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
   const [detailReport, setDetailReport] = useState<MinistryReportRecord | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const requestVersion = useRef(0);
 
   const load = useCallback(async (quiet = false) => {
+    const requestId = ++requestVersion.current;
     if (quiet) setRefreshing(true);
     else setLoading(true);
     setError("");
@@ -71,13 +73,17 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
         limit: REPORT_PAGE_SIZE,
         offset: 0,
       });
+      if (requestId !== requestVersion.current) return;
       setReports(result.data);
       setTotalReports(result.total ?? result.data.length);
     } catch (cause) {
+      if (requestId !== requestVersion.current) return;
       setError(errorMessage(cause));
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === requestVersion.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [api, branchId]);
 
@@ -105,7 +111,10 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
     }
   };
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    return () => { requestVersion.current += 1; };
+  }, [load]);
   useEffect(() => {
     if (!showForm) return;
     let current = true;
