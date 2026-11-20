@@ -1,17 +1,30 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Activity, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, HandHeart, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
-import { OperationsWorkspace } from "./OperationsWorkspace";
-import { TeamAdministrationWorkspace } from "./TeamAdministrationWorkspace";
-import { MinistryReportsWorkspace } from "./MinistryReportsWorkspace";
-import { PrayerRequestsWorkspace } from "./PrayerRequestsWorkspace";
-import { ContactDetailDialog } from "./ContactDetailDialog";
 import { StaffNotificationCenter } from "./StaffNotificationCenter";
-import { OverviewDashboard } from "./OverviewDashboard";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
 import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 import { ThemeToggle } from "../lib/theme";
 import { formatApplicationError } from "../lib/error-messages";
+
+const OperationsWorkspace = lazy(async () => ({
+  default: (await import("./OperationsWorkspace")).OperationsWorkspace,
+}));
+const TeamAdministrationWorkspace = lazy(async () => ({
+  default: (await import("./TeamAdministrationWorkspace")).TeamAdministrationWorkspace,
+}));
+const MinistryReportsWorkspace = lazy(async () => ({
+  default: (await import("./MinistryReportsWorkspace")).MinistryReportsWorkspace,
+}));
+const PrayerRequestsWorkspace = lazy(async () => ({
+  default: (await import("./PrayerRequestsWorkspace")).PrayerRequestsWorkspace,
+}));
+const ContactDetailDialog = lazy(async () => ({
+  default: (await import("./ContactDetailDialog")).ContactDetailDialog,
+}));
+const OverviewDashboard = lazy(async () => ({
+  default: (await import("./OverviewDashboard")).OverviewDashboard,
+}));
 
 type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Prayer" | "Reports" | "Staff" | "Access requests";
 type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue" | "today" | "upcoming";
@@ -721,6 +734,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         </header>
         <section className="cmi-content" id="cmi-content" tabIndex={-1} aria-busy={loading}>
           <h2 className="cmi-sr-only">Workspace sections</h2>
+          <Suspense fallback={<WorkspaceSkeleton page={page} />}>
           {loadError && <div className="cmi-alert" role="alert">{loadError}</div>}
           {actionError && <div className="cmi-alert" role="alert">{actionError}<button onClick={() => setActionError("")} aria-label="Dismiss message">×</button></div>}
           {actionNotice && <div className="cmi-success-note" role="status">{actionNotice}<button onClick={() => setActionNotice("")} aria-label="Dismiss message">×</button></div>}
@@ -969,10 +983,11 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           {!canReadContacts && !canCreateContacts && page === "Contacts" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Contact access is not granted</h3><p>Your assigned role has no contact-read capability for this branch.</p></div>}
           {!canReadTasks && page === "Follow-up" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Follow-up access is not granted</h3><p>Your assigned role has no follow-up-read capability for this branch.</p></div>}
           {!availablePages.includes(page) && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>This section is unavailable</h3><p>Your session does not contain an active permission for this section.</p></div>}
+          </Suspense>
         </section>
 
       </main>
-      {selectedContact && <ContactDetailDialog
+      {selectedContact && <Suspense fallback={null}><ContactDetailDialog
         key={`${branchId}:${selectedContact.id}`}
         open={!!selectedContact}
         onOpenChange={(open) => { if (!open) setSelectedContact(null); }}
@@ -995,7 +1010,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           setActionError("");
         }}
         onSessionExpired={expireSession}
-      />}
+      /></Suspense>}
     </div>
   );
 }
