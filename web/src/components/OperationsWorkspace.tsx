@@ -382,7 +382,8 @@ export function OperationsWorkspace({
                         await loadRecords();
                         setNotice("The event flyer has been removed.");
                       } catch (cause) {
-                        setError(errorMessage(cause));
+                        if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+                        else setError(errorMessage(cause));
                       } finally {
                         setSaving(false);
                       }
@@ -444,7 +445,10 @@ export function OperationsWorkspace({
                   <button type="button" className="cmi-button cmi-button-secondary" disabled={!item.capacity || saving} onClick={async () => {
                     setSaving(true); setError(""); setNotice("");
                     try { await api.openStaffEventRegistration(branchId, item.id); setNotice("Event published to staff visibility. Staff registration is now open."); await loadRecords(); }
-                    catch (cause) { setError(errorMessage(cause)); }
+                    catch (cause) {
+                      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+                      else setError(errorMessage(cause));
+                    }
                     finally { setSaving(false); }
                   }} title={!item.capacity ? "Set a finite capacity before opening registration." : "Publish this event to staff only"}>
                     Open staff registration
@@ -456,7 +460,10 @@ export function OperationsWorkspace({
                     {item.registration_state === "open" && <button type="button" className="cmi-button cmi-button-secondary" disabled={saving} onClick={async () => {
                       setSaving(true); setError(""); setNotice("");
                       try { await api.closeStaffEventRegistration(branchId, item.id); setNotice("Staff registration closed."); await loadRecords(); }
-                      catch (cause) { setError(errorMessage(cause)); }
+                      catch (cause) {
+                        if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+                        else setError(errorMessage(cause));
+                      }
                       finally { setSaving(false); }
                     }}>Close registration</button>}
                   </>
