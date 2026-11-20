@@ -32,7 +32,9 @@ describe("OverviewDashboard", () => {
     expect(html).toContain("Ama");
     expect(html).toContain("Your ministry workspace for");
     expect(html).toContain("ACTIVE WORKSPACE");
-    const hero = html.match(/<section class="cmi-dashboard-hero"[\\s\\S]*?<\\/section>/)?.[0] ?? "";
+    const heroStart = html.indexOf('<section class="cmi-dashboard-hero"');
+    const heroEnd = html.indexOf("</section>", heroStart);
+    const hero = html.slice(heroStart, heroEnd + "</section>".length);
     expect(hero).toContain("Tema Central");
     expect(hero).not.toContain("<img");
     expect(html).toContain("Your follow-up queue");
