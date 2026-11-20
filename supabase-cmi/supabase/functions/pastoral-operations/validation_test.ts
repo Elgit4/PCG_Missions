@@ -175,7 +175,9 @@ Deno.test("validates assigned prayer inbox pagination and branch scope", () => {
 Deno.test("pastoral operations keeps the verified first-party origin by default", () => {
   const allowedOrigins = createAllowedOrigins(undefined);
   if (!allowedOrigins.has("https://pcg-missions.vercel.app")) {
-    throw new Error("The production app origin must be allowed without optional configuration.");
+    throw new Error(
+      "The production app origin must be allowed without optional configuration.",
+    );
   }
   if (allowedOrigins.has("https://attacker.example")) {
     throw new Error("Unconfigured origins must remain denied.");
