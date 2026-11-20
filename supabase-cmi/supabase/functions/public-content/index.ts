@@ -43,7 +43,9 @@ function response(
   origin: string | null,
 ): Response {
   const headers = new Headers(baseHeaders);
-  for (const [key, value] of createPublicContentCorsHeaders(origin, allowedOrigins)) {
+  for (
+    const [key, value] of createPublicContentCorsHeaders(origin, allowedOrigins)
+  ) {
     headers.set(key, value);
   }
   if (status < 200 || status >= 300) headers.set("Cache-Control", "no-store");
