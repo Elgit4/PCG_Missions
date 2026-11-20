@@ -10,7 +10,6 @@ import { formatApplicationError } from "../lib/error-messages";
 interface PrayerRequestsWorkspaceProps {
   api: CmiApiClient;
   branchId: string;
-  branchName: string;
   timeZone: string;
   onSessionExpired: () => void;
 }
@@ -32,7 +31,6 @@ function labelStatus(status: AssignedPrayerRequestRecord["status"]): string {
 export function PrayerRequestsWorkspace({
   api,
   branchId,
-  branchName,
   timeZone,
   onSessionExpired,
 }: PrayerRequestsWorkspaceProps) {
@@ -81,7 +79,7 @@ export function PrayerRequestsWorkspace({
           <div>
             <p className="cmi-eyebrow">ASSIGNED PRAYER SUPPORT</p>
             <h3>Prayer requests</h3>
-            <p>Read prayer requests that are currently assigned to you in <strong>{branchName}</strong>.</p>
+            <p>Read prayer requests that are currently assigned to you.</p>
             <div className="cmi-prayer-privacy-note">
               <ShieldCheck size={15} />
               <span>Restricted access · Contact identity is not included · Read-only</span>
