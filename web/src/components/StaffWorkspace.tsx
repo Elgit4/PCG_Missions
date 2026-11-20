@@ -185,6 +185,10 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       if (active) setTaskContactResults(result.data);
     }).catch((error: unknown) => {
       if (!active) return;
+      if (error instanceof CmiApiError && error.status === 401) {
+        expireSession();
+        return;
+      }
       setTaskContactResults([]);
       setTaskContactError(messageFor(error));
     }).finally(() => {
