@@ -130,6 +130,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [signingOut, setSigningOut] = useState(false);
   const contactRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
   const taskRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
+  const paginationVersion = useRef(0);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
@@ -256,11 +257,16 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
   useEffect(() => {
     let current = true;
+    paginationVersion.current += 1;
+    setLoadingMore(false);
     if (!branchId) {
       setContacts([]); setTasks([]); setResetRequests([]); setStaffMembers([]); setResetReasons({});
       setContactsHasMore(false); setTasksHasMore(false);
       setLoading(false); setLoadError("");
-      return () => { current = false; };
+      return () => {
+        current = false;
+        paginationVersion.current += 1;
+      };
     }
     setLoading(true); setLoadError("");
     const requests: Promise<void>[] = [];
@@ -322,7 +328,10 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       setStaffMembers([]);
     }
     void Promise.all(requests).finally(() => { if (current) setLoading(false); });
-    return () => { current = false; };
+    return () => {
+      current = false;
+      paginationVersion.current += 1;
+    };
   }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, debouncedQuery, expireSession]);
 
   const visibleContacts = contacts;
@@ -460,6 +469,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
   const loadMoreContacts = async () => {
     if (!canReadContacts || !branchId || !contactsHasMore || loadingMore) return;
+    const requestId = ++paginationVersion.current;
     setLoadingMore(true);
     try {
       const result = await api.listContacts(branchId, {
@@ -467,21 +477,32 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         offset: contacts.length,
         search: debouncedQuery || undefined,
       });
+      if (requestId !== paginationVersion.current) return;
       setContacts((current) => [...current, ...result.data]);
       setContactsHasMore(result.data.length === 50);
-    } catch (error) { handleActionError(error); }
-    finally { setLoadingMore(false); }
+    } catch (error) {
+      if (requestId !== paginationVersion.current) return;
+      handleActionError(error);
+    } finally {
+      if (requestId === paginationVersion.current) setLoadingMore(false);
+    }
   };
 
   const loadMoreTasks = async () => {
     if (!canReadTasks || !branchId || !tasksHasMore || loadingMore) return;
+    const requestId = ++paginationVersion.current;
     setLoadingMore(true);
     try {
       const result = await api.listFollowUpTasks(branchId, { limit: 50, offset: tasks.length });
+      if (requestId !== paginationVersion.current) return;
       setTasks((current) => [...current, ...result.data]);
       setTasksHasMore(result.data.length === 50);
-    } catch (error) { handleActionError(error); }
-    finally { setLoadingMore(false); }
+    } catch (error) {
+      if (requestId !== paginationVersion.current) return;
+      handleActionError(error);
+    } finally {
+      if (requestId === paginationVersion.current) setLoadingMore(false);
+    }
   };
 
   const createContact = async (event: FormEvent<HTMLFormElement>) => {
