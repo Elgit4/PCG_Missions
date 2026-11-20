@@ -36,7 +36,9 @@ Deno.test("browser SDK request headers include apikey and client info", () => {
     PUBLIC_CONTENT_CORS_ALLOWED_HEADERS,
   );
   assert(headers.get("Access-Control-Allow-Headers")?.includes("apikey"));
-  assert(headers.get("Access-Control-Allow-Headers")?.includes("x-client-info"));
+  assert(
+    headers.get("Access-Control-Allow-Headers")?.includes("x-client-info"),
+  );
   assertEquals(headers.get("Access-Control-Allow-Methods"), "GET, OPTIONS");
 });
 
