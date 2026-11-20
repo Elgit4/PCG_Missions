@@ -29,3 +29,11 @@
 > - Production has no seeded contact/follow-up business records. Do not load real congregant data until controller privacy obligations, privacy notice/lawful purpose, email delivery, staging/UAT, restore rehearsal, monitoring and the remaining domain-specific gates are completed.
 >
 > This 12 November checkpoint is historical. Use the verified 19 November delivery checkpoint at the top of this file and the latest live deployment/database checks for current release decisions.
+
+
+## 20 November continuation
+
+- Frontend-only reliability hardening now guards event assignment, registration, closeout and notification actions against stale responses and branch changes.
+- Operations Workspace flyer removal and event staff-registration open/close mutations now route expired-session responses through the shared sign-out handler.
+- No new database migration or hosted Supabase change is introduced by this continuation.
+- The backend workflow was cancelled during the rapid PR update sequence before local database replay completed; rerun backend CI against the current PR head before treating the current revision as fully verified.
