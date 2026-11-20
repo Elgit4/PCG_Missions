@@ -3417,19 +3417,26 @@ html[data-theme="dark"] .cmi-loading, html[data-theme="dark"] .cmi-no-branch { b
 /* Operational Overview — purposeful hierarchy, honest data labels, compact work queue. */
 .cmi-dashboard { display: grid; gap: 18px; min-width: 0; color: var(--cmi-text); }
 .cmi-dashboard-hero {
-  display: flex; align-items: center; justify-content: space-between; gap: 24px;
-  min-height: 150px; padding: 25px 27px; border: 1px solid var(--cmi-border);
+  display: flex; align-items: center; justify-content: space-between; gap: 28px;
+  min-height: 190px; padding: 32px 34px; border: 1px solid var(--cmi-border);
+  border-left: 4px solid var(--cmi-brand-accent);
   border-radius: 18px; background:
-    radial-gradient(circle at 88% 8%, color-mix(in srgb, var(--cmi-brand-accent) 12%, transparent), transparent 32%),
+    radial-gradient(circle at 90% 4%, color-mix(in srgb, var(--cmi-brand-soft) 78%, transparent), transparent 38%),
     linear-gradient(118deg, var(--cmi-surface) 0%, var(--cmi-surface-muted) 100%);
   box-shadow: var(--cmi-shadow-sm);
 }
 .cmi-dashboard-hero-copy { min-width: 0; }
 .cmi-dashboard-eyebrow { margin: 0 0 8px; color: var(--cmi-subtle); font-size: 10px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-.cmi-dashboard-hero h2 { margin: 0; color: var(--cmi-text); font-size: clamp(25px, 3vw, 34px); font-weight: 780; letter-spacing: -.045em; line-height: 1.12; }
-.cmi-dashboard-hero-copy > p:last-child { max-width: 660px; margin: 10px 0 0; color: var(--cmi-muted); font-size: 13px; line-height: 1.65; }
+.cmi-dashboard-hero .cmi-dashboard-eyebrow {
+  display: inline-flex; align-items: center; width: fit-content; margin: 0 0 13px;
+  padding: 7px 11px; border: 1px solid color-mix(in srgb, var(--cmi-brand-accent) 30%, var(--cmi-border));
+  border-radius: 999px; background: var(--cmi-brand-soft); color: var(--cmi-primary);
+  font-size: 10px; font-weight: 800; letter-spacing: .09em;
+}
+.cmi-dashboard-hero h2 { margin: 0; color: var(--cmi-text); font-size: clamp(29px, 3.2vw, 38px); font-weight: 780; letter-spacing: -.045em; line-height: 1.12; }
+.cmi-dashboard-hero-copy > p:last-child { max-width: 660px; margin: 12px 0 0; color: var(--cmi-muted); font-size: 14px; line-height: 1.7; }
 .cmi-dashboard-hero-copy > p:last-child strong { color: var(--cmi-text); font-weight: 750; }
-.cmi-dashboard-hero-meta { display: flex; align-items: center; gap: 11px; flex: none; max-width: 240px; padding: 12px 14px; border: 1px solid var(--cmi-border); border-radius: 13px; background: var(--cmi-surface); }
+.cmi-dashboard-hero-meta { display: flex; align-items: center; gap: 11px; flex: none; max-width: 260px; padding: 14px 16px; border: 1px solid var(--cmi-border); border-radius: 14px; background: var(--cmi-primary-soft); }
 .cmi-dashboard-branch-mark { display: grid; place-items: center; width: 39px; height: 39px; border-radius: 11px; background: var(--cmi-primary-soft); color: var(--cmi-primary); }
 .cmi-dashboard-hero-meta > span:last-child { display: grid; gap: 4px; min-width: 0; }
 .cmi-dashboard-hero-meta small { color: var(--cmi-subtle); font-size: 9px; font-weight: 800; letter-spacing: .1em; }
@@ -3503,7 +3510,7 @@ html[data-theme="dark"] .cmi-loading, html[data-theme="dark"] .cmi-no-branch { b
 .cmi-dashboard-trust-note > span { color: var(--cmi-success); flex: none; }
 .cmi-dashboard-trust-note p { margin: 0; color: var(--cmi-muted); font-size: 10px; line-height: 1.55; }
 
-html[data-theme="dark"] .cmi-dashboard-hero { background: radial-gradient(circle at 88% 8%, rgb(199 176 109 / 9%), transparent 32%), linear-gradient(118deg, var(--cmi-surface) 0%, var(--cmi-surface-muted) 100%); }
+html[data-theme="dark"] .cmi-dashboard-hero { background: radial-gradient(circle at 90% 4%, color-mix(in srgb, var(--cmi-brand-soft) 82%, transparent), transparent 38%), linear-gradient(118deg, var(--cmi-surface) 0%, var(--cmi-surface-muted) 100%); }
 html[data-theme="dark"] .cmi-dashboard-metric,
 html[data-theme="dark"] .cmi-dashboard-queue,
 html[data-theme="dark"] .cmi-dashboard-quick-actions,
@@ -3518,7 +3525,7 @@ html[data-theme="dark"] .cmi-dashboard-trust-note { background: var(--cmi-surfac
 }
 @media (max-width: 760px) {
   .cmi-dashboard { gap: 13px; }
-  .cmi-dashboard-hero { align-items: flex-start; flex-direction: column; min-height: 0; gap: 16px; padding: 20px; }
+  .cmi-dashboard-hero { align-items: flex-start; flex-direction: column; min-height: 0; gap: 18px; padding: 25px 22px; }
   .cmi-dashboard-hero-meta { width: 100%; max-width: none; box-sizing: border-box; }
   .cmi-dashboard-columns { grid-template-columns: minmax(0, 1fr); gap: 13px; }
   .cmi-dashboard-queue, .cmi-dashboard-quick-actions { padding: 16px; }
@@ -3530,7 +3537,7 @@ html[data-theme="dark"] .cmi-dashboard-trust-note { background: var(--cmi-surfac
   .cmi-dashboard-metric > div { flex-basis: calc(100% - 44px); }
   .cmi-dashboard-metric strong { font-size: 23px; }
   .cmi-dashboard-metric > button { margin-left: auto; margin-top: -31px; }
-  .cmi-dashboard-hero h2 { font-size: 25px; }
+  .cmi-dashboard-hero h2 { font-size: 27px; }
   .cmi-dashboard-task { gap: 9px; }
   .cmi-dashboard-task-due { max-width: 112px; }
   .cmi-dashboard-task-due strong { font-size: 10px; }
