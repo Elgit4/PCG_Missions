@@ -97,23 +97,12 @@ export function OverviewDashboard({
           <div className="cmi-dashboard-hero-foot"><ShieldCheck size={15} /><span>Your workspace is secure and tailored to your role.</span></div>
         </div>
         <div className="cmi-dashboard-hero-art" aria-hidden="true">
-          <svg viewBox="0 0 330 210" role="presentation" focusable="false">
-            <defs>
-              <linearGradient id="ministry-sun" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#f6dfaa" /><stop offset="1" stopColor="#d6b46d" /></linearGradient>
-              <linearGradient id="ministry-ground" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#789b88" /><stop offset="1" stopColor="#315e50" /></linearGradient>
-            </defs>
-            <circle cx="235" cy="74" r="48" fill="url(#ministry-sun)" opacity=".95" />
-            <path d="M28 184c33-49 73-68 121-57 33 8 55 30 80 28 30-2 49-26 77-25v80H28z" fill="#b7cdbd" opacity=".82" />
-            <path d="M44 196c45-39 82-48 117-30 24 12 42 25 70 18 22-6 42-22 72-20v47H44z" fill="url(#ministry-ground)" />
-            <path d="M145 145c-18-22-14-47 5-54 17-6 30 7 30 23 2-17 17-27 31-19 18 10 13 36-7 53l-26 22z" fill="#f4f0e5" />
-            <circle cx="151" cy="62" r="14" fill="#bd8966" /><path d="M135 59c1-17 31-22 34-1-7-5-17-6-34 1" fill="#294b43" />
-            <path d="M123 133c-4-25 4-42 27-45 22-2 32 13 33 39l-3 27h-53z" fill="#e5b85e" />
-            <circle cx="214" cy="93" r="12" fill="#8e6048" /><path d="M202 90c3-16 26-17 28 0-9-5-17-5-28 0" fill="#253e3a" />
-            <path d="M189 157c-2-24 6-42 25-43 22-1 30 17 27 43l-3 17h-47z" fill="#dce8df" />
-            <path d="M92 174c12-20 25-28 39-23 13 4 19 17 21 29" fill="none" stroke="#f5e9c9" strokeWidth="5" strokeLinecap="round" opacity=".9" />
-            <path d="M253 135l5-12 5 12 12 5-12 5-5 12-5-12-12-5z" fill="#f5e4bb" opacity=".95" />
-            <circle cx="77" cy="63" r="3" fill="#d9bd7b" /><circle cx="286" cy="42" r="4" fill="#d9bd7b" /><circle cx="66" cy="119" r="2.5" fill="#d9bd7b" />
-          </svg>
+          <img
+            src="https://42f2671d685f51e10fc6-b9fcecea3e50b3b59bdc28dead054ebc.ssl.cf5.rackcdn.com/illustrations/welcome_3gvl.svg"
+            alt=""
+            loading="lazy"
+            decoding="async"
+          />
           <span className="cmi-dashboard-art-caption">CONNECTED BY CARE</span>
         </div>
         <div className="cmi-dashboard-hero-brand">
