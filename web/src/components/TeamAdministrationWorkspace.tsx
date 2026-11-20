@@ -25,7 +25,6 @@ type WorkspaceTab = "teams" | "areas";
 
 interface TeamAdministrationWorkspaceProps {
   branchId: string;
-  branchName: string;
   api: CmiApiClient;
   session: import("../lib/cmi-api").StaffSession;
   onSessionExpired: () => void;
@@ -49,7 +48,6 @@ function displayName(staff: Pick<StaffDirectoryEntry, "id" | "full_name" | "acco
 
 export function TeamAdministrationWorkspace({
   branchId,
-  branchName,
   api,
   session,
   onSessionExpired,
@@ -289,7 +287,7 @@ export function TeamAdministrationWorkspace({
           <div>
             <p className="cmi-eyebrow">PEOPLE & MINISTRY STRUCTURE</p>
             <h3>Teams & Service Areas</h3>
-            <p>Organise staff membership and coverage within <strong>{branchName}</strong>. Access is restricted to this branch.</p>
+            <p>Organise staff membership and coverage for your ministry. Access is restricted to your assigned workspace.</p>
           </div>
           <button
             type="button"
