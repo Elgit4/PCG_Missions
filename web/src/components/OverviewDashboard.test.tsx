@@ -28,7 +28,12 @@ const baseProps = {
 describe("OverviewDashboard", () => {
   it("renders the operational hierarchy instead of a permanent getting-started tutorial", () => {
     const html = renderToStaticMarkup(createElement(OverviewDashboard, baseProps));
-    expect(html).toContain("Welcome back, Ama");
+    expect(html).toContain("Welcome back,");
+    expect(html).toContain("Ama");
+    expect(html).toContain("YOUR MINISTRY, IN MOTION");
+    expect(html).toContain("Every thoughtful follow-up makes a difference");
+    expect(html).toContain("STAFF PORTAL");
+    expect(html).toContain("PCG Missions");
     expect(html).toContain("Your follow-up queue");
     expect(html).toContain("Quick actions");
     expect(html).not.toContain("GETTING STARTED");
