@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { AlertCircle, CheckCircle2, ClipboardCheck, FilePlus2, RefreshCw, Send, ShieldCheck } from "lucide-react";
-import { CmiApiClient, type MinistryReportCreateInput, type MinistryReportRecord, type MinistryReportType, type StaffSession } from "../lib/cmi-api";
+import { CmiApiClient, CmiApiError, type MinistryReportCreateInput, type MinistryReportRecord, type MinistryReportType, type StaffSession } from "../lib/cmi-api";
 import { hasCapability } from "../lib/capabilities";
 import { formatApplicationError } from "../lib/error-messages";
 
-interface Props { branchId: string; branchName: string; api: CmiApiClient; session: StaffSession }
+interface Props { branchId: string; branchName: string; api: CmiApiClient; session: StaffSession; onSessionExpired: () => void }
 const REPORT_PAGE_SIZE = 50;
 const COUNT_FIELDS = [
   ["contacts_captured", "Contacts captured"],
@@ -34,7 +34,7 @@ function emptyCounts(): Record<CountKey, string> {
   return Object.fromEntries(COUNT_FIELDS.map(([key]) => [key, "0"])) as Record<CountKey, string>;
 }
 
-export function MinistryReportsWorkspace({ branchId, branchName, api, session }: Props) {
+export function MinistryReportsWorkspace({ branchId, branchName, api, session, onSessionExpired }: Props) {
   const canSubmit = hasCapability(session, "report.submit.own", branchId);
   const canReview = hasCapability(session, "report.review.branch", branchId) || hasCapability(session, "report.review.team", branchId);
   const [reports, setReports] = useState<MinistryReportRecord[]>([]);
@@ -78,7 +78,8 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
       setTotalReports(result.total ?? result.data.length);
     } catch (cause) {
       if (requestId !== requestVersion.current) return;
-      setError(errorMessage(cause));
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
     } finally {
       if (requestId === requestVersion.current) {
         setLoading(false);
@@ -105,7 +106,8 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
       });
       setTotalReports(result.total ?? totalReports);
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
     } finally {
       setLoadingMore(false);
     }
@@ -120,8 +122,10 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
     let current = true;
     void api.listReportTeams(branchId).then((result) => {
       if (current) setTeams(result.data);
-    }).catch(() => {
-      if (current) setTeams([]);
+    }).catch((cause) => {
+      if (!current) return;
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      setTeams([]);
     });
     if (reportType === "event_evangelism") {
       void api.listReportEvents(branchId).then((result) => {
@@ -169,7 +173,8 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
       setEventId("");
       await load(true);
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
     } finally {
       setSaving(false);
     }
@@ -208,7 +213,8 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
       const result = await api.getMinistryReport(branchId, report.id);
       setDetailReport(result.data);
     } catch (cause) {
-      setDetailError(errorMessage(cause));
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setDetailError(errorMessage(cause));
       setDetailReport(null);
     } finally {
       setDetailLoading(false);
