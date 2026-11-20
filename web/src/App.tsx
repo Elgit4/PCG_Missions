@@ -267,7 +267,11 @@ export default function App() {
             <div className="staff-login-security-label">WORKSPACE ACCESS CHECK</div>
             <h1 id="workspace-context-title">Workspace access needs review</h1>
             <p role="alert">
-              This account has more than one active workspace assignment. To prevent opening the wrong ministry records, access is paused until an administrator confirms the correct assignment.
+              {staffSession.branches.length === 0
+                ? "This account has no active workspace assignment. Ask an administrator to assign the correct workspace before signing in again."
+                : staffSession.branches.length > 1
+                ? "This account has more than one active workspace assignment. Ask an administrator to confirm the correct workspace before signing in again."
+                : "This account's workspace assignment could not be verified. Ask an administrator to review the assignment before signing in again."}
             </p>
             <button type="button" className="cmi-button cmi-button-primary" onClick={() => void signOut()} disabled={busy}>
               Sign out
