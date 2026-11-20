@@ -322,7 +322,7 @@ function StaffApp() {
 export default function App() {
   const pathname = typeof window === "undefined"
     ? "/"
-    : window.location.pathname.replace(/\\/+$/, "") || "/";
+    : window.location.pathname.replace(/\/+$/, "") || "/";
   if (pathname === "/visit" || pathname.startsWith("/visit/")) {
     return (
       <Suspense fallback={<CrestOutlineLoader />}>
