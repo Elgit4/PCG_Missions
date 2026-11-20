@@ -12,6 +12,11 @@ import {
 Deno.test("production public site origin is allowed by default", () => {
   const allowed = createPublicContentAllowedOrigins(undefined);
   assert(allowed.has("https://pcg-missions.vercel.app"));
+  assert(
+    allowed.has(
+      "https://pcg-missions-git-feat-cmi-pcg-missions-final-review-v6-eltech.vercel.app",
+    ),
+  );
   assert(!allowed.has("https://attacker.example"));
 });
 
