@@ -53,3 +53,12 @@ it('ignores stale contact and follow-up pagination after a new workspace query o
   expect(workspace).toContain('paginationVersion.current += 1;');
   expect(workspace).toContain('setLoadingMore(false);');
 });
+
+it('invalidates in-flight pagination before a manual workspace refresh', () => {
+  const refresh = workspace.slice(
+    workspace.indexOf('const refresh = async () =>'),
+    workspace.indexOf('const createStaffAccount ='),
+  );
+  expect(refresh).toContain('paginationVersion.current += 1');
+  expect(refresh).toContain('setLoadingMore(false)');
+});
