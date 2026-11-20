@@ -37,3 +37,6 @@
 - Operations Workspace flyer removal and event staff-registration open/close mutations now route expired-session responses through the shared sign-out handler.
 - No new database migration or hosted Supabase change is introduced by this continuation.
 - The backend workflow was cancelled during the rapid PR update sequence before local database replay completed; rerun backend CI against the current PR head before treating the current revision as fully verified.
+
+- Read-only hosted advisor review found no direct table grants to `anon` or `authenticated`; leaked-password protection remains disabled for deliberate owner review. No hosted setting was changed.
+- Performance advisor index notices are recorded for workload-based review; no speculative index DDL was applied.
