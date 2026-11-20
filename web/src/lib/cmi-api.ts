@@ -850,6 +850,9 @@ export class CmiApiClient {
       role_code: StaffAccountCreateInput["role_code"];
       invitation_email_sent: boolean;
       must_change_password: boolean;
+      temporary_password?: string;
+      manual_handoff_required?: boolean;
+      password_expires_in_hours?: number;
     }>("staff-auth", "/admin/staff", { method: "POST", body: input });
   }
 
@@ -880,7 +883,14 @@ export class CmiApiClient {
     );
   }
   approveStaffPasswordResetRequest(branchId: string, requestId: string, reason: string) {
-    return this.request<{ status: string; temporary_password_sent: boolean; must_change_password: boolean }>(
+    return this.request<{
+      status: string;
+      email: string;
+      temporary_password_sent: boolean;
+      must_change_password: boolean;
+      temporary_password?: string;
+      manual_handoff_required?: boolean;
+    }>(
       "staff-auth",
       `/admin/password-reset-requests/${encodeURIComponent(requestId)}/approve`,
       { method: "POST", body: { branch_id: branchId, reason } },
