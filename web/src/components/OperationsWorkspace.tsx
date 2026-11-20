@@ -35,7 +35,6 @@ type ContentKind = "sermons" | "welcome-messages";
 interface OperationsWorkspaceProps {
   section: OperationsSection;
   branchId: string;
-  branchName: string;
   timeZone: string;
   api: CmiApiClient;
   session: import("../lib/cmi-api").StaffSession;
@@ -54,7 +53,6 @@ function errorMessage(error: unknown): string {
 export function OperationsWorkspace({
   section,
   branchId,
-  branchName,
   timeZone,
   api,
   session,
@@ -326,9 +324,9 @@ export function OperationsWorkspace({
       <section className="cmi-panel">
         <div className="cmi-panel-heading cmi-operations-heading">
           <div>
-            <p className="cmi-eyebrow">BRANCH OPERATIONS</p>
+            <p className="cmi-eyebrow">MINISTRY OPERATIONS</p>
             <h3>{section === "Content" ? "Visitor content" : section}</h3>
-            <p>{description} <strong>{branchName}</strong>.</p>
+            <p>{description} Your assigned workspace is applied automatically.</p>
             <small className="cmi-operations-timezone">All dates and times are shown in {timeZone}.</small>
           </div>
           <div className="cmi-operations-actions">
