@@ -45,3 +45,11 @@ it('expires the staff session when the task contact picker receives HTTP 401', (
   expect(picker).toContain('error instanceof CmiApiError && error.status === 401');
   expect(picker).toContain('expireSession();');
 });
+
+it('ignores stale contact and follow-up pagination after a new workspace query or refresh', () => {
+  expect(workspace).toContain('const paginationVersion = useRef(0)');
+  expect(workspace).toContain('const requestId = ++paginationVersion.current');
+  expect(workspace).toContain('if (requestId !== paginationVersion.current) return');
+  expect(workspace).toContain('paginationVersion.current += 1;');
+  expect(workspace).toContain('setLoadingMore(false);');
+});
