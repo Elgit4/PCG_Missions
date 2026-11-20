@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   Archive,
   ChevronRight,
@@ -76,6 +76,7 @@ export function TeamAdministrationWorkspace({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const loadVersion = useRef(0);
 
   const selectedTeam = teams.find((team) => team.id === selectedTeamId) ?? null;
   const selectedArea = areas.find((area) => area.id === selectedAreaId) ?? null;
@@ -89,6 +90,7 @@ export function TeamAdministrationWorkspace({
   );
 
   const loadWorkspace = useCallback(async () => {
+    const requestId = ++loadVersion.current;
     setLoading(true);
     setError("");
     try {
@@ -97,6 +99,7 @@ export function TeamAdministrationWorkspace({
         canManageAreas ? api.listServiceAreas(branchId) : Promise.resolve(null),
         canReadStaff ? api.listStaffDirectory(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
       ]);
+      if (requestId !== loadVersion.current) return;
       if (teamResult) {
         setTeams(teamResult.data.teams);
         setSelectedTeamId((current) =>
@@ -122,18 +125,20 @@ export function TeamAdministrationWorkspace({
       if (staffResult) setStaff(staffResult.data);
       else setStaff([]);
     } catch (cause) {
+      if (requestId !== loadVersion.current) return;
       if (cause instanceof CmiApiError && cause.status === 401) {
         onSessionExpired();
       } else {
         setError(apiMessage(cause));
       }
     } finally {
-      setLoading(false);
+      if (requestId === loadVersion.current) setLoading(false);
     }
   }, [api, branchId, canManageAreas, canManageTeams, canReadStaff, onSessionExpired]);
 
   useEffect(() => {
     void loadWorkspace();
+    return () => { loadVersion.current += 1; };
   }, [loadWorkspace]);
 
   const completeMutation = async (successMessage: string, action: () => Promise<unknown>) => {
