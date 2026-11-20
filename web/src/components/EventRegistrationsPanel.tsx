@@ -45,6 +45,7 @@ export function EventRegistrationsPanel({
   const [requestKey, setRequestKey] = useState(createRequestKey);
 
   const requestVersion = useRef(0);
+  const mutationInFlight = useRef(false);
   const load = useCallback(async () => {
     const requestId = ++requestVersion.current;
     setLoading(true);
@@ -75,7 +76,8 @@ export function EventRegistrationsPanel({
 
   const submit = async (formEvent: FormEvent<HTMLFormElement>) => {
     formEvent.preventDefault();
-    if (saving) return;
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setSaving(true);
     setError("");
     setNotice("");
@@ -99,6 +101,7 @@ export function EventRegistrationsPanel({
         setError(formatApplicationError(cause));
       }
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
@@ -106,7 +109,8 @@ export function EventRegistrationsPanel({
 
 
   const checkIn = async (registration: EventRegistrationRecord) => {
-    if (saving || checkingInId || cancellingId) return;
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setCheckingInId(registration.id);
     setError("");
     setNotice("");
@@ -128,17 +132,19 @@ export function EventRegistrationsPanel({
         setError(formatApplicationError(cause));
       }
     } finally {
+      mutationInFlight.current = false;
       setCheckingInId(null);
     }
   };
 
   const cancel = async (registration: EventRegistrationRecord) => {
-    if (saving || cancellingId) return;
+    if (mutationInFlight.current) return;
     if (!window.confirm(
       "Cancel the registration for " + registration.attendee_name_snapshot +
       "? This releases one event capacity slot. A checked-in attendee cannot be cancelled.",
     )) return;
 
+    mutationInFlight.current = true;
     setCancellingId(registration.id);
     setError("");
     setNotice("");
@@ -160,6 +166,7 @@ export function EventRegistrationsPanel({
         setError(formatApplicationError(cause));
       }
     } finally {
+      mutationInFlight.current = false;
       setCancellingId(null);
     }
   };
@@ -181,7 +188,7 @@ export function EventRegistrationsPanel({
           <p>Staff-assisted registration only. No public intake, automatic contact creation or contact-directory lookup is enabled.</p>
         </div>
         <div className="cmi-operations-actions">
-          <button className="cmi-button cmi-button-secondary" type="button" onClick={() => void load()} disabled={loading || saving}>
+          <button className="cmi-button cmi-button-secondary" type="button" onClick={() => void load()} disabled={loading || saving || checkingInId !== null || cancellingId !== null}>
             <RefreshCw size={15} />Refresh
           </button>
           <button className="cmi-button cmi-button-secondary" type="button" onClick={onClose}>Close</button>
@@ -207,7 +214,7 @@ export function EventRegistrationsPanel({
           </label>
           <div className="cmi-form-actions cmi-field-wide">
             <span className="cmi-scope-note">Only the name and optional phone snapshot are saved. The record is not automatically linked to a CRM contact.</span>
-            <button type="submit" className="cmi-button cmi-button-primary" disabled={saving || loading || attendeeName.trim().length < 2 || remaining === 0}>
+            <button type="submit" className="cmi-button cmi-button-primary" disabled={saving || checkingInId !== null || cancellingId !== null || loading || attendeeName.trim().length < 2 || remaining === 0}>
               <UserPlus size={15} />{saving ? "Registering…" : "Register attendee"}
             </button>
           </div>
