@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, ClipboardCheck, RefreshCw, RotateCcw, X } from "lucide-react";
 import {
   CmiApiClient,
@@ -47,27 +47,34 @@ export function EventCloseoutPanel({
   const [submitKey, setSubmitKey] = useState(createRequestKey);
   const [reviewKey, setReviewKey] = useState(createRequestKey);
 
+  const requestVersion = useRef(0);
   const load = useCallback(async () => {
+    const requestId = ++requestVersion.current;
     setLoading(true);
     setError("");
     try {
       const result = await api.getEventCloseout(branchId, event.id);
+      if (requestId !== requestVersion.current) return;
       setWorkspace(result.data);
       setSummaryNotes(result.data.closeout?.summary_notes ?? "");
     } catch (cause) {
+      if (requestId !== requestVersion.current) return;
       if (cause instanceof CmiApiError && cause.status === 401) {
         onSessionExpired();
       } else {
         setError(formatApplicationError(cause));
       }
     } finally {
-      setLoading(false);
+      if (requestId === requestVersion.current) setLoading(false);
     }
   }, [api, branchId, event.id, onSessionExpired]);
 
   useEffect(() => {
+    setWorkspace(null);
+    setSummaryNotes("");
     void load();
-  }, [load]);
+    return () => { requestVersion.current += 1; };
+  }, [branchId, event.id, load]);
 
   const closeout = workspace?.closeout ?? null;
   const history = workspace?.history ?? [];
