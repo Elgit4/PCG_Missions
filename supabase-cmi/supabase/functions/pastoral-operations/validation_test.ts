@@ -1,3 +1,4 @@
+import { createAllowedOrigins } from "../_shared/cors.ts";
 import {
   isUuid,
   parsePastoralAssignedListInput,
@@ -167,5 +168,16 @@ Deno.test("validates assigned prayer inbox pagination and branch scope", () => {
     throw new Error(
       "Assigned prayer inbox validation did not enforce pagination and field allowlists.",
     );
+  }
+});
+
+
+Deno.test("pastoral operations keeps the verified first-party origin by default", () => {
+  const allowedOrigins = createAllowedOrigins(undefined);
+  if (!allowedOrigins.has("https://pcg-missions.vercel.app")) {
+    throw new Error("The production app origin must be allowed without optional configuration.");
+  }
+  if (allowedOrigins.has("https://attacker.example")) {
+    throw new Error("Unconfigured origins must remain denied.");
   }
 });
