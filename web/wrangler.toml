@@ -1,3 +1,5 @@
 name = "pcg-missions"
 compatibility_date = "2026-11-13"
 pages_build_output_dir = "./dist"
+
+# Cloudflare Pages Preview configuration is managed in the Pages project settings.
