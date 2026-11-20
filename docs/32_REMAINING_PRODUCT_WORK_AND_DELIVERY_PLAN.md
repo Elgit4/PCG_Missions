@@ -315,4 +315,5 @@ No PR merge, hosted migration, Edge Function deployment or production frontend r
 
 - Added request-version guards to event assignment, registration and closeout panels. Responses from an earlier event/branch context are ignored, and prior workspace data is cleared when the context changes.
 - Added a Vitest regression contract covering stale-response rejection, unmount/context invalidation and loading-state ownership for all three panels.
+- Hardened notification mark-read and mark-all actions against branch changes while requests are in flight; the active branch scope is synchronized before paint, and stale mutation results cannot alter the new branch inbox.
 - These changes are source-only and require the updated frontend CI run before they can be marked verified.
