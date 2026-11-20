@@ -1,7 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import {
+  notificationBranchAccess,
   notificationPageLimit,
   notificationProfileDenial,
+  notificationReadScope,
   notificationRecipientScope,
 } from "./access.ts";
 
@@ -146,7 +148,7 @@ async function hasActiveBranch(
     .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null)
     .limit(1).maybeSingle();
   if (error) throw new Error("BRANCH_ASSIGNMENT_LOOKUP_FAILED");
-  return Boolean(data);
+  return notificationBranchAccess(Boolean(branch?.is_active), Boolean(data));
 }
 Deno.serve(async (request: Request) => {
   const id = requestId();
@@ -281,8 +283,11 @@ Deno.serve(async (request: Request) => {
     }
     const { data, error } = await auth.service.from("staff_notification")
       .update({ read_at: new Date().toISOString() })
-      .eq("id", notificationId)
-      .match(notificationRecipientScope(auth.actorId, branchId))
+      .match(notificationReadScope(
+        auth.actorId,
+        branchId,
+        notificationId,
+      ))
       .is("read_at", null).select("id").maybeSingle();
     if (error) throw new Error("NOTIFICATION_UPDATE_FAILED");
     return respond(
