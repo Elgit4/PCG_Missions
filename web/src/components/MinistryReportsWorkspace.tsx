@@ -62,9 +62,11 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const requestVersion = useRef(0);
+  const loadMoreRequestVersion = useRef(0);
   const detailRequestVersion = useRef(0);
 
   const load = useCallback(async (quiet = false) => {
+    loadMoreRequestVersion.current += 1;
     const requestId = ++requestVersion.current;
     if (quiet) setRefreshing(true);
     else setLoading(true);
@@ -91,6 +93,7 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
 
   const loadMore = async () => {
     if (loadingMore || reports.length >= totalReports) return;
+    const requestId = ++loadMoreRequestVersion.current;
     setLoadingMore(true);
     setError("");
     try {
@@ -98,6 +101,7 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
         limit: REPORT_PAGE_SIZE,
         offset: reports.length,
       });
+      if (requestId !== loadMoreRequestVersion.current) return;
       setReports((current) => {
         const byId = new Map<string, MinistryReportRecord>(
           current.map((report) => [report.id, report] as const),
@@ -107,10 +111,11 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
       });
       setTotalReports(result.total ?? totalReports);
     } catch (cause) {
+      if (requestId !== loadMoreRequestVersion.current) return;
       if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
       else setError(errorMessage(cause));
     } finally {
-      setLoadingMore(false);
+      if (requestId === loadMoreRequestVersion.current) setLoadingMore(false);
     }
   };
 
@@ -121,6 +126,7 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
     void load();
     return () => {
       requestVersion.current += 1;
+      loadMoreRequestVersion.current += 1;
       detailRequestVersion.current += 1;
     };
   }, [load]);
