@@ -67,6 +67,7 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
 
   const load = useCallback(async (quiet = false) => {
     loadMoreRequestVersion.current += 1;
+    setLoadingMore(false);
     const requestId = ++requestVersion.current;
     if (quiet) setRefreshing(true);
     else setLoading(true);
