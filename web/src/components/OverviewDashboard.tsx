@@ -91,23 +91,9 @@ export function OverviewDashboard({
     <div className="cmi-dashboard">
       <section className="cmi-dashboard-hero" aria-labelledby="cmi-dashboard-title">
         <div className="cmi-dashboard-hero-copy">
-          <p className="cmi-dashboard-eyebrow"><span className="cmi-dashboard-live-dot" />{todayInTimeZone(branchTimeZone)} <span className="cmi-dashboard-date-divider">/</span> YOUR MINISTRY, IN MOTION</p>
-          <h2 id="cmi-dashboard-title">Welcome back, <span>{firstName}</span>.</h2>
-          <p className="cmi-dashboard-hero-message">Every thoughtful follow-up makes a difference. Here’s your space to keep people connected and ministry moving.</p>
-          <div className="cmi-dashboard-hero-foot"><ShieldCheck size={15} /><span>Your workspace is secure and tailored to your role.</span></div>
-        </div>
-        <div className="cmi-dashboard-hero-art" aria-hidden="true">
-          <img
-            src="https://42f2671d685f51e10fc6-b9fcecea3e50b3b59bdc28dead054ebc.ssl.cf5.rackcdn.com/illustrations/welcome_3gvl.svg"
-            alt=""
-            loading="lazy"
-            decoding="async"
-          />
-          <span className="cmi-dashboard-art-caption">CONNECTED BY CARE</span>
-        </div>
-        <div className="cmi-dashboard-hero-brand">
-          <span className="cmi-dashboard-branch-mark"><ShieldCheck size={17} /></span>
-          <span><small>STAFF PORTAL</small><strong>PCG Missions</strong></span>
+          <p className="cmi-dashboard-eyebrow">{todayInTimeZone(branchTimeZone)}</p>
+          <h2 id="cmi-dashboard-title">Welcome back, {firstName}</h2>
+          <p>Your ministry workspace is ready. Here is what needs your attention today.</p>
         </div>
       </section>
 
