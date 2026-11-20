@@ -107,7 +107,15 @@ function ContentCard({
     <article className={featured ? "visitor-content-card is-featured" : "visitor-content-card"}>
       <span className="visitor-card-eyebrow">{eyebrow}</span>
       <h3>{item.title}</h3>
-      {item.body && <p>{excerpt(item.body, featured ? 260 : 175)}</p>}
+      {item.body && (
+        <>
+          <p>{excerpt(item.body, featured ? 260 : 175)}</p>
+          <details className="visitor-read-more">
+            <summary>Read full {eyebrow.toLowerCase()}</summary>
+            <p>{item.body}</p>
+          </details>
+        </>
+      )}
       {item.published_at && (
         <time dateTime={item.published_at}>{formatDate(item.published_at, "Africa/Accra")}</time>
       )}
@@ -302,6 +310,12 @@ export function PublicVisitorSite() {
                   <>
                     <h3>{content.dailyWords[0].title}</h3>
                     <p>{excerpt(content.dailyWords[0].body, 300)}</p>
+                    {content.dailyWords[0].body && (
+                      <details className="visitor-read-more">
+                        <summary>Read full Daily Word</summary>
+                        <p>{content.dailyWords[0].body}</p>
+                      </details>
+                    )}
                     {content.dailyWords[0].publication_date && <time dateTime={content.dailyWords[0].publication_date}>{content.dailyWords[0].publication_date}</time>}
                   </>
                 ) : <p>Daily encouragement will appear here when it is published.</p>}
