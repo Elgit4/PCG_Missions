@@ -75,6 +75,7 @@ export function TeamAdministrationWorkspace({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const loadVersion = useRef(0);
+  const mutationInFlight = useRef(false);
 
   const selectedTeam = teams.find((team) => team.id === selectedTeamId) ?? null;
   const selectedArea = areas.find((area) => area.id === selectedAreaId) ?? null;
@@ -140,6 +141,8 @@ export function TeamAdministrationWorkspace({
   }, [loadWorkspace]);
 
   const completeMutation = async (successMessage: string, action: () => Promise<unknown>) => {
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setSaving(true);
     setError("");
     setNotice("");
@@ -162,6 +165,7 @@ export function TeamAdministrationWorkspace({
         setError(apiMessage(cause));
       }
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
