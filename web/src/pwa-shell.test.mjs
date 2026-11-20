@@ -81,7 +81,7 @@ describe("PCG Missions offline privacy boundary", () => {
       '["script", "style", "image", "font"].includes(request.destination)',
     );
     expect(serviceWorker).toContain("response.ok && response.type === \"basic\"");
-    expect(serviceWorker).not.toMatch(/caches\\.open\\([^)]*\\)\\.put\\(url/i);
+    expect(serviceWorker).not.toMatch(/caches\.open\([^)]*\)\.put\(url/i);
   });
 
   it("shows an offline notice without displaying staff or ministry records", () => {
