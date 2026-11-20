@@ -80,6 +80,7 @@ jobs:
         run: |
           deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
           deno test supabase-cmi/supabase/functions/public-content/cors_test.ts
+          deno test supabase-cmi/supabase/functions/public-content/public-projection_test.ts
 
       - name: Type-check staff session Edge Function
         run: deno check supabase-cmi/supabase/functions/staff-session/index.ts
