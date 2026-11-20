@@ -6,6 +6,6 @@ const source = readFileSync(new URL('./OperationsWorkspace.tsx', import.meta.url
 describe('operations mutation session expiry', () => {
   it('routes flyer removal and event registration state 401 responses through session expiry', () => {
     const guarded = source.match(/if \(cause instanceof CmiApiError && cause\.status === 401\) onSessionExpired\(\);/g) ?? [];
-    expect(guarded.length).toBeGreaterThanOrEqual(3);
+    expect(guarded.length).toBeGreaterThanOrEqual(4);
   });
 });
