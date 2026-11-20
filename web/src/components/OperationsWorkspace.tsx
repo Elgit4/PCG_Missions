@@ -78,6 +78,7 @@ export function OperationsWorkspace({
   const [closeoutEvent, setCloseoutEvent] = useState<EventDraftRecord | null>(null);
   const loadVersion = useRef(0);
   const flyerPreviewRequest = useRef(0);
+  const mutationInFlight = useRef(false);
 
   useEffect(() => {
     if (!flyerFile) { setFlyerPreview(null); return; }
@@ -203,8 +204,9 @@ export function OperationsWorkspace({
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canManage || saving) return;
+    if (mutationInFlight.current || !canManage || saving) return;
     const form = new FormData(event.currentTarget);
+    mutationInFlight.current = true;
     setSaving(true);
     setError("");
     setNotice("");
@@ -303,6 +305,7 @@ export function OperationsWorkspace({
         setError(errorMessage(cause));
       }
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
@@ -374,6 +377,8 @@ export function OperationsWorkspace({
                   {flyerFile && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setFlyerFile(null); setExistingFlyerUrl(null); }}>Remove selected image</button>}
                   {editingEvent?.flyer_mime_type && <button type="button" className="cmi-button cmi-button-secondary" disabled={saving}
                     onClick={() => void (async () => {
+                      if (mutationInFlight.current) return;
+                      mutationInFlight.current = true;
                       setSaving(true);
                       setError("");
                       try {
@@ -385,6 +390,7 @@ export function OperationsWorkspace({
                         if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
                         else setError(errorMessage(cause));
                       } finally {
+                        mutationInFlight.current = false;
                         setSaving(false);
                       }
                     })()}>Remove current flyer</button>}
@@ -443,13 +449,18 @@ export function OperationsWorkspace({
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setAssignmentEvent(item)} aria-label={"Manage assignments for " + item.title}><Users size={14} />Assignments</button>}
                 {canManageRegistrations && item.status === "draft" && item.visibility === "private" && item.registration_state === "closed" && (
                   <button type="button" className="cmi-button cmi-button-secondary" disabled={!item.capacity || saving} onClick={async () => {
+                    if (mutationInFlight.current) return;
+                    mutationInFlight.current = true;
                     setSaving(true); setError(""); setNotice("");
                     try { await api.openStaffEventRegistration(branchId, item.id); setNotice("Event published to staff visibility. Staff registration is now open."); await loadRecords(); }
                     catch (cause) {
                       if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
                       else setError(errorMessage(cause));
                     }
-                    finally { setSaving(false); }
+                    finally {
+                      mutationInFlight.current = false;
+                      setSaving(false);
+                    }
                   }} title={!item.capacity ? "Set a finite capacity before opening registration." : "Publish this event to staff only"}>
                     Open staff registration
                   </button>
@@ -458,13 +469,18 @@ export function OperationsWorkspace({
                   <>
                     <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setRegistrationEvent(item)} aria-label={"Manage registrations for " + item.title}><ClipboardList size={14} />Registrations</button>
                     {item.registration_state === "open" && <button type="button" className="cmi-button cmi-button-secondary" disabled={saving} onClick={async () => {
+                      if (mutationInFlight.current) return;
+                      mutationInFlight.current = true;
                       setSaving(true); setError(""); setNotice("");
                       try { await api.closeStaffEventRegistration(branchId, item.id); setNotice("Staff registration closed."); await loadRecords(); }
                       catch (cause) {
                         if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
                         else setError(errorMessage(cause));
                       }
-                      finally { setSaving(false); }
+                      finally {
+                        mutationInFlight.current = false;
+                        setSaving(false);
+                      }
                     }}>Close registration</button>}
                   </>
                 )}
