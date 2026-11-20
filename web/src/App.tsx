@@ -6,13 +6,18 @@ const StaffWorkspace = lazy(async () => {
   const module = await import("./components/StaffWorkspace");
   return { default: module.StaffWorkspace };
 });
+
+const PublicVisitorSite = lazy(async () => {
+  const module = await import("./components/PublicVisitorSite");
+  return { default: module.PublicVisitorSite };
+});
 import { PcgAuthClient } from "./lib/auth";
 import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
 import { ThemeToggle } from "./lib/theme";
 import { formatApplicationError } from "./lib/error-messages";
 import { hasSingleWorkspaceBranch } from "./lib/workspace-context";
 
-export default function App() {
+function StaffApp() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
   const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "";
   const configurationError = !supabaseUrl || !publishableKey
@@ -311,4 +316,19 @@ export default function App() {
       onTestConnection={handleConnectionTest}
     />
   );
+}
+
+
+export default function App() {
+  const pathname = typeof window === "undefined"
+    ? "/"
+    : window.location.pathname.replace(/\\/+$/, "") || "/";
+  if (pathname === "/visit" || pathname.startsWith("/visit/")) {
+    return (
+      <Suspense fallback={<CrestOutlineLoader />}>
+        <PublicVisitorSite />
+      </Suspense>
+    );
+  }
+  return <StaffApp />;
 }
