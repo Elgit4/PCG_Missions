@@ -171,7 +171,6 @@ Deno.test("validates assigned prayer inbox pagination and branch scope", () => {
   }
 });
 
-
 Deno.test("pastoral operations keeps the verified first-party origin by default", () => {
   const allowedOrigins = createAllowedOrigins(undefined);
   if (!allowedOrigins.has("https://pcg-missions.vercel.app")) {
