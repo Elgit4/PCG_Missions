@@ -1,4 +1,4 @@
-// Cloudflare Pages Preview rebuild to pick up configured Vite environment variables.
+// Cloudflare Pages Preview build using configured Supabase Vite environment variables.
 import { CrestOutlineLoader } from "./components/CrestOutlineLoader";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { StaffLogin, type StaffAuthView } from "./components/StaffLogin";
