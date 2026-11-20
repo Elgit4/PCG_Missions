@@ -151,6 +151,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const taskRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
   const paginationVersion = useRef(0);
   const taskMutationInFlight = useRef(false);
+  const staffMutationInFlight = useRef(false);
+  const passwordResetReviewInFlight = useRef(false);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
@@ -398,7 +400,11 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
   const createStaffAccount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canCreateStaffAccounts || !branchId || saving) return;
+    if (
+      staffMutationInFlight.current || !canCreateStaffAccounts ||
+      !branchId || saving
+    ) return;
+    staffMutationInFlight.current = true;
     const form = new FormData(event.currentTarget);
     const input: StaffAccountCreateInput = {
       branch_id: branchId,
@@ -430,17 +436,24 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     } catch (error) {
       handleActionError(error);
     }
-    finally { setSaving(false); }
+    finally {
+      staffMutationInFlight.current = false;
+      setSaving(false);
+    }
   };
 
   const updateStaffAccountStatus = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!staffStatusEdit || !branchId || !canManageStaffAccounts || saving) return;
+    if (
+      staffMutationInFlight.current || !staffStatusEdit || !branchId ||
+      !canManageStaffAccounts || saving
+    ) return;
     const reason = staffStatusReason.trim();
     if (reason.length < 10 || reason.length > 500) {
       setActionError("Provide an audit reason between 10 and 500 characters.");
       return;
     }
+    staffMutationInFlight.current = true;
     setSaving(true); setActionError(""); setActionNotice("");
     try {
       const result = await api.setStaffAccountStatus(
@@ -460,16 +473,23 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       setStaffStatusEdit(null);
       setStaffStatusReason("");
     } catch (error) { handleActionError(error); }
-    finally { setSaving(false); }
+    finally {
+      staffMutationInFlight.current = false;
+      setSaving(false);
+    }
   };
 
   const reviewPasswordReset = async (request: StaffPasswordResetRequest, action: "approve" | "deny") => {
-    if (!canManagePasswordResets || !branchId || processingResetId) return;
+    if (
+      passwordResetReviewInFlight.current || !canManagePasswordResets ||
+      !branchId || processingResetId
+    ) return;
     const reason = (resetReasons[request.id] ?? "").trim();
     if (reason.length < 10 || reason.length > 300) {
       setActionError("Enter a review reason between 10 and 300 characters before taking action.");
       return;
     }
+    passwordResetReviewInFlight.current = true;
     setProcessingResetId(request.id);
     setActionError("");
     try {
@@ -500,7 +520,10 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         return next;
       });
     } catch (error) { handleActionError(error); }
-    finally { setProcessingResetId(null); }
+    finally {
+      passwordResetReviewInFlight.current = false;
+      setProcessingResetId(null);
+    }
   };
 
   const loadMoreContacts = async () => {
