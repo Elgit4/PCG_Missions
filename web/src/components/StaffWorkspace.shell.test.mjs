@@ -33,3 +33,10 @@ it('keeps the current page title visible beneath the compact mobile brand row', 
   expect(styles).toMatch(/\.cmi-topbar-heading\s*\{\s*display:\s*contents/s);
   expect(styles).toMatch(/\.cmi-topbar-heading\s*>\s*h1\s*\{[^}]*display:\s*block/s);
 });
+
+
+it('expires the staff session when the task contact picker receives HTTP 401', () => {
+  const picker = workspace.match(/api\\.listContacts\\(branchId, \\{[\\s\\S]*?\\n    \\}, \\[\\s\\S]*?taskContactId,\\n  \\]\\);/)?.[0] ?? '';
+  expect(picker).toContain('error instanceof CmiApiError && error.status === 401');
+  expect(picker).toContain('expireSession();');
+});
