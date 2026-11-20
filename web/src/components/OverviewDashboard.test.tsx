@@ -5,7 +5,6 @@ import { OverviewDashboard } from "./OverviewDashboard";
 
 const baseProps = {
   staffName: "Ama Mensah",
-  branchName: "Tema Central",
   branchTimeZone: "Africa/Accra",
   contacts: [],
   tasks: [],
@@ -35,7 +34,7 @@ describe("OverviewDashboard", () => {
     const heroStart = html.indexOf('<section class="cmi-dashboard-hero"');
     const heroEnd = html.indexOf("</section>", heroStart);
     const hero = html.slice(heroStart, heroEnd + "</section>".length);
-    expect(hero).toContain("Tema Central");
+    expect(hero).toContain("PCG Missions");
     expect(hero).not.toContain("<img");
     expect(html).toContain("Your follow-up queue");
     expect(html).toContain("Quick actions");
