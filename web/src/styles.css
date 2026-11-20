@@ -2186,7 +2186,7 @@ html[data-theme="dark"] .activity-panel { background-image: none !important; }
 .cmi-dashboard-hero-art { right: 7%; width: min(34%, 350px); height: 86%; top: 7%; opacity: 1; }
 .cmi-dashboard-hero-art img {
   display: block; width: 100%; height: 100%; object-fit: contain;
-  filter: hue-rotate(82deg) saturate(.72) contrast(1.04);
+  filter: hue-rotate(260deg) saturate(.72) contrast(1.04);
 }
 .cmi-dashboard-art-caption { color: #f4e8c8; font-size: 9px; }
 .cmi-dashboard-hero-brand {
