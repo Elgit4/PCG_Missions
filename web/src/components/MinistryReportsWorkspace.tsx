@@ -62,6 +62,7 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const requestVersion = useRef(0);
+  const detailRequestVersion = useRef(0);
 
   const load = useCallback(async (quiet = false) => {
     const requestId = ++requestVersion.current;
@@ -114,8 +115,14 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
   };
 
   useEffect(() => {
+    detailRequestVersion.current += 1;
+    setDetailReport(null);
+    setDetailLoading(false);
     void load();
-    return () => { requestVersion.current += 1; };
+    return () => {
+      requestVersion.current += 1;
+      detailRequestVersion.current += 1;
+    };
   }, [load]);
   useEffect(() => {
     if (!showForm) return;
@@ -206,21 +213,28 @@ export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpi
 
   const toggleDetails = async (report: MinistryReportRecord) => {
     if (detailReport?.id === report.id) {
+      detailRequestVersion.current += 1;
       setDetailReport(null);
       setDetailError("");
+      setDetailLoading(false);
       return;
     }
+    const requestId = ++detailRequestVersion.current;
+    setDetailReport(null);
     setDetailLoading(true);
     setDetailError("");
     try {
       const result = await api.getMinistryReport(branchId, report.id);
-      setDetailReport(result.data);
+      if (requestId === detailRequestVersion.current) {
+        setDetailReport(result.data);
+      }
     } catch (cause) {
+      if (requestId !== detailRequestVersion.current) return;
       if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
       else setDetailError(errorMessage(cause));
       setDetailReport(null);
     } finally {
-      setDetailLoading(false);
+      if (requestId === detailRequestVersion.current) setDetailLoading(false);
     }
   };
 
