@@ -76,8 +76,10 @@ jobs:
       - name: Type-check public-content Edge Function
         run: deno check supabase-cmi/supabase/functions/public-content/index.ts
 
-      - name: Test public-content request validation
-        run: deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
+      - name: Test public-content request validation and CORS
+        run: |
+          deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
+          deno test supabase-cmi/supabase/functions/public-content/cors_test.ts
 
       - name: Type-check staff session Edge Function
         run: deno check supabase-cmi/supabase/functions/staff-session/index.ts
