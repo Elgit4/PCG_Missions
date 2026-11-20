@@ -316,6 +316,14 @@ No PR merge, hosted migration, Edge Function deployment or production frontend r
 - Added request-version guards to event assignment, registration and closeout panels. Responses from an earlier event/branch context are ignored, and prior workspace data is cleared when the context changes.
 - Added a Vitest regression contract covering stale-response rejection, unmount/context invalidation and loading-state ownership for all three panels.
 - Hardened notification mark-read and mark-all actions against branch changes while requests are in flight; the active branch scope is synchronized before paint, and stale mutation results cannot alter the new branch inbox.
-- Routed 401 responses from event flyer removal and staff-registration open/close actions through the shared session-expiry handler; added a regression test for those mutation paths.
+- Routed 401 responses from event flyer preview/removal and staff-registration open/close actions through the shared session-expiry handler; added a regression test for those mutation paths.
 - Removed branch names from staff-facing breadcrumbs, dashboard and workspace descriptions while retaining branch IDs, role grants and server-side branch scoping internally. Added a UI regression test.
 - These changes are source-only and require the updated frontend CI run before they can be marked verified.
+
+
+## 20 November — hosted security and privilege review
+
+- Read-only Supabase advisor review reports 52 RLS-enabled tables without policies as informational findings. A direct privilege check found zero table privileges for `anon` and `authenticated` across both `public` and `private` schemas; these tables are not directly exposed to browser roles.
+- Leaked-password protection remains disabled and is still an explicit Auth configuration review item. It was not changed during this audit.
+- The performance advisor reports 82 unindexed foreign-key constraints plus unused-index notices. No indexes were added blindly; review should be workload- and query-plan-driven.
+- No hosted schema, Auth setting, Edge Function or production data was modified during this review.
