@@ -30,10 +30,8 @@ describe("OverviewDashboard", () => {
     const html = renderToStaticMarkup(createElement(OverviewDashboard, baseProps));
     expect(html).toContain("Welcome back,");
     expect(html).toContain("Ama");
-    expect(html).toContain("Your ministry workspace is ready.");
-    expect(html).toContain("Here is what needs your attention today.");
-    expect(html).not.toContain("YOUR MINISTRY, IN MOTION");
-    expect(html).not.toContain("STAFF PORTAL");
+    expect(html).toContain("Your ministry workspace for");
+    expect(html).toContain("ACTIVE WORKSPACE");
     expect(html).toContain("Your follow-up queue");
     expect(html).toContain("Quick actions");
     expect(html).not.toContain("GETTING STARTED");
