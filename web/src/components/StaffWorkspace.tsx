@@ -352,6 +352,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
   const refresh = async () => {
     if (!branchId) return;
+    paginationVersion.current += 1;
+    setLoadingMore(false);
     setRefreshing(true); setActionError("");
     try {
       const [contactResult, taskResult, resetResult, staffResult] = await Promise.all([
