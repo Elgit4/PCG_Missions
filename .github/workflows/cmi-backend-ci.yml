@@ -252,5 +252,4 @@ jobs:
           rm -f supabase-cmi/supabase/tests/cmi_pastoral_read_operations.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_first_admin_bootstrap_lease.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_team_area_administration.test.sql
-          rm -f supabase-cmi/supabase/tests/cmi_pastoral_read_operations.test.sql
           rm -f supabase-cmi/supabase/tests/cmi_typed_ministry_reports.test.sql
