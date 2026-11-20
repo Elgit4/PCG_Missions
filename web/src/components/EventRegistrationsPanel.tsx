@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { CalendarCheck, RefreshCw, UserPlus, Users, XCircle } from "lucide-react";
 import {
   CmiApiClient,
@@ -44,27 +44,34 @@ export function EventRegistrationsPanel({
   const [attendeePhone, setAttendeePhone] = useState("");
   const [requestKey, setRequestKey] = useState(createRequestKey);
 
+  const requestVersion = useRef(0);
   const load = useCallback(async () => {
+    const requestId = ++requestVersion.current;
     setLoading(true);
     setError("");
     try {
       const result = await api.listEventRegistrations(branchId, event.id);
+      if (requestId !== requestVersion.current) return;
       setRegistrations(result.data.registrations);
       setActiveRegistrationCount(result.data.active_count);
     } catch (cause) {
+      if (requestId !== requestVersion.current) return;
       if (cause instanceof CmiApiError && cause.status === 401) {
         onSessionExpired();
       } else {
         setError(formatApplicationError(cause));
       }
     } finally {
-      setLoading(false);
+      if (requestId === requestVersion.current) setLoading(false);
     }
   }, [api, branchId, event.id, onSessionExpired]);
 
   useEffect(() => {
+    setRegistrations([]);
+    setActiveRegistrationCount(0);
     void load();
-  }, [load]);
+    return () => { requestVersion.current += 1; };
+  }, [branchId, event.id, load]);
 
   const submit = async (formEvent: FormEvent<HTMLFormElement>) => {
     formEvent.preventDefault();
