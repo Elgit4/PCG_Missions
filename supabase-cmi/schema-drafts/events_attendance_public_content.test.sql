@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(119);
+select plan(123);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -792,6 +792,17 @@ select throws_ok(
  'P0001','EVENT_REGISTRATION_CLOSED',
  'staff RPC refuses a public event even when its public registration state is open'
 );
+select throws_ok(
+ $q$select public.cmi_staff_register_event_attendee(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000002',
+  '21000000-0000-4000-8000-000000000002',
+  '61000000-0000-4000-8000-000000000025',
+  1::smallint, repeat('77',32),'Cross Branch Registration Attempt',null
+ )$q$,
+ '42501','EVENT_REGISTRATION_NOT_AUTHORIZED',
+ 'a branch A Admin/Pastor assignment cannot authorize event registration in branch B'
+);
 
 select has_function(
  'public','cmi_staff_checkin_event_registration',
@@ -922,6 +933,18 @@ select throws_ok(
  )$q$,
  'P0001','EVENT_REGISTRATION_ALREADY_CHECKED_IN',
  'a checked-in registration cannot be cancelled to manipulate attendance or capacity'
+);
+select throws_ok(
+ $q$select public.cmi_staff_checkin_event_registration(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000002',
+  '21000000-0000-4000-8000-000000000002',
+  '71000000-0000-4000-8000-000000000099',
+  '61000000-0000-4000-8000-000000000044',
+  1::smallint, repeat('bc',32)
+ )$q$,
+ '42501','EVENT_CHECKIN_NOT_AUTHORIZED',
+ 'a branch A Admin/Pastor assignment cannot authorize check-in in branch B'
 );
 reset role;
 select ok(
@@ -1065,6 +1088,30 @@ select is(
 );
 
 set local role service_role;
+select throws_ok(
+ $q$select public.cmi_staff_submit_event_closeout(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000002',
+  '21000000-0000-4000-8000-000000000002',
+  '61000000-0000-4000-8000-000000000053',
+  1::smallint, repeat('bd',32),'Cross-branch closeout attempt'
+ )$q$,
+ '42501','EVENT_CLOSEOUT_SUBMIT_NOT_AUTHORIZED',
+ 'a branch A Admin/Pastor assignment cannot submit a closeout in branch B'
+);
+select throws_ok(
+ $q$select public.cmi_staff_review_event_closeout(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000002',
+  '21000000-0000-4000-8000-000000000002',
+  '71000000-0000-4000-8000-000000000099',
+  'approved',null,
+  '61000000-0000-4000-8000-000000000054',
+  1::smallint, repeat('be',32)
+ )$q$,
+ '42501','EVENT_CLOSEOUT_REVIEW_NOT_AUTHORIZED',
+ 'a branch A Admin/Pastor assignment cannot review a closeout in branch B'
+);
 select ok(
  (
   public.cmi_staff_submit_event_closeout(
