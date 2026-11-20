@@ -34,6 +34,28 @@ export function notificationRecipientScope(
   };
 }
 
+export interface NotificationReadScope extends NotificationRecipientScope {
+  id: string;
+}
+
+export function notificationReadScope(
+  actorId: string,
+  branchId: string,
+  notificationId: string,
+): NotificationReadScope {
+  return {
+    id: notificationId,
+    ...notificationRecipientScope(actorId, branchId),
+  };
+}
+
+export function notificationBranchAccess(
+  branchActive: boolean,
+  hasActiveAssignment: boolean,
+): boolean {
+  return branchActive && hasActiveAssignment;
+}
+
 export function notificationPageLimit(value: string | null): number {
   const parsed = Number(value ?? "30");
   return Number.isInteger(parsed) ? Math.max(1, Math.min(50, parsed)) : 30;
