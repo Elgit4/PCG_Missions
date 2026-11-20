@@ -682,7 +682,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             <h1>{page === "Follow-up" ? "Follow-up tasks" : page}</h1>
           </div>
           <div className="cmi-topbar-actions">
-            <StaffNotificationCenter api={api} branchId={branchId} onNavigate={(target) => {
+            <StaffNotificationCenter api={api} branchId={branchId} onSessionExpired={expireSession} onNavigate={(target) => {
               const destination = target === "followup_task" ? "Follow-up" : target === "event" ? "Events" : target === "ministry_report" ? "Reports" : null;
               if (destination && availablePages.includes(destination)) setPage(destination);
             }} />
