@@ -4,7 +4,7 @@ import { CmiApiClient, CmiApiError, type MinistryReportCreateInput, type Ministr
 import { hasCapability } from "../lib/capabilities";
 import { formatApplicationError } from "../lib/error-messages";
 
-interface Props { branchId: string; branchName: string; api: CmiApiClient; session: StaffSession; onSessionExpired: () => void }
+interface Props { branchId: string; api: CmiApiClient; session: StaffSession; onSessionExpired: () => void }
 const REPORT_PAGE_SIZE = 50;
 const COUNT_FIELDS = [
   ["contacts_captured", "Contacts captured"],
@@ -34,7 +34,7 @@ function emptyCounts(): Record<CountKey, string> {
   return Object.fromEntries(COUNT_FIELDS.map(([key]) => [key, "0"])) as Record<CountKey, string>;
 }
 
-export function MinistryReportsWorkspace({ branchId, branchName, api, session, onSessionExpired }: Props) {
+export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpired }: Props) {
   const canSubmit = hasCapability(session, "report.submit.own", branchId);
   const canReview = hasCapability(session, "report.review.branch", branchId) || hasCapability(session, "report.review.team", branchId);
   const [reports, setReports] = useState<MinistryReportRecord[]>([]);
@@ -249,7 +249,7 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session, o
     <section className="ministry-reports" aria-labelledby="ministry-reports-title">
       <header className="ministry-reports-header">
         <div>
-          <p className="ministry-reports-eyebrow">MINISTRY ACCOUNTABILITY · {branchName.toUpperCase()}</p>
+          <p className="ministry-reports-eyebrow">MINISTRY ACCOUNTABILITY</p>
           <h2 id="ministry-reports-title">Ministry reports</h2>
           <p>Record ministry activity, follow progress and review submitted reports.</p>
         </div>
