@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Activity, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, HandHeart, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, HandHeart, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { StaffNotificationCenter } from "./StaffNotificationCenter";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
 import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
@@ -48,13 +48,7 @@ function statusLabel(status: string): string {
 function FeedbackMark({ success = false }: { success?: boolean }) {
   return (
     <span className={"cmi-feedback-art" + (success ? " is-success" : "")} aria-hidden="true">
-      {success ? <CheckCircle2 size={23} strokeWidth={1.8} /> : (
-        <svg viewBox="0 0 40 40" width="25" height="25" fill="none">
-          <path d="M20 4.5 35 31H5L20 4.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-          <path d="M20 14v8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-          <circle cx="20" cy="27" r="1.2" fill="currentColor" />
-        </svg>
-      )}
+      {success ? <CheckCircle2 size={23} strokeWidth={1.8} /> : <AlertTriangle size={23} strokeWidth={1.8} />}
     </span>
   );
 }
