@@ -45,6 +45,42 @@ function statusLabel(status: string): string {
   return status.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
+function FeedbackMark({ success = false }: { success?: boolean }) {
+  return (
+    <span className={"cmi-feedback-art" + (success ? " is-success" : "")} aria-hidden="true">
+      {success ? <CheckCircle2 size={23} strokeWidth={1.8} /> : (
+        <svg viewBox="0 0 40 40" width="25" height="25" fill="none">
+          <path d="M20 4.5 35 31H5L20 4.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+          <path d="M20 14v8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+          <circle cx="20" cy="27" r="1.2" fill="currentColor" />
+        </svg>
+      )}
+    </span>
+  );
+}
+
+function FeedbackMessage({ kind, message, onDismiss }: {
+  kind: "error" | "success";
+  message: string;
+  onDismiss?: () => void;
+}) {
+  const success = kind === "success";
+  return (
+    <div className={"cmi-feedback-card " + (success ? "is-success" : "is-error")} role={success ? "status" : "alert"}>
+      <FeedbackMark success={success} />
+      <div className="cmi-feedback-copy">
+        <strong>{success ? "All set" : "We couldn't complete that"}</strong>
+        <p>{message}</p>
+      </div>
+      {onDismiss && (
+        <button type="button" className="cmi-feedback-dismiss" onClick={onDismiss} aria-label="Dismiss message">
+          <XCircle size={17} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function navigationIcon(item: Page, size = 18) {
   switch (item) {
     case "Overview": return <Activity size={size} strokeWidth={1.9} />;
@@ -785,9 +821,9 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         <section className="cmi-content" id="cmi-content" tabIndex={-1} aria-busy={loading}>
           <h2 className="cmi-sr-only">Workspace sections</h2>
           <Suspense fallback={<WorkspaceSkeleton page={page} />}>
-          {loadError && <div className="cmi-alert" role="alert">{loadError}</div>}
-          {actionError && <div className="cmi-alert" role="alert">{actionError}<button onClick={() => setActionError("")} aria-label="Dismiss message">×</button></div>}
-          {actionNotice && <div className="cmi-success-note" role="status">{actionNotice}<button onClick={() => setActionNotice("")} aria-label="Dismiss message">×</button></div>}
+          {loadError && <FeedbackMessage kind="error" message={loadError} />}
+          {actionError && <FeedbackMessage kind="error" message={actionError} onDismiss={() => setActionError("")} />}
+          {actionNotice && <FeedbackMessage kind="success" message={actionNotice} onDismiss={() => setActionNotice("")} />}
           {loading && <WorkspaceSkeleton page={page} /> }
 
           {page === "Overview" && (
