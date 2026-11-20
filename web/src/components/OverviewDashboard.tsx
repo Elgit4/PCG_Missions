@@ -6,6 +6,7 @@ import type { ContactRecord, FollowUpTask } from "../lib/cmi-api";
 
 interface OverviewDashboardProps {
   staffName: string;
+  branchName: string;
   branchTimeZone: string;
   contacts: ContactRecord[];
   tasks: FollowUpTask[];
@@ -63,7 +64,7 @@ function todayInTimeZone(timeZone: string): string {
 }
 
 export function OverviewDashboard({
-  staffName, branchTimeZone, contacts, tasks, contactsHasMore, tasksHasMore,
+  staffName, branchName, branchTimeZone, contacts, tasks, contactsHasMore, tasksHasMore,
   canReadContacts, canCreateContacts, canReadTasks, canCreateTasks,
   canReadStaffDirectory, canManagePasswordResets, canAccessTeams, canAccessReports,
   onOpenContacts, onCreateContact, onOpenFollowUp, onCreateTask,
