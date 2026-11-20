@@ -29,7 +29,7 @@ describe("OverviewDashboard", () => {
     const html = renderToStaticMarkup(createElement(OverviewDashboard, baseProps));
     expect(html).toContain("Welcome back,");
     expect(html).toContain("Ama");
-    expect(html).toContain("Your ministry workspace for");
+    expect(html).toContain("Your ministry workspace is ready.");
     expect(html).toContain("ACTIVE WORKSPACE");
     const heroStart = html.indexOf('<section class="cmi-dashboard-hero"');
     const heroEnd = html.indexOf("</section>", heroStart);
