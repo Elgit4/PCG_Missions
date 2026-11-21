@@ -201,3 +201,16 @@ No production Supabase data, Auth identities, Pages variables or production Clou
 - The workflow currently reads the repository Actions secret `secrets.CLOUDFLARE_API_TOKEN`. If the existing token is stored as an Environment secret or organization secret, that scope must be made available to this repository/job; an Environment secret also requires the job to target that exact GitHub Environment.
 - Do not paste the token into source code, logs, or chat. Once the correct secret scope is confirmed, rerun the preview workflow and verify `wrangler whoami` before deploying.
 - The preview Pages build is healthy, but it remains on the Supabase API path until `pcg-missions-api-preview` exists and `VITE_CMI_WORKER_API_URL` is configured.
+
+
+## Latest verification and credential-scope boundary — 21 November 2026
+
+- Current branch head: `7b93134204733467567ffe80154fac959ad86c66`.
+- Latest frontend CI: [44938427789](https://github.com/Elgit4/PCG_Missions/actions/runs/44938427789) — type-check, lint, unit tests and production asset build all passed.
+- Latest Cloudflare D1 Foundation CI: [44938427801](https://github.com/Elgit4/PCG_Missions/actions/runs/44938427801) — Worker type-check, all 13 focused Supabase Auth/staff-context tests and SQLite/D1 schema-security checks passed.
+- The earlier successful Worker preview workflow run [44931500777](https://github.com/Elgit4/PCG_Missions/actions/runs/44931500777) did **not** deploy: its own log shows an empty `CLOUDFLARE_API_TOKEN` and the deploy step was skipped. The newer strict workflow correctly fails rather than reporting a skipped deploy as success.
+- The current connector can inspect repository source and Actions run/job logs, but does not expose repository/organization/environment secret metadata or GitHub Settings pages. It cannot identify which GitHub secret scope contains an existing token, nor move or re-scope that secret. No secret value should be printed or committed.
+- Cloudflare account inspection confirms the preview Worker `pcg-missions-api-preview` is still absent. The only existing Workers are `pcg-missions-api-nonprod` and `pcg-missions-d1-smoke`.
+- The official Pages project remains on production branch `feat/cmi-pcg-missions-final-review-v6`; its preview has the Supabase configuration but no `VITE_CMI_WORKER_API_URL`. Production Pages variables and production Supabase remain unchanged.
+- PR #85 remains a draft and is 95 commits ahead of its v6 base. It is not a complete Cloudflare cutover: the 12 outstanding Supabase feature migrations, complete Worker/API parity, authenticated six-role browser acceptance, deterministic data-import correction, backup/restore rehearsal, production D1 provisioning, monitoring and rollback gates remain.
+- No production resources, live data, authentication identities, or routing were changed during this verification.
