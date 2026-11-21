@@ -128,3 +128,16 @@ The next safe implementation sequence is:
 6. Connect a preview frontend build and complete six-role acceptance before any production provisioning or cutover.
 
 Cloudflare recommends source maps, environment separation, bindings, and Workers logs/traces for production operations; see the official [Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/).
+
+## Supabase Auth Worker implementation update — 21 November 2026
+
+The migration branch now contains an initial code implementation (not yet deployed):
+
+- Worker access-token verification calls the Supabase Auth `/auth/v1/user` endpoint using the caller's bearer token and the publishable key. It does not decode or trust unverified JWT claims.
+- Invalid or expired tokens are distinguished from Auth upstream outages. An Auth outage is propagated as HTTP 503 on the staff-context endpoint; invalid credentials remain unauthenticated.
+- Staff identity is resolved from the verified Supabase Auth UUID, then active account state, current branch assignments, roles and capability grants are read from D1.
+- Invitation acceptance now uses the Supabase Auth Admin API adapter. A newly created Auth identity is compensated with an Admin delete if D1 provisioning fails.
+- Better Auth construction, invitation signup, Worker auth handler, and the Better Auth package dependency were removed from the Worker branch.
+- The Worker no longer enables credentialed CORS for bearer-token requests. Non-production origin allowlist is restricted to localhost until the preview Worker is deployed with a reviewed Pages origin.
+
+CI is running against the latest branch revision. This is not a complete auth cutover: the existing Pages auth proxy still calls Supabase Edge Functions for staff session and password lifecycle operations; Worker environment secrets are not configured; and the frontend business API still calls Supabase Edge Functions. Do not deploy this Worker until route parity, identity mapping, test coverage, environment bindings, and the frontend adapter are completed.
