@@ -60,18 +60,18 @@ The migration now has a deployed non-production Worker and a Pages preview wired
 
 Port and verify every required operation currently provided by Supabase Edge Functions and PostgreSQL RPCs. Maintain a route-to-handler-to-capability matrix.
 
-Required modules include:
-- staff authentication lifecycle and account administration;
-- contacts, notes, interactions and follow-up tasks;
-- pastoral care and assigned prayer inbox;
-- teams and service areas;
-- typed ministry reports, review and resubmission;
-- internal notifications and recipient-scoped read state;
-- public content, announcements and content operations;
-- calendar and event management;
-- event staff assignment, registration, cancellation, check-in and closeout;
-- event flyer upload, metadata and private delivery;
-- audit logging and first-admin bootstrap.
+Required modules and current state:
+- staff authentication lifecycle and account administration — Supabase Auth remains active; Worker-side Auth Admin invitation provisioning is blocked on the Worker-only service-role secret;
+- contacts, notes, interactions and follow-up tasks — Worker preview supports contact listing, contact-note list/create and follow-up task reads; contact writes/interactions and task writes remain on the existing Supabase path;
+- pastoral care and assigned prayer inbox — partial Worker route handlers exist, but the frontend adapter and full lifecycle parity are outstanding;
+- teams and service areas — branch-scoped Worker preview supports list/create/update, team membership role/add/revoke and service-area coverage add/revoke; authenticated write acceptance remains outstanding;
+- typed ministry reports, review and resubmission — not yet ported to Worker;
+- internal notifications and recipient-scoped read state — Worker preview route mapping is implemented;
+- public content, announcements and content operations — existing Pages/Supabase routes remain in use pending Worker parity;
+- calendar and event management — existing Pages/Supabase routes remain in use pending Worker parity;
+- event staff assignment, registration, cancellation, check-in and closeout — Worker parity outstanding;
+- event flyer upload, metadata and private delivery — R2 integration and Worker handlers outstanding;
+- audit logging and first-admin bootstrap — D1 audit foundations exist; complete production acceptance remains outstanding.
 
 Do not expose a route until its authorization, validation, rate limiting, idempotency, error handling and tests are in place.
 
