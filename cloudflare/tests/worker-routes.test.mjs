@@ -189,7 +189,7 @@ const COVERED_STAFF_ID = "20000000-0000-4000-8000-000000000002";
 const OTHER_STAFF_ID = "20000000-0000-4000-8000-000000000003";
 const CONTACT_ID = "80000000-0000-4000-8000-000000000001";
 
-function authorizedDirectoryEnv(roleCode) {
+function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
   const calls = [];
   const teamRows = [
     { id: OWN_TEAM_ID, branch_id: BRANCH_ID, name: "Welcome Team", description: "Greets visitors", is_active: 1, created_at: "2026-01-01T00:00:00.000Z", updated_at: "2026-01-01T00:00:00.000Z" },
@@ -224,6 +224,11 @@ function authorizedDirectoryEnv(roleCode) {
           ["contacts.interaction.create", "branch"],
         ]
       : [["team.read", "team"], ["area.read", "team"]];
+  for (const grant of additionalCapabilities) {
+    if (!capabilityRows.some(([code, scope]) => code === grant[0] && scope === grant[1])) {
+      capabilityRows.push(grant);
+    }
+  }
   const staff = {
     id: STAFF_PROFILE_ID,
     auth_user_id: AUTH_USER_ID,
@@ -247,7 +252,31 @@ function authorizedDirectoryEnv(roleCode) {
           if (this.sql.includes("SELECT id FROM contact") && this.sql.includes("contact_status <> 'merged'")) {
             return this.values[0] === CONTACT_ID && this.values[1] === BRANCH_ID ? { id: CONTACT_ID } : null;
           }
+          if (this.sql.includes("SELECT id FROM contact") && this.sql.includes("WHERE id = ? AND branch_id = ?")) {
+            return this.values[0] === CONTACT_ID && this.values[1] === BRANCH_ID ? { id: CONTACT_ID } : null;
+          }
           if (this.sql.includes("SELECT ca.team_id") && this.sql.includes("FROM contact_assignment ca")) return null;
+          if (this.sql.includes("SELECT sp.id AS profile_id, sp.auth_user_id") && this.sql.includes("FROM staff_profile sp")) {
+            return { profile_id: STAFF_PROFILE_ID, auth_user_id: AUTH_USER_ID };
+          }
+          if (this.sql.includes("FROM followup_task") && this.sql.includes("SELECT id, status, team_id, assignee_user_id")) {
+            return { id: "90000000-0000-4000-8000-000000000001", status: "open", team_id: null, assignee_user_id: AUTH_USER_ID };
+          }
+          if (this.sql.includes("FROM followup_task") && this.sql.includes("SELECT id, branch_id, contact_id, assignee_user_id")) {
+            return {
+              id: "90000000-0000-4000-8000-000000000001",
+              branch_id: BRANCH_ID,
+              contact_id: CONTACT_ID,
+              assignee_user_id: AUTH_USER_ID,
+              team_id: null,
+              priority: 2,
+              due_at: null,
+              status: "completed",
+              task_note: "Follow up with visitor",
+              created_at: "2026-11-21T12:00:00.000Z",
+              updated_at: "2026-11-21T12:30:00.000Z",
+            };
+          }
           if (this.sql.includes("FROM contact c") && this.sql.includes("SELECT c.id")) {
             return {
               id: CONTACT_ID,
@@ -274,6 +303,9 @@ function authorizedDirectoryEnv(roleCode) {
               next_action_at: null,
               created_at: "2026-11-21T12:00:01.000Z",
             };
+          }
+          if (this.sql.includes("SELECT id, hex(request_digest) AS digest_hex") && this.sql.includes("FROM followup_task")) {
+            return null;
           }
           if (this.sql.includes("JOIN branch b") && this.sql.includes("JOIN role_capability rc")) {
             const requestedCapability = this.values[2];
