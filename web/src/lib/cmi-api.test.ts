@@ -653,6 +653,34 @@ describe("CmiApiClient", () => {
     expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
   });
 
+  it("routes team membership creation through the Worker", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "00000000-0000-4000-8000-000000000004", team_id: "00000000-0000-4000-8000-000000000002", staff_profile_id: "00000000-0000-4000-8000-000000000005", membership_role: "member", starts_at: "2026-11-21T12:00:00Z", ends_at: null, created_at: "2026-11-21T12:00:00Z" }, request_id: "worker-team-member" }),
+      { status: 201 },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    await client.addTeamMember("branch-abc", "00000000-0000-4000-8000-000000000002", { staff_profile_id: "00000000-0000-4000-8000-000000000005", membership_role: "member" });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/teams/00000000-0000-4000-8000-000000000002/members");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+  });
+
+  it("routes service-area coverage creation through the Worker", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "00000000-0000-4000-8000-000000000006", service_area_id: "00000000-0000-4000-8000-000000000003", staff_profile_id: "00000000-0000-4000-8000-000000000005", starts_at: "2026-11-21T12:00:00Z", ends_at: null, created_at: "2026-11-21T12:00:00Z" }, request_id: "worker-area-coverage" }),
+      { status: 201 },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    await client.addAreaCoverage("branch-abc", "00000000-0000-4000-8000-000000000003", { staff_profile_id: "00000000-0000-4000-8000-000000000005" });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/areas/00000000-0000-4000-8000-000000000003/coverage");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+  });
+
   it("keeps Worker-unsupported operations on their existing Supabase function", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: [], request_id: "supabase-fallback-1" }),
