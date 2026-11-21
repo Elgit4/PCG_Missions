@@ -447,19 +447,16 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     try {
       const result = await api.createStaffAccount(input);
       setShowStaffForm(false);
-      if (result.data.invitation_email_sent) {
-        setCredentialHandoff(null);
-        setActionNotice(`Staff account created. The invitation and one-time sign-in details were emailed to ${result.data.email}. The user must change the temporary password at first sign-in.`);
-      } else if (result.data.manual_handoff_required && result.data.temporary_password) {
+      if (result.data.manual_handoff_required && result.data.temporary_password) {
         setCredentialCopied(false);
         setCredentialHandoff({
           email: result.data.email,
           password: result.data.temporary_password,
           expiresInHours: result.data.password_expires_in_hours ?? 24,
         });
-        setActionNotice(`The staff account for ${result.data.email} was created, but the invitation email was not delivered. Use the secure one-time handoff below; do not create this account again.`);
+        setActionNotice(`Staff account created for ${result.data.email}. Share the one-time sign-in details privately; no invitation email was sent.`);
       } else {
-        setActionNotice(`The staff account for ${result.data.email} was created, but no invitation was delivered and no manual credential was returned. Do not create it again. Resolve the email sender or use the password-reset process.`);
+        setActionNotice(`The staff account for ${result.data.email} was created, but the one-time credential was not returned. Do not create it again. Contact the system administrator before attempting another account creation.`);
       }
       const directory = await api.listStaffDirectory(branchId, { limit: 50, offset: 0 });
       setStaffMembers(directory.data);
@@ -850,13 +847,13 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             </div>
             {showStaffForm && canCreateStaffAccounts && <form className="cmi-form-grid" onSubmit={createStaffAccount}>
               <label>Full name<input name="full_name" required minLength={2} maxLength={180} autoComplete="name" /></label>
-              <label>Staff email<input name="email" type="email" required maxLength={254} autoComplete="email" /></label>
+              <label>Login email address<input name="email" type="email" required maxLength={254} autoComplete="email" /><span>Used as the sign-in username. PCG Missions will not send an invitation email.</span></label>
               <label>Role<select name="role_code" defaultValue="field_worker">
                 <option value="coordinator">Coordinator</option><option value="team_leader">Team Leader</option><option value="field_worker">Field Worker</option><option value="follow_up_volunteer">Follow-up Volunteer</option><option value="prayer_intercessor">Prayer Intercessor</option><option value="admin_pastor">Admin / Pastor</option>
               </select></label>
               <label className="cmi-field-wide">Reason for account creation<textarea name="reason" required minLength={10} maxLength={500} rows={3} placeholder="Record the ministry appointment or authorisation (10–500 characters)." /></label>
-              <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowStaffForm(false)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Creating account…" : "Create account & email details"}</button></div>
-              <p className="cmi-field-wide cmi-scope-note">A one-time temporary password is sent to the staff member's email. They must replace it immediately after signing in. The administrator never sees the permanent password.</p>
+              <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowStaffForm(false)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Creating account…" : "Create account"}</button></div>
+              <p className="cmi-field-wide cmi-scope-note">No email is sent. The administrator receives a one-time temporary password to share privately with the staff member. It expires after 24 hours and must be replaced at first sign-in. The administrator never sees or chooses the permanent password.</p>
             </form>}
             <div className="cmi-task-list">
               {staffMembers.map((member) => <article className="cmi-task-row cmi-staff-directory-row" key={member.id}>
@@ -1078,12 +1075,12 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           >
             <div className="cmi-credential-icon"><KeyRound size={22} /></div>
             <p className="cmi-eyebrow">ONE-TIME STAFF CREDENTIAL</p>
-            <h2 id="cmi-credential-title">Invitation email not delivered</h2>
+            <h2 id="cmi-credential-title">Temporary sign-in details</h2>
             <p id="cmi-credential-description">
               The account exists. Share this temporary password with the intended staff member through a private, verified channel. It expires in {credentialHandoff.expiresInHours} hours and must be changed immediately after first sign-in.
             </p>
             <label className="cmi-credential-email">
-              Staff sign-in email
+              Staff login email
               <input value={credentialHandoff.email} readOnly />
             </label>
             <div className="cmi-credential-password">

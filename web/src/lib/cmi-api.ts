@@ -850,11 +850,11 @@ export class CmiApiClient {
       staff_profile_id: string;
       email: string;
       role_code: StaffAccountCreateInput["role_code"];
-      invitation_email_sent: boolean;
-      must_change_password: boolean;
-      temporary_password?: string;
-      manual_handoff_required?: boolean;
-      password_expires_in_hours?: number;
+      invitation_email_sent: false;
+      must_change_password: true;
+      temporary_password: string;
+      manual_handoff_required: true;
+      password_expires_in_hours: number;
     }>("staff-auth", "/admin/staff", { method: "POST", body: input });
   }
 
