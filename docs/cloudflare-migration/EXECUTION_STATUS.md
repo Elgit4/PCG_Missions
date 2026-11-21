@@ -192,3 +192,12 @@ No production Supabase data, Auth identities, Pages variables or production Clou
 - The preview Worker `pcg-missions-api-preview` still does not exist at the time of this update. `VITE_CMI_WORKER_API_URL` remains unset in Pages preview, so the preview frontend continues to use its existing Supabase business API until the Worker is deployed and verified.
 - The latest PR branch commit is `d68ea44959dd48235e6481c9c7a819578c3d35c1`. Frontend CI and Cloudflare D1 Foundation CI were still running when this note was written; no pass is claimed for those in-progress runs.
 - The production Pages branch, canonical production deployment, Supabase production database, Auth identities, and all production routing remain unchanged.
+
+
+## Preview Worker CI credential diagnosis — 21 November 2026
+
+- Inspected GitHub Actions run `44938335612` for commit `d68ea44959dd48235e6481c9c7a819578c3d35c1`. Worker dependency installation, TypeScript type-check, and all 13 Supabase Auth tests passed.
+- The deploy job then failed at the credential guard. The runner log shows `CLOUDFLARE_API_TOKEN` was an empty environment value, so Wrangler was never invoked and no preview Worker was uploaded. The failure is not a Cloudflare API permission error; the secret was not injected into this job at all.
+- The workflow currently reads the repository Actions secret `secrets.CLOUDFLARE_API_TOKEN`. If the existing token is stored as an Environment secret or organization secret, that scope must be made available to this repository/job; an Environment secret also requires the job to target that exact GitHub Environment.
+- Do not paste the token into source code, logs, or chat. Once the correct secret scope is confirmed, rerun the preview workflow and verify `wrangler whoami` before deploying.
+- The preview Pages build is healthy, but it remains on the Supabase API path until `pcg-missions-api-preview` exists and `VITE_CMI_WORKER_API_URL` is configured.
