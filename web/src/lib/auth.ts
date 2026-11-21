@@ -139,6 +139,7 @@ export class PcgAuthClient {
     private readonly publishableKey: string,
     private readonly storage: StorageLike | null = browserStorage(),
     private readonly fetcher: typeof fetch = fetch,
+    private readonly previewMode = false,
   ) {
     const normalizedUrl = supabaseUrl.trim().replace(/\/+$/, "");
     if (!normalizedUrl || !publishableKey.trim()) {
@@ -284,6 +285,15 @@ export class PcgAuthClient {
     if (typeof window === "undefined") return false;
     const fragment = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     if (fragment.get("type") !== "recovery") return false;
+    if (this.previewMode) {
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.search);
+      this.saveSession(null);
+      throw new AuthClientError(
+        403,
+        "PREVIEW_AUTH_MUTATION_DISABLED",
+        "Password-recovery links are disabled in this shared preview. Use the official PCG Missions portal to reset a real staff account.",
+      );
+    }
     const accessToken = fragment.get("access_token");
     const refreshToken = fragment.get("refresh_token");
     if (!accessToken || !refreshToken) {
@@ -454,7 +464,17 @@ export class PcgAuthClient {
     return token ? this.readSession() : null;
   }
 
+  private assertCredentialMutationAllowed(): void {
+    if (!this.previewMode) return;
+    throw new AuthClientError(
+      403,
+      "PREVIEW_AUTH_MUTATION_DISABLED",
+      "Password resets and password changes are disabled in this shared preview because it uses real staff accounts. Use the official PCG Missions portal to complete this account action.",
+    );
+  }
+
   async completePasswordChange(password: string): Promise<void> {
+    this.assertCredentialMutationAllowed();
     if (
       password.length < 12 || password.length > 128 ||
       !/[a-z]/.test(password) || !/[A-Z]/.test(password) ||
@@ -494,6 +514,7 @@ export class PcgAuthClient {
   }
 
   async requestPasswordReset(email: string): Promise<void> {
+    this.assertCredentialMutationAllowed();
     let result: Response;
     try {
       result = await this.sendWithBrowserFallback(
