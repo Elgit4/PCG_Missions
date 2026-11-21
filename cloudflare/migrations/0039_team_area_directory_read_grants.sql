@@ -20,7 +20,7 @@ ON CONFLICT (role_id, capability_id, scope_mode) DO NOTHING;
 INSERT INTO role_capability (role_id, capability_id, scope_mode, created_at)
 SELECT r.id, c.id, 'team', strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 FROM role r
-JOIN capability c ON c.code = 'team.read'
+JOIN capability c ON c.code IN ('team.read', 'area.read')
 WHERE r.code = 'team_leader' AND r.is_active = 1 AND c.is_active = 1
 ON CONFLICT (role_id, capability_id, scope_mode) DO NOTHING;
 
