@@ -107,6 +107,29 @@ describe("capability-driven staff navigation", () => {
     expect(getAvailableStaffPages(ownReportAccess, "branch-a")).toContain("Reports");
   });
 
+  it("opens Teams & Areas for read-only branch and team directory grants", () => {
+    const coordinatorRead = {
+      ...baseSession,
+      capabilities: [
+        { code: "team.read", scope_mode: "branch", branch_id: "branch-a" },
+        { code: "area.read", scope_mode: "branch", branch_id: "branch-a" },
+      ],
+    };
+    const teamLeaderRead = {
+      ...baseSession,
+      roles: [{ code: "team_leader", name: "Team Leader", branch_id: "branch-a" }],
+      capabilities: [
+        { code: "team.read", scope_mode: "team", branch_id: "branch-a" },
+        { code: "area.read", scope_mode: "team", branch_id: "branch-a" },
+      ],
+    };
+
+    expect(canOpenStaffPage(coordinatorRead, "Teams & Areas", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(teamLeaderRead, "Teams & Areas", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(coordinatorRead, "Teams & Areas", "branch-b")).toBe(false);
+    expect(getAvailableStaffPages(teamLeaderRead, "branch-a")).toContain("Teams & Areas");
+  });
+
   it("shows Teams & Areas only with an explicit branch management grant", () => {
     const noGrant = { ...baseSession, capabilities: [] };
     const teamGrant = { ...baseSession, capabilities: [{ code: "team.manage", scope_mode: "branch", branch_id: "branch-a" }] };
