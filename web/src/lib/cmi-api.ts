@@ -716,13 +716,15 @@ export class CmiApiClient {
       throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
     }
     const suffix = path ? (path.startsWith("/") ? path : `/${path}`) : "";
-    const useWorkerSessionApi = functionName === "staff-session" && this.workerApiBaseUrl !== null;
-    const useSameOriginSessionProxy = !useWorkerSessionApi && functionName === "staff-session" &&
+    const workerSupportedFunctions = new Set(["staff-session", "staff-operations", "staff-notifications"]);
+    const useWorkerApi = this.workerApiBaseUrl !== null && workerSupportedFunctions.has(functionName);
+    const useSameOriginSessionProxy = !useWorkerApi && functionName === "staff-session" &&
       typeof window !== "undefined" &&
       window.location.hostname !== "localhost" &&
       window.location.hostname !== "127.0.0.1";
-    const url = useWorkerSessionApi
-      ? new URL("/api/v1/me", this.workerApiBaseUrl!)
+    const workerPath = functionName === "staff-session" ? "/api/v1/me" : "/api/v1" + suffix;
+    const url = useWorkerApi
+      ? new URL(workerPath, this.workerApiBaseUrl!)
       : useSameOriginSessionProxy
         ? new URL("/api/auth?resource=staff-session", window.location.origin)
         : new URL(`${this.baseUrl}/${functionName}${suffix}`);
