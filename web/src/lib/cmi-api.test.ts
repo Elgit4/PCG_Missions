@@ -86,6 +86,71 @@ describe("CmiApiClient", () => {
     expect(url.searchParams.get("limit")).toBe("10");
   });
 
+  it("routes visitor contact capture to the Worker with the idempotency contract", async () => {
+    const created = {
+      id: "contact-123",
+      branch_id: "branch-abc",
+      first_name: "Ama",
+      last_name: "Mensah",
+      preferred_name: null,
+      contact_status: "active",
+      identity_redacted: true,
+    };
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ ok: true, data: created, idempotent_replay: false, request_id: "worker-contact-create" }),
+      { status: 201 },
+    ));
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    const result = await client.createContact({
+      branch_id: "branch-abc",
+      client_request_id: "contact-request-123456",
+      first_name: "Ama",
+      last_name: "Mensah",
+      phone_e164: "+233241234567",
+      phone_display: "+233 24 123 4567",
+      email_normalized: "ama@example.com",
+      preferred_language: "English",
+      source_metadata: { device_type: "web" },
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+
+    expect(url.pathname).toBe("/api/v1/contacts");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBe("contact-request-123456");
+    expect(new Headers(init.headers).has("apikey")).toBe(false);
+    expect(JSON.parse(String(init.body))).toEqual({
+      first_name: "Ama",
+      last_name: "Mensah",
+      phone_e164: "+233241234567",
+      preferred_language: "English",
+      source_metadata: { device_type: "web" },
+      email: "ama@example.com",
+    });
+    expect(result.data.identity_redacted).toBe(true);
+  });
+
+  it("does not allow team routing to be smuggled into visitor capture", async () => {
+    const fetcher = vi.fn();
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    expect(() => client.createContact({
+      branch_id: "branch-abc",
+      client_request_id: "contact-request-123456",
+      first_name: "Ama",
+      team_id: "team-123",
+    })).toThrow(/Team assignment/);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("lists contact notes through the authenticated, branch-scoped staff API", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: [{ id: "note-1", body: "Called after service", created_at: "2026-11-12T10:00:00Z" }], request_id: "note-list" }),
