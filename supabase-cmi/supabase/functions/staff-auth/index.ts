@@ -27,7 +27,6 @@ const ALLOWED_ORIGINS = new Set(
     .map((value) => value.trim()).filter(Boolean),
 );
 ALLOWED_ORIGINS.add("https://pcg-missions.pages.dev");
-ALLOWED_ORIGINS.add("https://pcg-missions-nonprod.pages.dev");
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_FROM = Deno.env.get("CMI_AUTH_EMAIL_FROM") ?? "";
 const APP_URL = (Deno.env.get("CMI_APP_URL") ?? "").replace(/\/+$/, "");
