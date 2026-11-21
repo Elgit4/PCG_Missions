@@ -285,3 +285,12 @@ Unsupported operations deliberately retain their existing Supabase Edge Function
 - Supabase Auth password-reset and password-change operations remain on the existing Supabase Auth/Edge Function routes and are outside this browser API guard. Do not use those flows as preview test operations unless intentionally changing the corresponding real staff account or creating a request in the existing live Auth workflow.
 - The frontend test suite now covers the fail-closed behavior and confirms no request is sent for an unsupported preview write. Authenticated six-role D1 CRUD acceptance is still outstanding.
 
+### Latest safety-guard verification — 21 November 2026, 19:48 UTC
+
+- [CMI web CI 44942920455](https://github.com/Elgit4/PCG_Missions/actions/runs/44942920455) — passed type-check, lint, unit tests and production asset build for the preview-guard changes.
+- [Cloudflare D1 Foundation 44942920419](https://github.com/Elgit4/PCG_Missions/actions/runs/44942920419) — passed Worker type-check/Auth tests and SQLite/D1 foundation checks.
+- [Cloudflare Preview Worker Bundle 44942913253](https://github.com/Elgit4/PCG_Missions/actions/runs/44942913253) — passed against the currently deployed Worker and Pages preview. In addition to the health/schema, anonymous route, CORS/idempotency, and nine team/service-area mutation checks, its Pages asset check confirmed both the preview Worker origin and the `PREVIEW_OPERATION_NOT_MIGRATED` write guard are embedded in the built JavaScript.
+- Latest source branch head at this verification: `07f517b10e37660397ac303a3da6a45d484fc057`. The Pages preview build carrying the guard completed from commit `11b9940219507a88e9d47439a6a4a10e3cc247fe`; later commits changed only documentation/workflow files.
+- The write guard applies only to unsupported non-GET operations issued through the browser CMI business API client. Unsupported GETs and the separate Auth password-reset/change workflow still use the current Supabase project, so this remains a shared-Auth/hybrid preview, not an isolated tenant.
+- The active preview Worker remains deployment `a79b83d8-05ca-42c8-8f09-78931fe85d7d`, version `1292566a-e715-4a7a-b8b3-2971366e6a85` at 100% for the preview Worker. No production resources were changed.
+
