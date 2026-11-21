@@ -2038,17 +2038,20 @@ async function createFollowupTask(
   const body = await readJsonBody(request);
   if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
   const payload = body.value as {
-    contact_id?: unknown; assignee_profile_id?: unknown; team_id?: unknown;
+    contact_id?: unknown; assignee_user_id?: unknown; assignee_profile_id?: unknown; team_id?: unknown;
     list_id?: unknown; priority?: unknown; due_at?: unknown; task_note?: unknown;
   };
-  const allowed = new Set(["contact_id","assignee_profile_id","team_id","list_id","priority","due_at","task_note"]);
+  const allowed = new Set(["contact_id","assignee_user_id","assignee_profile_id","team_id","list_id","priority","due_at","task_note"]);
   if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
       Object.keys(payload).some((key) => !allowed.has(key))) {
     return json(400, { ok: false, error: { code: "INVALID_FOLLOWUP_BODY" } }, requestId, origin);
   }
   const contactId = typeof payload.contact_id === "string" ? payload.contact_id.trim() : "";
-  const assigneeProfileId = typeof payload.assignee_profile_id === "string" ? payload.assignee_profile_id.trim() : "";
+  const assigneeAuthUserId = typeof payload.assignee_user_id === "string" ? payload.assignee_user_id.trim() : "";
+  const requestedAssigneeProfileId = typeof payload.assignee_profile_id === "string" ? payload.assignee_profile_id.trim() : "";
   const requestedTeamId = typeof payload.team_id === "string" ? payload.team_id.trim() : "";
+  const hasAssignmentTargets = Number(Boolean(assigneeAuthUserId)) +
+    Number(Boolean(requestedAssigneeProfileId)) + Number(Boolean(requestedTeamId));
   const listId = typeof payload.list_id === "string" ? payload.list_id.trim() || null : null;
   const priority = payload.priority === undefined ? 3 : payload.priority;
   const dueAt = payload.due_at === undefined || payload.due_at === null || payload.due_at === ""
@@ -2056,7 +2059,7 @@ async function createFollowupTask(
   const taskNote = typeof payload.task_note === "string" ? payload.task_note.trim() || null : null;
   if (
     !contactId || contactId.length > 128 ||
-    (!!assigneeProfileId === !!requestedTeamId) ||
+    hasAssignmentTargets !== 1 ||
     (payload.priority !== undefined && typeof payload.priority !== "number") ||
     !Number.isInteger(priority) || Number(priority) < 1 || Number(priority) > 5 ||
     (payload.list_id !== undefined && payload.list_id !== null && typeof payload.list_id !== "string") ||
@@ -2096,11 +2099,13 @@ async function createFollowupTask(
 
   let assigneeUserId: string | null = null;
   let teamId: string | null = null;
-  if (assigneeProfileId) {
+  if (assigneeAuthUserId || requestedAssigneeProfileId) {
+    const assigneeLookup = assigneeAuthUserId ? "sp.auth_user_id = ?" : "sp.id = ?";
+    const assigneeLookupValue = assigneeAuthUserId || requestedAssigneeProfileId;
     const target = await env.DB.prepare(`
-      SELECT sp.auth_user_id
+      SELECT sp.id AS profile_id, sp.auth_user_id
       FROM staff_profile sp
-      WHERE sp.id = ? AND sp.account_status = 'active'
+      WHERE ${assigneeLookup} AND sp.account_status = 'active'
         AND EXISTS (
           SELECT 1 FROM staff_role_assignment ra
           JOIN role r ON r.id = ra.role_id AND r.is_active = 1
@@ -2109,18 +2114,18 @@ async function createFollowupTask(
             AND (ra.ends_at IS NULL OR ra.ends_at > ?)
         )
       LIMIT 1
-    `).bind(assigneeProfileId, context.activeBranch.branchId, now, now).first<{ auth_user_id: string }>();
+    `).bind(assigneeLookupValue, context.activeBranch.branchId, now, now)
+      .first<{ profile_id: string; auth_user_id: string }>();
     if (!target) return json(400, { ok: false, error: { code: "FOLLOWUP_ASSIGNEE_NOT_ACTIVE" } }, requestId, origin);
     assigneeUserId = target.auth_user_id;
     if (assignScope === "team") {
       const member = await env.DB.prepare(`
         SELECT 1 FROM staff_team_membership tm
-        JOIN staff_profile target ON target.id = tm.staff_profile_id
-        WHERE tm.team_id = ? AND tm.branch_id = ? AND target.id = ?
+        WHERE tm.team_id = ? AND tm.branch_id = ? AND tm.staff_profile_id = ?
           AND tm.revoked_at IS NULL AND tm.starts_at <= ?
           AND (tm.ends_at IS NULL OR tm.ends_at > ?)
         LIMIT 1
-      `).bind(teamIdForScope, context.activeBranch.branchId, assigneeProfileId, now, now).first();
+      `).bind(teamIdForScope, context.activeBranch.branchId, target.profile_id, now, now).first();
       if (!member) return json(403, { ok: false, error: { code: "FOLLOWUP_ASSIGNEE_OUTSIDE_TEAM" } }, requestId, origin);
     }
   } else {
@@ -2152,6 +2157,22 @@ async function createFollowupTask(
     priority, due_at: dueAt, task_note: taskNote,
   };
   const digestHex = await sha256Hex(JSON.stringify(digestPayload));
+  const respondWithTask = async (id: string, status: 200 | 201, idempotentReplay: boolean): Promise<Response> => {
+    const task = await env.DB.prepare(`
+      SELECT id, branch_id, contact_id, assignee_user_id, team_id, priority,
+             due_at, status, task_note, created_at, updated_at
+      FROM followup_task
+      WHERE id = ? AND branch_id = ?
+      LIMIT 1
+    `).bind(id, context.activeBranch!.branchId).first<{
+      id: string; branch_id: string; contact_id: string; assignee_user_id: string | null;
+      team_id: string | null; priority: number; due_at: string | null; status: FollowupStatus;
+      task_note: string | null; created_at: string; updated_at: string;
+    }>();
+    if (!task) return json(500, { ok: false, error: { code: "FOLLOWUP_TASK_READBACK_FAILED" } }, requestId, origin);
+    return json(status, { ok: true, data: task, idempotent_replay: idempotentReplay }, requestId, origin);
+  };
+
   const existing = await env.DB.prepare(`
     SELECT id, hex(request_digest) AS digest_hex
     FROM followup_task
@@ -2161,7 +2182,7 @@ async function createFollowupTask(
     if (existing.digest_hex.toLowerCase() !== digestHex) {
       return json(409, { ok: false, error: { code: "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD" } }, requestId, origin);
     }
-    return json(200, { ok: true, task_id: existing.id, idempotent_replay: true }, requestId, origin);
+    return respondWithTask(existing.id, 200, true);
   }
 
   const taskId = crypto.randomUUID();
@@ -2288,7 +2309,7 @@ async function createFollowupTask(
     }
     return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_CREATE_CONFLICT" } }, requestId, origin);
   }
-  return json(201, { ok: true, task_id: taskId, status: "open", idempotent_replay: false }, requestId, origin);
+  return respondWithTask(taskId, 201, false);
 }
 
 async function updateFollowupTask(
@@ -2427,7 +2448,17 @@ async function updateFollowupTask(
   } catch {
     return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_UPDATE_CONFLICT" } }, requestId, origin);
   }
-  return json(200, { ok: true, task_id: taskId, status: nextStatus, updated_at: now }, requestId, origin);
+  const updatedTask = await env.DB.prepare(`
+    SELECT id, branch_id, contact_id, assignee_user_id, team_id, priority,
+           due_at, status, task_note, created_at, updated_at
+    FROM followup_task
+    WHERE id = ? AND branch_id = ?
+    LIMIT 1
+  `).bind(taskId, access.activeBranch.branchId).first<Record<string, unknown>>();
+  if (!updatedTask) {
+    return json(500, { ok: false, error: { code: "FOLLOWUP_TASK_READBACK_FAILED" } }, requestId, origin);
+  }
+  return json(200, { ok: true, data: updatedTask }, requestId, origin);
 }
 
 
