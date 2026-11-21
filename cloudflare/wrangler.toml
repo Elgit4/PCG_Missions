@@ -19,6 +19,8 @@ head_sampling_rate = 0.1
 [vars]
 APP_ENV = "non-production"
 APP_ALLOWED_ORIGINS = "http://localhost:5173"
+SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
+SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
 
 [[d1_databases]]
 binding = "DB"
