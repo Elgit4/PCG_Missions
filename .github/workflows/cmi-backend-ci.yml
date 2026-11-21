@@ -213,7 +213,7 @@ jobs:
       - name: Assert the isolated CMI CLI project layout
         run: |
           test -f supabase-cmi/supabase/config.toml
-          test -f supabase-cmi/supabase/migrations/20261108010000_cmi_identity_authorization_foundation.sql
+          test -f supabase-cmi/supabase/migrations/20261110134538_cmi_identity_authorization_foundation.sql
           test -f supabase-cmi/supabase/tests/identity_authorization_foundation.test.sql
           test ! -e supabase-cmi/supabase/migrations/20261107001200_churchconnect_core_schema.sql
 
