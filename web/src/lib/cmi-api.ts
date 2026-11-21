@@ -1,4 +1,4 @@
-import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./supabase-config";
+import { CMI_WORKER_API_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./supabase-config";
 
 /**
  * PCG Missions CMI v2.1 browser API adapter.
@@ -10,6 +10,7 @@ import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./supabase-config";
 export interface CmiApiConfig {
   supabaseUrl: string;
   publishableKey: string;
+  workerApiUrl?: string;
 }
 export type AccessTokenProvider = () => Promise<string | null>;
 export interface ApiEnvelope<T> {
@@ -651,6 +652,7 @@ export interface MinistryReportReviewResult {
 
 export class CmiApiClient {
   private readonly baseUrl: string;
+  private readonly workerApiBaseUrl: string | null;
 
   constructor(
     private readonly config: CmiApiConfig,
@@ -666,6 +668,16 @@ export class CmiApiClient {
       throw new Error("The Supabase URL must use HTTPS outside local development.");
     }
     this.baseUrl = `${supabaseUrl}/functions/v1`;
+    const workerApiUrl = normalizeBaseUrl(config.workerApiUrl ?? CMI_WORKER_API_URL);
+    if (workerApiUrl) {
+      const workerUrl = new URL(workerApiUrl);
+      if (workerUrl.protocol !== "https:" && workerUrl.hostname !== "localhost" && workerUrl.hostname !== "127.0.0.1") {
+        throw new Error("The Cloudflare Worker API URL must use HTTPS outside local development.");
+      }
+      this.workerApiBaseUrl = workerApiUrl;
+    } else {
+      this.workerApiBaseUrl = null;
+    }
   }
 
   private async sendWithBrowserFallback(url: string | URL, init: RequestInit): Promise<Response> {
@@ -704,13 +716,16 @@ export class CmiApiClient {
       throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
     }
     const suffix = path ? (path.startsWith("/") ? path : `/${path}`) : "";
-    const useSameOriginSessionProxy = functionName === "staff-session" &&
+    const useWorkerSessionApi = functionName === "staff-session" && this.workerApiBaseUrl !== null;
+    const useSameOriginSessionProxy = !useWorkerSessionApi && functionName === "staff-session" &&
       typeof window !== "undefined" &&
       window.location.hostname !== "localhost" &&
       window.location.hostname !== "127.0.0.1";
-    const url = useSameOriginSessionProxy
-      ? new URL("/api/auth?resource=staff-session", window.location.origin)
-      : new URL(`${this.baseUrl}/${functionName}${suffix}`);
+    const url = useWorkerSessionApi
+      ? new URL("/api/v1/me", this.workerApiBaseUrl!)
+      : useSameOriginSessionProxy
+        ? new URL("/api/auth?resource=staff-session", window.location.origin)
+        : new URL(`${this.baseUrl}/${functionName}${suffix}`);
     for (const [key, value] of Object.entries(options.query ?? {})) {
       if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
     }
