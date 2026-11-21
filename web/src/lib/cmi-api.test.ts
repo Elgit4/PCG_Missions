@@ -516,7 +516,6 @@ describe("CmiApiClient", () => {
     expect(result.data.registration.status).toBe("cancelled");
   });
 
-});
 
   it("routes staff-session lookup to the opt-in Cloudflare Worker endpoint", async () => {
     const fetcher = vi.fn(async () => new Response(
@@ -542,4 +541,4 @@ describe("CmiApiClient", () => {
     expect(result.data.staff.id).toBe("staff-1");
     expect(result.data.roles[0]?.code).toBe("coordinator");
   });
-}
+});
