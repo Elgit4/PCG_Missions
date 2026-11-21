@@ -4094,6 +4094,12 @@ async function updatePrayerRequestStatus(
     ) {
       return handleTeamOperationsMutation(request, env, requestId, origin);
     }
+    if (
+      (url.pathname.startsWith("/api/v1/teams/") || url.pathname.startsWith("/api/v1/areas/")) &&
+      (request.method === "POST" || request.method === "PATCH")
+    ) {
+      return handleTeamMembershipOrCoverageMutation(request, env, requestId, origin);
+    }
 
     if (request.method !== "GET") {
       return json(405, {
