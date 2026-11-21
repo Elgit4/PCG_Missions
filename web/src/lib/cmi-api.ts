@@ -692,7 +692,7 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
   }
 
   if (functionName === "staff-operations") {
-    if (suffix === "/contacts" && verb === "GET") return "/api/v1/contacts";
+    if (suffix === "/contacts" && (verb === "GET" || verb === "POST")) return "/api/v1/contacts";
     if (/^\/contacts\/[^/]+$/.test(suffix) && verb === "GET") return "/api/v1" + suffix;
     if (/^\/contacts\/[^/]+\/interactions$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
     if (/^\/contacts\/[^/]+\/notes$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
@@ -867,7 +867,26 @@ export class CmiApiClient {
     return this.request<ContactRecord>("staff-operations", `/contacts/${encodeURIComponent(contactId)}`, { query: { branch_id: branchId } });
   }
   createContact(input: ContactCreateInput) {
-    return this.request<ContactRecord>("staff-operations", "/contacts", { method: "POST", body: input });
+    if (input.team_id) {
+      throw new TypeError("Team assignment is not part of the contact-capture operation.");
+    }
+    const {
+      branch_id,
+      client_request_id,
+      phone_display: _phoneDisplay,
+      email_normalized,
+      team_id: _teamId,
+      ...body
+    } = input;
+    return this.request<ContactRecord>("staff-operations", "/contacts", {
+      method: "POST",
+      query: { branch_id },
+      body: {
+        ...body,
+        ...(email_normalized !== undefined ? { email: email_normalized } : {}),
+      },
+      idempotencyKey: client_request_id,
+    });
   }
   updateContact(branchId: string, contactId: string, input: ContactUpdateInput) {
     return this.request<ContactRecord>("staff-operations", `/contacts/${encodeURIComponent(contactId)}`, {
