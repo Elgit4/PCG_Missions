@@ -583,6 +583,21 @@ describe("CmiApiClient", () => {
     expect(new Headers(init.headers).has("apikey")).toBe(false);
     expect(result.data[0]?.id).toBe("note-1");
   });
+  it("routes contact note creation through the Worker contract", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "note-2", body: "Called visitor", created_at: "2026-11-21T11:00:00Z", updated_at: "2026-11-21T11:00:00Z" }, request_id: "worker-note-create" }),
+      { status: 201 },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.createContactNote("branch-abc", "contact-123", { body: "Called visitor" });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/contacts/contact-123/notes");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ body: "Called visitor" });
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(result.data.id).toBe("note-2");
+  });
+
   it("keeps Worker-unsupported operations on their existing Supabase function", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: [], request_id: "supabase-fallback-1" }),
