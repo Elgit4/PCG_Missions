@@ -2736,7 +2736,7 @@ async function listTeamOperationsCollection(
   const readCapability = resource === "teams" ? "team.read" : "area.read";
   const grants = context.activeBranch.capabilities.filter((item) => item.code === readCapability);
   const branchRead = grants.some((item) => item.scopeMode === "branch");
-  const teamRead = resource === "teams" && grants.some((item) => item.scopeMode === "team");
+  const teamRead = grants.some((item) => item.scopeMode === "team");
   if (!branchRead && !teamRead) {
     return mapCapabilityFailure("capability_denied", requestId, origin);
   }
@@ -2826,27 +2826,64 @@ async function listTeamOperationsCollection(
       return json(200, { ok: true, data: { teams } }, requestId, origin);
     }
 
-    // Service-area directory visibility is branch-scoped only. Team membership
-    // alone does not imply authority to inspect branch-wide service coverage.
-    if (!branchRead) {
-      return mapCapabilityFailure("capability_denied", requestId, origin);
-    }
+    // Branch readers see the branch directory. Team-scoped readers see only
+    // service areas with active coverage assigned to a current member of one
+    // of their own teams; team membership never widens to the whole branch.
     const areasResult = await env.DB.prepare(`
-      SELECT id, branch_id, name, code, is_active, created_at, updated_at
-      FROM service_area
-      WHERE branch_id = ?
-      ORDER BY is_active DESC, name ASC
-    `).bind(branchId).all<Record<string, unknown>>();
-    const coverageResult = await env.DB.prepare(`
-      SELECT id, service_area_id, staff_profile_id, starts_at, ends_at, created_at
-      FROM staff_area_coverage
-      WHERE branch_id = ?
-        AND starts_at <= ?
-        AND revoked_at IS NULL
-        AND (ends_at IS NULL OR ends_at > ?)
-      ORDER BY starts_at DESC
-    `).bind(branchId, now, now).all<Record<string, unknown>>();
-    const coverage = coverageResult.results ?? [];
+      SELECT sa.id, sa.branch_id, sa.name, sa.code, sa.is_active, sa.created_at, sa.updated_at
+      FROM service_area sa
+      WHERE sa.branch_id = ?
+        AND (
+          ? = 1
+          OR EXISTS (
+            SELECT 1
+            FROM staff_area_coverage sac
+            JOIN staff_team_membership covered_member
+              ON covered_member.staff_profile_id = sac.staff_profile_id
+             AND covered_member.branch_id = sac.branch_id
+            WHERE sac.service_area_id = sa.id
+              AND sac.branch_id = sa.branch_id
+              AND sac.starts_at <= ?
+              AND sac.revoked_at IS NULL
+              AND (sac.ends_at IS NULL OR sac.ends_at > ?)
+              AND covered_member.starts_at <= ?
+              AND covered_member.revoked_at IS NULL
+              AND (covered_member.ends_at IS NULL OR covered_member.ends_at > ?)
+              AND EXISTS (
+                SELECT 1
+                FROM staff_team_membership actor_membership
+                WHERE actor_membership.team_id = covered_member.team_id
+                  AND actor_membership.branch_id = covered_member.branch_id
+                  AND actor_membership.staff_profile_id = ?
+                  AND actor_membership.membership_role = 'leader'
+                  AND actor_membership.starts_at <= ?
+                  AND actor_membership.revoked_at IS NULL
+                  AND (actor_membership.ends_at IS NULL OR actor_membership.ends_at > ?)
+              )
+          )
+        )
+      ORDER BY sa.is_active DESC, sa.name ASC
+    `).bind(
+      branchId, branchRead ? 1 : 0, now, now, now, now,
+      context.staff.profileId, now, now,
+    ).all<Record<string, unknown>>();
+    const accessibleAreas = areasResult.results ?? [];
+    const areaIds = accessibleAreas.map((area) => String(area.id));
+    let coverage: Record<string, unknown>[] = [];
+    if (areaIds.length) {
+      const placeholders = areaIds.map(() => "?").join(", ");
+      const coverageResult = await env.DB.prepare(`
+        SELECT id, service_area_id, staff_profile_id, starts_at, ends_at, created_at
+        FROM staff_area_coverage
+        WHERE branch_id = ?
+          AND service_area_id IN (${placeholders})
+          AND starts_at <= ?
+          AND revoked_at IS NULL
+          AND (ends_at IS NULL OR ends_at > ?)
+        ORDER BY starts_at DESC
+      `).bind(branchId, ...areaIds, now, now).all<Record<string, unknown>>();
+      coverage = coverageResult.results ?? [];
+    }
     const profileIds = includeStaffNames
       ? [...new Set(coverage.map((item) => String(item.staff_profile_id)))]
       : [];
@@ -2861,7 +2898,7 @@ async function listTeamOperationsCollection(
       profiles = result.results ?? [];
     }
     const profileById = new Map(profiles.map((profile) => [String(profile.id), profile]));
-    const areas = (areasResult.results ?? []).map((area) => {
+    const areas = accessibleAreas.map((area) => {
       const areaCoverage = coverage.filter((item) => item.service_area_id === area.id);
       return {
         ...area,
