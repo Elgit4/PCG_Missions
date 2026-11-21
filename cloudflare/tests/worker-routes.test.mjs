@@ -323,6 +323,17 @@ function authorizedDirectoryEnv(roleCode) {
             const requested = new Set(this.values.map(String));
             return { results: profiles.filter((profile) => requested.has(profile.id)) };
           }
+          if (this.sql.includes("FROM contact_interaction i")) {
+            return { results: [{
+              id: "90000000-0000-4000-8000-000000000001",
+              interaction_type: "call",
+              occurred_at: "2026-11-21T12:00:00.000Z",
+              outcome_code: "answered",
+              summary: "Spoke with visitor",
+              next_action_at: null,
+              created_at: "2026-11-21T12:00:01.000Z",
+            }] };
+          }
           return { results: [] };
         },
         async run() {
@@ -464,6 +475,63 @@ test("Coordinator contact detail read uses the branch-scoped Worker projection a
   assert.equal(payload.data.phone_e164, null);
   assert.equal(payload.data.email_normalized, null);
   assert.equal(payload.contact, undefined);
+});
+
+test("Coordinator lists scoped contact interaction history from D1", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("coordinator");
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/contacts/" + CONTACT_ID + "/interactions",
+    {
+      headers: {
+        Authorization: "Bearer verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+      },
+    },
+  ), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data[0]?.interaction_type, "call");
+  assert.equal(payload.data[0]?.summary, "Spoke with visitor");
+  const query = fixture.calls.find((call) =>
+    call.kind === "all" && call.sql.includes("FROM contact_interaction i")
+  );
+  assert.ok(query);
+  assert.equal(query.values[0], CONTACT_ID);
+  assert.equal(query.values[1], BRANCH_ID);
+  assert.match(query.sql, /c\.contact_status <> 'merged'/);
+  assert.match(query.sql, /LIMIT 100/);
+});
+
+test("Prayer Intercessor cannot read visitor contact interaction history", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("prayer_intercessor");
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/contacts/" + CONTACT_ID + "/interactions",
+    {
+      headers: {
+        Authorization: "Bearer verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+      },
+    },
+  ), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 403);
+  assert.equal(payload.error.code, "CAPABILITY_DENIED");
+  assert.equal(
+    fixture.calls.some((call) => call.kind === "all" && call.sql.includes("FROM contact_interaction i")),
+    false,
+  );
 });
 
 test("Coordinator can record a scoped contact interaction through the D1 Worker", async (t) => {
