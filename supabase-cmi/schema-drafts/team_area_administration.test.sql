@@ -355,5 +355,13 @@ select throws_ok(
   'A team with active members cannot be deactivated'
 );
 
+
+select ok(
+  has_table_privilege('service_role','public.staff_team_membership','SELECT')
+  and not has_table_privilege('anon','public.staff_team_membership','SELECT')
+  and not has_table_privilege('authenticated','public.staff_team_membership','SELECT'),
+  'Team Edge Function can list memberships without granting browser table access'
+);
+
 select * from finish();
 rollback;
