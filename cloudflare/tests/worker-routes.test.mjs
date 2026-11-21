@@ -239,6 +239,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
     password_setup_expires_at: null,
   };
   let writes = 0;
+  let followupTaskStatus = "open";
 
   const DB = {
     prepare(sql) {
@@ -271,7 +272,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
               team_id: null,
               priority: 2,
               due_at: null,
-              status: "completed",
+              status: followupTaskStatus,
               task_note: "Follow up with visitor",
               created_at: "2026-11-21T12:00:00.000Z",
               updated_at: "2026-11-21T12:30:00.000Z",
@@ -377,6 +378,9 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
     },
     async batch(statements) {
       writes += statements.length;
+      if (statements.some((statement) => statement.sql.includes("UPDATE followup_task"))) {
+        followupTaskStatus = "completed";
+      }
       calls.push({ kind: "batch", statements: statements.length });
       return statements.map(() => ({ success: true, meta: { changes: 1 } }));
     },
