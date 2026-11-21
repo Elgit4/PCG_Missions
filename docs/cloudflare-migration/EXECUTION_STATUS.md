@@ -275,3 +275,13 @@ Unsupported operations deliberately retain their existing Supabase Edge Function
 4. Authenticated write acceptance for the newly added team/service-area mutations has not yet been completed against a real staff session.
 5. GitHub Actions still receives an empty `CLOUDFLARE_API_TOKEN` in the credential-based deploy workflow. That workflow is now manual-only; the independent bundle/smoke workflow runs automatically.
 6. Production Pages, production Supabase identities/data, DNS and Arkesel SMS configuration remain unchanged. SMS remains intentionally disabled.
+
+### Preview shared-Auth and write-isolation safeguards — 21 November 2026
+
+- The Cloudflare Pages preview uses the **same Supabase project and Auth tenant** as the existing live application (`cgwffpxlwgbnlinzwfoj`). It is not an isolated Supabase Auth environment. Login therefore authenticates existing Supabase identities.
+- The preview Worker routes only the explicitly supported operations to the EU D1 rehearsal database. Unsupported business **GET** operations still use the existing Supabase Edge Functions and their current authorization/RLS rules; those reads are not backed by an isolated preview dataset.
+- Added `VITE_CMI_PREVIEW_MODE=true` to the Pages preview build. When a request is not implemented by the configured preview Worker, the browser API client now blocks non-GET business writes with `PREVIEW_OPERATION_NOT_MIGRATED` before making a network request. This prevents an unsupported event/report/content/etc. mutation from silently falling through to the shared Supabase project.
+- The production build explicitly has `VITE_CMI_PREVIEW_MODE=false`; this safety gate does not alter the current live app.
+- Supabase Auth password-reset and password-change operations remain on the existing Supabase Auth/Edge Function routes and are outside this browser API guard. Do not use those flows as preview test operations unless intentionally changing the corresponding real staff account or creating a request in the existing live Auth workflow.
+- The frontend test suite now covers the fail-closed behavior and confirms no request is sent for an unsupported preview write. Authenticated six-role D1 CRUD acceptance is still outstanding.
+
