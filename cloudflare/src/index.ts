@@ -3378,6 +3378,9 @@ async function updatePrayerRequestStatus(
         if (context.state === "branch_not_authorized") {
           return json(403, { ok: false, error: { code: "BRANCH_NOT_AUTHORIZED" } }, requestId, origin);
         }
+        if (context.state !== "authenticated") {
+          return json(403, { ok: false, error: { code: "STAFF_CONTEXT_UNAVAILABLE" } }, requestId, origin);
+        }
         if (context.staff.branches.length === 0) {
           return json(403, { ok: false, error: { code: "NO_ACTIVE_BRANCH_ASSIGNMENT" } }, requestId, origin);
         }
