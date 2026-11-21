@@ -3547,6 +3547,9 @@ async function updatePrayerRequestStatus(
         if (context.state === "password_setup_expired") {
           return json(403, { ok: false, error: { code: "PASSWORD_SETUP_EXPIRED" } }, requestId, origin);
         }
+        if (context.state === "password_setup_expired") {
+          return json(403, { ok: false, error: { code: "PASSWORD_SETUP_EXPIRED" } }, requestId, origin);
+        }
         if (context.state === "branch_not_authorized") {
           return json(403, { ok: false, error: { code: "BRANCH_NOT_AUTHORIZED" } }, requestId, origin);
         }
