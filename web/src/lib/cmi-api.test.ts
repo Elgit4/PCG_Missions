@@ -517,3 +517,29 @@ describe("CmiApiClient", () => {
   });
 
 });
+
+  it("routes staff-session lookup to the opt-in Cloudflare Worker endpoint", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({
+        data: {
+          user: { id: "auth-user-1", email: "staff@example.com" },
+          staff: { id: "staff-1", auth_user_id: "auth-user-1", full_name: "Staff Member", email: "staff@example.com", account_status: "active" },
+          branches: [{ id: "branch-1", name: "Main", timezone: "Africa/Accra" }],
+          roles: [{ code: "coordinator", name: "Coordinator", branch_id: "branch-1" }],
+          capabilities: [{ code: "contacts.read", scope_mode: "branch", branch_id: "branch-1" }],
+          must_change_password: false,
+          password_setup_expires_at: null,
+        },
+        request_id: "worker-session-1",
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://pcg-missions-api-preview.example.workers.dev" }, async () => "supabase-access-token", fetcher as typeof fetch);
+    const result = await client.getStaffSession();
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(String(url)).toBe("https://pcg-missions-api-preview.example.workers.dev/api/v1/me");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer supabase-access-token");
+    expect(result.data.staff.id).toBe("staff-1");
+    expect(result.data.roles[0]?.code).toBe("coordinator");
+  });
+}
