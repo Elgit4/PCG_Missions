@@ -733,10 +733,8 @@ export class CmiApiClient {
     for (const [key, value] of Object.entries(options.query ?? {})) {
       if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
     }
-    const headers = new Headers({
-      apikey: this.config.publishableKey,
-      Accept: "application/json",
-    });
+    const headers = new Headers({ Accept: "application/json" });
+    if (!useWorkerApi) headers.set("apikey", this.config.publishableKey);
     if (token) headers.set("Authorization", `Bearer ${token}`);
     const branchId = options.query?.branch_id;
     if (branchId !== undefined && branchId !== null && branchId !== "") {
