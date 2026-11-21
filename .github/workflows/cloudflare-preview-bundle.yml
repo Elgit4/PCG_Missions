@@ -70,10 +70,22 @@ jobs:
           cat /tmp/contact.json
           test "$contact_status" = "401"
           node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/contact.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          interaction_read_status="$(curl --silent --show-error -o /tmp/interaction-read.json -w "%{http_code}" "$url/api/v1/contacts/10000000-0000-4000-8000-000000000001/interactions")"
+          cat /tmp/interaction-read.json
+          test "$interaction_read_status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/interaction-read.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
           interaction_status="$(curl --silent --show-error -o /tmp/interaction.json -w "%{http_code}" -X POST "$url/api/v1/contacts/10000000-0000-4000-8000-000000000001/interactions" -H "Content-Type: application/json" --data '{"interaction_type":"call"}')"
           cat /tmp/interaction.json
           test "$interaction_status" = "401"
           node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/interaction.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          task_create_status="$(curl --silent --show-error -o /tmp/task-create.json -w "%{http_code}" -X POST "$url/api/v1/followup/tasks" -H "Content-Type: application/json" --data '{"branch_id":"30000000-0000-4000-8000-000000000001","contact_id":"80000000-0000-4000-8000-000000000001","client_request_id":"90000000-0000-4000-8000-000000000001","assignee_user_id":"10000000-0000-4000-8000-000000000001","priority":2}')"
+          cat /tmp/task-create.json
+          test "$task_create_status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/task-create.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          task_update_status="$(curl --silent --show-error -o /tmp/task-update.json -w "%{http_code}" -X PATCH "$url/api/v1/followup/tasks/90000000-0000-4000-8000-000000000002" -H "Content-Type: application/json" --data '{"status":"in_progress"}')"
+          cat /tmp/task-update.json
+          test "$task_update_status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/task-update.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
           for route in "teams" "areas"; do
             status="$(curl --silent --show-error -o "/tmp/$route.json" -w "%{http_code}" "$url/api/v1/$route?branch_id=00000000-0000-4000-8000-000000000001")"
             cat "/tmp/$route.json"
