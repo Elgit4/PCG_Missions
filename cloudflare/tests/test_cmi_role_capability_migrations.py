@@ -325,7 +325,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            38,
+            39,
         )
 
 
