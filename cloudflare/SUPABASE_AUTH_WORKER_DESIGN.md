@@ -1,6 +1,6 @@
 # Supabase Auth integration for the Cloudflare Worker
 
-**Status:** Phase 2 implementation design; not deployed.  
+**Status:** Supabase Auth verifier and Admin adapter implemented in source; CI tests added; not deployed.  
 **Applies to:** `feat/cloudflare-d1-migration-foundation`  
 **Production frontend:** `https://pcg-missions.pages.dev/`  
 **Supabase project:** `cgwffpxlwgbnlinzwfoj`
@@ -13,9 +13,7 @@ The browser's existing `PcgAuthClient` remains responsible for sign-in, refresh,
 
 ## Token verification in Workers
 
-The current Worker calls Better Auth's `createAuth(...).api.getSession()`. Replace that with a request-scoped Supabase Auth verifier.
-
-Initial safe implementation:
+The Worker now uses a request-scoped Supabase Auth verifier in `src/auth.ts` and `src/staff-context.ts`. The verifier calls Supabase `GET /auth/v1/user`; it does not decode JWT claims locally.
 
 1. Require an `Authorization: Bearer <access-token>` header on every protected API route.
 2. Call `GET {SUPABASE_URL}/auth/v1/user` with the configured Supabase publishable key in `apikey` and the caller's bearer token in `Authorization`.
@@ -41,9 +39,9 @@ Production bindings must be separate and must not be added until production reso
 
 ## Auth Admin operations
 
-The current source has an invitation-acceptance path that calls Better Auth `signUpEmail`. That call cannot remain.
+Invitation acceptance now uses `createSupabaseAuthUser` against Supabase Auth Admin API, with the service-role key read only from Worker environment secrets. If D1 provisioning fails, the code attempts a compensating Auth Admin delete for the newly created identity. Compensation retry/reconciliation and failure-injection acceptance remain open.
 
-Design the replacement as an explicit Auth Admin adapter using Supabase's supported Admin API, authenticated with the service-role secret stored only in the Worker. Before implementation, reconcile the existing Supabase staff provisioning contract and password lifecycle:
+The existing Supabase staff provisioning contract and password lifecycle remain mandatory:
 
 - Staff accounts remain administrator-provisioned; no public self-sign-up.
 - Preserve the three existing Auth identities; do not recreate or reset them.
@@ -54,13 +52,13 @@ Design the replacement as an explicit Auth Admin adapter using Supabase's suppor
 - Password changes must be performed through Supabase Auth's supported user update flow or Admin API as appropriate, with the existing audit and expiry state updated safely in D1.
 - Never return a service-role credential, temporary password or admin API response containing secrets to the browser.
 
-The Auth Admin adapter must be separately tested for duplicate email, existing identity, expired invitation, concurrent acceptance, D1 failure after Auth creation, Auth failure before D1 writes, and compensation failure.
+Unit tests cover bearer-token verification, invalid tokens, Auth upstream 5xx/network failure, malformed identity responses, Admin user creation/deletion and missing service-role configuration. Invitation-level tests for duplicate email, expired/concurrent acceptance, D1 failure and compensation failure remain required.
 
 ## Routes and frontend boundary
 
 The existing Pages route `/api/auth` remains the sign-in/session proxy to Supabase Auth. Do not move login to a new Better Auth endpoint.
 
-The Cloudflare API Worker handles business operations and accepts the Supabase bearer token. Its old `/api/auth/*` Better Auth handler must be removed or return a deliberate not-found response; it must not create a second login surface.
+The Cloudflare API Worker handles business operations and accepts the Supabase bearer token. Its Better Auth `/api/auth/*` handler has been removed; sign-in, refresh, recovery and logout remain on the existing Pages-to-Supabase Auth proxy.
 
 The frontend business API adapter currently derives its base URL as `${SUPABASE_URL}/functions/v1`. It must later be changed to use an environment-configured Cloudflare Worker API base URL, with distinct preview and production values. That frontend switch is a separate cutover step and must not occur until the Worker route inventory is complete and authenticated acceptance tests pass.
 
@@ -88,14 +86,12 @@ The Pages auth proxy currently forwards `staff-session`, `complete-password-chan
 9. Invitation acceptance and password lifecycle pass the failure-injection cases above.
 10. Six-role authorization tests match the reconciled production capability/grant catalogue.
 
-## Current blockers confirmed during review
+## Remaining blockers after the source implementation
 
-- `cloudflare/src/auth.ts` imports `better-auth` and constructs a Better Auth instance.
-- `cloudflare/src/staff-context.ts` uses Better Auth `api.getSession()`.
-- `cloudflare/src/index.ts` calls Better Auth `signUpEmail()` during invitation acceptance and serves `/api/auth/*` through `auth.handler()`.
-- `cloudflare/package.json` still depends on `better-auth`.
-- The existing Pages auth proxy forwards staff session and password lifecycle calls to Supabase Edge Functions.
-- The frontend business API adapter still targets Supabase Edge Functions.
-- The migration rehearsal D1 schema has the Supabase identity-reference table, but this does not mean the Worker has been converted.
+- The Worker changes have not been deployed and no Worker secrets have been configured by this implementation.
+- The frontend business API adapter still targets Supabase Edge Functions; do not switch it until Worker route parity is complete.
+- Invitation saga failure-injection and duplicate/concurrent acceptance tests remain outstanding.
+- Existing Pages auth proxy operations for staff session and password lifecycle still forward to current Supabase Edge Functions; map and test them before retiring compatibility operations.
+- No isolated preview Worker is deployed against the migration rehearsal D1 database.
 
-No production configuration or live Supabase Auth identities may be changed as part of implementing this design.
+The source-level change removes Better Auth from `cloudflare/src` and `cloudflare/package.json`. No production configuration or live Supabase Auth identities were changed.
