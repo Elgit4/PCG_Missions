@@ -29,3 +29,20 @@ database_name = "pcg-missions-dev"
 # Never replace this with a production database ID.
 database_id = "376a6782-d059-41f9-9e09-f93718fef2bb"
 migrations_dir = "migrations"
+
+# Isolated preview Worker. Deploy only after CI passes; never use this binding for production.
+[env.preview]
+name = "pcg-missions-api-preview"
+workers_dev = true
+
+[env.preview.vars]
+APP_ENV = "non-production"
+APP_ALLOWED_ORIGINS = "http://localhost:5173"
+SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
+SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "pcg-missions-migration-test"
+database_id = "74074d53-1edc-4ad7-83e6-bb3333a6ab4f"
+migrations_dir = "migrations"
