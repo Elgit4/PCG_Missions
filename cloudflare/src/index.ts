@@ -2562,7 +2562,7 @@ async function reassignFollowupTask(
         SELECT ?, ?, ?, 'followup_assigned', 'Follow-up task reassigned',
                'A follow-up task has been assigned to you.', 'followup_task', ?, ?, ?
         FROM followup_task
-        WHERE id = ? AND branch_id = ? AND assignee_user_id = ?
+        WHERE id = ? AND branch_id = ? AND assignee_user_id = ? AND changes() = 1
       `).bind(
         crypto.randomUUID(), context.activeBranch.branchId, nextAssignee,
         taskId, `followup-task:${taskId}:assignment:${eventId}`, now,
