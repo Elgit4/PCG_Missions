@@ -1232,7 +1232,6 @@ async function listContacts(
            CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.phone_e164 ELSE NULL END AS phone_e164,
            CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.phone_display ELSE NULL END AS phone_display,
            CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.email_normalized ELSE NULL END AS email_normalized,
-           CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.email_normalized ELSE NULL END AS email,
            CASE WHEN ? = 1 AND (${privatePredicate.sql}) THEN c.age_range ELSE NULL END AS age_range,
            CASE WHEN ? = 1 AND (${privatePredicate.sql}) THEN c.preferred_language ELSE NULL END AS preferred_language,
            c.contact_status, c.created_at, c.updated_at
@@ -1260,6 +1259,7 @@ async function listContacts(
     id: string; branch_id: string; first_name: string; last_name: string | null; preferred_name: string | null;
     phone_e164: string | null; phone_display: string | null; email_normalized: string | null;
     age_range: string | null; preferred_language: string | null;
+    contact_status: string; created_at: string; updated_at: string;
   }>();
   return json(200, { ok: true, data: rows.results ?? [] }, requestId, origin);
 }
