@@ -2713,7 +2713,17 @@ async function reassignFollowupTask(
   } catch {
     return json(409, { ok: false, error: { code: "FOLLOWUP_REASSIGNMENT_CONFLICT" } }, requestId, origin);
   }
-  return json(200, { ok: true, task_id: taskId, assignee_profile_id: assigneeProfileId || null, team_id: nextTeam }, requestId, origin);
+  const updatedTask = await env.DB.prepare(`
+    SELECT id, branch_id, contact_id, assignee_user_id, team_id, priority,
+           due_at, status, task_note, created_at, updated_at
+    FROM followup_task
+    WHERE id = ? AND branch_id = ?
+    LIMIT 1
+  `).bind(taskId, context.activeBranch.branchId).first<Record<string, unknown>>();
+  if (!updatedTask) {
+    return json(500, { ok: false, error: { code: "FOLLOWUP_TASK_READBACK_FAILED" } }, requestId, origin);
+  }
+  return json(200, { ok: true, data: updatedTask }, requestId, origin);
 }
 
 async function listStaffAudit(
