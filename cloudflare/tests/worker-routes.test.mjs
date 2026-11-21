@@ -4,7 +4,7 @@ import worker from "../src/index.ts";
 
 function fakeEnv(options = {}) {
   const calls = [];
-  const row = options.meta ?? { schema_version: 37, environment: "non-production" };
+  const row = Object.hasOwn(options, "meta") ? options.meta : { schema_version: 37, environment: "non-production" };
   const DB = {
     prepare(sql) {
       return {
