@@ -1,6 +1,12 @@
 name: Cloudflare Worker Preview Deploy
 
 on:
+  push:
+    branches:
+      - feat/cloudflare-d1-migration-foundation
+    paths:
+      - "cloudflare/**"
+      - ".github/workflows/cloudflare-preview-deploy.yml"
   workflow_dispatch:
 
 permissions:
@@ -40,12 +46,16 @@ jobs:
       - name: Test Supabase Auth integration
         run: npm test
 
-      - name: Require Cloudflare deployment token
+      - name: Check Cloudflare deployment token
+        id: token-check
         run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "Add CLOUDFLARE_API_TOKEN to GitHub Actions secrets before running this workflow."
-            exit 1
+          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "Preview deployment skipped: CLOUDFLARE_API_TOKEN is not configured."
           fi
 
       - name: Deploy isolated preview Worker
+        if: steps.token-check.outputs.available == 'true'
         run: npm run deploy:preview
