@@ -8,6 +8,7 @@ on:
       - feat/cloudflare-d1-migration-foundation
     paths:
       - "cloudflare/**"
+      - "web/**"
       - ".github/workflows/cloudflare-preview-bundle.yml"
       - ".github/workflows/cloudflare-preview-smoke.yml"
   workflow_dispatch:
