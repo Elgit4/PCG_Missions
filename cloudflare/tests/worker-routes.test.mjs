@@ -270,6 +270,18 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         bind(...values) { this.values = values; return this; },
         async first() {
           calls.push({ kind: "first", sql: this.sql, values: this.values });
+          if (this.sql.includes("SELECT id, branch_id, first_name") && this.sql.includes("FROM contact")) {
+            return {
+              id: CONTACT_ID,
+              branch_id: BRANCH_ID,
+              first_name: "Ama",
+              last_name: "Mensah",
+              preferred_name: null,
+              contact_status: "active",
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+            };
+          }
           if (this.sql.includes("FROM staff_profile") && this.sql.includes("WHERE auth_user_id = ?")) return staff;
           if (this.sql.includes("SELECT id FROM contact") && this.sql.includes("contact_status <> 'merged'")) {
             return this.values[0] === CONTACT_ID && this.values[1] === BRANCH_ID ? { id: CONTACT_ID } : null;
@@ -509,6 +521,40 @@ test("Admin/Pastor with branch management grant can create a team and writes aud
   assert.equal(response.status, 201);
   assert.equal(payload.data.name, "New Team");
   assert.equal(fixture.writes, 2);
+});
+
+test("Field Worker creates a visitor contact through the idempotent D1 capture route", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("field_worker", [["contacts.create", "branch"]]);
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/contacts", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Idempotency-Key": "capture-request-123456",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      first_name: "Ama",
+      last_name: "Mensah",
+      phone_e164: "+233241234567",
+      email: "ama@example.com",
+      source_metadata: { device_type: "web" },
+    }),
+  }), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(payload.data.first_name, "Ama");
+  assert.equal(payload.data.branch_id, BRANCH_ID);
+  assert.equal(payload.data.identity_redacted, true);
+  assert.equal(payload.data.phone_e164, null);
+  assert.equal(payload.contact_id, undefined);
+  assert.ok(fixture.calls.some((call) => call.kind === "batch" && call.statements === 3));
 });
 
 test("Coordinator contact detail read uses the branch-scoped Worker projection and redacts restricted identity", async (t) => {
