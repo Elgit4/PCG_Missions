@@ -31,7 +31,6 @@ function json(status: number, body: Record<string, unknown>, requestId: string, 
   });
   if (origin) {
     headers.set("Access-Control-Allow-Origin", origin);
-    headers.set("Access-Control-Allow-Credentials", "true");
     headers.set("Vary", "Origin");
   }
   return new Response(JSON.stringify({ ...body, request_id: requestId }), { status, headers });
