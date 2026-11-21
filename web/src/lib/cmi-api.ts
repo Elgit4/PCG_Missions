@@ -650,6 +650,37 @@ export interface MinistryReportReviewResult {
   review_history: MinistryReportReviewEvent[];
 }
 
+
+function workerApiPath(functionName: string, suffix: string, method: string): string | null {
+  const verb = method.toUpperCase();
+  if (functionName === "staff-session" && suffix === "") return "/api/v1/me";
+
+  if (functionName === "staff-notifications") {
+    if (suffix === "/notifications" && verb === "GET") return "/api/v1/notifications";
+    if (suffix === "/notifications/read-all" && verb === "POST") return "/api/v1/notifications/read-all";
+    if (/^\/notifications\/[^/]+\/read$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    return null;
+  }
+
+  if (functionName === "staff-operations") {
+    if (suffix === "/contacts" && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
+    if (/^\/contacts\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix;
+    if (/^\/contacts\/[^/]+\/notes$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
+    if (/^\/contacts\/[^/]+\/interactions$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (/^\/contacts\/[^/]+\/assign$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (suffix === "/followup/tasks" && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
+    if (/^\/followup\/tasks\/[^/]+$/.test(suffix) && verb === "PATCH") return "/api/v1" + suffix;
+    if (suffix === "/staff" && verb === "GET") return "/api/v1/staff";
+    return null;
+  }
+
+  if (functionName === "pastoral-operations" && suffix === "/prayer/requests/assigned" && verb === "GET") {
+    return "/api/v1/pastoral/prayer/assigned";
+  }
+
+  return null;
+}
+
 export class CmiApiClient {
   private readonly baseUrl: string;
   private readonly workerApiBaseUrl: string | null;
@@ -716,17 +747,14 @@ export class CmiApiClient {
       throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
     }
     const suffix = path ? (path.startsWith("/") ? path : `/${path}`) : "";
-    const workerSupportedFunctions = new Set(["staff-session", "staff-notifications"]);
-    const workerContactRequest = functionName === "staff-operations" && suffix === "/contacts" && (options.method ?? "GET") === "GET";
-    const useWorkerApi = this.workerApiBaseUrl !== null &&
-      (workerSupportedFunctions.has(functionName) || workerContactRequest);
+    const workerPath = workerApiPath(functionName, suffix, options.method ?? "GET");
+    const useWorkerApi = this.workerApiBaseUrl !== null && workerPath !== null;
     const useSameOriginSessionProxy = !useWorkerApi && functionName === "staff-session" &&
       typeof window !== "undefined" &&
       window.location.hostname !== "localhost" &&
       window.location.hostname !== "127.0.0.1";
-    const workerPath = functionName === "staff-session" ? "/api/v1/me" : "/api/v1" + suffix;
     const url = useWorkerApi
-      ? new URL(workerPath, this.workerApiBaseUrl!)
+      ? new URL(workerPath!, this.workerApiBaseUrl!)
       : useSameOriginSessionProxy
         ? new URL("/api/auth?resource=staff-session", window.location.origin)
         : new URL(`${this.baseUrl}/${functionName}${suffix}`);
