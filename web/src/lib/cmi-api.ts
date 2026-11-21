@@ -358,6 +358,7 @@ export interface TeamRecord {
   created_at: string;
   updated_at: string;
   members: TeamMemberRecord[];
+  member_count?: number;
 }
 export interface TeamWorkspaceData { teams: TeamRecord[] }
 export interface TeamCreateInput {
@@ -390,6 +391,7 @@ export interface ServiceAreaRecord {
   created_at: string;
   updated_at: string;
   coverage: AreaCoverageRecord[];
+  coverage_count?: number;
 }
 export interface ServiceAreaWorkspaceData { areas: ServiceAreaRecord[] }
 export type TeamMutationResult = Omit<TeamRecord, "members">;
