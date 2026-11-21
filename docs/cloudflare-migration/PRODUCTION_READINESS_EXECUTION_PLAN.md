@@ -19,18 +19,18 @@ This document is an execution checklist, not a claim that the listed work is com
 - Do not enable SMS/Arkesel as part of this migration.
 - Do not switch production Pages variables or production API routing until acceptance gates pass.
 
-## Current verified blockers
+## Current verified blockers — 21 November 2026
 
-1. `cloudflare/src/auth.ts` still imports and constructs Better Auth.
-2. `cloudflare/src/staff-context.ts` still resolves sessions using Better Auth.
-3. `cloudflare/src/index.ts` still uses Better Auth for invitation sign-up and serves its `/api/auth/*` handler.
-4. `cloudflare/package.json` still depends on `better-auth`.
-5. The frontend business API adapter still targets Supabase Edge Functions.
-6. Supabase Edge Function operations have not all been ported to Worker handlers.
-7. Staff notification schema exists in D1, but notification producers and recipient-scoped API handlers remain incomplete.
-8. Private R2 flyer storage and its signed upload/download flows are not deployed.
-9. The staging data rehearsal has one extra D1-generated staff-access audit row; the import must be repeatable and produce an explained, deterministic audit result.
-10. Six-role authenticated browser acceptance, backup/restore rehearsal and production cutover have not been completed.
+The previous Better Auth blockers above have been superseded by the Supabase Auth implementation on `feat/cloudflare-d1-migration-foundation`. The current source uses Supabase Auth token verification and an Auth Admin adapter; `cloudflare/package.json` no longer has a Better Auth dependency. This is source-level progress, not a deployed or accepted production system.
+
+1. The full Worker is not deployed. The preview deployment workflow currently receives an empty `CLOUDFLARE_API_TOKEN`; run [44938335612](https://github.com/Elgit4/PCG_Missions/actions/runs/44938335612) failed at the credential guard before Wrangler ran. Cloudflare currently has only `pcg-missions-api-nonprod` and `pcg-missions-d1-smoke`; `pcg-missions-api-preview` is absent.
+2. The frontend business API adapter in `web/src/lib/cmi-api.ts` still targets Supabase Edge Functions. `CMI_WORKER_API_URL` is defined but not consumed. Do not switch it until every operation has a compatible, tested Worker route.
+3. Worker route coverage is partial. Existing routes cover core staff context/lifecycle, invitations, contacts, follow-up, selected prayer workflows and notifications. Teams/service areas, typed reports, calendar, announcements/content, event registration/assignment/check-in/closeout, flyer storage and several staff password-reset operations are not yet at frontend API parity.
+4. Supabase Auth verifier and Admin adapter are unit-tested, but the deployed Worker needs its environment configuration and server-only `SUPABASE_SERVICE_ROLE_KEY` for Auth Admin invitation provisioning. That secret must be configured as a Worker secret, never a Pages variable or source-code value.
+5. The EU D1 database `pcg-missions-migration-test` is a rehearsal only: schema version 37, 86 application tables, 61 capabilities, 65 role-capability grants, 3 staff profiles, 2 role assignments, 3 Supabase identity references, and 6 staff-access audit rows. `PRAGMA foreign_key_check` currently returns no violations. This does not establish source-to-destination data parity or production readiness.
+6. The rehearsal still needs deterministic, repeatable import/export and reconciliation, including explanation of the additional D1-generated staff-access audit row.
+7. Private R2 flyer storage, six-role desktop/mobile authenticated acceptance, backup/restore rehearsal, monitoring and rollback testing remain incomplete.
+8. The official Pages project still uses production branch `feat/cmi-pcg-missions-final-review-v6`. Production Pages configuration, Supabase Auth identities and production data remain unchanged.
 
 ## Workstream A — Identity and session security
 
