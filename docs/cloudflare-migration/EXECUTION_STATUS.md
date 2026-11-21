@@ -163,3 +163,11 @@ Still not deployed or production-ready:
 - Backup/restore, six-role browser acceptance, private R2 storage, full backend parity and production cutover remain outstanding.
 
 No production Supabase data, Auth identities, Pages variables or production Cloudflare resources were modified.
+
+## Frontend preview integration update — 21 November 2026
+
+- Added optional `VITE_CMI_WORKER_API_URL` configuration. It defaults to empty, so existing production Pages builds continue to use the current Supabase Edge Function API until a preview Worker is explicitly configured.
+- When the Worker URL is configured, the browser API adapter routes staff session (`/api/v1/me`), supported staff operations (`/api/v1/...`), and staff notifications to the Worker, carrying the Supabase bearer token and selected branch context.
+- Added frontend tests for Worker session, contact-list and notification routing. Existing unsupported domains continue to use their existing Edge Function paths; this is a staged migration, not a full API cutover.
+- Worker typecheck and D1 security/schema tests pass on the latest backend change. Frontend typecheck, lint, tests and production build are running on the latest frontend commit.
+- The Worker URL is not set in Pages production or preview, and no Worker deployment has been performed. The integration remains opt-in until the preview Worker is configured with its own D1 binding and Supabase Auth secrets and passes end-to-end acceptance.
