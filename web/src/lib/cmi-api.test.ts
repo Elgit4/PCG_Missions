@@ -541,4 +541,28 @@ describe("CmiApiClient", () => {
     expect(result.data.staff.id).toBe("staff-1");
     expect(result.data.roles[0]?.code).toBe("coordinator");
   });
+  it("routes branch-scoped contact requests through the Worker when configured", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: [], request_id: "worker-contacts-1" }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    await client.listContacts("branch-abc", { limit: 10 });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(String(url)).toBe("https://worker.example.com/api/v1/contacts?branch_id=branch-abc&limit=10");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
+  });
+
+  it("routes staff notifications through the Worker API", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { notifications: [], unread_count: 0 }, request_id: "worker-notifications-1" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    await client.listStaffNotifications("branch-abc");
+    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/notifications");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+  });
 });
