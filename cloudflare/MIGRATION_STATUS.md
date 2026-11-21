@@ -114,7 +114,7 @@ This section supersedes older status statements above where they conflict. The e
 - `cloudflare/src/staff-context.ts` resolves the verified Supabase Auth UUID to an active D1 staff profile, active branch assignments and capability grants.
 - `cloudflare/src/index.ts` uses the Supabase Auth verifier and has no Better Auth runtime handler. Supabase Auth remains responsible for sign-in, refresh, recovery and logout.
 - The six-role team/service-area policy is enforced in the D1 Worker: Admin/Pastor manages branch-scoped teams and areas; Coordinator reads the branch directory; Team Leader reads only their active teams and related active coverage; Field Worker, Follow-up Volunteer and Prayer Intercessor receive no team/area directory grants.
-- On PR head `214aec58c8a17da7db2b8593e948ad35f61f05fb`, Cloudflare D1 Foundation run [44951959791](https://github.com/Elgit4/PCG_Missions/actions/runs/44951959791) passed: 64 Python migration/schema/security tests, Worker type-check and 45 Node Auth/Worker route tests. CMI web CI run [44951959772](https://github.com/Elgit4/PCG_Missions/actions/runs/44951959772) also passed type-check, lint, unit tests and production build.
+- On Worker source commit `3e2d893350ee04bf71c8f4fd5d25fc23cb81f210`, Cloudflare D1 Foundation run [44952239573](https://github.com/Elgit4/PCG_Missions/actions/runs/44952239573) passed 64 Python migration/schema/security tests, Worker type-check and 45 Node Auth/Worker route tests. CMI web CI run [44952239477](https://github.com/Elgit4/PCG_Missions/actions/runs/44952239477) passed type-check, lint, 173 frontend tests and production build. Both suites were rerun successfully on the documentation-only PR head `dc41daf496709d02a8e41ac78b802a7a0381766a` (D1 run [44952581246](https://github.com/Elgit4/PCG_Missions/actions/runs/44952581246); web run [44952581279](https://github.com/Elgit4/PCG_Missions/actions/runs/44952581279)).
 - The Worker route tests use mocked Supabase Auth and an in-memory D1 adapter. They exercise the real Worker handlers, but are not equivalent to authenticated six-role acceptance against the deployed preview Worker.
 
 ### Current EU D1 rehearsal verification
@@ -135,7 +135,7 @@ Read-only checks against `pcg-missions-migration-test` returned:
 | Staff-access audit rows | 6 |
 | `PRAGMA foreign_key_check` | 0 violations |
 
-The D1 migration ledger ends at `0039_team_area_directory_read_grants.sql`. The migration chain and foreign-key check were queried without changing D1 data.
+The D1 migration ledger ends at `0039_team_area_directory_read_grants.sql`. The migration chain and foreign-key check were queried without changing D1 data. The directory fixture tables are currently empty: 0 teams, 0 service areas, 0 active team memberships and 0 active area-coverage rows. Active role assignments exist only for Admin/Pastor (1) and Team Leader (1); Coordinator, Field Worker, Follow-up Volunteer and Prayer Intercessor currently have none. No test identities or directory fixtures were inserted.
 
 ### Six-role grant reconciliation
 
@@ -157,8 +157,9 @@ The live Supabase migration ledger does not yet contain `20261113010000_team_are
 ### Current Cloudflare preview state
 
 - Pages project `pcg-missions` has the preview build at [feat-cloudflare-d1-migration.pcg-missions.pages.dev](https://feat-cloudflare-d1-migration.pcg-missions.pages.dev). Its preview config sets `VITE_CMI_WORKER_API_URL` to the preview Worker and `VITE_CMI_PREVIEW_MODE=true`; the production config keeps the Worker URL empty and preview mode disabled.
-- The isolated Worker `pcg-missions-api-preview` is bound to EU D1 `pcg-missions-migration-test`. Cloudflare reports version 15 `8d564e62-dbed-4000-adb3-3e33723def81` at 100% of preview traffic via deployment `47164d19-50dc-4cea-ad58-37f8031594d6` (21 November 2026, 21:37 UTC). The version was uploaded from the CI-verified immutable artifact built from PR #85 source commit `3e2d893350ee04bf71c8f4fd5d25fc23cb81f210`.
-- The active preview version now includes the active-team and active-covered-staff restrictions for Team Leader directory projections. The bundle upload and preview promotion preserved the EU D1 binding, non-production environment, preview CORS allowlist and existing observability settings; no secret bindings were introduced.
+- The isolated Worker `pcg-missions-api-preview` is bound to EU D1 `pcg-missions-migration-test`. Cloudflare reports version 16 `9777d6f6-5d86-4518-9365-940e8d6c2f59` at 100% of preview traffic via deployment `858066f9-a6e8-4b76-a572-0e756988c75c` (21 November 2026, 21:38 UTC). Its version annotations identify PR #85 source commit `3e2d893350ee04bf71c8f4fd5d25fc23cb81f210`.
+- The active preview version includes the active-team, active-covered-staff and active-covered-team restrictions for Team Leader directory projections. The active script content was read back from Cloudflare and all three SQL filters were verified. The version preserved the EU D1 binding, non-production environment, preview CORS allowlist and existing observability settings; no secret bindings were introduced.
+- Post-promotion smoke run [44952577439](https://github.com/Elgit4/PCG_Missions/actions/runs/44952577439) checked the active preview Worker after version 16 was promoted: `/health` returned ready with `environment=non-production` and `schema_version=39`; anonymous session, contact, interaction and follow-up requests returned `UNAUTHENTICATED`; team/service-area mutation protection and preview Pages origin checks passed. The workflow was cancelled only in its final artifact-upload step, after these runtime assertions completed.
 - The preview Worker has no Cloudflare secret bindings at present. In particular, `SUPABASE_SERVICE_ROLE_KEY` is not configured; Worker-side Auth Admin invitation provisioning must remain disabled until the secret is added securely and tested.
 - Preview Pages and Worker use the existing Supabase Auth project, while business rehearsal data is stored in the isolated non-production D1 database. This is not a separate Auth tenant. Unsupported preview read routes may still use the existing Supabase API; unsupported non-GET business writes are blocked by `VITE_CMI_PREVIEW_MODE`.
 - Production Pages and the live Supabase database have not been switched to the preview Worker or D1.
@@ -171,7 +172,7 @@ The following frontend domains are not yet fully ported to Worker-compatible ope
 
 Before production cutover:
 
-1. Deploy the latest verified source bundle to the isolated preview Worker and rerun the live health, CORS and anonymous-route smoke checks.
+1. The latest verified source bundle is deployed to preview version 16. Its post-promotion health, CORS, anonymous-route, team/service-area protection and Pages-origin checks passed on run [44952577439](https://github.com/Elgit4/PCG_Missions/actions/runs/44952577439). Repeat these smoke checks after any subsequent Worker deployment.
 2. Complete authenticated browser/API acceptance with real Supabase identities for all six roles against the preview Worker and rehearsal D1. The current 45 Node route tests use mocked Auth/D1 and do not satisfy this gate.
 3. Complete route parity, deterministic data reconciliation, backup/restore, observability, incident response and rollback tests.
 4. Resolve the missing Worker Auth Admin secret before enabling invitation provisioning. Review the Supabase Auth leaked-password-protection warning and the 52 RLS-enabled/no-policy advisor findings before any client-direct database access or production cutover.
