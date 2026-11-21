@@ -2,6 +2,27 @@ name = "pcg-missions"
 compatibility_date = "2026-11-13"
 pages_build_output_dir = "./dist"
 
+# Shared defaults. Environment-specific sections below explicitly override these.
 [vars]
 SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
 SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
+VITE_SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
+VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
+VITE_CMI_WORKER_API_URL = ""
+
+# Preview uses the isolated Supabase Auth + Cloudflare Worker/D1 rehearsal stack.
+[env.preview.vars]
+SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
+SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
+VITE_SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
+VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
+VITE_CMI_WORKER_API_URL = "https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
+
+# Production deliberately retains the existing API origin until the full Worker
+# route parity, data reconciliation and rollback gates have been accepted.
+[env.production.vars]
+SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
+SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
+VITE_SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
+VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
+VITE_CMI_WORKER_API_URL = ""
