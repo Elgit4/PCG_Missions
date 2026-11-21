@@ -2163,7 +2163,7 @@ async function createFollowupTask(
       AND actor_grant.scope_mode = '${createScope}'
   )`;
   try {
-    const results = await env.DB.batch([
+    const statements: D1PreparedStatement[] = [
       env.DB.prepare(`
         INSERT INTO followup_task
           (id, list_id, contact_id, branch_id, assignee_user_id, team_id, priority,
@@ -2194,9 +2194,24 @@ async function createFollowupTask(
         JSON.stringify({ priority, due_at: dueAt, list_id: listId, team_id: teamId }),
         now,
       ),
-    ]);
+    ];
+    if (assigneeUserId !== null) {
+      statements.push(env.DB.prepare(`
+        INSERT OR IGNORE INTO staff_notification
+          (id, branch_id, recipient_user_id, category, title, body, target_type, target_id, idempotency_key, created_at)
+        SELECT ?, ?, ?, 'followup_assigned', 'New follow-up task',
+               'A follow-up task has been assigned to you.', 'followup_task', ?, ?, ?
+        WHERE EXISTS (SELECT 1 FROM followup_task WHERE id = ? AND branch_id = ?)
+      `).bind(
+        crypto.randomUUID(), context.activeBranch.branchId, assigneeUserId,
+        taskId, `followup-task:${taskId}:assigned:${assigneeUserId}`, now,
+        taskId, context.activeBranch.branchId,
+      ));
+    }
+    const results = await env.DB.batch(statements);
     if (results.some((result) => !result.success) ||
-        results.some((result) => (result.meta?.changes ?? 0) !== 1)) {
+        results.slice(0, 2).some((result) => (result.meta?.changes ?? 0) !== 1) ||
+        (assigneeUserId !== null && (results[2]?.meta?.changes ?? 0) !== 1)) {
       throw new Error("FOLLOWUP_TASK_CREATE_FAILED");
     }
   } catch {
