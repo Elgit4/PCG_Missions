@@ -126,6 +126,32 @@ test("service-area collection reads require an authenticated branch-scoped manag
   assert.equal(calls.length, 0);
 });
 
+test("team creation requires a verified branch-scoped manager", async () => {
+  const { env, calls } = fakeEnv();
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/teams", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ branch_id: "00000000-0000-4000-8000-000000000001", name: "Welcome", description: null }),
+  }), env);
+  const payload = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(payload.error.code, "UNAUTHENTICATED");
+  assert.equal(calls.length, 0);
+});
+
+test("service-area creation requires a verified branch-scoped manager", async () => {
+  const { env, calls } = fakeEnv();
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/areas", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ branch_id: "00000000-0000-4000-8000-000000000001", name: "Tema West", code: "TEMA-W" }),
+  }), env);
+  const payload = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(payload.error.code, "UNAUTHENTICATED");
+  assert.equal(calls.length, 0);
+});
+
 test("returns a stable 404 envelope for an unimplemented route", async () => {
   const { env } = fakeEnv();
   const response = await worker.fetch(new Request("https://worker.example/api/v1/not-yet-implemented"), env);
