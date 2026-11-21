@@ -13,3 +13,6 @@ export const SUPABASE_PUBLISHABLE_KEY =
 
 /** Optional Cloudflare Worker API origin. Configure preview and production independently; never point production at a preview Worker. */
 export const CMI_WORKER_API_URL = import.meta.env.VITE_CMI_WORKER_API_URL || "";
+
+/** Enables preview-only safeguards for business writes not yet supported by the Worker. */
+export const CMI_PREVIEW_MODE = import.meta.env.VITE_CMI_PREVIEW_MODE === "true";
