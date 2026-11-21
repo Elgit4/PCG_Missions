@@ -663,7 +663,8 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
   }
 
   if (functionName === "team-operations") {
-    if ((suffix === "/teams" || suffix === "/areas") && verb === "GET") return "/api/v1" + suffix;
+    if ((suffix === "/teams" || suffix === "/areas") && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
+    if ((/^\\/teams\\/[^/]+$/.test(suffix) || /^\\/areas\\/[^/]+$/.test(suffix)) && verb === "PATCH") return "/api/v1" + suffix;
     return null;
   }
 
@@ -762,7 +763,10 @@ export class CmiApiClient {
     const headers = new Headers({ Accept: "application/json" });
     if (!useWorkerApi) headers.set("apikey", this.config.publishableKey);
     if (token) headers.set("Authorization", `Bearer ${token}`);
-    const branchId = options.query?.branch_id;
+    const bodyBranchId = options.body && typeof options.body === "object" && "branch_id" in options.body
+      ? (options.body as { branch_id?: unknown }).branch_id
+      : undefined;
+    const branchId = options.query?.branch_id ?? bodyBranchId;
     if (branchId !== undefined && branchId !== null && branchId !== "") {
       headers.set("X-Branch-Id", String(branchId));
     }
