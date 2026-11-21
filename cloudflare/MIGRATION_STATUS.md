@@ -100,3 +100,58 @@ Latest verified CI run: [43469371911](https://github.com/Elgit4/PCG_Missions/act
 3. Validate Better Auth's generated schema against the pinned release and exercise the complete auth/session lifecycle on the EU D1 binding.
 4. Add Worker-level integration tests for staff, contacts, follow-up and prayer routes; then implement migration export/import and reconciliation for the remaining live schema.
 5. Configure a non-production Workers Build/preview deployment and verify the deployed Worker against EU D1. Production cutover remains a separate approval gate.
+
+
+---
+
+## Current migration snapshot — 21 November 2026
+
+This section supersedes older status statements above where they conflict. The earlier sections describe the historical Better Auth / schema-v15 foundation as it existed on 13 November; they are not the current implementation state.
+
+### Verified current source state
+
+- `cloudflare/src/auth.ts` now validates bearer access tokens by calling the existing Supabase Auth `GET /auth/v1/user` endpoint. It does not trust locally decoded JWT claims.
+- `cloudflare/src/staff-context.ts` resolves the verified Supabase Auth UUID to the D1 staff profile and current branch, role and capability assignments.
+- `cloudflare/src/index.ts` uses the Supabase Auth verifier and has no Better Auth runtime handler. Supabase Auth remains responsible for sign-in, refresh, recovery and logout through the existing Pages auth proxy.
+- `createSupabaseAuthUser` and `deleteSupabaseAuthUser` provide the server-side Auth Admin create/compensation adapter for invitation provisioning. The service-role key is a Worker-only secret requirement.
+- `cloudflare/package.json` has no Better Auth runtime dependency.
+- Worker type-check and all 13 Auth/staff-context unit tests pass in CI. These are unit/in-memory checks, not a deployed Worker acceptance test.
+
+### Current EU D1 rehearsal verification
+
+Remote read-only checks against `pcg-missions-migration-test` returned:
+
+| Check | Verified value |
+| --- | ---: |
+| Environment | `non-production` |
+| Schema version | 37 |
+| Application tables | 86 |
+| Capabilities | 61 |
+| Role-capability grants | 65 |
+| Staff profiles | 3 |
+| Staff-role assignments | 2 |
+| Supabase Auth identity references | 3 |
+| Staff-access audit rows | 6 |
+| `PRAGMA foreign_key_check` | 0 violations |
+
+The database remains a non-production migration rehearsal. Do not route the official frontend or live staff traffic to it.
+
+### Current deployed Cloudflare state
+
+- Pages project `pcg-missions` has a successful branch preview build at `https://feat-cloudflare-d1-migration.pcg-missions.pages.dev`.
+- The preview Pages configuration contains the Supabase preview connection variables but no `VITE_CMI_WORKER_API_URL`; it still calls the existing Supabase Edge Function API.
+- Production Pages branch remains `feat/cmi-pcg-missions-final-review-v6`; production configuration was not changed.
+- Only `pcg-missions-api-nonprod` and `pcg-missions-d1-smoke` exist. The full `pcg-missions-api-preview` Worker is not deployed.
+- GitHub Actions run [44938335612](https://github.com/Elgit4/PCG_Missions/actions/runs/44938335612) shows that `CLOUDFLARE_API_TOKEN` was empty in the deployment job. The workflow now fails visibly and runs `wrangler whoami` before deployment.
+
+### Current Worker API coverage boundary
+
+Implemented route families include health and staff-context discovery, contacts and notes/interactions, follow-up tasks, selected staff directory/lifecycle/invitation/role governance, selected prayer workflows, and recipient-scoped notification reads.
+
+The following frontend domains are not yet fully ported to Worker-compatible operations: team/service-area administration, typed ministry reports and their review/resubmission/export flows, calendar, announcements, sermons/welcome content, event drafts/assignments/registration/cancellation/check-in/closeout, private flyer upload/delivery, and all staff password-reset lifecycle operations. A route must not be treated as complete solely because its D1 schema exists.
+
+### Current release gate
+
+The preview Worker deployment is blocked on GitHub Actions credential injection. The preview Worker also requires its D1 rehearsal binding, explicit preview Pages origin, Supabase publishable key, and server-only Auth Admin service-role secret for invitation provisioning. After deployment, every route must pass deployed request tests and the frontend API adapter must be migrated by domain. Only after all six-role browser workflows, deterministic data reconciliation, backup/restore, monitoring and rollback tests pass may production resources and routing be changed.
+
+SMS/Arkesel remains intentionally disabled. Existing Supabase Auth identities and production application data remain untouched.
