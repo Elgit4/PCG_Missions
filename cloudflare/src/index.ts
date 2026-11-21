@@ -2216,7 +2216,7 @@ async function createFollowupTask(
       LIMIT 1
     `).bind(id, context.activeBranch!.branchId).first<{
       id: string; branch_id: string; contact_id: string; assignee_user_id: string | null;
-      team_id: string | null; priority: number; due_at: string | null; status: FollowupStatus;
+      team_id: string | null; priority: number; due_at: string | null; status: "open" | "in_progress" | "completed" | "cancelled";
       task_note: string | null; created_at: string; updated_at: string;
     }>();
     if (!task) return json(500, { ok: false, error: { code: "FOLLOWUP_TASK_READBACK_FAILED" } }, requestId, origin);
