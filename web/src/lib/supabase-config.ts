@@ -11,5 +11,5 @@ export const SUPABASE_URL =
 export const SUPABASE_PUBLISHABLE_KEY =
   import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS";
 
-/** Optional Cloudflare Worker API origin. Leave unset until a preview Worker is deployed and verified. */
+/** Optional Cloudflare Worker API origin. Configure preview and production independently; never point production at a preview Worker. */
 export const CMI_WORKER_API_URL = import.meta.env.VITE_CMI_WORKER_API_URL || "";
