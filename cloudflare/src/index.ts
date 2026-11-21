@@ -2704,6 +2704,128 @@ async function listStaffAudit(
   }, requestId, origin);
 }
 
+
+async function listTeamOperationsCollection(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin: string | undefined,
+  resource: "teams" | "areas",
+): Promise<Response> {
+  const url = new URL(request.url);
+  const branchIds = url.searchParams.getAll("branch_id");
+  const branchId = branchIds[0] ?? "";
+  if (
+    branchIds.length !== 1 ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(branchId)
+  ) {
+    return json(400, { ok: false, error: { code: "INVALID_QUERY" } }, requestId, origin);
+  }
+
+  const capability = resource === "teams" ? "team.manage" : "area.manage";
+  const access = await authorizeRequestCapability(request, env, capability);
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  if (access.activeBranch.branchId !== branchId) {
+    return json(403, { ok: false, error: { code: "BRANCH_SCOPE_MISMATCH" } }, requestId, origin);
+  }
+
+  const directoryAccess = await authorizeRequestCapability(request, env, "staff.directory.read");
+  const includeStaffNames = directoryAccess.state === "authorized" &&
+    directoryAccess.activeBranch.branchId === branchId;
+  const now = new Date().toISOString();
+
+  try {
+    if (resource === "teams") {
+      const teamsResult = await env.DB.prepare(`
+        SELECT id, branch_id, name, description, is_active, created_at, updated_at
+        FROM team
+        WHERE branch_id = ?
+        ORDER BY is_active DESC, name ASC
+      `).bind(branchId).all<Record<string, unknown>>();
+      const membershipsResult = await env.DB.prepare(`
+        SELECT id, team_id, staff_profile_id, membership_role, starts_at, ends_at, created_at
+        FROM staff_team_membership
+        WHERE branch_id = ?
+          AND starts_at <= ?
+          AND revoked_at IS NULL
+          AND (ends_at IS NULL OR ends_at > ?)
+        ORDER BY created_at ASC
+      `).bind(branchId, now, now).all<Record<string, unknown>>();
+      const memberships = membershipsResult.results ?? [];
+      const profileIds = [...new Set(memberships.map((item) => String(item.staff_profile_id)))];
+      let profiles: Record<string, unknown>[] = [];
+      if (includeStaffNames && profileIds.length) {
+        const placeholders = profileIds.map(() => "?").join(", ");
+        const result = await env.DB.prepare(`
+          SELECT id, full_name, account_status
+          FROM staff_profile
+          WHERE id IN (${placeholders})
+        `).bind(...profileIds).all<Record<string, unknown>>();
+        profiles = result.results ?? [];
+      }
+      const profileById = new Map(profiles.map((profile) => [String(profile.id), profile]));
+      const teams = (teamsResult.results ?? []).map((team) => ({
+        ...team,
+        is_active: Boolean(team.is_active),
+        members: memberships
+          .filter((membership) => membership.team_id === team.id)
+          .map((membership) => ({
+            ...membership,
+            staff: profileById.get(String(membership.staff_profile_id)) ?? null,
+          }))
+          .filter((membership) => membership.staff !== null),
+      }));
+      return json(200, { ok: true, data: { teams } }, requestId, origin);
+    }
+
+    const areasResult = await env.DB.prepare(`
+      SELECT id, branch_id, name, code, is_active, created_at, updated_at
+      FROM service_area
+      WHERE branch_id = ?
+      ORDER BY is_active DESC, name ASC
+    `).bind(branchId).all<Record<string, unknown>>();
+    const coverageResult = await env.DB.prepare(`
+      SELECT id, service_area_id, staff_profile_id, starts_at, ends_at, created_at
+      FROM staff_area_coverage
+      WHERE branch_id = ?
+        AND starts_at <= ?
+        AND revoked_at IS NULL
+        AND (ends_at IS NULL OR ends_at > ?)
+      ORDER BY starts_at DESC
+    `).bind(branchId, now, now).all<Record<string, unknown>>();
+    const coverage = coverageResult.results ?? [];
+    const profileIds = [...new Set(coverage.map((item) => String(item.staff_profile_id)))];
+    let profiles: Record<string, unknown>[] = [];
+    if (includeStaffNames && profileIds.length) {
+      const placeholders = profileIds.map(() => "?").join(", ");
+      const result = await env.DB.prepare(`
+        SELECT id, full_name, account_status
+        FROM staff_profile
+        WHERE id IN (${placeholders})
+      `).bind(...profileIds).all<Record<string, unknown>>();
+      profiles = result.results ?? [];
+    }
+    const profileById = new Map(profiles.map((profile) => [String(profile.id), profile]));
+    const areas = (areasResult.results ?? []).map((area) => ({
+      ...area,
+      is_active: Boolean(area.is_active),
+      coverage: coverage
+        .filter((item) => item.service_area_id === area.id)
+        .map((item) => ({
+          ...item,
+          staff: profileById.get(String(item.staff_profile_id)) ?? null,
+        }))
+        .filter((item) => item.staff !== null),
+    }));
+    return json(200, { ok: true, data: { areas } }, requestId, origin);
+  } catch {
+    return json(500, {
+      ok: false,
+      error: { code: resource === "teams" ? "TEAM_LIST_FAILED" : "SERVICE_AREA_LIST_FAILED" },
+    }, requestId, origin);
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
