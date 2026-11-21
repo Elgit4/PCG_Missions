@@ -2654,6 +2654,114 @@ function hasScopedGrant(
   );
 }
 
+
+type NotificationActor = { actorUserId: string; profileId: string };
+
+async function resolveNotificationActor(
+  request: Request,
+  env: Env,
+  branchId: string,
+  requestId: string,
+  origin?: string,
+): Promise<NotificationActor | Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") {
+    return mapCapabilityFailure(context.state, requestId, origin);
+  }
+  if (!context.staff.branches.some((branch) => branch.id === branchId)) {
+    return json(403, { ok: false, error: { code: "BRANCH_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+  const profile = await env.DB.prepare(
+    "SELECT must_change_password FROM staff_profile WHERE id = ? LIMIT 1",
+  ).bind(context.staff.profileId).first<{ must_change_password: number }>();
+  if (!profile) {
+    return json(403, { ok: false, error: { code: "STAFF_ACCOUNT_NOT_ACTIVE" } }, requestId, origin);
+  }
+  if (profile.must_change_password === 1) {
+    return json(403, { ok: false, error: { code: "PASSWORD_CHANGE_REQUIRED" } }, requestId, origin);
+  }
+  return { actorUserId: context.staff.userId, profileId: context.staff.profileId };
+}
+
+async function listStaffNotifications(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const branchId = url.searchParams.get("branch_id") ?? "";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(branchId)) {
+    return json(400, { ok: false, error: { code: "INVALID_BRANCH" } }, requestId, origin);
+  }
+  const actor = await resolveNotificationActor(request, env, branchId, requestId, origin);
+  if (actor instanceof Response) return actor;
+  const rawLimit = url.searchParams.get("limit");
+  const parsedLimit = rawLimit === null ? 30 : Number(rawLimit);
+  const limit = Number.isInteger(parsedLimit) ? Math.max(1, Math.min(50, parsedLimit)) : 30;
+  const [items, unread] = await Promise.all([
+    env.DB.prepare(`
+      SELECT id, category, title, body, target_type, target_id, created_at, read_at
+      FROM staff_notification
+      WHERE recipient_user_id = ? AND branch_id = ?
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `).bind(actor.actorUserId, branchId, limit).all<{
+      id: string; category: string; title: string; body: string;
+      target_type: string | null; target_id: string | null;
+      created_at: string; read_at: string | null;
+    }>(),
+    env.DB.prepare(`
+      SELECT COUNT(*) AS unread_count
+      FROM staff_notification
+      WHERE recipient_user_id = ? AND branch_id = ? AND read_at IS NULL
+    `).bind(actor.actorUserId, branchId).first<{ unread_count: number }>(),
+  ]);
+  return json(200, {
+    ok: true,
+    data: { notifications: items.results ?? [], unread_count: unread?.unread_count ?? 0 },
+  }, requestId, origin);
+}
+
+async function markStaffNotificationsRead(
+  request: Request,
+  env: Env,
+  branchId: string,
+  notificationId: string | null,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(branchId)) {
+    return json(400, { ok: false, error: { code: "INVALID_BRANCH" } }, requestId, origin);
+  }
+  const actor = await resolveNotificationActor(request, env, branchId, requestId, origin);
+  if (actor instanceof Response) return actor;
+  const now = new Date().toISOString();
+  if (notificationId === null) {
+    const result = await env.DB.prepare(`
+      UPDATE staff_notification
+      SET read_at = ?
+      WHERE recipient_user_id = ? AND branch_id = ? AND read_at IS NULL
+    `).bind(now, actor.actorUserId, branchId).run();
+    return json(200, {
+      ok: true,
+      data: { updated_count: result.meta?.changes ?? 0 },
+    }, requestId, origin);
+  }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(notificationId)) {
+    return json(404, { ok: false, error: { code: "NOT_FOUND" } }, requestId, origin);
+  }
+  const result = await env.DB.prepare(`
+    UPDATE staff_notification
+    SET read_at = ?
+    WHERE id = ? AND recipient_user_id = ? AND branch_id = ? AND read_at IS NULL
+  `).bind(now, notificationId, actor.actorUserId, branchId).run();
+  return json(200, {
+    ok: true,
+    data: { updated: (result.meta?.changes ?? 0) === 1 },
+  }, requestId, origin);
+}
+
 async function listPrayerQueue(
   request: Request,
   env: Env,
@@ -3139,6 +3247,37 @@ async function updatePrayerRequestStatus(
   return json(200, { ok: true, prayer_request_id: prayerRequestId, status: nextStatus }, requestId, origin);
 }
 
+
+
+    if (url.pathname === "/api/v1/notifications" && request.method === "GET") {
+      return listStaffNotifications(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/notifications/read-all" && request.method === "POST") {
+      const body = await readJsonBody(request, 1024);
+      if (!body.ok || !body.value || typeof body.value !== "object" || Array.isArray(body.value)) {
+        return json(body.ok ? 400 : body.status, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
+      }
+      const payload = body.value as Record<string, unknown>;
+      if (Object.keys(payload).some((key) => key !== "branch_id") || typeof payload.branch_id !== "string") {
+        return json(400, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
+      }
+      return markStaffNotificationsRead(request, env, payload.branch_id, null, requestId, origin);
+    }
+    const notificationReadMatch = url.pathname.match(/^\\/api\\/v1\\/notifications\\/([^/]+)\\/read$/);
+    if (notificationReadMatch && request.method === "POST") {
+      const body = await readJsonBody(request, 1024);
+      if (!body.ok || !body.value || typeof body.value !== "object" || Array.isArray(body.value)) {
+        return json(body.ok ? 400 : body.status, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
+      }
+      const payload = body.value as Record<string, unknown>;
+      if (Object.keys(payload).some((key) => key !== "branch_id") || typeof payload.branch_id !== "string") {
+        return json(400, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
+      }
+      let notificationId: string;
+      try { notificationId = decodeURIComponent(notificationReadMatch[1]); }
+      catch { return json(404, { ok: false, error: { code: "NOT_FOUND" } }, requestId, origin); }
+      return markStaffNotificationsRead(request, env, payload.branch_id, notificationId, requestId, origin);
+    }
 
     if (url.pathname === "/api/v1/pastoral/prayer/queue" && request.method === "GET") {
       return listPrayerQueue(request, env, requestId, origin);
