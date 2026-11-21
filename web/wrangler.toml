@@ -10,13 +10,14 @@ VITE_SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
 VITE_CMI_WORKER_API_URL = ""
 
-# Preview uses the isolated Supabase Auth + Cloudflare Worker/D1 rehearsal stack.
+# Preview shares the existing Supabase Auth project; only Worker/D1 business storage is rehearsed.
 [env.preview.vars]
 SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
 SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
 VITE_SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
 VITE_CMI_WORKER_API_URL = "https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
+VITE_CMI_PREVIEW_MODE = "true"
 
 # Production deliberately retains the existing API origin until the full Worker
 # route parity, data reconciliation and rollback gates have been accepted.
@@ -26,3 +27,4 @@ SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
 VITE_SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
 VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
 VITE_CMI_WORKER_API_URL = ""
+VITE_CMI_PREVIEW_MODE = "false"
