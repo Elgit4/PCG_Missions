@@ -1712,6 +1712,56 @@ async function assignContact(
   }, requestId, origin);
 }
 
+async function listContactInteractions(
+  request: Request,
+  env: Env,
+  contactId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const resource = await contactResourceContext(request, env, contactId);
+  if (!resource.ok) return resource.response;
+  const access = await authorizeRequestCapability(request, env, "contacts.read", {
+    type: "contact", recordId: contactId, teamId: resource.teamId,
+  });
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+
+  const now = new Date().toISOString();
+  const predicate = contactScopePredicate(
+    access.decision.scopeMode as ContactScopeMode,
+    "c",
+    access.staff.userId,
+    access.activeBranch.branchId,
+    now,
+  );
+  const rows = await env.DB.prepare(`
+    SELECT i.id, i.interaction_type, i.occurred_at, i.outcome_code,
+           i.summary, i.next_action_at, i.created_at
+    FROM contact_interaction i
+    JOIN contact c ON c.id = i.contact_id AND c.branch_id = i.branch_id
+    WHERE i.contact_id = ? AND i.branch_id = ?
+      AND c.contact_status <> 'merged'
+      AND (${predicate.sql})
+    ORDER BY i.occurred_at DESC, i.id DESC
+    LIMIT 100
+  `).bind(
+    contactId,
+    access.activeBranch.branchId,
+    ...predicate.values,
+  ).all<{
+    id: string;
+    interaction_type: "call" | "visit" | "message" | "meeting" | "other";
+    occurred_at: string;
+    outcome_code: string | null;
+    summary: string | null;
+    next_action_at: string | null;
+    created_at: string;
+  }>();
+
+  return json(200, { ok: true, data: rows.results ?? [] }, requestId, origin);
+}
+
+
 async function createContactInteraction(
   request: Request,
   env: Env,
@@ -4161,10 +4211,11 @@ async function updatePrayerRequestStatus(
     }
 
     const interactionMatch = url.pathname.match(/^\/api\/v1\/contacts\/([^/]+)\/interactions$/);
-    if (interactionMatch && request.method === "POST") {
+    if (interactionMatch && (request.method === "GET" || request.method === "POST")) {
       let contactId: string;
       try { contactId = decodeURIComponent(interactionMatch[1]); }
       catch { return json(400, { ok: false, error: { code: "INVALID_CONTACT_ID" } }, requestId, origin); }
+      if (request.method === "GET") return listContactInteractions(request, env, contactId, requestId, origin);
       return createContactInteraction(request, env, contactId, requestId, origin);
     }
 
