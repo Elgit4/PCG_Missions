@@ -692,6 +692,67 @@ describe("CmiApiClient", () => {
     expect(result.data.email_normalized).toBeNull();
   });
 
+  it("routes privacy-aware contact edits through the Worker with its field contract", async () => {
+    const updated = {
+      id: "contact-123",
+      branch_id: "branch-abc",
+      first_name: "Ama",
+      last_name: "Mensah",
+      preferred_name: "Ama",
+      phone_e164: null,
+      email_normalized: null,
+      age_range: null,
+      preferred_language: null,
+      contact_status: "active",
+      identity_redacted: true,
+      created_at: "2026-11-21T10:00:00Z",
+      updated_at: "2026-11-21T10:30:00Z",
+    };
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ ok: true, data: updated, request_id: "worker-contact-update" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    const result = await client.updateContact("branch-abc", "contact-123", {
+      first_name: "Ama",
+      preferred_name: "Ama",
+      email_normalized: "ama@example.com",
+      phone_e164: "+233241234567",
+      phone_display: "+233 24 123 4567",
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+
+    expect(url.pathname).toBe("/api/v1/contacts/contact-123");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(init.method).toBe("PATCH");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(new Headers(init.headers).has("apikey")).toBe(false);
+    expect(JSON.parse(String(init.body))).toEqual({
+      first_name: "Ama",
+      preferred_name: "Ama",
+      phone_e164: "+233241234567",
+      email: "ama@example.com",
+    });
+    expect(result.data.identity_redacted).toBe(true);
+  });
+
+  it("does not send unsupported service-area changes through contact edits", async () => {
+    const fetcher = vi.fn();
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    expect(() => client.updateContact("branch-abc", "contact-123", {
+      service_area_id: "area-123",
+    })).toThrow(/dedicated service-area assignment/);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("routes branch-scoped follow-up task reads through the Worker contract", async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ data: [], request_id: "followup-worker" }), { status: 200 }));
     const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
