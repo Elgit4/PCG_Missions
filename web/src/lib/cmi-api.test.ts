@@ -569,16 +569,19 @@ describe("CmiApiClient", () => {
     expect(new Headers(init.headers).has("apikey")).toBe(false);
   });
 
-  it("keeps contact notes on Supabase until Worker response parity is complete", async () => {
+  it("routes contact note reads through the Worker using the compatible data envelope", async () => {
     const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: [], request_id: "worker-operation-1" }),
+      JSON.stringify({ data: [{ id: "note-1", body: "Followed up", created_at: "2026-11-21T10:00:00Z", updated_at: "2026-11-21T10:00:00Z" }], request_id: "worker-note-list" }),
       { status: 200 },
     ));
     const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
-    await client.listContactNotes("branch-abc", "contact-123");
-    const [notes] = fetcher.mock.calls as unknown as [URL, RequestInit][];
-    expect(notes[0].pathname).toBe("/functions/v1/staff-operations/contacts/contact-123/notes");
-    expect(notes[0].searchParams.get("branch_id")).toBe("branch-abc");
+    const result = await client.listContactNotes("branch-abc", "contact-123");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/contacts/contact-123/notes");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(new Headers(init.headers).has("apikey")).toBe(false);
+    expect(result.data[0]?.id).toBe("note-1");
   });
   it("keeps Worker-unsupported operations on their existing Supabase function", async () => {
     const fetcher = vi.fn(async () => new Response(
