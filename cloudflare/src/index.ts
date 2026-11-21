@@ -3859,6 +3859,13 @@ async function updatePrayerRequestStatus(
       return listTeamOperationsCollection(request, env, requestId, origin, "areas");
     }
 
+    if (
+      /^\/api\/v1\/(teams|areas)(\/[^/]+)?$/.test(url.pathname) &&
+      (request.method === "POST" || request.method === "PATCH")
+    ) {
+      return handleTeamOperationsMutation(request, env, requestId, origin);
+    }
+
     if (request.method !== "GET") {
       return json(405, {
         ok: false,
