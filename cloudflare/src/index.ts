@@ -1887,7 +1887,7 @@ async function createContactNote(
   if (!result.success || (result.meta?.changes ?? 0) !== 1) {
     return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND" } }, requestId, origin);
   }
-  return json(201, { ok: true, note_id: noteId, visibility }, requestId, origin);
+  return json(201, { ok: true, data: { id: noteId, body: noteBody, created_at: now, updated_at: now } }, requestId, origin);
 }
 
 
