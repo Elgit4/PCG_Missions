@@ -70,6 +70,10 @@ jobs:
           cat /tmp/contact.json
           test "$contact_status" = "401"
           node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/contact.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          contact_update_status="$(curl --silent --show-error -o /tmp/contact-update.json -w "%{http_code}" -X PATCH "$url/api/v1/contacts/10000000-0000-4000-8000-000000000001" -H "Content-Type: application/json" --data '{"first_name":"Preview smoke"}')"
+          cat /tmp/contact-update.json
+          test "$contact_update_status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/contact-update.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
           contact_create_status="$(curl --silent --show-error -o /tmp/contact-create.json -w "%{http_code}" -X POST "$url/api/v1/contacts" -H "Content-Type: application/json" -H "Idempotency-Key: preview-capture-request-123456" --data '{"first_name":"Preview smoke"}')"
           cat /tmp/contact-create.json
           test "$contact_create_status" = "401"
