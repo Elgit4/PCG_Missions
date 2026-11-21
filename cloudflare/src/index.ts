@@ -840,6 +840,10 @@ async function listStaffDirectory(
   const access = await authorizeRequestCapability(request, env, "staff.directory.read");
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
   const url = new URL(request.url);
+  const requestedBranchId = url.searchParams.get("branch_id");
+  if (requestedBranchId !== null && requestedBranchId !== access.activeBranch.branchId) {
+    return json(403, { ok: false, error: { code: "BRANCH_NOT_AUTHORIZED" } }, requestId, origin);
+  }
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 25 : Number(rawLimit);
   const rawOffset = url.searchParams.get("offset");
