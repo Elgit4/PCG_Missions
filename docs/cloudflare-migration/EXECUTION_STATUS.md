@@ -149,7 +149,7 @@ Implemented on the migration branch and verified by the Cloudflare D1 Foundation
 - Replaced Better Auth session resolution with Supabase Auth GET /auth/v1/user bearer-token verification. Invalid tokens return unauthenticated; Auth outages fail closed with HTTP 503.
 - Replaced invitation signUpEmail with the Supabase Auth Admin user-creation adapter. D1 provisioning failure triggers a compensating delete attempt for the newly created Auth identity.
 - Removed Better Auth imports, the /api/auth/* Worker handler and package dependency. The existing Pages /api/auth proxy remains responsible for sign-in, refresh, recovery and logout.
-- Added nine Node built-in tests covering token validation, Auth outage handling, malformed identity responses, Auth Admin create/delete and missing service-role configuration.
+- Added Node built-in tests covering token validation, Auth outage handling, malformed identity responses, Auth Admin create/delete, missing service-role configuration, staff profile/branch/role/capability resolution and temporary-password gates.
 - Added recipient-scoped notification inbox, mark-read and mark-all-read Worker routes. Individual follow-up task assignment/reassignment now writes idempotent recipient notifications.
 - Added a separate Wrangler preview environment bound to the EU migration rehearsal D1 database. The default non-production Worker remains bound to pcg-missions-dev. Preview origin allowlist is local-only until a dedicated preview Pages origin is configured.
 
@@ -167,14 +167,14 @@ No production Supabase data, Auth identities, Pages variables or production Clou
 ## Frontend preview integration update — 21 November 2026
 
 - Added optional `VITE_CMI_WORKER_API_URL` configuration. It defaults to empty, so existing production Pages builds continue to use the current Supabase Edge Function API until a preview Worker is explicitly configured.
-- When the Worker URL is configured, the browser API adapter routes staff session (`/api/v1/me`), contact-list reads (`GET /api/v1/contacts`), and staff notifications to the Worker, carrying the Supabase bearer token and selected branch context. Other business operations remain on their existing Edge Function endpoints until each Worker contract is ported and verified.
-- Added frontend tests for Worker session, contact-list and notification routing. Existing unsupported domains continue to use their existing Edge Function paths; this is a staged migration, not a full API cutover.
-- Worker typecheck and D1 security/schema tests pass on the latest backend change. Frontend typecheck, lint, tests and production build are running on the latest frontend commit.
+- When the Worker URL is configured, the browser API adapter routes staff session (`/api/v1/me`), contact-list reads (`GET /api/v1/contacts`), paginated staff-directory reads (`GET /api/v1/staff`), and staff notifications to the Worker, carrying the Supabase bearer token and selected branch context. Other business operations remain on their existing Edge Function endpoints until each Worker contract is ported and verified.
+- Added frontend tests for Worker session, contact-list, staff-directory and notification routing. Existing unsupported domains continue to use their existing Edge Function paths; this is a staged migration, not a full API cutover.
+- Worker typecheck and D1 security/schema tests pass. Frontend typecheck, lint, tests and production build pass.
 - The Worker URL is not set in Pages production or preview, and no Worker deployment has been performed. The integration remains opt-in until the preview Worker is configured with its own D1 binding and Supabase Auth secrets and passes end-to-end acceptance.
 
 ## Latest verification — 21 November 2026
 
-- Latest PR #85 head: `4ebe745b4078d7e999a887e9f4598074605bf169`.
+- Latest PR #85 head: `f7f2f3385a4e3cc8f1f97b76b76556a801512fa8`.
 - Cloudflare Worker typecheck and Supabase Auth/staff-context tests: passed.
 - D1 schema/security invariant tests: passed.
 - Frontend typecheck, lint, unit tests and production build: passed.
