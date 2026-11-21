@@ -736,6 +736,10 @@ export class CmiApiClient {
       Accept: "application/json",
     });
     if (token) headers.set("Authorization", `Bearer ${token}`);
+    const branchId = options.query?.branch_id;
+    if (branchId !== undefined && branchId !== null && branchId !== "") {
+      headers.set("X-Branch-Id", String(branchId));
+    }
     if (options.body !== undefined) headers.set("Content-Type", "application/json");
 
     const requestInit: RequestInit = {
