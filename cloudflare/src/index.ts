@@ -2826,6 +2826,194 @@ async function listTeamOperationsCollection(
   }
 }
 
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value) &&
+    (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+}
+
+function isUuidValue(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function parseTeamAreaName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length >= 2 && normalized.length <= 160 ? normalized : null;
+}
+
+function parseTeamDescription(value: unknown): string | null | undefined {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || value.trim().length > 1000) return undefined;
+  return value.trim() || null;
+}
+
+function parseAreaCode(value: unknown): string | null | undefined {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toUpperCase();
+  if (normalized.length < 2 || normalized.length > 24 || !/^[A-Z0-9_-]+$/.test(normalized)) return undefined;
+  return normalized;
+}
+
+async function handleTeamOperationsMutation(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin: string | undefined,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const segments = url.pathname.split("/").filter(Boolean).slice(3);
+  const resource = segments[0] ?? "";
+  const isTeam = resource === "teams";
+  const isArea = resource === "areas";
+  const isCreate = segments.length === 1 && request.method === "POST";
+  const isUpdate = segments.length === 2 && request.method === "PATCH";
+  if ((!isTeam && !isArea) || (!isCreate && !isUpdate)) {
+    return json(404, { ok: false, error: { code: "ROUTE_NOT_FOUND" } }, requestId, origin);
+  }
+
+  const bodyResult = await readJsonBody(request);
+  if (!bodyResult.ok) {
+    return json(bodyResult.status, { ok: false, error: { code: bodyResult.status === 413 ? "PAYLOAD_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  }
+  if (!isPlainObject(bodyResult.value)) {
+    return json(422, { ok: false, error: { code: "VALIDATION_ERROR", message: "A JSON object is required." } }, requestId, origin);
+  }
+  const body = bodyResult.value;
+  const allowedKeys = isTeam
+    ? (isCreate ? ["branch_id", "name", "description"] : ["name", "description", "is_active"])
+    : (isCreate ? ["branch_id", "name", "code"] : ["name", "code", "is_active"]);
+  if (Object.keys(body).length === 0 || Object.keys(body).some((key) => !allowedKeys.includes(key))) {
+    return json(422, { ok: false, error: { code: "VALIDATION_ERROR", message: "The request contains missing or unsupported fields." } }, requestId, origin);
+  }
+
+  const queryBranchIds = url.searchParams.getAll("branch_id");
+  const branchId = isCreate ? body.branch_id : queryBranchIds[0];
+  if (
+    !isUuidValue(branchId) ||
+    (isCreate && (url.search || Object.hasOwn(body, "branch_id") === false)) ||
+    (isUpdate && queryBranchIds.length !== 1)
+  ) {
+    return json(400, { ok: false, error: { code: "INVALID_QUERY" } }, requestId, origin);
+  }
+
+  const capability = isTeam ? "team.manage" : "area.manage";
+  const access = await authorizeRequestCapability(request, env, capability);
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  if (access.activeBranch.branchId !== branchId) {
+    return json(403, { ok: false, error: { code: "BRANCH_SCOPE_MISMATCH" } }, requestId, origin);
+  }
+
+  const name = Object.hasOwn(body, "name") ? parseTeamAreaName(body.name) : undefined;
+  if (Object.hasOwn(body, "name") && name === null) {
+    return json(422, { ok: false, error: { code: "VALIDATION_ERROR", message: "Name must contain 2 to 160 characters." } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const actorProfileId = access.staff.profileId;
+  const recordId = isCreate ? crypto.randomUUID() : segments[1];
+  if (!isUuidValue(recordId)) {
+    return json(400, { ok: false, error: { code: "INVALID_RESOURCE_ID" } }, requestId, origin);
+  }
+
+  try {
+    if (isCreate) {
+      if (isTeam) {
+        const description = parseTeamDescription(body.description);
+        if (description === undefined || name === undefined) {
+          return json(422, { ok: false, error: { code: "VALIDATION_ERROR", message: "Invalid team name or description." } }, requestId, origin);
+        }
+        const auditId = crypto.randomUUID();
+        const results = await env.DB.batch([
+          env.DB.prepare(`
+            INSERT INTO team (id, branch_id, name, description, is_active, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 1, ?, ?)
+          `).bind(recordId, branchId, name, description, now, now),
+          env.DB.prepare(`
+            INSERT INTO team_management_audit (id, branch_id, actor_profile_id, target_type, target_id, action, metadata, created_at)
+            VALUES (?, ?, ?, 'team', ?, 'team.created', ?, ?)
+          `).bind(auditId, branchId, actorProfileId, recordId, JSON.stringify({ name }), now),
+        ]);
+        if (results.some((result) => !result.success)) throw new Error("TEAM_CREATE_FAILED");
+        return json(201, { ok: true, data: { id: recordId, branch_id: branchId, name, description, is_active: true, created_at: now, updated_at: now } }, requestId, origin);
+      }
+
+      const code = parseAreaCode(body.code);
+      if (code === undefined || name === undefined) {
+        return json(422, { ok: false, error: { code: "VALIDATION_ERROR", message: "Invalid service-area name or code." } }, requestId, origin);
+      }
+      const auditId = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare(`
+          INSERT INTO service_area (id, branch_id, name, code, is_active, created_at, updated_at)
+          VALUES (?, ?, ?, ?, 1, ?, ?)
+        `).bind(recordId, branchId, name, code, now, now),
+        env.DB.prepare(`
+          INSERT INTO team_management_audit (id, branch_id, actor_profile_id, target_type, target_id, action, metadata, created_at)
+          VALUES (?, ?, ?, 'service_area', ?, 'service_area.created', ?, ?)
+        `).bind(auditId, branchId, actorProfileId, recordId, JSON.stringify({ name, code }), now),
+      ]);
+      if (results.some((result) => !result.success)) throw new Error("AREA_CREATE_FAILED");
+      return json(201, { ok: true, data: { id: recordId, branch_id: branchId, name, code, is_active: true, created_at: now, updated_at: now } }, requestId, origin);
+    }
+
+    const table = isTeam ? "team" : "service_area";
+    const current = await env.DB.prepare(`SELECT id FROM ${table} WHERE id = ? AND branch_id = ? LIMIT 1`)
+      .bind(recordId, branchId).first<{ id: string }>();
+    if (!current) return json(404, { ok: false, error: { code: isTeam ? "TEAM_NOT_FOUND" : "SERVICE_AREA_NOT_FOUND" } }, requestId, origin);
+
+    const updates: Array<{ column: string; value: unknown }> = [];
+    if (Object.hasOwn(body, "name")) {
+      if (name === undefined || name === null) return json(422, { ok: false, error: { code: "VALIDATION_ERROR", message: "Invalid name." } }, requestId, origin);
+      updates.push({ column: "name", value: name });
+    }
+    if (isTeam && Object.hasOwn(body, "description")) {
+      const description = parseTeamDescription(body.description);
+      if (description === undefined) return json(422, { ok: false, error: { code: "VALIDATION_ERROR", message: "Invalid description." } }, requestId, origin);
+      updates.push({ column: "description", value: description });
+    }
+    if (isArea && Object.hasOwn(body, "code")) {
+      const code = parseAreaCode(body.code);
+      if (code === undefined) return json(422, { ok: false, error: { code: "VALIDATION_ERROR", message: "Invalid service-area code." } }, requestId, origin);
+      updates.push({ column: "code", value: code });
+    }
+    if (Object.hasOwn(body, "is_active")) {
+      if (typeof body.is_active !== "boolean") return json(422, { ok: false, error: { code: "VALIDATION_ERROR", message: "is_active must be a boolean." } }, requestId, origin);
+      updates.push({ column: "is_active", value: body.is_active ? 1 : 0 });
+    }
+    if (updates.length === 0) return json(422, { ok: false, error: { code: "VALIDATION_ERROR" } }, requestId, origin);
+
+    const setClause = updates.map((item) => `${item.column} = ?`).join(", ");
+    const values = updates.map((item) => item.value);
+    const auditId = crypto.randomUUID();
+    const targetType = isTeam ? "team" : "service_area";
+    const action = isTeam ? "team.updated" : "service_area.updated";
+    const auditMetadata = JSON.stringify({ changed_fields: updates.map((item) => item.column) });
+    const results = await env.DB.batch([
+      env.DB.prepare(`UPDATE ${table} SET ${setClause}, updated_at = ? WHERE id = ? AND branch_id = ?`)
+        .bind(...values, now, recordId, branchId),
+      env.DB.prepare(`
+        INSERT INTO team_management_audit (id, branch_id, actor_profile_id, target_type, target_id, action, metadata, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(auditId, branchId, actorProfileId, targetType, recordId, action, auditMetadata, now),
+    ]);
+    if (results.some((result) => !result.success)) throw new Error(isTeam ? "TEAM_UPDATE_FAILED" : "AREA_UPDATE_FAILED");
+
+    const updated = await env.DB.prepare(`SELECT id, branch_id, name, ${isTeam ? "description" : "code"}, is_active, created_at, updated_at FROM ${table} WHERE id = ? AND branch_id = ? LIMIT 1`)
+      .bind(recordId, branchId).first<Record<string, unknown>>();
+    if (!updated) return json(404, { ok: false, error: { code: isTeam ? "TEAM_NOT_FOUND" : "SERVICE_AREA_NOT_FOUND" } }, requestId, origin);
+    return json(200, { ok: true, data: { ...updated, is_active: Boolean(updated.is_active) } }, requestId, origin);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const conflict = message.includes("UNIQUE") || message.includes("constraint");
+    return json(conflict ? 409 : 500, {
+      ok: false,
+      error: { code: conflict ? (isTeam ? "TEAM_CONFLICT" : "SERVICE_AREA_CODE_EXISTS") : "TEAM_AREA_OPERATION_FAILED" },
+    }, requestId, origin);
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
