@@ -3544,6 +3544,9 @@ async function updatePrayerRequestStatus(
         if (context.state === "staff_inactive") {
           return json(403, { ok: false, error: { code: "STAFF_ACCOUNT_INACTIVE" } }, requestId, origin);
         }
+        if (context.state === "password_setup_expired") {
+          return json(403, { ok: false, error: { code: "PASSWORD_SETUP_EXPIRED" } }, requestId, origin);
+        }
         if (context.state === "branch_not_authorized") {
           return json(403, { ok: false, error: { code: "BRANCH_NOT_AUTHORIZED" } }, requestId, origin);
         }
@@ -3555,7 +3558,21 @@ async function updatePrayerRequestStatus(
         }
         return json(200, {
           ok: true,
-          staff: context.staff,
+          data: {
+            user: { id: context.staff.userId, email: context.staff.email || null },
+            staff: {
+              id: context.staff.profileId,
+              auth_user_id: context.staff.userId,
+              full_name: context.staff.fullName,
+              email: context.staff.email || null,
+              account_status: "active",
+            },
+            branches: context.staff.branches,
+            roles: context.staff.roles,
+            capabilities: context.staff.capabilities,
+            must_change_password: context.staff.mustChangePassword,
+            password_setup_expires_at: context.staff.passwordSetupExpiresAt,
+          },
           active_branch: context.activeBranch,
           branch_selection_required: context.activeBranch === null && context.staff.branches.length > 0,
         }, requestId, origin);
