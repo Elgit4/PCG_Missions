@@ -1215,5 +1215,13 @@ select is(
  'submitting closeout completes the event lifecycle'
 );
 
+
+select ok(
+  has_table_privilege('service_role','public.event_team_assignment','SELECT')
+  and not has_table_privilege('anon','public.event_team_assignment','SELECT')
+  and not has_table_privilege('authenticated','public.event_team_assignment','SELECT'),
+  'Event and report Edge Functions can read team assignments while browser roles remain denied'
+);
+
 select * from finish();
 rollback;
