@@ -18,20 +18,26 @@ export interface SupabaseAuthUser {
 
 /** Validate the caller's access token against Supabase Auth. Never trust JWT claims
  * decoded locally: the Auth service is the identity authority. */
+export type SupabaseTokenVerification =
+  | { state: "valid"; user: SupabaseAuthUser }
+  | { state: "unauthenticated" }
+  | { state: "unavailable" };
+
 export async function verifySupabaseAccessToken(
   request: Request,
   env: SupabaseAuthEnvironment,
-): Promise<SupabaseAuthUser | null> {
+): Promise<SupabaseTokenVerification> {
   const authorization = request.headers.get("Authorization") ?? "";
-  const match = authorization.match(/^Bearer\s+([A-Za-z0-9._~-]+)$/i);
-  if (!match || !env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return null;
+  const match = authorization.match(/^Bearer\\s+([A-Za-z0-9._~-]+)$/i);
+  if (!match) return { state: "unauthenticated" };
+  if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return { state: "unavailable" };
 
   let base: URL;
   try {
     base = new URL(env.SUPABASE_URL);
-    if (base.protocol !== "https:" && base.hostname !== "localhost") return null;
+    if (base.protocol !== "https:" && base.hostname !== "localhost") return { state: "unavailable" };
   } catch {
-    return null;
+    return { state: "unavailable" };
   }
 
   try {
@@ -44,16 +50,17 @@ export async function verifySupabaseAccessToken(
       },
       signal: AbortSignal.timeout(8000),
     });
-    if (!response.ok) return null;
+    if (response.status === 401 || response.status === 403) return { state: "unauthenticated" };
+    if (!response.ok) return { state: "unavailable" };
     const user = await response.json() as { id?: unknown; email?: unknown };
-    if (typeof user.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id)) return null;
-    return { id: user.id, email: typeof user.email === "string" ? user.email : "" };
+    if (typeof user.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id)) {
+      return { state: "unavailable" };
+    }
+    return { state: "valid", user: { id: user.id, email: typeof user.email === "string" ? user.email : "" } };
   } catch {
-    // Fail closed on network errors, timeouts, or malformed upstream responses.
-    return null;
+    return { state: "unavailable" };
   }
 }
-
 async function supabaseAdminRequest(
   env: SupabaseAuthEnvironment,
   path: string,
