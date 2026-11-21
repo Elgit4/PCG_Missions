@@ -40,12 +40,12 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
 
-    def test_full_migration_chain_reaches_schema_39(self):
+    def test_full_migration_chain_reaches_schema_40(self):
         self.assertEqual(
             self.db.execute(
                 "SELECT schema_version, environment FROM app_meta WHERE id = 1"
             ).fetchone(),
-            (39, "non-production"),
+            (40, "non-production"),
         )
         self.assertEqual(
             self.role_codes(),
@@ -216,7 +216,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            39,
+            40,
         )
 
     def test_worker_authorization_query_enforces_team_leader_membership_for_directory_read(self):
@@ -325,8 +325,37 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            39,
+            40,
         )
+
+    def test_environment_marker_allows_production_but_rejects_other_values(self):
+        self.db.execute("UPDATE app_meta SET environment = 'production' WHERE id = 1")
+        self.assertEqual(
+            self.db.execute("SELECT environment FROM app_meta WHERE id = 1").fetchone()[0],
+            "production",
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute("UPDATE app_meta SET environment = 'staging' WHERE id = 1")
+
+    def test_environment_marker_migration_aborts_before_dropping_wrong_schema(self):
+        isolated = sqlite3.connect(":memory:")
+        isolated.execute("PRAGMA foreign_keys = ON")
+        try:
+            for migration_file in sorted(MIGRATIONS.glob("[0-9][0-9][0-9][0-9]_*.sql")):
+                if migration_file.name == "0040_production_environment_marker.sql":
+                    continue
+                isolated.executescript(migration_file.read_text(encoding="utf-8"))
+            isolated.execute("UPDATE app_meta SET schema_version = 38 WHERE id = 1")
+            with self.assertRaises(sqlite3.IntegrityError):
+                isolated.executescript(
+                    (MIGRATIONS / "0040_production_environment_marker.sql").read_text(encoding="utf-8")
+                )
+            self.assertEqual(
+                isolated.execute("SELECT schema_version, environment FROM app_meta WHERE id = 1").fetchone(),
+                (38, "non-production"),
+            )
+        finally:
+            isolated.close()
 
 
 if __name__ == "__main__":
