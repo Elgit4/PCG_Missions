@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
+import { createAllowedOrigins } from "../_shared/cors.ts";
 import { isUuid, validateFlyerImage } from "./validation.ts";
 import {
   attachFlyerReplacement,
@@ -20,11 +21,9 @@ const SUPABASE_PUBLIC_KEY = Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
   Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const BUCKET = "event-flyers";
 const MAX_BYTES = 5 * 1024 * 1024;
-const allowedOrigins = new Set([
-  "https://pcg-missions.vercel.app",
-  ...(Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "")
-    .split(",").map((value) => value.trim()).filter(Boolean),
-]);
+const allowedOrigins = createAllowedOrigins(
+  Deno.env.get("CMI_ALLOWED_ORIGINS"),
+);
 
 function serviceClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
