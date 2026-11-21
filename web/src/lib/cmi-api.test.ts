@@ -552,6 +552,15 @@ describe("CmiApiClient", () => {
     expect(String(url)).toBe("https://worker.example.com/api/v1/contacts?branch_id=branch-abc&limit=10&offset=0");
     expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
+    expect(new Headers(init.headers).has("apikey")).toBe(false);
+  });
+
+  it("keeps follow-up operations on Supabase until Worker response parity is complete", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ data: [], request_id: "followup-fallback" }), { status: 200 }));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    await client.listFollowUpTasks("branch-abc");
+    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/staff-operations/followup/tasks");
   });
 
   it("routes staff notifications through the Worker API", async () => {
