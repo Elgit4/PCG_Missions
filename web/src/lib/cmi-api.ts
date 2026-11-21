@@ -668,6 +668,7 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     if (/^\/contacts\/[^/]+\/notes$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
     if (/^\/contacts\/[^/]+\/interactions$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
     if (/^\/contacts\/[^/]+\/assign$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (suffix === "/followup/tasks" && verb === "GET") return "/api/v1/followup/tasks";
     if (suffix === "/staff" && verb === "GET") return "/api/v1/staff";
     return null;
   }
@@ -746,6 +747,7 @@ export class CmiApiClient {
     }
     const suffix = path ? (path.startsWith("/") ? path : `/${path}`) : "";
     const workerPath = workerApiPath(functionName, suffix, options.method ?? "GET");
+    const workerFollowupListRequest = functionName === "staff-operations" && suffix === "/followup/tasks" && (options.method ?? "GET") === "GET";
     const useWorkerApi = this.workerApiBaseUrl !== null && workerPath !== null;
     const useSameOriginSessionProxy = !useWorkerApi && functionName === "staff-session" &&
       typeof window !== "undefined" &&
@@ -757,6 +759,7 @@ export class CmiApiClient {
         ? new URL("/api/auth?resource=staff-session", window.location.origin)
         : new URL(`${this.baseUrl}/${functionName}${suffix}`);
     for (const [key, value] of Object.entries(options.query ?? {})) {
+      if (useWorkerApi && workerFollowupListRequest && key === "branch_id") continue;
       if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
     }
     const headers = new Headers({ Accept: "application/json" });
