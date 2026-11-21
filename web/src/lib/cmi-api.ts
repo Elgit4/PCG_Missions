@@ -1,4 +1,4 @@
-import { CMI_WORKER_API_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./supabase-config";
+import { CMI_PREVIEW_MODE, CMI_WORKER_API_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./supabase-config";
 
 /**
  * PCG Missions CMI v2.1 browser API adapter.
@@ -11,6 +11,8 @@ export interface CmiApiConfig {
   supabaseUrl: string;
   publishableKey: string;
   workerApiUrl?: string;
+  /** Prevents unsupported business writes from falling back to the shared Supabase project in preview. */
+  previewMode?: boolean;
 }
 export type AccessTokenProvider = () => Promise<string | null>;
 export interface ApiEnvelope<T> {
@@ -686,6 +688,7 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
 export class CmiApiClient {
   private readonly baseUrl: string;
   private readonly workerApiBaseUrl: string | null;
+  private readonly previewMode: boolean;
 
   constructor(
     private readonly config: CmiApiConfig,
@@ -701,6 +704,7 @@ export class CmiApiClient {
       throw new Error("The Supabase URL must use HTTPS outside local development.");
     }
     this.baseUrl = `${supabaseUrl}/functions/v1`;
+    this.previewMode = config.previewMode ?? CMI_PREVIEW_MODE;
     const workerApiUrl = normalizeBaseUrl(config.workerApiUrl ?? CMI_WORKER_API_URL);
     if (workerApiUrl) {
       const workerUrl = new URL(workerApiUrl);
@@ -749,9 +753,18 @@ export class CmiApiClient {
       throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
     }
     const suffix = path ? (path.startsWith("/") ? path : `/${path}`) : "";
-    const workerPath = workerApiPath(functionName, suffix, options.method ?? "GET");
-    const workerFollowupListRequest = functionName === "staff-operations" && suffix === "/followup/tasks" && (options.method ?? "GET") === "GET";
+    const method = (options.method ?? "GET").toUpperCase();
+    const workerPath = workerApiPath(functionName, suffix, method);
+    const workerFollowupListRequest = functionName === "staff-operations" && suffix === "/followup/tasks" && method === "GET";
     const useWorkerApi = this.workerApiBaseUrl !== null && workerPath !== null;
+    if (this.previewMode && this.workerApiBaseUrl !== null && !useWorkerApi && method !== "GET") {
+      throw new CmiApiError(
+        503,
+        "PREVIEW_OPERATION_NOT_MIGRATED",
+        "This write operation is not available in the Cloudflare preview yet. No data was changed.",
+        null,
+      );
+    }
     const useSameOriginSessionProxy = !useWorkerApi && functionName === "staff-session" &&
       typeof window !== "undefined" &&
       window.location.hostname !== "localhost" &&
