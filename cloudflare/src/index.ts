@@ -1216,15 +1216,22 @@ async function listContacts(
   const status = url.searchParams.get("status") ?? "active";
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
-  if (!["active", "archived", "all"].includes(status) ||
+  const rawOffset = url.searchParams.get("offset");
+  const offset = rawOffset === null ? 0 : Number(rawOffset);
+  const requestedBranchId = url.searchParams.get("branch_id");
+  if ((requestedBranchId !== null && requestedBranchId !== context.activeBranch.branchId) ||
+      !["active", "archived", "all"].includes(status) ||
       !Number.isInteger(limit) || limit < 1 || limit > 100 ||
-      [...url.searchParams.keys()].some((key) => !["search", "status", "limit"].includes(key))) {
+      !Number.isInteger(offset) || offset < 0 || offset > 10000 ||
+      [...url.searchParams.keys()].some((key) => !["branch_id", "search", "status", "limit", "offset"].includes(key))) {
     return json(400, { ok: false, error: { code: "INVALID_CONTACT_QUERY" } }, requestId, origin);
   }
   const statusPredicate = status === "all" ? "1 = 1" : "c.contact_status = ?";
   const rows = await env.DB.prepare(`
-    SELECT c.id, c.first_name, c.last_name, c.preferred_name,
+    SELECT c.id, c.branch_id, c.first_name, c.last_name, c.preferred_name,
            CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.phone_e164 ELSE NULL END AS phone_e164,
+           CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.phone_display ELSE NULL END AS phone_display,
+           CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.email_normalized ELSE NULL END AS email_normalized,
            CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.email_normalized ELSE NULL END AS email,
            CASE WHEN ? = 1 AND (${privatePredicate.sql}) THEN c.age_range ELSE NULL END AS age_range,
            CASE WHEN ? = 1 AND (${privatePredicate.sql}) THEN c.preferred_language ELSE NULL END AS preferred_language,
@@ -1235,8 +1242,9 @@ async function listContacts(
       AND (? = '%%' OR c.first_name LIKE ? OR COALESCE(c.last_name, '') LIKE ?)
       AND (${readPredicate.sql})
     ORDER BY c.created_at DESC, c.id DESC
-    LIMIT ?
+    LIMIT ? OFFSET ?
   `).bind(
+    detailScope ? 1 : 0, ...detailPredicate.values,
     detailScope ? 1 : 0, ...detailPredicate.values,
     detailScope ? 1 : 0, ...detailPredicate.values,
     privateScope ? 1 : 0, ...privatePredicate.values,
@@ -1247,13 +1255,13 @@ async function listContacts(
     search ? `%${search}%` : "%%",
     search ? `%${search}%` : "%%",
     ...readPredicate.values,
-    limit,
+    limit, offset,
   ).all<{
-    id: string; first_name: string; last_name: string | null; preferred_name: string | null;
-    phone_e164: string | null; email: string | null; age_range: string | null;
-    preferred_language: string | null; contact_status: string; created_at: string; updated_at: string;
+    id: string; branch_id: string; first_name: string; last_name: string | null; preferred_name: string | null;
+    phone_e164: string | null; phone_display: string | null; email_normalized: string | null;
+    age_range: string | null; preferred_language: string | null;
   }>();
-  return json(200, { ok: true, contacts: rows.results ?? [] }, requestId, origin);
+  return json(200, { ok: true, data: rows.results ?? [] }, requestId, origin);
 }
 
 async function createContact(
