@@ -23,7 +23,7 @@ enabled = true
 port = 55323
 
 # Keep the local email-capture service isolated from other Supabase projects.
-[inbucket]
+[local_smtp]
 enabled = true
 port = 55324
 smtp_port = 55325
