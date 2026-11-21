@@ -7,6 +7,7 @@ on:
     paths:
       - "cloudflare/**"
       - ".github/workflows/cloudflare-preview-bundle.yml"
+      - ".github/workflows/cloudflare-preview-smoke.yml"
   workflow_dispatch:
 
 permissions:
@@ -54,8 +55,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
           mkdir -p /tmp/pcg-worker-bundle
-          cp dist/index.js /tmp/pcg-worker-bundle/index.js
+          cp cloudflare/dist/index.js /tmp/pcg-worker-bundle/index.js
+          cp .github/workflows/cloudflare-preview-smoke.yml /tmp/pcg-worker-bundle/cloudflare-preview-smoke.yml
           cat > /tmp/pcg-worker-bundle/build-info.json <<EOF
           {
             "source_branch": "feat/cloudflare-d1-migration-foundation",
@@ -70,10 +73,11 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git switch --orphan artifacts/pcg-missions-preview-worker
           git rm -rf . >/dev/null 2>&1 || true
-          mkdir -p worker
+          mkdir -p worker .github/workflows
           cp /tmp/pcg-worker-bundle/index.js worker/index.js
           cp /tmp/pcg-worker-bundle/build-info.json worker/build-info.json
-          git add worker/index.js worker/build-info.json
+          cp /tmp/pcg-worker-bundle/cloudflare-preview-smoke.yml .github/workflows/cloudflare-preview-smoke.yml
+          git add worker/index.js worker/build-info.json .github/workflows/cloudflare-preview-smoke.yml
           git commit -m "build: publish verified PCG Missions preview Worker bundle [skip ci]"
           git push --force origin HEAD:refs/heads/artifacts/pcg-missions-preview-worker
 
