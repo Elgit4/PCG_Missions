@@ -40,12 +40,12 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
 
-    def test_full_migration_chain_reaches_schema_38(self):
+    def test_full_migration_chain_reaches_schema_39(self):
         self.assertEqual(
             self.db.execute(
                 "SELECT schema_version, environment FROM app_meta WHERE id = 1"
             ).fetchone(),
-            (38, "non-production"),
+            (39, "non-production"),
         )
         self.assertEqual(
             self.role_codes(),
@@ -185,7 +185,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertIn(("team.read", "branch"), self.grants("coordinator"))
         self.assertIn(("area.read", "branch"), self.grants("coordinator"))
         self.assertIn(("team.read", "team"), self.grants("team_leader"))
-        self.assertNotIn(("area.read", "team"), self.grants("team_leader"))
+        self.assertIn(("area.read", "team"), self.grants("team_leader"))
         for role_code in ("field_worker", "follow_up_volunteer", "prayer_intercessor"):
             self.assertFalse(
                 {grant for grant in self.grants(role_code) if grant[0] in ("team.read", "area.read")},
@@ -297,7 +297,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertIsNotNone(authorize(profiles["coordinator"], "area.read"))
         self.assertIsNotNone(authorize(profiles["team_leader"], "team.read", team_id))
         self.assertIsNone(authorize(profiles["team_leader"], "team.read", other_team_id))
-        self.assertIsNone(authorize(profiles["team_leader"], "area.read"))
+        self.assertIsNotNone(authorize(profiles["team_leader"], "area.read", team_id))\n        self.assertIsNone(authorize(profiles["team_leader"], "area.read", other_team_id))
 
     def test_role_grant_migration_is_idempotent(self):
         before = self.db.execute(
