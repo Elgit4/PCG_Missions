@@ -49,6 +49,14 @@ The migration now has a deployed non-production Worker and a Pages preview wired
 - Latest checks: [Preview Worker Bundle 44947383145](https://github.com/Elgit4/PCG_Missions/actions/runs/44947383145), [D1 Foundation 44947387152](https://github.com/Elgit4/PCG_Missions/actions/runs/44947387152), and [CMI web CI 44947387140](https://github.com/Elgit4/PCG_Missions/actions/runs/44947387140) all passed. The Worker route suite passed 30 tests; the SQLite migration-contract suite passed 64 tests.
 - Pages preview deployment `ccbc064e-1bc5-4d75-89ed-fd29443f85c4` from source commit `25975f7b10b33dfe6528d379427cfc588b61ec02` succeeded and updated the preview alias. This still does not replace real authenticated six-role acceptance or the data reconciliation/restore/rollback gates.
 
+## Shared Supabase Auth preview safeguard — 21 November 2026
+
+- Preview Pages uses the existing live Supabase Auth tenant, not a separate test tenant. The frontend now blocks password-reset initiation, recovery-link completion and forced password changes whenever `VITE_CMI_PREVIEW_MODE=true`, before any request is sent. This protects actual staff credentials during preview testing.
+- Normal sign-in and session refresh remain enabled. Staff whose profile requires a password change must complete it through the official portal and then sign in to the preview again.
+- Tests verified the credential-changing methods fail locally with `PREVIEW_AUTH_MUTATION_DISABLED` and no fetch. The latest frontend suite passed 164 tests across 28 files, with lint, type-check and production build successful.
+- Latest Pages preview deployment `56769943-379f-4262-8cad-10ce9f273dc0` completed successfully for source commit `9c27fb87dfdca25f09fd1623782c19c5bf4f3314` and owns the preview alias. Production Pages remains on its existing production branch.
+- This is an application-level safeguard, not an Auth tenant boundary. The preview must not be used for live password resets or credential changes. A separate Supabase Auth staging tenant remains a stronger future isolation option if full isolated user acceptance is required.
+
 ## Workstream A — Identity and session security
 
 - Implemented request-scoped Supabase access-token verification in the Worker using Supabase's authenticated user endpoint; do not replace this with local JWT decoding.
