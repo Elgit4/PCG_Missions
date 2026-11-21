@@ -297,7 +297,8 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertIsNotNone(authorize(profiles["coordinator"], "area.read"))
         self.assertIsNotNone(authorize(profiles["team_leader"], "team.read", team_id))
         self.assertIsNone(authorize(profiles["team_leader"], "team.read", other_team_id))
-        self.assertIsNotNone(authorize(profiles["team_leader"], "area.read", team_id))\n        self.assertIsNone(authorize(profiles["team_leader"], "area.read", other_team_id))
+        self.assertIsNotNone(authorize(profiles["team_leader"], "area.read", team_id))
+        self.assertIsNone(authorize(profiles["team_leader"], "area.read", other_team_id))
 
     def test_role_grant_migration_is_idempotent(self):
         before = self.db.execute(
