@@ -214,3 +214,55 @@ No production Supabase data, Auth identities, Pages variables or production Clou
 - The official Pages project remains on production branch `feat/cmi-pcg-missions-final-review-v6`; its preview has the Supabase configuration but no `VITE_CMI_WORKER_API_URL`. Production Pages variables and production Supabase remain unchanged.
 - PR #85 remains a draft and is 95 commits ahead of its v6 base. It is not a complete Cloudflare cutover: the 12 outstanding Supabase feature migrations, complete Worker/API parity, authenticated six-role browser acceptance, deterministic data-import correction, backup/restore rehearsal, production D1 provisioning, monitoring and rollback gates remain.
 - No production resources, live data, authentication identities, or routing were changed during this verification.
+
+
+## Live preview Worker and Pages integration — 21 November 2026
+
+### Deployed preview resources
+
+- Worker: `pcg-missions-api-preview`
+- Worker URL: `https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev`
+- Worker version/deployment: `c85692cdf49c40faab6b3a0eb2f495bf`
+- Worker D1 binding: `pcg-missions-migration-test` (`74074d53-1edc-4ad7-83e6-bb3333a6ab4f`, EU jurisdiction)
+- Pages preview alias: `https://feat-cloudflare-d1-migration.pcg-missions.pages.dev`
+- Latest successful Pages preview deployment at the time of this update: `f8c92720-b29f-41a5-91da-a6f032de9b3b`
+- Production Pages branch remains `feat/cmi-pcg-missions-final-review-v6`; production routing and production data have not been changed.
+
+The Worker was uploaded through the connected Cloudflare account using the build bundle produced by GitHub Actions. Its workers.dev subdomain was explicitly enabled. This bypasses the missing GitHub Actions token for the current preview deployment; it does not repair the token's GitHub secret scope or provide automatic GitHub-to-Cloudflare deployment.
+
+### Pages build configuration
+
+- `web/wrangler.toml` is the Pages project's source of truth for build-time variables.
+- `[env.preview.vars]` sets `VITE_CMI_WORKER_API_URL` to the preview Worker.
+- `[env.production.vars]` explicitly sets `VITE_CMI_WORKER_API_URL = ""`, preserving the existing production API path until cutover approval.
+- The dashboard-only environment variable attempt was insufficient because the Wrangler configuration controlled the build. The source config now carries the environment-specific values.
+- Removed the self-rewriting `/* /index.html 200` rule from `web/public/_redirects`; Cloudflare Pages uses its native SPA fallback when no top-level `404.html` is present. This removes the Pages build warning about the self-rewrite loop.
+
+### Preview Worker API routes
+
+The frontend API adapter now selects the Worker for:
+- staff session context and branch-aware staff directory reads;
+- contact list reads and contact-note list/create;
+- follow-up task listing;
+- recipient-scoped notification read operations;
+- team and service-area list/create/update;
+- team membership add/role update/revoke;
+- service-area coverage add/revoke.
+
+Unsupported operations deliberately retain their existing Supabase Edge Function path. This is not yet a full backend cutover.
+
+### Verification evidence
+
+- [Cloudflare D1 Foundation CI 44941795903](https://github.com/Elgit4/PCG_Missions/actions/runs/44941795903) — Worker type-check, Supabase Auth tests and SQLite/D1 schema checks passed.
+- [CMI web CI 44941795678](https://github.com/Elgit4/PCG_Missions/actions/runs/44941795678) — frontend type-check, lint, unit tests and production build passed.
+- [Cloudflare Preview Worker Bundle 44941942879](https://github.com/Elgit4/PCG_Missions/actions/runs/44941942879) — bundle build and live smoke checks passed. The smoke run verified D1 health/schema version 37, anonymous staff-context rejection, CORS origin and idempotency headers, anonymous rejection across team/service-area collection and mutation routes, and that the Pages preview JavaScript contains the Worker API origin.
+- The smoke checks verify route reachability and authorization boundaries without a staff bearer token. They do not replace authenticated six-role CRUD/browser acceptance or data reconciliation.
+
+### Remaining release blockers
+
+1. Full API parity remains incomplete: typed reports, full pastoral/prayer lifecycle, event staff assignment and lifecycle, private flyer upload/delivery, and several account-management flows still require Worker implementations and frontend routing.
+2. The preview Worker was deployed without `SUPABASE_SERVICE_ROLE_KEY`. Worker-side Supabase Auth Admin invitation provisioning must not be enabled until the secret is configured securely and tested. Existing staff-auth provisioning remains on the trusted Supabase path.
+3. The EU D1 database is a migration rehearsal, not production. Source-to-D1 export/import, deterministic reconciliation, production D1 provisioning, backup/restore and rollback are outstanding.
+4. Authenticated write acceptance for the newly added team/service-area mutations has not yet been completed against a real staff session.
+5. GitHub Actions still receives an empty `CLOUDFLARE_API_TOKEN` in the credential-based deploy workflow. That workflow is now manual-only; the independent bundle/smoke workflow runs automatically.
+6. Production Pages, production Supabase identities/data, DNS and Arkesel SMS configuration remain unchanged. SMS remains intentionally disabled.
