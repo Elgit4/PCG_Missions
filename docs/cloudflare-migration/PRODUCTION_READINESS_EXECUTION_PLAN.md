@@ -49,6 +49,14 @@ The migration now has a deployed non-production Worker and a Pages preview wired
 - Latest checks: [Preview Worker Bundle 44947383145](https://github.com/Elgit4/PCG_Missions/actions/runs/44947383145), [D1 Foundation 44947387152](https://github.com/Elgit4/PCG_Missions/actions/runs/44947387152), and [CMI web CI 44947387140](https://github.com/Elgit4/PCG_Missions/actions/runs/44947387140) all passed. The Worker route suite passed 30 tests; the SQLite migration-contract suite passed 64 tests.
 - Pages preview deployment `ccbc064e-1bc5-4d75-89ed-fd29443f85c4` from source commit `25975f7b10b33dfe6528d379427cfc588b61ec02` succeeded and updated the preview alias. This still does not replace real authenticated six-role acceptance or the data reconciliation/restore/rollback gates.
 
+## Contact detail and interaction API parity progress — 21 November 2026
+
+- The preview frontend now routes branch-scoped contact detail reads and contact-interaction creation through the Worker. The contact projection redacts phone/email unless `contacts.contact_details.read` is granted. Interaction writes require `contacts.interaction.create`, the active branch and an authorized contact scope, then insert and read back from the rehearsal D1.
+- Runtime HTTP tests cover Coordinator contact-detail redaction, branch-required denial, authorized Coordinator interaction creation, and Prayer Intercessor write denial with no D1 mutation.
+- Latest CI at head `9c714aedb0963975d559f45e9a9b22dc47a04b98`: 34 Worker tests, 64 D1 migration tests, and 166 frontend tests across 28 files all passed. Lint, type-check, frontend build and preview live-smoke also passed.
+- Preview Worker v10 (`0e8f3c94-c68f-476e-924b-f6cd5844116f`) is active at 100%. The preview Pages alias remains on successful deployment `7d77425e-fd10-48be-9ff0-4f5a7cc24ddd`, source commit `fa9f76dd7461563c83dd17f42875d817dc152046`, which includes the latest frontend route mappings.
+- Remaining API gaps include contact edits/assignment, interaction listing, follow-up task writes, ministry reports/reviews, event/calendar operations, pastoral/prayer lifecycle and private flyer storage. The preview guard continues to block unsupported business writes to the shared Supabase project.
+
 ## Shared Supabase Auth preview safeguard — 21 November 2026
 
 - Preview Pages uses the existing live Supabase Auth tenant, not a separate test tenant. The frontend now blocks password-reset initiation, recovery-link completion and forced password changes whenever `VITE_CMI_PREVIEW_MODE=true`, before any request is sent. This protects actual staff credentials during preview testing.
