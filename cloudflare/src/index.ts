@@ -64,7 +64,7 @@ function authCorsHeaders(origin: string): Headers {
   return new Headers({
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Branch-Id",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Branch-Id, Idempotency-Key",
     "Access-Control-Max-Age": "600",
     "Vary": "Origin",
   });
