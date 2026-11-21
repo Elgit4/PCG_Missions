@@ -1770,7 +1770,18 @@ async function createContactInteraction(
   if (!result.success || (result.meta?.changes ?? 0) !== 1) {
     return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND_OR_NOT_ACCESSIBLE" } }, requestId, origin);
   }
-  return json(201, { ok: true, interaction_id: interactionId }, requestId, origin);
+  const created = await env.DB.prepare(`
+    SELECT id, interaction_type, occurred_at, outcome_code, summary, next_action_at, created_at
+    FROM contact_interaction
+    WHERE id = ? AND contact_id = ? AND branch_id = ?
+    LIMIT 1
+  `).bind(interactionId, contactId, access.activeBranch.branchId).first<{
+    id: string; interaction_type: "call" | "visit" | "message" | "meeting" | "other";
+    occurred_at: string; outcome_code: string | null; summary: string | null;
+    next_action_at: string | null; created_at: string;
+  }>();
+  if (!created) return json(500, { ok: false, error: { code: "CONTACT_INTERACTION_READBACK_FAILED" } }, requestId, origin);
+  return json(201, { ok: true, data: created }, requestId, origin);
 }
 
 
