@@ -1,5 +1,6 @@
 const FIRST_PARTY_ORIGINS = [
   "https://pcg-missions.vercel.app",
+  "https://pcg-missions.pages.dev",
   "https://pcg-missions-git-feat-cmi-pcg-missions-final-review-v6-eltech.vercel.app",
 ] as const;
 
