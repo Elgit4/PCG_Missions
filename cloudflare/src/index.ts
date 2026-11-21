@@ -3263,7 +3263,7 @@ async function updatePrayerRequestStatus(
       }
       return markStaffNotificationsRead(request, env, payload.branch_id, null, requestId, origin);
     }
-    const notificationReadMatch = url.pathname.match(/^\\/api\\/v1\\/notifications\\/([^/]+)\\/read$/);
+    const notificationReadMatch = url.pathname.match(/^\/api\/v1\/notifications\/([^/]+)\/read$/);
     if (notificationReadMatch && request.method === "POST") {
       const body = await readJsonBody(request, 1024);
       if (!body.ok || !body.value || typeof body.value !== "object" || Array.isArray(body.value)) {
