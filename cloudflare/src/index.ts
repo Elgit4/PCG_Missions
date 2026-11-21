@@ -1931,7 +1931,7 @@ async function listFollowupTasks(
   }
   const statusPredicate = status === "all" ? "1 = 1" : "ft.status = ?";
   const rows = await env.DB.prepare(`
-    SELECT ft.id, ft.contact_id, c.first_name, c.last_name, c.preferred_name,
+    SELECT ft.id, ft.branch_id, ft.contact_id, c.first_name, c.last_name, c.preferred_name,
            CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.phone_e164 ELSE NULL END AS phone_e164,
            CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.email_normalized ELSE NULL END AS email,
            ft.list_id, fl.title AS list_title, ft.assignee_user_id,
