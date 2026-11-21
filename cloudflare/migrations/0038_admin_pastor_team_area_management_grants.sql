@@ -12,4 +12,4 @@ WHERE r.code = 'admin_pastor'
 ON CONFLICT (role_id, capability_id, scope_mode) DO NOTHING;
 
 UPDATE app_meta SET schema_version = 38
-WHERE id = 1 AND environment = 'non-production';
+WHERE id = 1 AND environment = 'non-production' AND schema_version = 37;
