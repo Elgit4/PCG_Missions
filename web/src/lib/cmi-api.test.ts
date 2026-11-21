@@ -113,16 +113,17 @@ describe("CmiApiClient", () => {
     expect(JSON.parse(String(init.body))).toEqual({ body: "Will call tomorrow" });
   });
 
-  it("lists the scoped operational interaction history", async () => {
+  it("lists the scoped operational interaction history through the preview Worker", async () => {
     const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: [{ id: "interaction-1", interaction_type: "visit", occurred_at: "2026-11-12T09:00:00Z" }], request_id: "interaction-list" }),
+      JSON.stringify({ ok: true, data: [{ id: "interaction-1", interaction_type: "visit", occurred_at: "2026-11-12T09:00:00Z" }], request_id: "interaction-list" }),
       { status: 200 },
     ));
-    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
     const result = await client.listContactInteractions("branch-a", "contact-2");
-    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/functions/v1/staff-operations/contacts/contact-2/interactions");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/contacts/contact-2/interactions");
     expect(url.searchParams.get("branch_id")).toBe("branch-a");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-a");
     expect(result.data[0]?.interaction_type).toBe("visit");
   });
 
@@ -752,15 +753,15 @@ describe("CmiApiClient", () => {
     expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
   });
 
-  it("keeps Worker-unsupported reads on their existing Supabase function", async () => {
+  it("keeps other Worker-unsupported reads on their existing Supabase function", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: [], request_id: "supabase-fallback-1" }),
       { status: 200 },
     ));
     const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
-    await client.listContactInteractions("branch-abc", "contact-123");
+    await client.listEventDrafts("branch-abc");
     const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/functions/v1/staff-operations/contacts/contact-123/interactions");
+    expect(url.pathname).toBe("/functions/v1/event-operations/events");
   });
   it("blocks Worker-unsupported business writes in preview instead of mutating the shared Supabase project", async () => {
     const fetcher = vi.fn();
