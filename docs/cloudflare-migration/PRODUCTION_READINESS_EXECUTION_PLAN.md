@@ -35,15 +35,15 @@ The migration now has a deployed non-production Worker and a Pages preview wired
 
 ## Workstream A — Identity and session security
 
-- Implement request-scoped Supabase access-token verification in the Worker. Prefer Supabase's authenticated user endpoint initially; do not merely decode JWTs.
-- Resolve the verified Auth UUID to exactly one D1 staff profile.
-- Enforce active profile, active branch assignment, current role, capability, resource scope and record ownership for every protected route.
-- Fail closed on invalid tokens and Auth upstream outages.
-- Remove Better Auth routes and dependencies only after equivalent routes are mapped and tested.
-- Replace invitation acceptance with a Supabase Auth Admin adapter. Use a failure-safe, idempotent saga for the non-transactional Auth + D1 operations.
+- Implemented request-scoped Supabase access-token verification in the Worker using Supabase's authenticated user endpoint; do not replace this with local JWT decoding.
+- Implemented resolution from the verified Auth UUID to a D1 staff profile and branch/role/capability context.
+- Enforce active profile, active branch assignment, current role, capability, resource scope and record ownership on protected Worker routes.
+- Invalid/missing tokens and Auth upstream failures fail closed. Deployed preview smoke verifies anonymous staff-context and team/area route rejection.
+- Removed Better Auth from the current Worker runtime and package dependencies. Historical migration artifacts are retained only as migration history.
+- Implemented the Supabase Auth Admin create/compensation adapter in source. The preview Worker still needs the server-only `SUPABASE_SERVICE_ROLE_KEY` secret before Worker-side invitation provisioning can be enabled.
 - Preserve administrator-provisioned accounts, no public self-signup, first-login password change, 24-hour temporary-password expiry and administrator-assisted reset semantics.
 - Keep service-role credentials exclusively in Worker secrets. Never return or log them.
-- Test invalid/expired/revoked tokens, inactive staff, missing profile, branch mismatch, revoked/expired role assignments, Auth outage, duplicate invitation acceptance and compensation failures.
+- Extend authenticated integration coverage for expired/revoked tokens, inactive staff, missing profile, branch mismatch, revoked/expired role assignments, Auth outage, duplicate invitation acceptance and compensation failures.
 
 ## Workstream B — Database and data correctness
 
