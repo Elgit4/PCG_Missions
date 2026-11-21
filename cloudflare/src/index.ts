@@ -1827,7 +1827,8 @@ async function listContactNotes(
     id: string; author_user_id: string; author_name: string; body: string;
     visibility: string; team_id: string | null; created_at: string; updated_at: string;
   }>();
-  return json(200, { ok: true, notes: rows.results ?? [] }, requestId, origin);
+  const notes = (rows.results ?? []).map(({ id, body, created_at, updated_at }) => ({ id, body, created_at, updated_at }));
+  return json(200, { ok: true, data: notes }, requestId, origin);
 }
 
 async function createContactNote(
