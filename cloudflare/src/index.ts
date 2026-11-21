@@ -1,5 +1,5 @@
-import { createSupabaseAuthUser, deleteSupabaseAuthUser } from "./auth";
-import { authorizeRequestCapability, resolveStaffContext, type StaffEnvironment } from "./staff-context";
+import { createSupabaseAuthUser, deleteSupabaseAuthUser } from "./auth.ts";
+import { authorizeRequestCapability, resolveStaffContext, type StaffEnvironment } from "./staff-context.ts";
 
 interface D1PreparedStatement {
   bind(...values: unknown[]): D1PreparedStatement;
