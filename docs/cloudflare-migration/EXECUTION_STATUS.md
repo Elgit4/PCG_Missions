@@ -141,3 +141,25 @@ The migration branch now contains an initial code implementation (not yet deploy
 - The Worker no longer enables credentialed CORS for bearer-token requests. Non-production origin allowlist is restricted to localhost until the preview Worker is deployed with a reviewed Pages origin.
 
 CI is running against the latest branch revision. This is not a complete auth cutover: the existing Pages auth proxy still calls Supabase Edge Functions for staff session and password lifecycle operations; Worker environment secrets are not configured; and the frontend business API still calls Supabase Edge Functions. Do not deploy this Worker until route parity, identity mapping, test coverage, environment bindings, and the frontend adapter are completed.
+
+## Worker implementation checkpoint — 21 November 2026
+
+Implemented on the migration branch and verified by the Cloudflare D1 Foundation GitHub Actions workflow:
+
+- Replaced Better Auth session resolution with Supabase Auth GET /auth/v1/user bearer-token verification. Invalid tokens return unauthenticated; Auth outages fail closed with HTTP 503.
+- Replaced invitation signUpEmail with the Supabase Auth Admin user-creation adapter. D1 provisioning failure triggers a compensating delete attempt for the newly created Auth identity.
+- Removed Better Auth imports, the /api/auth/* Worker handler and package dependency. The existing Pages /api/auth proxy remains responsible for sign-in, refresh, recovery and logout.
+- Added nine Node built-in tests covering token validation, Auth outage handling, malformed identity responses, Auth Admin create/delete and missing service-role configuration.
+- Added recipient-scoped notification inbox, mark-read and mark-all-read Worker routes. Individual follow-up task assignment/reassignment now writes idempotent recipient notifications.
+- Added a separate Wrangler preview environment bound to the EU migration rehearsal D1 database. The default non-production Worker remains bound to pcg-missions-dev. Preview origin allowlist is local-only until a dedicated preview Pages origin is configured.
+
+The latest Worker type-check and SQLite foundation checks pass. The focused Auth unit tests also pass.
+
+Still not deployed or production-ready:
+- No Worker deployment was made from this branch.
+- SUPABASE_SERVICE_ROLE_KEY is not configured in the preview Worker; invitation acceptance cannot be runtime-verified until that secret is set.
+- Frontend business API calls still target Supabase Edge Functions. Do not switch the live Pages frontend to this Worker until the remaining routes and authorization parity are implemented.
+- Event-assignment and report-review notification producers, team notification fan-out and complete notification acceptance tests remain outstanding.
+- Backup/restore, six-role browser acceptance, private R2 storage, full backend parity and production cutover remain outstanding.
+
+No production Supabase data, Auth identities, Pages variables or production Cloudflare resources were modified.
