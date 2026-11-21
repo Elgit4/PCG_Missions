@@ -33,6 +33,7 @@ export interface ActiveBranchContext {
 
 export type StaffContextResult =
   | { state: "unauthenticated" }
+  | { state: "auth_unavailable" }
   | { state: "staff_inactive" }
   | { state: "staff_not_provisioned" }
   | { state: "branch_not_authorized" }
@@ -42,8 +43,10 @@ export async function resolveStaffContext(
   request: Request,
   env: StaffEnvironment,
 ): Promise<StaffContextResult> {
-  const user = await verifySupabaseAccessToken(request, env);
-  if (!user) return { state: "unauthenticated" };
+  const verification = await verifySupabaseAccessToken(request, env);
+  if (verification.state === "unauthenticated") return { state: "unauthenticated" };
+  if (verification.state === "unavailable") return { state: "auth_unavailable" };
+  const user = verification.user;
 
   const profile = await env.DB.prepare(`
     SELECT id, auth_user_id, full_name, email, account_status
@@ -126,7 +129,7 @@ export async function resolveStaffContext(
 }
 
 export type CapabilityRequestResult =
-  | { state: "unauthenticated" | "staff_inactive" | "staff_not_provisioned" | "branch_not_authorized" | "branch_required" | "capability_denied" }
+  | { state: "unauthenticated" | "auth_unavailable" | "staff_inactive" | "staff_not_provisioned" | "branch_not_authorized" | "branch_required" | "capability_denied" }
   | { state: "authorized"; staff: AuthenticatedStaff; activeBranch: ActiveBranchContext; decision: AuthorizationDecision };
 
 /** Apply capability authorization before the handler query. Repeat branch and
