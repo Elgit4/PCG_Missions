@@ -39,6 +39,7 @@ export type StaffContextResult =
   | { state: "unauthenticated" }
   | { state: "auth_unavailable" }
   | { state: "staff_inactive" }
+  | { state: "password_setup_expired" }
   | { state: "staff_not_provisioned" }
   | { state: "branch_not_authorized" }
   | { state: "authenticated"; staff: AuthenticatedStaff; activeBranch: ActiveBranchContext | null };
@@ -76,7 +77,7 @@ export async function resolveStaffContext(
   const passwordSetupExpiresAt = profile.password_setup_expires_at ?? null;
   if (mustChangePassword) {
     const expiresAt = Date.parse(passwordSetupExpiresAt ?? "");
-    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return { state: "staff_inactive" };
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return { state: "password_setup_expired" };
   }
   const branchRows = await env.DB.prepare(`
     SELECT DISTINCT b.id, b.name, b.timezone
@@ -175,7 +176,7 @@ export async function resolveStaffContext(
 }
 
 export type CapabilityRequestResult =
-  | { state: "unauthenticated" | "auth_unavailable" | "staff_inactive" | "staff_not_provisioned" | "branch_not_authorized" | "branch_required" | "capability_denied" }
+  | { state: "unauthenticated" | "auth_unavailable" | "staff_inactive" | "password_setup_expired" | "staff_not_provisioned" | "branch_not_authorized" | "branch_required" | "capability_denied" }
   | { state: "authorized"; staff: AuthenticatedStaff; activeBranch: ActiveBranchContext; decision: AuthorizationDecision };
 
 /** Apply capability authorization before the handler query. Repeat branch and
