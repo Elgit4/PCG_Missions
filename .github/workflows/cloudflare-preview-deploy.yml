@@ -1,24 +1,20 @@
-name: Cloudflare Worker Preview Deploy
+name: Cloudflare Worker Preview Deploy (credential-based fallback)
 
+# The preview Worker is currently deployed through the connected Cloudflare
+# account after the verified bundle is produced by cloudflare-preview-bundle.yml.
+# Keep this credential-based workflow manual until GitHub secret scope is repaired.
 on:
-  push:
-    branches:
-      - feat/cloudflare-d1-migration-foundation
-    paths:
-      - "cloudflare/**"
-      - ".github/workflows/cloudflare-preview-deploy.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pcg-missions-cloudflare-preview
+  group: pcg-missions-cloudflare-preview-credential-deploy
   cancel-in-progress: false
 
 jobs:
   deploy-preview:
-    if: github.ref == 'refs/heads/feat/cloudflare-d1-migration-foundation'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,22 +36,15 @@ jobs:
       - name: Install Worker dependencies
         run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
 
-      - name: Type-check Worker
-        run: npm run typecheck
-
-      - name: Test Supabase Auth integration
-        run: npm test
-
       - name: Require Cloudflare deployment credentials
         shell: bash
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::error title=Cloudflare token unavailable::CLOUDFLARE_API_TOKEN was not passed to this workflow run. The secret must be a repository Actions secret, or the job must target the GitHub Environment that contains it. The workflow will not silently report a successful skipped deployment."
+            echo "::error title=Cloudflare token unavailable::CLOUDFLARE_API_TOKEN is not injected into this manually triggered job. The preview bundle and live smoke checks run in Cloudflare Preview Worker Bundle."
             exit 1
           fi
-          echo "Cloudflare token is present (value withheld)."
 
-      - name: Verify Cloudflare token and account access
+      - name: Verify Cloudflare account access
         run: npx wrangler whoami
 
       - name: Deploy isolated preview Worker
