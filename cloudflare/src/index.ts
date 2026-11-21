@@ -1921,9 +1921,12 @@ async function listFollowupTasks(
   const status = url.searchParams.get("status") ?? "open";
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
+  const rawOffset = url.searchParams.get("offset");
+  const offset = rawOffset === null ? 0 : Number(rawOffset);
   if (!["open","in_progress","completed","cancelled","all"].includes(status) ||
       !Number.isInteger(limit) || limit < 1 || limit > 100 ||
-      [...url.searchParams.keys()].some((key) => !["status","limit"].includes(key))) {
+      !Number.isInteger(offset) || offset < 0 || offset > 10000 ||
+      [...url.searchParams.keys()].some((key) => !["status","limit","offset"].includes(key))) {
     return json(400, { ok: false, error: { code: "INVALID_FOLLOWUP_QUERY" } }, requestId, origin);
   }
   const statusPredicate = status === "all" ? "1 = 1" : "ft.status = ?";
@@ -1944,16 +1947,16 @@ async function listFollowupTasks(
       AND ${statusPredicate}
       AND (${readPredicate.sql})
     ORDER BY CASE WHEN ft.due_at IS NULL THEN 1 ELSE 0 END, ft.due_at ASC, ft.created_at DESC
-    LIMIT ?
+    LIMIT ? OFFSET ?
   `).bind(
     detailScope ? 1 : 0, ...detailPredicate.values,
     detailScope ? 1 : 0, ...detailPredicate.values,
     context.activeBranch.branchId,
     ...(status === "all" ? [] : [status]),
     ...readPredicate.values,
-    limit,
+    limit, offset,
   ).all<Record<string, unknown>>();
-  return json(200, { ok: true, tasks: rows.results ?? [] }, requestId, origin);
+  return json(200, { ok: true, data: rows.results ?? [] }, requestId, origin);
 }
 
 async function createFollowupTask(
