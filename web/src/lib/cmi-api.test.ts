@@ -69,7 +69,7 @@ describe("CmiApiClient", () => {
     const fetcher = vi.fn();
     const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
     expect(() => client.reassignFollowUpTask("branch", "task", {
-      assignee_user_id: "user", team_id: "team",
+      assignee_profile_id: "profile", team_id: "team", reason: "Move workload safely",
     } as never)).toThrow(/Exactly one/);
     expect(fetcher).not.toHaveBeenCalled();
   });
@@ -722,6 +722,46 @@ describe("CmiApiClient", () => {
     expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
     expect(JSON.parse(String(init.body))).toEqual({ status: "completed" });
     expect(result.data.status).toBe("completed");
+  });
+
+  it("routes follow-up reassignment to the Worker assignment route with a reason", async () => {
+    const updatedTask = {
+      id: "task-123",
+      branch_id: "branch-abc",
+      contact_id: "contact-123",
+      assignee_user_id: "auth-user-22",
+      team_id: null,
+      priority: 2,
+      due_at: null,
+      task_note: "Call the visitor",
+      status: "open",
+      created_at: "2026-11-21T12:00:00Z",
+      updated_at: "2026-11-21T12:30:00Z",
+    };
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: updatedTask, request_id: "worker-followup-reassign" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    const result = await client.reassignFollowUpTask("branch-abc", "task-123", {
+      assignee_profile_id: "staff-profile-22",
+      reason: "Rebalance the follow-up workload",
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+
+    expect(url.pathname).toBe("/api/v1/followup/tasks/task-123/assign");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(JSON.parse(String(init.body))).toEqual({
+      assignee_profile_id: "staff-profile-22",
+      reason: "Rebalance the follow-up workload",
+    });
+    expect(result.data.id).toBe("task-123");
   });
 
   it("routes contact note reads through the Worker using the compatible data envelope", async () => {
