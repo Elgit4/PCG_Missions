@@ -636,6 +636,105 @@ test("Prayer Intercessor cannot write visitor contact interactions", async (t) =
   );
 });
 
+test("Admin/Pastor can create an idempotent branch-scoped follow-up task assigned by Auth user ID", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("admin_pastor", [
+    ["followup.read", "branch"],
+    ["followup.create", "branch"],
+    ["followup.assign", "branch"],
+    ["followup.update", "branch"],
+  ]);
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/followup/tasks", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Idempotency-Key": "request-key-123456",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      contact_id: CONTACT_ID,
+      assignee_user_id: AUTH_USER_ID,
+      priority: 2,
+      due_at: null,
+      task_note: "Follow up with visitor",
+    }),
+  }), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(payload.data.id, "90000000-0000-4000-8000-000000000001");
+  assert.equal(payload.data.branch_id, BRANCH_ID);
+  assert.equal(payload.data.contact_id, CONTACT_ID);
+  assert.equal(payload.data.assignee_user_id, AUTH_USER_ID);
+  assert.equal(payload.data.status, "open");
+  assert.equal(fixture.writes, 3);
+  assert.ok(fixture.calls.some((call) => call.kind === "batch" && call.statements === 3));
+});
+
+test("Admin/Pastor can update a follow-up task and receive the full updated record", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("admin_pastor", [
+    ["followup.read", "branch"],
+    ["followup.create", "branch"],
+    ["followup.assign", "branch"],
+    ["followup.update", "branch"],
+  ]);
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/followup/tasks/90000000-0000-4000-8000-000000000001",
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: "Bearer verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status: "completed" }),
+    },
+  ), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.id, "90000000-0000-4000-8000-000000000001");
+  assert.equal(payload.data.status, "completed");
+  assert.equal(payload.data.assignee_user_id, AUTH_USER_ID);
+  assert.equal(fixture.writes, 2);
+});
+
+test("Prayer Intercessor cannot update follow-up tasks without the follow-up update grant", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("prayer_intercessor");
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/followup/tasks/90000000-0000-4000-8000-000000000001",
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: "Bearer verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status: "completed" }),
+    },
+  ), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 403);
+  assert.equal(payload.error.code, "CAPABILITY_DENIED");
+  assert.equal(fixture.writes, 0);
+});
+
 test("contact detail reads fail closed when no active branch is selected", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
     const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
