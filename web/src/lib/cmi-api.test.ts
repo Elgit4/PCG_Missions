@@ -595,4 +595,20 @@ describe("CmiApiClient", () => {
     expect(url.pathname).toBe("/api/v1/notifications");
     expect(url.searchParams.get("branch_id")).toBe("branch-abc");
   });
+  it("routes paginated staff directory reads to the Worker", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({
+      data: [{ id: "staff-1", full_name: "Staff Member", account_status: "active", roles: [{ code: "coordinator", name: "Coordinator" }] }],
+      request_id: "worker-staff-directory-1",
+    }), { status: 200 }));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.listStaffDirectory("branch-abc", { limit: 10, offset: 20, search: "Staff" });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/staff");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(url.searchParams.get("limit")).toBe("10");
+    expect(url.searchParams.get("offset")).toBe("20");
+    expect(url.searchParams.get("search")).toBe("Staff");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(result.data[0]?.roles[0]?.code).toBe("coordinator");
+  });
 });
