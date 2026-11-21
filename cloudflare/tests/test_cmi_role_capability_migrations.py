@@ -275,7 +275,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         )
 
         source = (Path(__file__).resolve().parents[1] / "src" / "authorization.ts").read_text(encoding="utf-8")
-        match = re.search(r"const AUTHORIZATION_SQL = \x60([\\s\\S]*?)\x60;", source)
+        match = re.search(r"const AUTHORIZATION_SQL = \x60([\s\S]*?)\x60;", source)
         self.assertIsNotNone(match)
         query = match.group(1)
 
