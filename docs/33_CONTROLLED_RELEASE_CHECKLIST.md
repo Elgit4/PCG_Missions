@@ -3,23 +3,23 @@
 **Scope:** PR #82 non-SMS workflows only.  
 **Target project:** Supabase `cgwffpxlwgbnlinzwfoj` (EU West).  
 **Source branch:** `feat/cmi-pcg-missions-final-review-v6`.  
-**Current reviewed migration-alignment commit:** `56a11a19fb9985a8fe0cbc0c2d0614a448efe895`.  
+**Current verified branch head:** `0f23ce7f7c6d4fbaf9d57cf48aa61c0ac8e850f6`.  
 **Release status:** NOT APPROVED / NOT DEPLOYED.
 
 This checklist is an execution order and evidence record. It does not authorize production changes.
 
 ## Gate 0 — Source integrity and CI
 
-- [ ] Confirm PR head still matches the commit above; if it changes, restart exact-head verification.
-- [x] Web CI passed on the reviewed commit: `44850105220`.
-- [ ] Frontend CI completed successfully on the reviewed commit.
-- [ ] Backend CI completed successfully on the reviewed commit, including a clean local Supabase start, ordered replay of all migrations, pgTAP suites, and clean shutdown.
-- [ ] Confirm no workflow is merely queued/pending and no run was cancelled.
-- [ ] Confirm the PR diff contains only intended source, migration, test and documentation changes.
-- [ ] Rebuild the Vercel Preview from the exact final commit; verify all static routes and assets.
+- [x] Confirm PR head `0f23ce7f7c6d4fbaf9d57cf48aa61c0ac8e850f6` and verify all three workflows against this exact SHA.
+- [x] Web CI passed: run `44850979759`.
+- [x] CMI frontend CI passed: run `44850979726` (typecheck, lint, tests and production build).
+- [x] CMI backend CI passed: run `44850979713`, including clean isolated Supabase startup, ordered replay of all 29 migrations, CMI database/pgTAP test step and clean shutdown.
+- [x] Confirm all three exact-head workflows completed successfully; no required workflow remains queued or cancelled.
+- [ ] Complete a final human review of the full PR diff before merge.
+- [ ] Obtain a Vercel Preview deployment for this exact SHA and verify static routes/assets. A direct lookup for this SHA returned no deployment yet; the previously READY preview is from an older commit and is not accepted as evidence.
 - [ ] Perform authenticated desktop and mobile browser acceptance; HTTP 200 checks alone are not sufficient.
 
-**Evidence at checklist creation:** web CI passed. Frontend and backend workflow runs were still reported as pending, with no completed check-run result. They must not be described as passed until GitHub reports a completed successful result.
+**Evidence updated 21 November 2026:** exact-head GitHub check-runs report success for frontend, web and backend. The backend job completed all 54 primary steps, including local migration replay, pgTAP and stack shutdown. This verifies the clean local migration chain, not compatibility against a disposable copy of the hosted production schema.
 
 ## Gate 1 — Migration provenance and schema compatibility
 
@@ -28,7 +28,7 @@ This checklist is an execution order and evidence record. It does not authorize 
 - [ ] Review the reconstructed hosted-only password-expiry grant migration. Confirm it grants only UPDATE on `staff_profile.password_setup_expires_at` to `service_role`.
 - [ ] Start an isolated Supabase environment from a snapshot or disposable local stack; do not use production as the migration test target.
 - [ ] Replay the complete 29-file migration chain from an empty database and compare resulting schema with the expected application schema.
-- [ ] Replay the pending 12 migrations against a disposable copy of the hosted schema, checking for duplicate objects and incompatible existing definitions.
+- [ ] Replay the pending 12 migrations against a disposable copy of the hosted schema, checking for duplicate objects and incompatible existing definitions. This is distinct from the successful clean-database replay and remains a release gate.
 - [ ] Verify migration order and exact versions before any production application.
 - [ ] Capture a before/after schema diff for all tables, views, functions, triggers, policies, grants, indexes, enums and Storage metadata.
 - [ ] Verify rollback/restore strategy and backup recoverability before release.
