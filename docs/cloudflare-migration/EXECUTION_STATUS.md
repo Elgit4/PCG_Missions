@@ -222,10 +222,10 @@ No production Supabase data, Auth identities, Pages variables or production Clou
 
 - Worker: `pcg-missions-api-preview`
 - Worker URL: `https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev`
-- Worker deployment: `a79b83d8-05ca-42c8-8f09-78931fe85d7d`; active Worker version: `1292566a-e715-4a7a-b8b3-2971366e6a85` (100% of preview Worker traffic)
+- Original Worker deployment: `a79b83d8-05ca-42c8-8f09-78931fe85d7d` (superseded by the direct preview upload recorded below).
 - Worker D1 binding: `pcg-missions-migration-test` (`74074d53-1edc-4ad7-83e6-bb3333a6ab4f`, EU jurisdiction)
 - Pages preview alias: `https://feat-cloudflare-d1-migration.pcg-missions.pages.dev`
-- Latest successful Pages preview deployment at the time of this update: `f8c92720-b29f-41a5-91da-a6f032de9b3b`
+- Pages preview deployment at the time of the initial Worker integration: `f8c92720-b29f-41a5-91da-a6f032de9b3b` (superseded by the latest preview Pages deployment recorded below).
 - Production Pages branch remains `feat/cmi-pcg-missions-final-review-v6`; production routing and production data have not been changed.
 
 The Worker was uploaded through the connected Cloudflare account using the build bundle produced by GitHub Actions. Its workers.dev subdomain was explicitly enabled. This bypasses the missing GitHub Actions token for the current preview deployment; it does not repair the token's GitHub secret scope or provide automatic GitHub-to-Cloudflare deployment.
@@ -302,7 +302,7 @@ Unsupported operations deliberately retain their existing Supabase Edge Function
 - Added `0039_team_area_directory_read_grants.sql`: Admin/Pastor and Coordinator receive branch-scoped `team.read` and `area.read`; Team Leader receives team-scoped reads. Field Worker, Follow-up Volunteer and Prayer Intercessor receive neither directory-read nor directory-management access.
 - Applied migration 0038 and migration 0039 to the EU rehearsal D1 database. D1 reports schema version 39, six active roles, 63 active capabilities and 73 active role-capability grants. The current capability matrix contains exactly the intended directory permissions above; `PRAGMA foreign_key_check` returns no rows.
 - The Worker directory reads now distinguish read from manage permission, validate the selected branch, restrict Team Leaders to their own active team, and filter Team Leader service-area results to coverage associated with active members of that team. Staff identity fields remain separately gated by `staff.directory.read`.
-- Deployed the verified Worker bundle from source commit `96ef44e837c3d2e07cf99e5ccef9496c84cfdbd6` to the preview Worker only. Active preview version is `c7eff623-511d-446b-a427-7e4589813f49`; deployment is `21c12084-70bb-431c-8643-3f1f7ed11ec6`, with 100% of preview Worker traffic on that version. The existing preview D1 binding, Auth URL/publishable key, origin allowlist and observability settings were retained. The Worker still has no `SUPABASE_SERVICE_ROLE_KEY` binding.
+- At the time of this earlier checkpoint, the preview Worker was version `c7eff623-511d-446b-a427-7e4589813f49` / deployment `21c12084-70bb-431c-8643-3f1f7ed11ec6`. This version was superseded by the later contact-detail preview release recorded below. The Worker has no `SUPABASE_SERVICE_ROLE_KEY` binding.
 - [Cloudflare Preview Worker Bundle 44946876309](https://github.com/Elgit4/PCG_Missions/actions/runs/44946876309) passed after the Worker upload. Its live smoke output reported `state=ready`, `environment=non-production`, `schema_version=39`; anonymous `/api/v1/me`, `/teams` and `/areas` requests returned `UNAUTHENTICATED`; the nine team/service-area mutation routes rejected anonymous requests; CORS and Pages preview bundle checks passed.
 - [Cloudflare D1 Foundation 44946503388](https://github.com/Elgit4/PCG_Missions/actions/runs/44946503388) passed its SQLite foundation and Worker Auth/type-check suites. The migration-contract suite ran 64 tests successfully. [CMI web CI 44946503429](https://github.com/Elgit4/PCG_Missions/actions/runs/44946503429) passed frontend type-check, lint, unit tests and production asset build for the associated source head.
 - The UI directory workspace now displays read-only directories for roles with read grants while retaining create/edit/member/coverage operations behind management grants. TeamLeader read projections return counts but not staff identities without the separate staff-directory capability.
@@ -330,3 +330,14 @@ Unsupported operations deliberately retain their existing Supabase Edge Function
 - [Cloudflare D1 Foundation 44947721649](https://github.com/Elgit4/PCG_Missions/actions/runs/44947721649) passed Worker type-check/Auth tests and the 64-test SQLite foundation/migration suite. [Cloudflare Preview Worker Bundle 44947716722](https://github.com/Elgit4/PCG_Missions/actions/runs/44947716722) passed the 30 Worker route tests and post-deployment schema-39/anonymous-access smoke checks.
 - Preview Pages deployment `56769943-379f-4262-8cad-10ce9f273dc0` from source commit `9c27fb87dfdca25f09fd1623782c19c5bf4f3314` succeeded at `https://56769943.pcg-missions.pages.dev` and now owns the preview alias `https://feat-cloudflare-d1-migration.pcg-missions.pages.dev`.
 - This isolation does not create a separate Auth staging tenant. Any remaining direct Auth operations must be treated as live account operations. Production Pages, current live data and production routing remain unchanged.
+
+
+### Contact-detail Worker release — 21 November 2026, 20:52 UTC
+
+- Published the verified GitHub Actions preview bundle for source code commit `68731f5ae127b22e9c86fa8cb8e85bf59ae01448` to Worker `pcg-missions-api-preview` only. Cloudflare accepted the upload at `2026-11-21T20:52:38Z`.
+- New active preview Worker deployment: `5eb525b2-b42a-4a85-87aa-fc044f5b6ab1`; active Worker version: `042a1639-e8ab-4d58-b450-904366e76271`; 100% of preview Worker traffic is assigned to this version.
+- Retained the exact EU rehearsal D1 binding `74074d53-1edc-4ad7-83e6-bb3333a6ab4f`, `APP_ENV=non-production`, current Pages preview origin allowlist, Supabase URL and publishable key, and existing observability settings. The Worker still has no service-role key binding.
+- The contact-detail route is now mapped from the browser adapter to the Worker. The Worker returns the standard `data` envelope and applies independent field projection for phone/email identity and restricted contact fields. Anonymous access is denied before any protected contact lookup.
+- Pages preview deployment from commit `68731f5ae127b22e9c86fa8cb8e85bf59ae01448` succeeded as `85633045-1de6-4f3b-bb41-f1c1d935c372`; the active alias remains `https://feat-cloudflare-d1-migration.pcg-missions.pages.dev`.
+- A follow-up CI change adds an explicit anonymous contact-detail HTTP smoke check alongside schema health, staff-session, team/area and CORS checks. Its result is recorded after the run completes.
+- This is a preview deployment only. It does not establish authenticated role acceptance, full API parity, source-to-D1 data reconciliation or production readiness. Production Pages, Worker, D1, Supabase schema, Auth identities, DNS and SMS remain unchanged.
