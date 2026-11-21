@@ -3550,7 +3550,7 @@ async function updatePrayerRequestStatus(
         if (context.state !== "authenticated") {
           return json(403, { ok: false, error: { code: "STAFF_CONTEXT_UNAVAILABLE" } }, requestId, origin);
         }
-        if (context.staff.branches.length === 0) {
+        if (context.staff.branches.length === 0 && !context.staff.mustChangePassword) {
           return json(403, { ok: false, error: { code: "NO_ACTIVE_BRANCH_ASSIGNMENT" } }, requestId, origin);
         }
         return json(200, {
