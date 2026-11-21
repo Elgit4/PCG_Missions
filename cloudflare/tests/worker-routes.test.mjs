@@ -126,6 +126,27 @@ test("service-area collection reads require an authenticated branch-scoped manag
   assert.equal(calls.length, 0);
 });
 
+test("follow-up reassignment requires an authenticated staff session", async () => {
+  const { env, calls } = fakeEnv();
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/followup/tasks/90000000-0000-4000-8000-000000000002/assign",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        assignee_profile_id: "20000000-0000-4000-8000-000000000002",
+        reason: "Rebalance the follow-up workload",
+      }),
+    },
+  ), env);
+  const payload = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(payload.error.code, "UNAUTHENTICATED");
+  assert.equal(calls.length, 0);
+});
+
+
+
 test("team creation requires a verified branch-scoped manager", async () => {
   const { env, calls } = fakeEnv();
   const response = await worker.fetch(new Request("https://worker.example/api/v1/teams", {
