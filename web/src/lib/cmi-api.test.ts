@@ -126,6 +126,42 @@ describe("CmiApiClient", () => {
     expect(result.data[0]?.interaction_type).toBe("visit");
   });
 
+  it("routes contact interaction creation through the authorized Worker contract", async () => {
+    const interaction = {
+      id: "interaction-1",
+      interaction_type: "call",
+      occurred_at: "2026-11-21T12:00:00Z",
+      outcome_code: "answered",
+      summary: "Spoke with visitor",
+      next_action_at: null,
+      created_at: "2026-11-21T12:00:01Z",
+    };
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ ok: true, data: interaction, request_id: "worker-contact-interaction" }),
+      { status: 201 },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.createContactInteraction("branch-abc", "contact-123", {
+      interaction_type: "call",
+      occurred_at: "2026-11-21T12:00:00Z",
+      outcome_code: "answered",
+      summary: "Spoke with visitor",
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+
+    expect(url.pathname).toBe("/api/v1/contacts/contact-123/interactions");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      interaction_type: "call",
+      occurred_at: "2026-11-21T12:00:00Z",
+      outcome_code: "answered",
+      summary: "Spoke with visitor",
+    });
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(result.data.id).toBe("interaction-1");
+  });
+
   it("lists event drafts through the authenticated branch-scoped function", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: [], request_id: "event-list" }), { status: 200 },
