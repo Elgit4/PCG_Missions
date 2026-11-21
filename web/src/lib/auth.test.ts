@@ -194,6 +194,30 @@ describe("PcgAuthClient", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
+  it("blocks password-reset requests in the shared-Auth preview without a network call", async () => {
+    const storage = createMemoryStorage();
+    const fetcher = vi.fn();
+    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch, true);
+
+    await expect(client.requestPasswordReset("staff@example.test")).rejects.toMatchObject({
+      status: 403,
+      code: "PREVIEW_AUTH_MUTATION_DISABLED",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("blocks forced password changes in the shared-Auth preview without a network call", async () => {
+    const storage = createMemoryStorage();
+    const fetcher = vi.fn();
+    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch, true);
+
+    await expect(client.completePasswordChange("A-strong-New-Password-2026!")).rejects.toMatchObject({
+      status: 403,
+      code: "PREVIEW_AUTH_MUTATION_DISABLED",
+    });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("clears the browser session before requesting global sign-out", async () => {
     const storage = createMemoryStorage();
     const fetcher = vi.fn()
