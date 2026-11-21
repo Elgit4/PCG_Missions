@@ -563,6 +563,32 @@ describe("CmiApiClient", () => {
     expect(url.pathname).toBe("/functions/v1/staff-operations/followup/tasks");
   });
 
+  it("routes Worker-supported contact notes and follow-up lists through the Worker", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: [], request_id: "worker-operation-1" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    await client.listContactNotes("branch-abc", "contact-123");
+    await client.listFollowUpTasks("branch-abc", { limit: 12 });
+    const notes = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    const tasks = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(notes[0].pathname).toBe("/api/v1/contacts/contact-123/notes");
+    expect(notes[0].searchParams.get("branch_id")).toBe("branch-abc");
+    expect(tasks[0].pathname).toBe("/api/v1/followup/tasks");
+    expect(tasks[0].searchParams.get("limit")).toBe("12");
+  });
+
+  it("keeps Worker-unsupported operations on their existing Supabase function", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: [], request_id: "supabase-fallback-1" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    await client.listContactInteractions("branch-abc", "contact-123");
+    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/staff-operations/contacts/contact-123/interactions");
+  });
   it("routes staff notifications through the Worker API", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: { notifications: [], unread_count: 0 }, request_id: "worker-notifications-1" }),
