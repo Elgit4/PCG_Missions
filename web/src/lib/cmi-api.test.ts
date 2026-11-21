@@ -626,6 +626,33 @@ describe("CmiApiClient", () => {
     expect(result.data.areas).toEqual([]);
   });
 
+  it("routes team creation through the Worker and sends its body branch as context", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "00000000-0000-4000-8000-000000000002", branch_id: "branch-abc", name: "Welcome", description: null, is_active: true, created_at: "2026-11-21T12:00:00Z", updated_at: "2026-11-21T12:00:00Z" }, request_id: "worker-team-create" }),
+      { status: 201 },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    await client.createTeam({ branch_id: "branch-abc", name: "Welcome", description: null });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/teams");
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+  });
+
+  it("routes service-area updates through the Worker with branch-scoped context", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "00000000-0000-4000-8000-000000000003", branch_id: "branch-abc", name: "Tema West", code: "TEMA-W", is_active: false, created_at: "2026-11-21T12:00:00Z", updated_at: "2026-11-21T12:05:00Z" }, request_id: "worker-area-update" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    await client.updateServiceArea("branch-abc", "00000000-0000-4000-8000-000000000003", { is_active: false });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/areas/00000000-0000-4000-8000-000000000003");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(init.method).toBe("PATCH");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+  });
+
   it("keeps Worker-unsupported operations on their existing Supabase function", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: [], request_id: "supabase-fallback-1" }),
