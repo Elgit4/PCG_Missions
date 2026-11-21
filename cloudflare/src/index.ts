@@ -3664,6 +3664,13 @@ async function updatePrayerRequestStatus(
       return revokeStaffRole(request, env, assignmentId, requestId, origin);
     }
 
+    if (url.pathname === "/api/v1/teams" && request.method === "GET") {
+      return listTeamOperationsCollection(request, env, requestId, origin, "teams");
+    }
+    if (url.pathname === "/api/v1/areas" && request.method === "GET") {
+      return listTeamOperationsCollection(request, env, requestId, origin, "areas");
+    }
+
     if (request.method !== "GET") {
       return json(405, {
         ok: false,
