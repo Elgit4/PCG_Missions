@@ -12,6 +12,8 @@ import {
 Deno.test("production public site origin is allowed by default", () => {
   const allowed = createPublicContentAllowedOrigins(undefined);
   assert(allowed.has("https://pcg-missions.vercel.app"));
+  assert(allowed.has("https://pcg-missions.pages.dev"));
+  assert(allowed.has("https://pcg-missions.pages.dev"));
   assert(
     allowed.has(
       "https://pcg-missions-git-feat-cmi-pcg-missions-final-review-v6-eltech.vercel.app",
@@ -30,7 +32,7 @@ Deno.test("configured preview origins are additive to production", () => {
 });
 
 Deno.test("browser SDK request headers include apikey and client info", () => {
-  const origin = "https://pcg-missions.vercel.app";
+  const origin = "https://pcg-missions.pages.dev";
   const headers = createPublicContentCorsHeaders(
     origin,
     createPublicContentAllowedOrigins(undefined),
