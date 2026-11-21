@@ -1373,6 +1373,44 @@ async function createContact(
     service_area_id: serviceAreaId, source_metadata: metadata,
   };
   const digestHex = await sha256Hex(JSON.stringify(digestPayload));
+  const respondWithContact = async (
+    id: string,
+    status: 200 | 201,
+    idempotentReplay: boolean,
+  ): Promise<Response> => {
+    const contact = await env.DB.prepare(`
+      SELECT id, branch_id, first_name, last_name, preferred_name,
+             contact_status, created_at, updated_at
+      FROM contact
+      WHERE id = ? AND branch_id = ?
+      LIMIT 1
+    `).bind(id, access.activeBranch.branchId).first<{
+      id: string;
+      branch_id: string;
+      first_name: string;
+      last_name: string | null;
+      preferred_name: string | null;
+      contact_status: string;
+      created_at: string;
+      updated_at: string;
+    }>();
+    if (!contact) {
+      return json(500, { ok: false, error: { code: "CONTACT_CAPTURE_READBACK_FAILED" } }, requestId, origin);
+    }
+    return json(status, {
+      ok: true,
+      data: {
+        ...contact,
+        phone_e164: null,
+        phone_display: null,
+        email_normalized: null,
+        age_range: null,
+        preferred_language: null,
+        identity_redacted: true,
+      },
+      idempotent_replay: idempotentReplay,
+    }, requestId, origin);
+  };
   const existing = await env.DB.prepare(`
     SELECT contact_id, hex(request_digest) AS digest_hex
     FROM contact_capture
@@ -1383,7 +1421,7 @@ async function createContact(
     if (existing.digest_hex.toLowerCase() !== digestHex) {
       return json(409, { ok: false, error: { code: "IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD" } }, requestId, origin);
     }
-    return json(200, { ok: true, contact_id: existing.contact_id, idempotent_replay: true }, requestId, origin);
+    return respondWithContact(existing.contact_id, 200, true);
   }
 
   const contactId = crypto.randomUUID();
@@ -1429,11 +1467,11 @@ async function createContact(
       FROM contact_capture WHERE branch_id = ? AND client_request_id = ? LIMIT 1
     `).bind(access.activeBranch.branchId, idempotencyKey).first<{ contact_id: string; digest_hex: string }>();
     if (raced && raced.digest_hex.toLowerCase() === digestHex) {
-      return json(200, { ok: true, contact_id: raced.contact_id, idempotent_replay: true }, requestId, origin);
+      return respondWithContact(raced.contact_id, 200, true);
     }
     return json(409, { ok: false, error: { code: "CONTACT_CAPTURE_CONFLICT" } }, requestId, origin);
   }
-  return json(201, { ok: true, contact_id: contactId, idempotent_replay: false }, requestId, origin);
+  return respondWithContact(contactId, 201, false);
 }
 
 async function getContact(
