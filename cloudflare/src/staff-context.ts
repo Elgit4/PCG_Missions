@@ -1,4 +1,4 @@
-import { createAuth, type AuthEnvironment } from "./auth";
+import { verifySupabaseAccessToken, type SupabaseAuthEnvironment } from "./auth";
 import { authorizeCapability, type AssignableResource, type AuthorizationDecision } from "./authorization";
 
 export interface StaffStatement {
@@ -12,7 +12,7 @@ export interface StaffDatabase {
   prepare(sql: string): StaffStatement;
 }
 
-export interface StaffEnvironment extends AuthEnvironment {
+export interface StaffEnvironment extends SupabaseAuthEnvironment {
   DB: StaffDatabase;
 }
 
@@ -42,16 +42,15 @@ export async function resolveStaffContext(
   request: Request,
   env: StaffEnvironment,
 ): Promise<StaffContextResult> {
-  const auth = createAuth(env);
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session?.user?.id) return { state: "unauthenticated" };
+  const user = await verifySupabaseAccessToken(request, env);
+  if (!user) return { state: "unauthenticated" };
 
   const profile = await env.DB.prepare(`
     SELECT id, auth_user_id, full_name, email, account_status
     FROM staff_profile
     WHERE auth_user_id = ?
     LIMIT 1
-  `).bind(session.user.id).first<{
+  `).bind(user.id).first<{
     id: string;
     auth_user_id: string;
     full_name: string;
@@ -76,17 +75,15 @@ export async function resolveStaffContext(
   `).bind(profile.id, now, now).all<{ id: string; name: string; timezone: string }>();
 
   const staff: AuthenticatedStaff = {
-    userId: session.user.id,
+    userId: user.id,
     profileId: profile.id,
     fullName: profile.full_name,
-    email: profile.email ?? session.user.email,
+    email: profile.email ?? user.email,
     branches: branchRows.results ?? [],
   };
 
   const requestedBranchId = request.headers.get("x-branch-id");
-  if (!requestedBranchId) {
-    return { state: "authenticated", staff, activeBranch: null };
-  }
+  if (!requestedBranchId) return { state: "authenticated", staff, activeBranch: null };
 
   const branch = staff.branches.find((item) => item.id === requestedBranchId);
   if (!branch) return { state: "branch_not_authorized" };
@@ -132,12 +129,8 @@ export type CapabilityRequestResult =
   | { state: "unauthenticated" | "staff_inactive" | "staff_not_provisioned" | "branch_not_authorized" | "branch_required" | "capability_denied" }
   | { state: "authorized"; staff: AuthenticatedStaff; activeBranch: ActiveBranchContext; decision: AuthorizationDecision };
 
-/**
- * Shared gate for future business handlers. Call it before the handler query,
- * then repeat the branch/record predicate inside that same read/write SQL
- * statement. Resource IDs/team IDs passed here must be derived from a
- * branch-constrained server-side lookup, never copied from caller claims.
- */
+/** Apply capability authorization before the handler query. Repeat branch and
+ * record predicates inside the actual SQL statement to prevent TOCTOU leaks. */
 export async function authorizeRequestCapability(
   request: Request,
   env: StaffEnvironment,
@@ -159,10 +152,5 @@ export async function authorizeRequestCapability(
   });
 
   if (!decision.allowed) return { state: "capability_denied" };
-  return {
-    state: "authorized",
-    staff: context.staff,
-    activeBranch: context.activeBranch,
-    decision,
-  };
+  return { state: "authorized", staff: context.staff, activeBranch: context.activeBranch, decision };
 }
