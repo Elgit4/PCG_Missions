@@ -106,3 +106,23 @@ Supabase Auth leaked-password protection is also reported disabled. This is a se
 ## 7. Explicit non-actions
 
 This reconciliation does not authorize or perform production migration application, Edge Function deployment, Storage mutation, Auth configuration, user creation, role assignment, data cleanup, Vercel promotion or SMS setup.
+
+## 8. Read-only identity foundation catalog comparison (21 Nov 2026)
+
+A direct read-only comparison was run against production project `cgwffpxlwgbnlinzwfoj` for the 11 identity-foundation tables. It checked column names/types/nullability/defaults, table constraints, indexes, triggers, RLS flags and effective role privileges.
+
+Confirmed:
+- All 11 expected tables and their declared columns are present.
+- The production catalog matches the foundation's primary keys, expected foreign keys, check constraints and exclusion constraints in the inspected tables.
+- The five timestamp-maintenance triggers from the source migration are present on `church`, `branch`, `staff_profile`, `team` and `service_area`.
+- RLS is enabled on all 11 tables; no policies were returned for these tables in the inspected foundation slice.
+- `anon` and `authenticated` have no USAGE on `public` and no SELECT on these tables. `service_role` has schema USAGE and SELECT on all 11, matching the source migration's server-only access model.
+- The additional `must_change_password`, `password_setup_expires_at` and `password_changed_at` columns on `staff_profile` are later lifecycle additions, not columns expected from the identity foundation migration itself.
+
+One catalog delta was found:
+- The checked-in identity foundation SQL declares a redundant table-level `UNIQUE (id)` on `public.church` in addition to its primary key.
+- The production catalog has the primary key and the `church_single_configured_instance_uq` index, but no separate `UNIQUE (id)` constraint/index.
+
+This is a redundant uniqueness declaration and does not change valid row semantics because the primary key already guarantees unique `id` values. It does mean the checked-in historical SQL is not structurally identical to the hosted result. The original hosted migration body is unavailable, so byte-for-byte historical equivalence remains unprovable. Do not silently rewrite an applied historical migration. Resolve the redundant-index difference in a separately reviewed normalization migration or document acceptance of this harmless difference before any production release.
+
+This comparison is read-only. No production SQL writes, grants, policies, migrations or data were changed.
