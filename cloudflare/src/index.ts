@@ -3263,8 +3263,8 @@ async function updatePrayerRequestStatus(
       }
       return markStaffNotificationsRead(request, env, payload.branch_id, null, requestId, origin);
     }
-    const notificationReadMatch = url.pathname.match(/^\/api\/v1\/notifications\/([^/]+)\/read$/);
-    if (notificationReadMatch && request.method === "POST") {
+    const notificationReadParts = url.pathname.split("/").filter(Boolean);
+    if (notificationReadParts.length === 5 && notificationReadParts[0] === "api" && notificationReadParts[1] === "v1" && notificationReadParts[2] === "notifications" && notificationReadParts[4] === "read" && request.method === "POST") {
       const body = await readJsonBody(request, 1024);
       if (!body.ok || !body.value || typeof body.value !== "object" || Array.isArray(body.value)) {
         return json(body.ok ? 400 : body.status, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
@@ -3274,7 +3274,7 @@ async function updatePrayerRequestStatus(
         return json(400, { ok: false, error: { code: "INVALID_REQUEST_BODY" } }, requestId, origin);
       }
       let notificationId: string;
-      try { notificationId = decodeURIComponent(notificationReadMatch[1]); }
+      try { notificationId = decodeURIComponent(notificationReadParts[3]); }
       catch { return json(404, { ok: false, error: { code: "NOT_FOUND" } }, requestId, origin); }
       return markStaffNotificationsRead(request, env, payload.branch_id, notificationId, requestId, origin);
     }
