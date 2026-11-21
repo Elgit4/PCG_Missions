@@ -662,6 +662,11 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     return null;
   }
 
+  if (functionName === "team-operations") {
+    if ((suffix === "/teams" || suffix === "/areas") && verb === "GET") return "/api/v1" + suffix;
+    return null;
+  }
+
   if (functionName === "staff-operations") {
     if (suffix === "/contacts" && verb === "GET") return "/api/v1/contacts";
     if (/^\/contacts\/[^/]+\/notes$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
