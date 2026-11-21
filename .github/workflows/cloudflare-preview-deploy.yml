@@ -55,5 +55,8 @@ jobs:
           fi
           echo "Cloudflare token is present (value withheld)."
 
+      - name: Verify Cloudflare token and account access
+        run: npx wrangler whoami
+
       - name: Deploy isolated preview Worker
         run: npm run deploy:preview
