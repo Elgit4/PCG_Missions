@@ -1,6 +1,6 @@
 name: Cloudflare Preview Worker Bundle
 # This workflow validates the live preview endpoint and Pages bundle; it does not deploy or alter production.
-# Keep the smoke step after Pages environment changes to verify build-time configuration.
+# Keep the smoke step after Pages environment changes to verify build-time configuration and route access boundaries.
 
 on:
   push:
@@ -65,6 +65,12 @@ jobs:
           cat /tmp/me.json
           test "$status" = "401"
           node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/me.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          for route in "teams" "areas"; do
+            status="$(curl --silent --show-error -o "/tmp/$route.json" -w "%{http_code}" "$url/api/v1/$route?branch_id=00000000-0000-4000-8000-000000000001")"
+            cat "/tmp/$route.json"
+            test "$status" = "401"
+            node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)' "/tmp/$route.json"
+          done
           headers="$(curl --silent --show-error -D - -o /dev/null -X OPTIONS "$url/api/v1/contacts" \
             -H "Origin: https://feat-cloudflare-d1-migration.pcg-missions.pages.dev" \
             -H "Access-Control-Request-Method: POST" \
