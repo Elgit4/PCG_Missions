@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-const stylesheet = readFileSync(new URL('../visual-system.css', import.meta.url), 'utf8');
+const stylesheet = readFileSync(new URL('../../production.css', import.meta.url), 'utf8');
 describe('PCG Missions visual system', () => {
  it('defines semantic light and dark tokens', () => {
   expect(stylesheet).toContain(':root');

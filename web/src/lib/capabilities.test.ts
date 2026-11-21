@@ -47,16 +47,24 @@ describe("capability-driven staff navigation", () => {
     expect(getAvailableStaffPages(baseSession)).toEqual([]);
   });
 
-  it("keeps pastoral and report pages unavailable without supported list APIs", () => {
-    const session = {
+  it("opens Prayer only with its assigned-read capability and keeps reports separately gated", () => {
+    const assignedPrayerAccess = {
       ...baseSession,
       capabilities: [
         { code: "prayer.request.read.assigned", scope_mode: "assigned", branch_id: "branch-a" },
-        { code: "report.read", scope_mode: "branch", branch_id: "branch-a" },
       ],
     };
-    expect(canOpenStaffPage(session, "Prayer", "branch-a")).toBe(false);
-    expect(canOpenStaffPage(session, "Reports", "branch-a")).toBe(false);
+    const broadReadOnly = {
+      ...baseSession,
+      capabilities: [
+        { code: "prayer.request.read", scope_mode: "branch", branch_id: "branch-a" },
+      ],
+    };
+    expect(canOpenStaffPage(assignedPrayerAccess, "Prayer", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(assignedPrayerAccess, "Prayer", "branch-b")).toBe(false);
+    expect(canOpenStaffPage(broadReadOnly, "Prayer", "branch-a")).toBe(false);
+    expect(canOpenStaffPage(assignedPrayerAccess, "Reports", "branch-a")).toBe(false);
+    expect(getAvailableStaffPages(assignedPrayerAccess, "branch-a")).toContain("Prayer");
   });
 
   it("opens ministry reports only with the explicit D-12 own or review grants", () => {

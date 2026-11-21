@@ -153,6 +153,7 @@ describe("CmiApiClient", () => {
       ends_at: "2026-11-15T10:00:00.000Z",
       timezone: "Africa/Accra",
       location: null,
+        capacity: null,
     };
     await client.createEventDraft(input);
     const [, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
@@ -294,6 +295,7 @@ describe("CmiApiClient", () => {
       branch_id: "branch-a", title: "Outreach", description: null,
       starts_at: "2026-11-14T08:00:00.000Z", ends_at: "2026-11-14T10:00:00.000Z",
       timezone: "Africa/Accra", location: null,
+        capacity: null,
     });
     await client.updateEventDraft("branch-a", "event-1", { title: "Updated outreach" });
 
@@ -451,4 +453,67 @@ describe("CmiApiClient", () => {
     expect(init.method).toBe("POST");
     expect(JSON.parse(String(init.body))).toHaveProperty("contacts_captured", 4);
   });
+
+  it("checks in an event registration through the branch-scoped idempotent endpoint", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({
+        data: {
+          checkin: { id: "checkin-1", registration_id: "registration-1" },
+          replayed: false,
+          response_status: 201,
+        },
+        request_id: "checkin-create",
+      }),
+      { status: 201 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.checkinEventRegistration(
+      "branch-a",
+      "event-1",
+      "registration-1",
+      "61000000-0000-4000-8000-000000000104",
+    );
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe(
+      "/functions/v1/event-operations/events/event-1/registrations/registration-1/check-in",
+    );
+    expect(url.searchParams.get("branch_id")).toBe("branch-a");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      idempotency_key: "61000000-0000-4000-8000-000000000104",
+    });
+    expect(result.data.replayed).toBe(false);
+  });
+
+  it("cancels an event registration through the idempotent capacity-release endpoint", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({
+        data: {
+          registration: { id: "registration-1", status: "cancelled" },
+          replayed: false,
+          response_status: 200,
+        },
+        request_id: "registration-cancel",
+      }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(config, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.cancelEventRegistration(
+      "branch-a",
+      "event-1",
+      "registration-1",
+      "61000000-0000-4000-8000-000000000105",
+    );
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe(
+      "/functions/v1/event-operations/events/event-1/registrations/registration-1/cancel",
+    );
+    expect(url.searchParams.get("branch_id")).toBe("branch-a");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({
+      idempotency_key: "61000000-0000-4000-8000-000000000105",
+    });
+    expect(result.data.registration.status).toBe("cancelled");
+  });
+
 });

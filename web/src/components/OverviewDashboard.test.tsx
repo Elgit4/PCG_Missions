@@ -5,7 +5,6 @@ import { OverviewDashboard } from "./OverviewDashboard";
 
 const baseProps = {
   staffName: "Ama Mensah",
-  branchName: "Tema Central",
   branchTimeZone: "Africa/Accra",
   contacts: [],
   tasks: [],
@@ -28,7 +27,15 @@ const baseProps = {
 describe("OverviewDashboard", () => {
   it("renders the operational hierarchy instead of a permanent getting-started tutorial", () => {
     const html = renderToStaticMarkup(createElement(OverviewDashboard, baseProps));
-    expect(html).toContain("Welcome back, Ama");
+    expect(html).toContain("Welcome back,");
+    expect(html).toContain("Ama");
+    expect(html).toContain("Your ministry workspace is ready.");
+    expect(html).toContain("ACTIVE WORKSPACE");
+    const heroStart = html.indexOf('<section class="cmi-dashboard-hero"');
+    const heroEnd = html.indexOf("</section>", heroStart);
+    const hero = html.slice(heroStart, heroEnd + "</section>".length);
+    expect(hero).toContain("PCG Missions");
+    expect(hero).not.toContain("<img");
     expect(html).toContain("Your follow-up queue");
     expect(html).toContain("Quick actions");
     expect(html).not.toContain("GETTING STARTED");

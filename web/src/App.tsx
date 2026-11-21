@@ -1,14 +1,26 @@
 import { CrestOutlineLoader } from "./components/CrestOutlineLoader";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { StaffLogin, type StaffAuthView } from "./components/StaffLogin";
-import { StaffWorkspace } from "./components/StaffWorkspace";
-import { AuthClientError, PcgAuthClient } from "./lib/auth";
+
+const StaffWorkspace = lazy(async () => {
+  const module = await import("./components/StaffWorkspace");
+  return { default: module.StaffWorkspace };
+});
+
+const PublicVisitorSite = lazy(async () => {
+  const module = await import("./components/PublicVisitorSite");
+  return { default: module.PublicVisitorSite };
+});
+import { PcgAuthClient } from "./lib/auth";
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./lib/supabase-config";
 import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
 import { ThemeToggle } from "./lib/theme";
+import { formatApplicationError } from "./lib/error-messages";
+import { hasSingleWorkspaceBranch } from "./lib/workspace-context";
 
-export default function App() {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? "";
-  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "";
+function StaffApp() {
+  const supabaseUrl = SUPABASE_URL;
+  const publishableKey = SUPABASE_PUBLISHABLE_KEY;
   const configurationError = !supabaseUrl || !publishableKey
     ? "This portal is not connected to its secure sign-in service. Contact a church administrator."
     : "";
@@ -37,20 +49,7 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const [workspaceRetryAvailable, setWorkspaceRetryAvailable] = useState(false);
 
-  const messageFor = useCallback((cause: unknown): string => {
-    if (cause instanceof AuthClientError) return cause.message;
-    if (cause instanceof CmiApiError) {
-      if (cause.status === 401) return "Your sign-in session has expired. Please sign in again.";
-      if (cause.code === "STAFF_PROFILE_NOT_FOUND") return "This email is not provisioned as a PCG Missions staff account. Contact an authorised church administrator.";
-      if (cause.code === "STAFF_ACCOUNT_NOT_ACTIVE") return "This staff account is not active. Contact an authorised church administrator.";
-      if (cause.code === "PASSWORD_SETUP_EXPIRED") return "The temporary setup password has expired. Use Forgot password to request a new administrator-approved recovery link.";
-      if (cause.status === 403) return "Your account cannot access the staff workspace. Contact an authorised church administrator.";
-      if (cause.code === "NO_ACTIVE_BRANCH") return "Your account is active, but it has no active branch assignment. Contact an authorised church administrator.";
-      if (cause.status === 0) return cause.message;
-      if (cause.status >= 500) return "Your credentials were accepted, but the staff workspace service could not complete the request. Retry the workspace connection.";
-    }
-    return "We could not complete that request. Please try again.";
-  }, []);
+  const messageFor = useCallback((cause: unknown): string => formatApplicationError(cause, "We could not complete the sign-in request. Please try again."), []);
 
   const clearAuthentication = useCallback(async () => {
     try {
@@ -244,8 +243,57 @@ export default function App() {
     return <CrestOutlineLoader />;
   }
 
+  if (
+    staffSession &&
+    !staffSession.must_change_password &&
+    api &&
+    !hasSingleWorkspaceBranch(staffSession.branches)
+  ) {
+    return (
+      <main className="staff-login-page">
+        <aside className="staff-login-aside" aria-label="PCG Missions workspace security">
+          <div className="staff-login-brand">
+            <span className="staff-login-brand-mark"><img src="/logo.svg" alt="" /></span>
+            <span className="staff-login-brand-copy"><strong>PCG MISSIONS</strong><small>STAFF WORKSPACE</small></span>
+          </div>
+          <div className="staff-login-aside-content">
+            <p className="staff-login-overline">SECURE WORKSPACE ACCESS</p>
+            <h1>Clear access. <em>Safer ministry.</em></h1>
+            <p className="staff-login-aside-description">
+              Your staff workspace is protected by active role and branch assignments.
+            </p>
+          </div>
+        </aside>
+        <section className="staff-login-main" aria-labelledby="workspace-context-title">
+          <div className="staff-login-mobile-brand">
+            <span className="staff-login-brand-mark"><img src="/logo.svg" alt="" /></span>
+            <span className="staff-login-brand-copy"><strong>PCG MISSIONS</strong><small>STAFF WORKSPACE</small></span>
+          </div>
+          <div className="staff-login-form-wrap staff-login-auth-wrap">
+            <div className="staff-login-security-label">WORKSPACE ACCESS CHECK</div>
+            <h1 id="workspace-context-title">Workspace access needs review</h1>
+            <p role="alert">
+              {staffSession.branches.length === 0
+                ? "This account has no active workspace assignment. Ask an administrator to assign the correct workspace before signing in again."
+                : staffSession.branches.length > 1
+                ? "This account has more than one active workspace assignment. Ask an administrator to confirm the correct workspace before signing in again."
+                : "This account's workspace assignment could not be verified. Ask an administrator to review the assignment before signing in again."}
+            </p>
+            <button type="button" className="cmi-button cmi-button-primary" onClick={() => void signOut()} disabled={busy}>
+              Sign out
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   if (staffSession && !staffSession.must_change_password && api) {
-    return <StaffWorkspace api={api} session={staffSession} onSignOut={async () => await signOut()} />;
+    return (
+      <Suspense fallback={<CrestOutlineLoader />}>
+        <StaffWorkspace api={api} session={staffSession} onSignOut={async () => await signOut()} />
+      </Suspense>
+    );
   }
 
   return (
@@ -269,4 +317,19 @@ export default function App() {
       onTestConnection={handleConnectionTest}
     />
   );
+}
+
+
+export default function App() {
+  const pathname = typeof window === "undefined"
+    ? "/"
+    : window.location.pathname.replace(/\/+$/, "") || "/";
+  if (pathname === "/visit" || pathname.startsWith("/visit/")) {
+    return (
+      <Suspense fallback={<CrestOutlineLoader />}>
+        <PublicVisitorSite />
+      </Suspense>
+    );
+  }
+  return <StaffApp />;
 }

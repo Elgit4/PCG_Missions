@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { AlertCircle, CheckCircle2, ClipboardCheck, FilePlus2, RefreshCw, Send, ShieldCheck } from "lucide-react";
 import { CmiApiClient, CmiApiError, type MinistryReportCreateInput, type MinistryReportRecord, type MinistryReportType, type StaffSession } from "../lib/cmi-api";
 import { hasCapability } from "../lib/capabilities";
+import { formatApplicationError } from "../lib/error-messages";
 
-interface Props { branchId: string; branchName: string; api: CmiApiClient; session: StaffSession }
+interface Props { branchId: string; api: CmiApiClient; session: StaffSession; onSessionExpired: () => void }
 const REPORT_PAGE_SIZE = 50;
 const COUNT_FIELDS = [
   ["contacts_captured", "Contacts captured"],
@@ -19,9 +20,7 @@ const COUNT_FIELDS = [
 type CountKey = typeof COUNT_FIELDS[number][0];
 
 function errorMessage(error: unknown): string {
-  if (error instanceof CmiApiError && error.status === 403) return "Your role does not have permission for this report action.";
-  if (error instanceof CmiApiError && error.status === 409) return "This report has changed. Refresh the list and try again.";
-  return "The report service could not complete this request. Try again.";
+  return formatApplicationError(error, "We could not complete the report action. Please try again.");
 }
 function reportTitle(type: MinistryReportType): string {
   if (type === "daily_evangelism") return "Daily evangelism";
@@ -35,7 +34,7 @@ function emptyCounts(): Record<CountKey, string> {
   return Object.fromEntries(COUNT_FIELDS.map(([key]) => [key, "0"])) as Record<CountKey, string>;
 }
 
-export function MinistryReportsWorkspace({ branchId, branchName, api, session }: Props) {
+export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpired }: Props) {
   const canSubmit = hasCapability(session, "report.submit.own", branchId);
   const canReview = hasCapability(session, "report.review.branch", branchId) || hasCapability(session, "report.review.team", branchId);
   const [reports, setReports] = useState<MinistryReportRecord[]>([]);
@@ -62,8 +61,15 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
   const [detailReport, setDetailReport] = useState<MinistryReportRecord | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const requestVersion = useRef(0);
+  const loadMoreRequestVersion = useRef(0);
+  const detailRequestVersion = useRef(0);
+  const mutationInFlight = useRef(false);
 
   const load = useCallback(async (quiet = false) => {
+    loadMoreRequestVersion.current += 1;
+    setLoadingMore(false);
+    const requestId = ++requestVersion.current;
     if (quiet) setRefreshing(true);
     else setLoading(true);
     setError("");
@@ -72,18 +78,24 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
         limit: REPORT_PAGE_SIZE,
         offset: 0,
       });
+      if (requestId !== requestVersion.current) return;
       setReports(result.data);
       setTotalReports(result.total ?? result.data.length);
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (requestId !== requestVersion.current) return;
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
     } finally {
-      setLoading(false);
-      setRefreshing(false);
+      if (requestId === requestVersion.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  }, [api, branchId]);
+  }, [api, branchId, onSessionExpired]);
 
   const loadMore = async () => {
     if (loadingMore || reports.length >= totalReports) return;
+    const requestId = ++loadMoreRequestVersion.current;
     setLoadingMore(true);
     setError("");
     try {
@@ -91,6 +103,7 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
         limit: REPORT_PAGE_SIZE,
         offset: reports.length,
       });
+      if (requestId !== loadMoreRequestVersion.current) return;
       setReports((current) => {
         const byId = new Map<string, MinistryReportRecord>(
           current.map((report) => [report.id, report] as const),
@@ -100,30 +113,46 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
       });
       setTotalReports(result.total ?? totalReports);
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (requestId !== loadMoreRequestVersion.current) return;
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
     } finally {
-      setLoadingMore(false);
+      if (requestId === loadMoreRequestVersion.current) setLoadingMore(false);
     }
   };
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    detailRequestVersion.current += 1;
+    setDetailReport(null);
+    setDetailLoading(false);
+    void load();
+    return () => {
+      requestVersion.current += 1;
+      loadMoreRequestVersion.current += 1;
+      detailRequestVersion.current += 1;
+    };
+  }, [load]);
   useEffect(() => {
     if (!showForm) return;
     let current = true;
     void api.listReportTeams(branchId).then((result) => {
       if (current) setTeams(result.data);
-    }).catch(() => {
-      if (current) setTeams([]);
+    }).catch((cause) => {
+      if (!current) return;
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      setTeams([]);
     });
     if (reportType === "event_evangelism") {
       void api.listReportEvents(branchId).then((result) => {
         if (current) setEvents(result.data);
-      }).catch(() => {
-        if (current) setEvents([]);
+      }).catch((cause) => {
+        if (!current) return;
+        if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+        setEvents([]);
       });
     }
     return () => { current = false; };
-  }, [api, branchId, showForm, reportType]);
+  }, [api, branchId, onSessionExpired, showForm, reportType]);
 
   useEffect(() => {
     if (reportType === "weekly_ministry") {
@@ -139,7 +168,8 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!canSubmit) return;
+    if (mutationInFlight.current || !canSubmit) return;
+    mutationInFlight.current = true;
     setSaving(true);
     setError("");
     setNotice("");
@@ -161,14 +191,17 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
       setEventId("");
       await load(true);
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
 
   const resubmit = async (report: MinistryReportRecord) => {
-    if (!canSubmit || editingReportId !== report.id) return;
+    if (mutationInFlight.current || !canSubmit || editingReportId !== report.id) return;
+    mutationInFlight.current = true;
     setSaving(true);
     setError("");
     try {
@@ -182,33 +215,44 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
       setEditingReportId(null);
       await load(true);
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
 
   const toggleDetails = async (report: MinistryReportRecord) => {
     if (detailReport?.id === report.id) {
+      detailRequestVersion.current += 1;
       setDetailReport(null);
       setDetailError("");
+      setDetailLoading(false);
       return;
     }
+    const requestId = ++detailRequestVersion.current;
+    setDetailReport(null);
     setDetailLoading(true);
     setDetailError("");
     try {
       const result = await api.getMinistryReport(branchId, report.id);
-      setDetailReport(result.data);
+      if (requestId === detailRequestVersion.current) {
+        setDetailReport(result.data);
+      }
     } catch (cause) {
-      setDetailError(errorMessage(cause));
+      if (requestId !== detailRequestVersion.current) return;
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setDetailError(errorMessage(cause));
       setDetailReport(null);
     } finally {
-      setDetailLoading(false);
+      if (requestId === detailRequestVersion.current) setDetailLoading(false);
     }
   };
 
   const review = async (report: MinistryReportRecord, decision: "approved" | "returned") => {
-    if (!canReview || reviewingId !== report.id) return;
+    if (mutationInFlight.current || !canReview || reviewingId !== report.id) return;
+    mutationInFlight.current = true;
     setSaving(true);
     setError("");
     try {
@@ -221,8 +265,10 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
       setReviewComment("");
       await load(true);
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
@@ -231,7 +277,7 @@ export function MinistryReportsWorkspace({ branchId, branchName, api, session }:
     <section className="ministry-reports" aria-labelledby="ministry-reports-title">
       <header className="ministry-reports-header">
         <div>
-          <p className="ministry-reports-eyebrow">MINISTRY ACCOUNTABILITY · {branchName.toUpperCase()}</p>
+          <p className="ministry-reports-eyebrow">MINISTRY ACCOUNTABILITY</p>
           <h2 id="ministry-reports-title">Ministry reports</h2>
           <p>Record ministry activity, follow progress and review submitted reports.</p>
         </div>

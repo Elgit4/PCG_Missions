@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { CmiApiError } from "../lib/cmi-api";
+import { formatApplicationError } from "../lib/error-messages";
 import type {
   ContactInteraction,
   ContactInteractionCreateInput,
@@ -32,6 +33,8 @@ interface ContactDetailDialogProps {
   canReadNotes: boolean;
   canCreateNotes: boolean;
   canRecordInteraction: boolean;
+  canCreateFollowUp: boolean;
+  onCreateFollowUp: (contact: ContactRecord) => void;
   onSessionExpired: () => void;
 }
 
@@ -47,21 +50,14 @@ function formatDate(value: string | null | undefined, timeZone: string): string 
 }
 
 function actionErrorMessage(error: unknown): string {
-  if (error instanceof CmiApiError) {
-    if (error.status === 401) return "Your staff session has expired. Sign in again.";
-    if (error.status === 403 || error.status === 404) {
-      return "This contact or part of its history is no longer available within your current access scope. Refresh the workspace before continuing.";
-    }
-    if (error.status === 409) return "The record changed while you were working. Refresh its history before trying again.";
-    if (error.status === 422) return "Check the information entered and correct the highlighted details.";
-    if (error.status === 0) {
-      return "The server response could not be confirmed. Refresh this record before attempting the action again to avoid a duplicate entry.";
-    }
-    return `The operation could not be completed.${error.requestId ? ` Reference: ${error.requestId}` : ""}`;
+  if (error instanceof CmiApiError && error.status === 403) {
+    return "This contact or part of its history is not available within your current access scope. Refresh the workspace before continuing.";
   }
-  return "The operation could not be completed. Refresh the record and try again.";
+  if (error instanceof CmiApiError && error.status === 0) {
+    return "We could not confirm whether this action was saved. Refresh the record before trying again to avoid a duplicate entry.";
+  }
+  return formatApplicationError(error, "We could not update this contact. Refresh the record and try again.");
 }
-
 function displayContactName(contact: ContactRecord): string {
   return contact.preferred_name?.trim() ||
     [contact.first_name, contact.last_name].filter(Boolean).join(" ");
@@ -82,6 +78,8 @@ export function ContactDetailDialog({
   canReadNotes,
   canCreateNotes,
   canRecordInteraction,
+  canCreateFollowUp,
+  onCreateFollowUp,
   onSessionExpired,
 }: ContactDetailDialogProps) {
   const [contact, setContact] = useState(initialContact);
@@ -229,9 +227,12 @@ export function ContactDetailDialog({
                 Contact details and ordinary follow-up history available within your current access scope.
               </Dialog.Description>
             </div>
-            <Dialog.Close asChild>
-              <button type="button" className="cmi-detail-close" aria-label="Close contact details"><X size={19} /></button>
-            </Dialog.Close>
+            <div className="cmi-detail-header-actions">
+              {canCreateFollowUp && <button type="button" className="cmi-button cmi-button-primary" onClick={() => onCreateFollowUp(contact)}><Plus size={14} /> Create follow-up</button>}
+              <Dialog.Close asChild>
+                <button type="button" className="cmi-detail-close" aria-label="Close contact details"><X size={19} /></button>
+              </Dialog.Close>
+            </div>
           </header>
 
           <div className="cmi-detail-scroll">

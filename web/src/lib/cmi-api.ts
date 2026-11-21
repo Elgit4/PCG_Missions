@@ -1,3 +1,5 @@
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./supabase-config";
+
 /**
  * PCG Missions CMI v2.1 browser API adapter.
  *
@@ -81,11 +83,15 @@ export interface EventDraftRecord {
   ends_at: string;
   timezone: string;
   location: string | null;
-  status: "draft";
-  visibility: "private";
-  registration_state: "closed";
+  capacity: number | null;
+  status: "draft" | "published" | "cancelled" | "completed";
+  visibility: "private" | "staff" | "public";
+  registration_state: "closed" | "open";
   created_at: string;
   updated_at: string;
+  flyer_mime_type?: "image/jpeg" | "image/png" | "image/webp" | null;
+  flyer_size_bytes?: number | null;
+  flyer_updated_at?: string | null;
 }
 export interface EventDraftCreateInput {
   branch_id: string;
@@ -95,8 +101,164 @@ export interface EventDraftCreateInput {
   ends_at: string;
   timezone: string;
   location: string | null;
+  capacity?: number | null;
 }
 export type EventDraftPatchInput = Partial<Omit<EventDraftCreateInput, "branch_id">>;
+
+
+export type EventStaffAssignmentRole = "owner" | "organizer" | "checkin" | "support";
+
+export interface EventRegistrationRecord {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  attendee_name_snapshot: string;
+  attendee_phone_snapshot: string | null;
+  status: "registered" | "cancelled" | "attended" | "no_show";
+  registered_at: string;
+  checked_in_at: string | null;
+}
+export interface EventRegistrationWorkspace {
+  registrations: EventRegistrationRecord[];
+  active_count: number;
+}
+
+export interface EventCheckinRecord {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  registration_id: string;
+  attendee_name_snapshot: string;
+  checked_in_at: string;
+  recorded_by: string;
+  source: "staff";
+}
+export interface EventStaffCheckinResult {
+  checkin: EventCheckinRecord;
+  replayed: boolean;
+  response_status: number;
+}
+
+export interface EventStaffRegistrationInput {
+  idempotency_key: string;
+  attendee_name: string;
+  attendee_phone: string | null;
+}
+export interface EventStaffRegistrationResult {
+  registration: EventRegistrationRecord;
+  replayed: boolean;
+  response_status: number;
+}
+
+export type EventTeamAssignmentRole = "organizer" | "ushering" | "support";
+export interface EventStaffAssignmentInput {
+  staff_auth_user_id: string;
+  assignment_role: EventStaffAssignmentRole;
+  starts_at: string;
+  ends_at: string | null;
+}
+export interface EventTeamAssignmentInput {
+  team_id: string;
+  assignment_role: EventTeamAssignmentRole;
+  starts_at: string;
+  ends_at: string | null;
+}
+export interface EventStaffAssignmentRecord extends EventStaffAssignmentInput {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  staff_name: string;
+  revoked_at: string | null;
+  created_at: string;
+}
+export interface EventTeamAssignmentRecord extends EventTeamAssignmentInput {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  team_name: string;
+  revoked_at: string | null;
+  created_at: string;
+}
+export interface EventAssignmentWorkspace {
+  staff_assignments: EventStaffAssignmentRecord[];
+  team_assignments: EventTeamAssignmentRecord[];
+  staff_candidates: { auth_user_id: string; full_name: string }[];
+  team_candidates: { id: string; name: string }[];
+}
+
+
+export interface EventCloseoutRecord {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  submitted_by: string;
+  submitted_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  status: "draft" | "submitted" | "approved" | "returned";
+  attendee_count: number | null;
+  registration_count: number | null;
+  transport_seat_count: number | null;
+  summary_notes: string | null;
+}
+export interface EventCloseoutHistoryRecord {
+  id: string;
+  actor_user_id: string;
+  action: "submitted" | "approved" | "returned" | "reopened";
+  details: Record<string, unknown>;
+  created_at: string;
+}
+export interface EventCloseoutWorkspace {
+  closeout: EventCloseoutRecord | null;
+  history: EventCloseoutHistoryRecord[];
+}
+export interface EventCloseoutSubmissionResult {
+  closeout: EventCloseoutRecord;
+  replayed: boolean;
+  response_status: number;
+}
+
+export interface AssignedPrayerRequestRecord {
+  id: string;
+  branch_id: string;
+  request_text: string;
+  status: "open" | "assigned" | "in_progress" | "answered" | "closed";
+  sensitivity: "restricted" | "highly_restricted";
+  expires_at: string | null;
+  answered_at: string | null;
+  created_at: string;
+  updated_at: string;
+  assignment_starts_at: string;
+  assignment_ends_at: string | null;
+}
+export interface AssignedPrayerInbox {
+  requests: AssignedPrayerRequestRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface StaffNotificationRecord {
+  id: string;
+  category: "followup_assigned" | "event_assigned" | "report_reviewed" | "system";
+  title: string;
+  body: string;
+  target_type: "followup_task" | "event" | "ministry_report" | null;
+  target_id: string | null;
+  created_at: string;
+  read_at: string | null;
+}
+export interface StaffNotificationInbox {
+  notifications: StaffNotificationRecord[];
+  unread_count: number;
+}
+export interface EventFlyerResult {
+  object_path: string;
+  mime_type: "image/jpeg" | "image/png" | "image/webp";
+  size_bytes: number;
+  signed_url: string;
+  signed_url_expires_in: number;
+}
 
 export interface CalendarEntryRecord {
   id: string;
@@ -688,8 +850,11 @@ export class CmiApiClient {
       staff_profile_id: string;
       email: string;
       role_code: StaffAccountCreateInput["role_code"];
-      invitation_email_sent: boolean;
-      must_change_password: boolean;
+      invitation_email_sent: false;
+      must_change_password: true;
+      temporary_password: string;
+      manual_handoff_required: true;
+      password_expires_in_hours: number;
     }>("staff-auth", "/admin/staff", { method: "POST", body: input });
   }
 
@@ -720,7 +885,14 @@ export class CmiApiClient {
     );
   }
   approveStaffPasswordResetRequest(branchId: string, requestId: string, reason: string) {
-    return this.request<{ status: string; temporary_password_sent: boolean; must_change_password: boolean }>(
+    return this.request<{
+      status: string;
+      email: string;
+      temporary_password_sent: boolean;
+      must_change_password: boolean;
+      temporary_password?: string;
+      manual_handoff_required?: boolean;
+    }>(
       "staff-auth",
       `/admin/password-reset-requests/${encodeURIComponent(requestId)}/approve`,
       { method: "POST", body: { branch_id: branchId, reason } },
@@ -791,6 +963,211 @@ export class CmiApiClient {
   updateEventDraft(branchId: string, eventId: string, input: EventDraftPatchInput) {
     return this.request<EventDraftRecord>("event-operations", "/events/" + encodeURIComponent(eventId), {
       method: "PATCH", query: { branch_id: branchId }, body: input,
+    });
+  }
+
+
+
+  listAssignedPrayerRequests(
+    branchId: string,
+    options: { limit?: number; offset?: number } = {},
+  ) {
+    return this.request<AssignedPrayerInbox>(
+      "pastoral-operations",
+      "/prayer/requests/assigned",
+      {
+        method: "POST",
+        body: {
+          branch_id: branchId,
+          limit: options.limit ?? 25,
+          offset: options.offset ?? 0,
+        },
+      },
+    );
+  }
+
+
+  openStaffEventRegistration(branchId: string, eventId: string) {
+    return this.request<EventDraftRecord>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/staff-registration/open",
+      { method: "POST", query: { branch_id: branchId } },
+    );
+  }
+  closeStaffEventRegistration(branchId: string, eventId: string) {
+    return this.request<EventDraftRecord>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/staff-registration/close",
+      { method: "POST", query: { branch_id: branchId } },
+    );
+  }
+  listEventRegistrations(branchId: string, eventId: string) {
+    return this.request<EventRegistrationWorkspace>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/registrations",
+      { query: { branch_id: branchId } },
+    );
+  }
+  registerEventAttendee(
+    branchId: string,
+    eventId: string,
+    input: EventStaffRegistrationInput,
+  ) {
+    return this.request<EventStaffRegistrationResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/registrations",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+
+
+
+
+  getEventCloseout(branchId: string, eventId: string) {
+    return this.request<EventCloseoutWorkspace>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/closeout",
+      { query: { branch_id: branchId } },
+    );
+  }
+  submitEventCloseout(
+    branchId: string,
+    eventId: string,
+    input: { idempotency_key: string; summary_notes: string | null },
+  ) {
+    return this.request<EventCloseoutSubmissionResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/closeout/submit",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+  reviewEventCloseout(
+    branchId: string,
+    eventId: string,
+    input: {
+      idempotency_key: string;
+      decision: "approved" | "returned";
+      reason: string | null;
+    },
+  ) {
+    return this.request<EventCloseoutSubmissionResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/closeout/review",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+
+  checkinEventRegistration(
+    branchId: string,
+    eventId: string,
+    registrationId: string,
+    idempotencyKey: string,
+  ) {
+    return this.request<EventStaffCheckinResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/registrations/" +
+        encodeURIComponent(registrationId) + "/check-in",
+      {
+        method: "POST",
+        query: { branch_id: branchId },
+        body: { idempotency_key: idempotencyKey },
+      },
+    );
+  }
+
+  cancelEventRegistration(
+    branchId: string,
+    eventId: string,
+    registrationId: string,
+    idempotencyKey: string,
+  ) {
+    return this.request<EventStaffRegistrationResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/registrations/" +
+        encodeURIComponent(registrationId) + "/cancel",
+      {
+        method: "POST",
+        query: { branch_id: branchId },
+        body: { idempotency_key: idempotencyKey },
+      },
+    );
+  }
+
+  getEventAssignments(branchId: string, eventId: string) {
+    return this.request<EventAssignmentWorkspace>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/assignments",
+      { query: { branch_id: branchId } },
+    );
+  }
+  createEventStaffAssignment(branchId: string, eventId: string, input: EventStaffAssignmentInput) {
+    return this.request<EventStaffAssignmentRecord>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/staff-assignments",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+  createEventTeamAssignment(branchId: string, eventId: string, input: EventTeamAssignmentInput) {
+    return this.request<EventTeamAssignmentRecord>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/team-assignments",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+  revokeEventAssignment(branchId: string, eventId: string, kind: "staff" | "team", assignmentId: string) {
+    const resource = kind === "staff" ? "staff-assignments" : "team-assignments";
+    return this.request<{ id: string; revoked_at: string }>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/" + resource + "/" +
+        encodeURIComponent(assignmentId) + "/revoke",
+      { method: "POST", query: { branch_id: branchId } },
+    );
+  }
+
+  listStaffNotifications(branchId: string, limit = 30) {
+    return this.request<StaffNotificationInbox>("staff-notifications", "/notifications", {
+      query: { branch_id: branchId, limit },
+    });
+  }
+  markStaffNotificationRead(branchId: string, notificationId: string) {
+    return this.request<{ updated: boolean }>("staff-notifications", "/notifications/" + encodeURIComponent(notificationId) + "/read", {
+      method: "POST", body: { branch_id: branchId },
+    });
+  }
+  markAllStaffNotificationsRead(branchId: string) {
+    return this.request<{ updated_count: number }>("staff-notifications", "/notifications/read-all", {
+      method: "POST", body: { branch_id: branchId },
+    });
+  }
+
+  async uploadEventFlyer(branchId: string, eventId: string, file: File): Promise<ApiEnvelope<EventFlyerResult>> {
+    const token = await this.getAccessToken();
+    if (!token) throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
+    const url = new URL(`${this.baseUrl}/event-flyers/events/${encodeURIComponent(eventId)}`);
+    url.searchParams.set("branch_id", branchId);
+    const form = new FormData();
+    form.set("file", file);
+    const headers = new Headers({ apikey: this.config.publishableKey, Accept: "application/json", Authorization: `Bearer ${token}` });
+    let response: Response;
+    try {
+      response = await this.sendWithBrowserFallback(url, { method: "POST", headers, body: form, cache: "no-store" });
+    } catch {
+      throw new CmiApiError(0, "NETWORK_ERROR", "We couldn't upload the event flyer. Check your connection and try again.", null);
+    }
+    const payload = parseJson(await response.text()) as (ApiEnvelope<EventFlyerResult> & ApiErrorBody) | null;
+    const requestId = payload?.request_id ?? response.headers.get("X-Request-Id");
+    if (!response.ok) throw new CmiApiError(response.status, payload?.error?.code ?? `HTTP_${response.status}`, payload?.error?.message ?? "The flyer upload could not be completed.", requestId ?? null);
+    if (!payload || typeof payload !== "object" || !("data" in payload)) throw new CmiApiError(502, "INVALID_RESPONSE", "The server returned an unexpected response.", requestId ?? null);
+    return payload;
+  }
+  getEventFlyerPreview(branchId: string, eventId: string) {
+    return this.request<EventFlyerResult>("event-flyers", "/events/" + encodeURIComponent(eventId), {
+      query: { branch_id: branchId },
+    });
+  }
+  removeEventFlyer(branchId: string, eventId: string) {
+    return this.request<{ removed: boolean }>("event-flyers", "/events/" + encodeURIComponent(eventId) + "/remove", {
+      method: "POST", query: { branch_id: branchId },
     });
   }
 
@@ -937,10 +1314,10 @@ export class CmiApiClient {
 }
 
 export function createConfiguredCmiApiClient(getAccessToken: AccessTokenProvider): CmiApiClient {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  const supabaseUrl = SUPABASE_URL;
+  const publishableKey = SUPABASE_PUBLISHABLE_KEY;
   if (!supabaseUrl || !publishableKey) {
-    throw new Error("Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY before connecting the staff API.");
+    throw new Error("The Supabase browser connection is not configured.");
   }
   return new CmiApiClient({ supabaseUrl, publishableKey }, getAccessToken);
 }

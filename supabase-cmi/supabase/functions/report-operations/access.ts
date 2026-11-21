@@ -52,3 +52,26 @@ export function canSelectReportEvent(
 ): boolean {
   return staffAssigned || activeTeamAssigned;
 }
+
+/** Transport assignments are outside the non-transport reports workflow. */
+const REPORT_ELIGIBLE_EVENT_ASSIGNMENT_ROLES = new Set([
+  "owner",
+  "organizer",
+  "checkin",
+  "ushering",
+  "support",
+]);
+
+/** Only known non-Transport event roles may scope a ministry report. */
+export function isReportEventAssignmentEligible(
+  assignmentRole: string,
+): boolean {
+  return REPORT_ELIGIBLE_EVENT_ASSIGNMENT_ROLES.has(assignmentRole);
+}
+
+/** A person/team must have at least one active non-Transport event assignment. */
+export function hasEligibleReportEventAssignment(
+  assignmentRoles: readonly string[],
+): boolean {
+  return assignmentRoles.some(isReportEventAssignmentEligible);
+}

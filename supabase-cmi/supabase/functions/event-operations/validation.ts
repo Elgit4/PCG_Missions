@@ -11,12 +11,19 @@ export interface EventCreateInput {
   ends_at: string;
   timezone: string;
   location: string | null;
+  capacity: number | null;
 }
 
 export type EventPatchInput = Partial<
   Pick<
     EventCreateInput,
-    "title" | "description" | "starts_at" | "ends_at" | "timezone" | "location"
+    | "title"
+    | "description"
+    | "starts_at"
+    | "ends_at"
+    | "timezone"
+    | "location"
+    | "capacity"
   >
 >;
 
@@ -139,6 +146,24 @@ function parseEventFields(
     result.location = parsed.value;
   }
 
+  if ("capacity" in value) {
+    if (value.capacity === null) {
+      result.capacity = null;
+    } else if (
+      typeof value.capacity !== "number" ||
+      !Number.isSafeInteger(value.capacity) ||
+      value.capacity < 1 ||
+      value.capacity > 2147483647
+    ) {
+      return {
+        ok: false,
+        error: "Capacity must be a positive whole number or blank.",
+      };
+    } else {
+      result.capacity = value.capacity;
+    }
+  }
+
   if (
     result.starts_at && result.ends_at &&
     Date.parse(result.ends_at) <= Date.parse(result.starts_at)
@@ -168,6 +193,7 @@ export function parseEventCreate(
     "ends_at",
     "timezone",
     "location",
+    "capacity",
   ]);
   if (Object.keys(value).some((key) => !allowed.has(key))) {
     return { ok: false, error: "Unsupported event field." };
@@ -191,6 +217,7 @@ export function parseEventCreate(
       ends_at: parsed.value.ends_at!,
       timezone: parsed.value.timezone ?? "Africa/Accra",
       location: parsed.value.location ?? null,
+      capacity: parsed.value.capacity ?? null,
     },
   };
 }
@@ -208,12 +235,356 @@ export function parseEventPatch(
     "ends_at",
     "timezone",
     "location",
+    "capacity",
   ]);
   const keys = Object.keys(value);
   if (keys.length === 0 || keys.some((key) => !allowed.has(key))) {
     return { ok: false, error: "Unsupported or empty event update." };
   }
   return parseEventFields(value, false);
+}
+
+export interface EventStaffAssignmentInput {
+  staff_auth_user_id: string;
+  assignment_role: "owner" | "organizer" | "checkin" | "support";
+  starts_at: string;
+  ends_at: string | null;
+}
+
+export interface EventTeamAssignmentInput {
+  team_id: string;
+  assignment_role: "organizer" | "ushering" | "support";
+  starts_at: string;
+  ends_at: string | null;
+}
+
+function parseAssignmentWindow(
+  value: Record<string, unknown>,
+): { ok: true; starts_at: string; ends_at: string | null } | {
+  ok: false;
+  error: string;
+} {
+  const start = parseTimestamp(value.starts_at, "starts_at");
+  if (!start.ok) return start;
+  let end: string | null = null;
+  if (
+    value.ends_at !== undefined && value.ends_at !== null &&
+    value.ends_at !== ""
+  ) {
+    const parsedEnd = parseTimestamp(value.ends_at, "ends_at");
+    if (!parsedEnd.ok) return parsedEnd;
+    end = parsedEnd.value;
+  }
+  if (end && Date.parse(end) <= Date.parse(start.value)) {
+    return { ok: false, error: "ends_at must be later than starts_at." };
+  }
+  return { ok: true, starts_at: start.value, ends_at: end };
+}
+
+export function parseEventStaffAssignment(
+  value: unknown,
+): { ok: true; value: EventStaffAssignmentInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const allowed = new Set([
+    "staff_auth_user_id",
+    "assignment_role",
+    "starts_at",
+    "ends_at",
+  ]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    return { ok: false, error: "Unsupported staff assignment field." };
+  }
+  if (
+    typeof value.staff_auth_user_id !== "string" ||
+    !UUID_PATTERN.test(value.staff_auth_user_id)
+  ) {
+    return { ok: false, error: "Invalid staff member." };
+  }
+  const roles = new Set(["owner", "organizer", "checkin", "support"]);
+  if (
+    typeof value.assignment_role !== "string" ||
+    !roles.has(value.assignment_role)
+  ) {
+    return { ok: false, error: "Invalid staff assignment role." };
+  }
+  const window = parseAssignmentWindow(value);
+  if (!window.ok) return window;
+  return {
+    ok: true,
+    value: {
+      staff_auth_user_id: value.staff_auth_user_id,
+      assignment_role: value
+        .assignment_role as EventStaffAssignmentInput["assignment_role"],
+      starts_at: window.starts_at,
+      ends_at: window.ends_at,
+    },
+  };
+}
+
+export function parseEventTeamAssignment(
+  value: unknown,
+): { ok: true; value: EventTeamAssignmentInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const allowed = new Set([
+    "team_id",
+    "assignment_role",
+    "starts_at",
+    "ends_at",
+  ]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    return { ok: false, error: "Unsupported team assignment field." };
+  }
+  if (typeof value.team_id !== "string" || !UUID_PATTERN.test(value.team_id)) {
+    return { ok: false, error: "Invalid team." };
+  }
+  const roles = new Set(["organizer", "ushering", "support"]);
+  if (
+    typeof value.assignment_role !== "string" ||
+    !roles.has(value.assignment_role)
+  ) {
+    return { ok: false, error: "Invalid team assignment role." };
+  }
+  const window = parseAssignmentWindow(value);
+  if (!window.ok) return window;
+  return {
+    ok: true,
+    value: {
+      team_id: value.team_id,
+      assignment_role: value
+        .assignment_role as EventTeamAssignmentInput["assignment_role"],
+      starts_at: window.starts_at,
+      ends_at: window.ends_at,
+    },
+  };
+}
+
+export interface EventStaffRegistrationInput {
+  idempotency_key: string;
+  attendee_name: string;
+  attendee_phone: string | null;
+}
+
+export function parseEventStaffRegistration(
+  value: unknown,
+): { ok: true; value: EventStaffRegistrationInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const allowed = new Set([
+    "idempotency_key",
+    "attendee_name",
+    "attendee_phone",
+  ]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    return {
+      ok: false,
+      error: "Unsupported staff registration field.",
+    };
+  }
+  if (
+    typeof value.idempotency_key !== "string" ||
+    !UUID_PATTERN.test(value.idempotency_key)
+  ) {
+    return { ok: false, error: "A valid idempotency_key is required." };
+  }
+  const name = parseText(value.attendee_name, "attendee_name", 2, 180);
+  if (!name.ok || name.value === null) {
+    return {
+      ok: false,
+      error: "Enter an attendee name between 2 and 180 characters.",
+    };
+  }
+  let phone: string | null = null;
+  if (value.attendee_phone !== undefined && value.attendee_phone !== null) {
+    if (typeof value.attendee_phone !== "string") {
+      return { ok: false, error: "Enter a valid international phone number." };
+    }
+    const normalized = value.attendee_phone.trim();
+    if (normalized !== "" && !/^\+[1-9][0-9]{7,14}$/.test(normalized)) {
+      return { ok: false, error: "Enter a valid international phone number." };
+    }
+    phone = normalized || null;
+  }
+  return {
+    ok: true,
+    value: {
+      idempotency_key: value.idempotency_key,
+      attendee_name: name.value,
+      attendee_phone: phone,
+    },
+  };
+}
+
+export interface EventRegistrationCancelInput {
+  idempotency_key: string;
+}
+
+export function parseEventRegistrationCancel(
+  value: unknown,
+): { ok: true; value: EventRegistrationCancelInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  if (Object.keys(value).some((key) => key !== "idempotency_key")) {
+    return {
+      ok: false,
+      error: "Unsupported registration cancellation field.",
+    };
+  }
+  if (
+    typeof value.idempotency_key !== "string" ||
+    !UUID_PATTERN.test(value.idempotency_key)
+  ) {
+    return {
+      ok: false,
+      error: "A valid idempotency_key is required.",
+    };
+  }
+  return { ok: true, value: { idempotency_key: value.idempotency_key } };
+}
+
+export function parseEventCheckin(
+  value: unknown,
+): { ok: true; value: { idempotency_key: string } } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  if (Object.keys(value).some((key) => key !== "idempotency_key")) {
+    return { ok: false, error: "Unsupported event check-in field." };
+  }
+  if (
+    typeof value.idempotency_key !== "string" ||
+    !UUID_PATTERN.test(value.idempotency_key)
+  ) {
+    return {
+      ok: false,
+      error: "A valid idempotency_key is required.",
+    };
+  }
+  return { ok: true, value: { idempotency_key: value.idempotency_key } };
+}
+
+export interface EventCloseoutSubmitInput {
+  idempotency_key: string;
+  summary_notes: string | null;
+}
+
+export interface EventCloseoutReviewInput {
+  idempotency_key: string;
+  decision: "approved" | "returned";
+  reason: string | null;
+}
+
+export function parseEventCloseoutSubmit(
+  value: unknown,
+): { ok: true; value: EventCloseoutSubmitInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const allowed = new Set(["idempotency_key", "summary_notes"]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    return { ok: false, error: "Unsupported event closeout submission field." };
+  }
+  if (
+    typeof value.idempotency_key !== "string" ||
+    !UUID_PATTERN.test(value.idempotency_key)
+  ) {
+    return { ok: false, error: "A valid idempotency_key is required." };
+  }
+  const notes = "summary_notes" in value
+    ? parseText(value.summary_notes, "summary_notes", 0, 4000, true)
+    : { ok: true as const, value: null };
+  if (!notes.ok) {
+    return {
+      ok: false,
+      error: "Closeout notes must not exceed 4,000 characters.",
+    };
+  }
+  return {
+    ok: true,
+    value: {
+      idempotency_key: value.idempotency_key,
+      summary_notes: notes.value,
+    },
+  };
+}
+
+export function parseEventCloseoutReview(
+  value: unknown,
+): { ok: true; value: EventCloseoutReviewInput } | {
+  ok: false;
+  error: string;
+} {
+  if (!isRecord(value)) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+  const allowed = new Set(["idempotency_key", "decision", "reason"]);
+  if (Object.keys(value).some((key) => !allowed.has(key))) {
+    return { ok: false, error: "Unsupported event closeout review field." };
+  }
+  if (
+    typeof value.idempotency_key !== "string" ||
+    !UUID_PATTERN.test(value.idempotency_key)
+  ) {
+    return { ok: false, error: "A valid idempotency_key is required." };
+  }
+  if (value.decision !== "approved" && value.decision !== "returned") {
+    return {
+      ok: false,
+      error: "Closeout decision must be approved or returned.",
+    };
+  }
+  let reason: string | null = null;
+  if (value.decision === "returned") {
+    const parsed = parseText(value.reason, "reason", 2, 2000);
+    if (!parsed.ok || parsed.value === null) {
+      return {
+        ok: false,
+        error:
+          "A reason between 2 and 2,000 characters is required when returning a closeout.",
+      };
+    }
+    reason = parsed.value;
+  } else if ("reason" in value) {
+    const parsed = parseText(value.reason, "reason", 0, 2000, true);
+    if (!parsed.ok) {
+      return {
+        ok: false,
+        error: "Closeout review reason must not exceed 2,000 characters.",
+      };
+    }
+    reason = parsed.value;
+  }
+  return {
+    ok: true,
+    value: {
+      idempotency_key: value.idempotency_key,
+      decision: value.decision,
+      reason,
+    },
+  };
 }
 
 export function parseEventListQuery(

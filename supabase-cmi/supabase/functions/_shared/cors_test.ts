@@ -9,8 +9,17 @@ import {
 Deno.test("production origin remains allowed when optional config is unset or blank", () => {
   for (const configured of [undefined, "", " , "]) {
     const allowed = createAllowedOrigins(configured);
-    if (!isAllowedOrigin("https://pcg-missions.vercel.app", allowed)) {
-      throw new Error("production origin must be included by default");
+    for (
+      const origin of [
+        "https://pcg-missions.vercel.app",
+        "https://pcg-missions.pages.dev",
+      ]
+    ) {
+      if (!isAllowedOrigin(origin, allowed)) {
+        throw new Error(
+          `production origin must be included by default: ${origin}`,
+        );
+      }
     }
   }
 });
@@ -22,6 +31,7 @@ Deno.test("configured exact origins are additive to the production origin", () =
   for (
     const origin of [
       "https://pcg-missions.vercel.app",
+      "https://pcg-missions.pages.dev",
       "https://preview.example",
       "http://localhost:5173",
     ]

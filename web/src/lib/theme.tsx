@@ -37,6 +37,10 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
+    const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (themeColor) themeColor.content = theme === "dark" ? "#090D18" : "#F3F6F8";
+    const colorScheme = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+    if (colorScheme) colorScheme.content = theme;
   }, [theme]);
 
   const value = useMemo<ThemeContextValue>(() => ({
