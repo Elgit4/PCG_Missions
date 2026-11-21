@@ -51,6 +51,26 @@ jobs:
           test -s dist/index.js
           node --check dist/index.js
 
+      - name: Smoke-test deployed preview Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
+          health="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error "$url/health")"
+          echo "$health"
+          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="non-production" || p.schema_version!==37) process.exit(1)' "$health"
+          status="$(curl --silent --show-error -o /tmp/me.json -w "%{http_code}" "$url/api/v1/me")"
+          cat /tmp/me.json
+          test "$status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/me.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          headers="$(curl --silent --show-error -D - -o /dev/null -X OPTIONS "$url/api/v1/contacts" \
+            -H "Origin: https://feat-cloudflare-d1-migration.pcg-missions.pages.dev" \
+            -H "Access-Control-Request-Method: POST" \
+            -H "Access-Control-Request-Headers: authorization,content-type,x-branch-id,idempotency-key")"
+          printf '%s\\n' "$headers"
+          grep -qi "access-control-allow-origin: https://feat-cloudflare-d1-migration.pcg-missions.pages.dev" <<< "$headers"
+          grep -qi "idempotency-key" <<< "$headers"
+
       - name: Publish immutable bundle branch for direct Cloudflare deployment
         shell: bash
         run: |
