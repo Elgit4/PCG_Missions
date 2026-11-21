@@ -549,7 +549,7 @@ describe("CmiApiClient", () => {
     const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
     await client.listContacts("branch-abc", { limit: 10 });
     const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(String(url)).toBe("https://worker.example.com/api/v1/contacts?branch_id=branch-abc&limit=10");
+    expect(String(url)).toBe("https://worker.example.com/api/v1/contacts?branch_id=branch-abc&limit=10&offset=0");
     expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
     expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
   });
