@@ -454,6 +454,26 @@ test("Coordinator contact detail read uses the branch-scoped Worker projection a
   assert.equal(payload.contact, undefined);
 });
 
+test("contact detail reads fail closed when no active branch is selected", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("coordinator");
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/contacts/" + CONTACT_ID, {
+    headers: { Authorization: "Bearer verified-test-token" },
+  }), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(payload.error.code, "BRANCH_REQUIRED");
+  assert.equal(
+    fixture.calls.some((call) => call.sql.includes("SELECT id FROM contact WHERE id = ?")),
+    false,
+  );
+});
+
 test("returns a stable 404 envelope for an unimplemented route", async () => {
   const { env } = fakeEnv();
   const response = await worker.fetch(new Request("https://worker.example/api/v1/not-yet-implemented"), env);
