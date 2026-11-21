@@ -41,6 +41,14 @@ The migration now has a deployed non-production Worker and a Pages preview wired
 - CI evidence: [D1 Foundation 44946503388](https://github.com/Elgit4/PCG_Missions/actions/runs/44946503388) passed; [CMI web CI 44946503429](https://github.com/Elgit4/PCG_Missions/actions/runs/44946503429) passed frontend type-check, lint, tests and build.
 - This does not satisfy the authenticated six-role acceptance gate. It also does not resolve the source-to-D1 audit-row reconciliation, missing Worker service-role secret, incomplete API parity, repeatable import/restore/rollback rehearsal or production cutover gates.
 
+## Preview request-boundary and runtime route tests — 21 November 2026
+
+- Audited direct browser business-write paths after the shared-Supabase preview guard was introduced. The multipart event-flyer uploader was not using the common request path; it now fails closed in preview before the network request. A regression test asserts no fetch occurs.
+- The normal CMI API adapter blocks every unsupported non-GET operation in preview before falling back to the shared Supabase business backend. The remaining separate password-reset/password-change routes are Auth lifecycle operations on the shared tenant; they are not safe as test-only actions against the preview.
+- Added mocked HTTP route tests covering Team Leader own-team/own-coverage filtering, no staff identity leakage, Coordinator branch directory read without management, and Admin/Pastor team creation plus transactional audit.
+- Latest checks: [Preview Worker Bundle 44947383145](https://github.com/Elgit4/PCG_Missions/actions/runs/44947383145), [D1 Foundation 44947387152](https://github.com/Elgit4/PCG_Missions/actions/runs/44947387152), and [CMI web CI 44947387140](https://github.com/Elgit4/PCG_Missions/actions/runs/44947387140) all passed. The Worker route suite passed 30 tests; the SQLite migration-contract suite passed 64 tests.
+- Pages preview deployment `ccbc064e-1bc5-4d75-89ed-fd29443f85c4` from source commit `25975f7b10b33dfe6528d379427cfc588b61ec02` succeeded and updated the preview alias. This still does not replace real authenticated six-role acceptance or the data reconciliation/restore/rollback gates.
+
 ## Workstream A — Identity and session security
 
 - Implemented request-scoped Supabase access-token verification in the Worker using Supabase's authenticated user endpoint; do not replace this with local JWT decoding.
