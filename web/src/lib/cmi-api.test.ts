@@ -598,6 +598,34 @@ describe("CmiApiClient", () => {
     expect(result.data.id).toBe("note-2");
   });
 
+  it("routes branch-scoped team lists through the Worker contract", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { teams: [] }, request_id: "worker-teams" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.listTeams("branch-abc");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/teams");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(result.data.teams).toEqual([]);
+  });
+
+  it("routes branch-scoped service-area lists through the Worker contract", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { areas: [] }, request_id: "worker-areas" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.listServiceAreas("branch-abc");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/areas");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(result.data.areas).toEqual([]);
+  });
+
   it("keeps Worker-unsupported operations on their existing Supabase function", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: [], request_id: "supabase-fallback-1" }),
