@@ -1,5 +1,5 @@
-import { verifySupabaseAccessToken, type SupabaseAuthEnvironment } from "./auth";
-import { authorizeCapability, type AssignableResource, type AuthorizationDecision } from "./authorization";
+import { verifySupabaseAccessToken, type SupabaseAuthEnvironment } from "./auth.ts";
+import { authorizeCapability, type AssignableResource, type AuthorizationDecision } from "./authorization.ts";
 
 export interface StaffStatement {
   bind(...values: unknown[]): StaffStatement;
