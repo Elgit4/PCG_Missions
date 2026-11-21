@@ -870,22 +870,22 @@ export class CmiApiClient {
     if (input.team_id) {
       throw new TypeError("Team assignment is not part of the contact-capture operation.");
     }
-    const {
-      branch_id,
-      client_request_id,
-      phone_display: _phoneDisplay,
-      email_normalized,
-      team_id: _teamId,
-      ...body
-    } = input;
+    const body = {
+      first_name: input.first_name,
+      last_name: input.last_name,
+      preferred_name: input.preferred_name,
+      phone_e164: input.phone_e164,
+      email: input.email_normalized,
+      age_range: input.age_range,
+      preferred_language: input.preferred_language,
+      service_area_id: input.service_area_id,
+      source_metadata: input.source_metadata,
+    };
     return this.request<ContactRecord>("staff-operations", "/contacts", {
       method: "POST",
-      query: { branch_id },
-      body: {
-        ...body,
-        ...(email_normalized !== undefined ? { email: email_normalized } : {}),
-      },
-      idempotencyKey: client_request_id,
+      query: { branch_id: input.branch_id },
+      body,
+      idempotencyKey: input.client_request_id,
     });
   }
   updateContact(branchId: string, contactId: string, input: ContactUpdateInput) {
