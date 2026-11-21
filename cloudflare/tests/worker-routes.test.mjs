@@ -54,6 +54,16 @@ test("health fails closed if D1 is marked as production", async () => {
   assert.equal(payload.state, "database_not_initialized");
 });
 
+test("health accepts a production D1 marker only for a production Worker environment", async () => {
+  const { env } = fakeEnv({ meta: { schema_version: 37, environment: "production" } });
+  env.APP_ENV = "production";
+  const response = await worker.fetch(new Request("https://worker.example/health"), env);
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.environment, "production");
+  assert.equal(payload.schema_version, 37);
+});
+
 test("health fails closed when the D1 metadata row is missing", async () => {
   const { env } = fakeEnv({ meta: null });
   const response = await worker.fetch(new Request("https://worker.example/health"), env);
