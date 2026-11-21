@@ -555,6 +555,41 @@ describe("CmiApiClient", () => {
     expect(new Headers(init.headers).has("apikey")).toBe(false);
   });
 
+  it("routes single-contact reads through the Worker data envelope", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({
+        data: {
+          id: "contact-123",
+          branch_id: "branch-abc",
+          first_name: "Ama",
+          last_name: "Mensah",
+          preferred_name: null,
+          phone_e164: null,
+          email_normalized: null,
+          age_range: null,
+          preferred_language: null,
+          contact_status: "active",
+          identity_redacted: true,
+          created_at: "2026-11-21T10:00:00Z",
+          updated_at: "2026-11-21T10:00:00Z",
+        },
+        request_id: "worker-contact-detail",
+      }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    const result = await client.getContact("branch-abc", "contact-123");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+
+    expect(url.pathname).toBe("/api/v1/contacts/contact-123");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
+    expect(new Headers(init.headers).has("apikey")).toBe(false);
+    expect(result.data.identity_redacted).toBe(true);
+    expect(result.data.email_normalized).toBeNull();
+  });
+
   it("routes branch-scoped follow-up task reads through the Worker contract", async () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ data: [], request_id: "followup-worker" }), { status: 200 }));
     const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
