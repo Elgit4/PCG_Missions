@@ -1,3 +1,4 @@
+import re
 import sqlite3
 import unittest
 from pathlib import Path
@@ -89,6 +90,93 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             self.assertEqual(
                 {grant for grant in self.grants(role_code) if grant[0] in ("team.manage", "area.manage")},
                 {("team.manage", "branch"), ("area.manage", "branch")} if role_code == "admin_pastor" else set(),
+            )
+
+    def test_worker_authorization_sql_allows_team_area_management_only_for_admin_pastor(self):
+        now = "2026-11-21T12:00:00.000Z"
+        church_id = "authz-cmi-church"
+        branch_id = "authz-cmi-branch"
+        self.db.execute(
+            "INSERT INTO church(id,name,created_at,updated_at) VALUES(?,?,?,?)",
+            (church_id, "Authorization Test Church", now, now),
+        )
+        self.db.execute(
+            "INSERT INTO branch(id,church_id,name,created_at,updated_at) VALUES(?,?,?,?,?)",
+            (branch_id, church_id, "Authorization Test Branch", now, now),
+        )
+
+        role_codes = (
+            "admin_pastor",
+            "coordinator",
+            "team_leader",
+            "field_worker",
+            "follow_up_volunteer",
+            "prayer_intercessor",
+        )
+        profiles = {}
+        for index, role_code in enumerate(role_codes, start=1):
+            auth_id = f"authz-cmi-user-{index}"
+            profile_id = f"authz-cmi-staff-{index}"
+            role_id = self.db.execute(
+                "SELECT id FROM role WHERE code = ?", (role_code,)
+            ).fetchone()[0]
+            self.db.execute(
+                """INSERT INTO supabase_auth_identity
+                   (id,name,email,emailVerified,createdAt,updatedAt)
+                   VALUES(?,?,?,?,?,?)""",
+                (auth_id, role_code, f"{role_code}@example.test", 1, 1, 1),
+            )
+            self.db.execute(
+                """INSERT INTO staff_profile
+                   (id,auth_user_id,full_name,account_status,created_at,updated_at,
+                    must_change_password)
+                   VALUES(?,?,?,'active',?,?,0)""",
+                (profile_id, auth_id, role_code, now, now),
+            )
+            self.db.execute(
+                """INSERT INTO staff_role_assignment
+                   (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at)
+                   VALUES(?,?,?,?,?,?,?)""",
+                (
+                    f"authz-cmi-assignment-{index}",
+                    profile_id,
+                    role_id,
+                    branch_id,
+                    profile_id,
+                    now,
+                    now,
+                ),
+            )
+            profiles[role_code] = profile_id
+
+        source = (Path(__file__).resolve().parents[1] / "src" / "authorization.ts").read_text(encoding="utf-8")
+        match = re.search(r"const AUTHORIZATION_SQL = `([\s\S]*?)`;", source)
+        self.assertIsNotNone(match, "Worker authorization query must remain statically testable")
+        query = match.group(1)
+
+        def authorize(profile_id, capability, selected_branch=branch_id):
+            values = (
+                selected_branch, profile_id, capability, now, now,
+                "", "", now, now,
+                "", "", "", now, now,
+                "", "", "",
+                "", "", "", "",
+                now, now, profile_id,
+            )
+            self.assertEqual(query.count("?"), len(values))
+            return self.db.execute(query, values).fetchone()
+
+        for capability in ("team.manage", "area.manage"):
+            self.assertIsNotNone(authorize(profiles["admin_pastor"], capability))
+            for role_code in role_codes[1:]:
+                with self.subTest(role=role_code, capability=capability):
+                    self.assertIsNone(authorize(profiles[role_code], capability))
+            self.assertIsNone(
+                authorize(
+                    profiles["admin_pastor"],
+                    capability,
+                    "authz-cmi-unassigned-branch",
+                )
             )
 
     def test_role_grant_migration_is_idempotent(self):
