@@ -85,6 +85,7 @@ test("answers preflight only for configured origins and required headers", async
   assert.equal(response.status, 204);
   assert.equal(response.headers.get("Access-Control-Allow-Origin"), "https://preview.example");
   assert.match(response.headers.get("Access-Control-Allow-Headers"), /Authorization/);
+  assert.match(response.headers.get("Access-Control-Allow-Headers"), /Idempotency-Key/);
   assert.equal(calls.length, 0);
 });
 
