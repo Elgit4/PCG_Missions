@@ -1,4 +1,5 @@
 name: Cloudflare Preview Worker Bundle
+# This workflow validates the live preview endpoint; it does not deploy or alter production.
 
 on:
   push:
