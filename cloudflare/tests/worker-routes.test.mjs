@@ -108,7 +108,7 @@ test("rejects protected staff context without a bearer token before querying D1"
   assert.equal(calls.length, 0);
 });
 
-test("team collection reads require an authenticated branch-scoped manager", async () => {
+test("team collection reads reject anonymous requests", async () => {
   const { env, calls } = fakeEnv();
   const response = await worker.fetch(new Request("https://worker.example/api/v1/teams?branch_id=00000000-0000-4000-8000-000000000001"), env);
   const payload = await response.json();
@@ -117,7 +117,7 @@ test("team collection reads require an authenticated branch-scoped manager", asy
   assert.equal(calls.length, 0);
 });
 
-test("service-area collection reads require an authenticated branch-scoped manager", async () => {
+test("service-area collection reads reject anonymous requests", async () => {
   const { env, calls } = fakeEnv();
   const response = await worker.fetch(new Request("https://worker.example/api/v1/areas?branch_id=00000000-0000-4000-8000-000000000001"), env);
   const payload = await response.json();
@@ -244,7 +244,9 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           ["staff.directory.read", "branch"], ["contacts.read", "branch"],
           ["contacts.interaction.create", "branch"],
         ]
-      : [["team.read", "team"], ["area.read", "team"]];
+      : roleCode === "team_leader"
+        ? [["team.read", "team"], ["area.read", "team"]]
+        : [];
   for (const grant of additionalCapabilities) {
     if (!capabilityRows.some(([code, scope]) => code === grant[0] && scope === grant[1])) {
       capabilityRows.push(grant);
@@ -470,6 +472,109 @@ test("Team Leader directory reads return only own-team data and omit staff ident
   assert.equal(areasPayload.data.areas[0].coverage_count, 1);
   assert.deepEqual(areasPayload.data.areas[0].coverage, []);
   assert.ok(calls.some((call) => call.kind === "all" && call.sql.includes("actor_membership.membership_role = 'leader'")));
+
+  const teamQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM team t"));
+  assert.ok(teamQuery);
+  assert.match(teamQuery.sql, /t\\.is_active = 1/);
+
+  const teamMembershipQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM staff_team_membership stm"));
+  assert.ok(teamMembershipQuery);
+  assert.match(teamMembershipQuery.sql, /active_team\\.is_active = 1/);
+
+  const areaQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM service_area sa"));
+  assert.ok(areaQuery);
+  assert.match(areaQuery.sql, /covered_profile\\.account_status = 'active'/);
+  assert.match(areaQuery.sql, /covered_profile\\.deactivated_at IS NULL/);
+  assert.match(areaQuery.sql, /covered_team\\.is_active = 1/);
+
+  const coverageQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM staff_area_coverage"));
+  assert.ok(coverageQuery);
+  assert.match(coverageQuery.sql, /covered_team\\.is_active = 1/);
+});
+
+test("Field Worker, Follow-up Volunteer and Prayer Intercessor cannot read team or service-area directories", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+
+  for (const roleCode of ["field_worker", "follow_up_volunteer", "prayer_intercessor"]) {
+    const fixture = authorizedDirectoryEnv(roleCode);
+    for (const resource of ["teams", "areas"]) {
+      const response = await worker.fetch(
+        authenticatedDirectoryRequest("/api/v1/" + resource + "?branch_id=" + BRANCH_ID),
+        fixture.env,
+      );
+      const payload = await response.json();
+      assert.equal(response.status, 403, roleCode + " must not read " + resource);
+      assert.equal(payload.error.code, "CAPABILITY_DENIED");
+    }
+    assert.equal(
+      fixture.calls.some((call) => call.kind === "all" && (
+        call.sql.includes("FROM team t") || call.sql.includes("FROM service_area sa")
+      )),
+      false,
+      roleCode + " must be denied before directory queries",
+    );
+  }
+});
+
+test("all five non-admin roles are denied team and service-area management routes", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+
+  const mutations = [
+    {
+      path: "/api/v1/teams",
+      body: { branch_id: BRANCH_ID, name: "Must Not Create", description: null },
+    },
+    {
+      path: "/api/v1/areas",
+      body: { branch_id: BRANCH_ID, name: "Must Not Create", code: "DENIED" },
+    },
+    {
+      path: "/api/v1/teams/" + OWN_TEAM_ID + "/members?branch_id=" + BRANCH_ID,
+      body: { staff_profile_id: COVERED_STAFF_ID, membership_role: "member" },
+    },
+    {
+      path: "/api/v1/areas/" + OWN_AREA_ID + "/coverage?branch_id=" + BRANCH_ID,
+      body: { staff_profile_id: COVERED_STAFF_ID },
+    },
+  ];
+
+  for (const roleCode of [
+    "coordinator",
+    "team_leader",
+    "field_worker",
+    "follow_up_volunteer",
+    "prayer_intercessor",
+  ]) {
+    const fixture = authorizedDirectoryEnv(roleCode);
+    for (const mutation of mutations) {
+      const response = await worker.fetch(new Request("https://worker.example" + mutation.path, {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer verified-test-token",
+          "X-Branch-Id": BRANCH_ID,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(mutation.body),
+      }), fixture.env);
+      const payload = await response.json();
+      assert.equal(response.status, 403, roleCode + " must not manage " + mutation.path);
+      assert.equal(payload.error.code, "CAPABILITY_DENIED");
+    }
+    assert.equal(fixture.writes, 0, roleCode + " must not write team or service-area records");
+    assert.equal(
+      fixture.calls.some((call) => call.kind === "batch" || call.kind === "run"),
+      false,
+      roleCode + " must be denied before any D1 mutation",
+    );
+  }
 });
 
 test("Coordinator can read the branch directory and staff names, but cannot manage teams", async (t) => {
