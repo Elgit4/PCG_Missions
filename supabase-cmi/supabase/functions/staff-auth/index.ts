@@ -914,37 +914,11 @@ Deno.serve(async (request: Request) => {
         throw new Error("STAFF_PROFILE_PROVISION_FAILED");
       }
 
-      const safeName = escapeHtml(parsed.value.full_name);
-      const safeEmail = escapeHtml(parsed.value.email);
-      const safePassword = escapeHtml(temporaryPassword);
-      let invitationEmailSent = false;
-      try {
-        await sendEmail(
-          [parsed.value.email],
-          "Your PCG Missions staff account",
-          `<p>Hello ${safeName},</p>
-           <p>An administrator has created your PCG Missions staff account.</p>
-           <p><strong>Sign-in email:</strong> ${safeEmail}</p>
-           <p><strong>One-time temporary password:</strong><br><code>${safePassword}</code></p>
-           <p>Sign in using this email and temporary password. You must choose a new private password immediately after your first sign-in. This temporary password expires in 24 hours.</p>
-           <p>Do not forward this email. If you were not expecting this account, contact your church administrator.</p>`,
-          [
-            `Hello ${parsed.value.full_name},`,
-            "An administrator has created your PCG Missions staff account.",
-            `Sign-in email: ${parsed.value.email}`,
-            `One-time temporary password: ${temporaryPassword}`,
-            "Sign in with this email and temporary password. You must choose a new private password immediately after first sign-in. This temporary password expires in 24 hours.",
-            "Do not forward this email. If you were not expecting this account, contact your church administrator.",
-          ].join("\n"),
-        );
-        invitationEmailSent = true;
-      } catch {
-        console.error("staff invitation email delivery failed", {
-          request_id: id,
-          staff_profile_id: (provisioned as { staff_profile_id?: string })
-            ?.staff_profile_id,
-        });
-      }
+      // Staff onboarding is intentionally email-free. The authorised
+      // administrator receives this one-time credential in the authenticated
+      // response and must hand it to the intended staff member privately.
+      // Do not send, log, persist or expose the temporary password elsewhere.
+      const invitationEmailSent = false;
 
       return response(
         {
