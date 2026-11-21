@@ -1,4 +1,4 @@
-import { createAuth } from "./auth";
+import { createSupabaseAuthUser, deleteSupabaseAuthUser } from "./auth";
 import { authorizeRequestCapability, resolveStaffContext, type StaffEnvironment } from "./staff-context";
 
 interface D1PreparedStatement {
@@ -16,6 +16,7 @@ interface D1Database {
 interface Env extends Omit<StaffEnvironment, "DB"> {
   DB: D1Database;
   APP_ENV?: string;
+  APP_ALLOWED_ORIGINS?: string;
 }
 
 function json(status: number, body: Record<string, unknown>, requestId: string, origin?: string): Response {
@@ -37,11 +38,17 @@ function json(status: number, body: Record<string, unknown>, requestId: string, 
 }
 
 function allowedOrigins(env: Env): Set<string> {
-  const values = [
-    env.BETTER_AUTH_URL ?? "",
-    ...(env.BETTER_AUTH_TRUSTED_ORIGINS ?? "").split(","),
-  ].map((value) => value.trim()).filter(Boolean);
-  return new Set(values.map((value) => new URL(value).origin));
+  const values = (env.APP_ALLOWED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  const origins = new Set<string>();
+  for (const value of values) {
+    try {
+      const parsed = new URL(value);
+      if ((parsed.protocol === "https:" || parsed.hostname === "localhost") && parsed.origin === value.replace(/\/$/, "")) origins.add(parsed.origin);
+    } catch {
+      // Ignore malformed configured origins; an empty allowlist fails closed.
+    }
+  }
+  return origins;
 }
 
 function requestOriginAllowed(request: Request, env: Env): boolean {
@@ -57,7 +64,6 @@ function requestOriginAllowed(request: Request, env: Env): boolean {
 function authCorsHeaders(origin: string): Headers {
   return new Headers({
     "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Branch-Id",
     "Access-Control-Max-Age": "600",
@@ -749,15 +755,11 @@ async function acceptStaffInvitation(
 
   let authUserId = "";
   try {
-    const auth = createAuth(env, true);
-    const signup = await auth.api.signUpEmail({
-      body: {
-        name: invitation.full_name,
-        email: invitation.email,
-        password,
-      },
+    authUserId = await createSupabaseAuthUser(env, {
+      email: invitation.email,
+      password,
+      fullName: invitation.full_name,
     });
-    authUserId = signup.user.id;
   } catch {
     return json(409, {
       ok: false,
@@ -812,12 +814,11 @@ async function acceptStaffInvitation(
       throw new Error("INVITATION_ACCEPTANCE_BATCH_FAILED");
     }
   } catch {
-    // The Better Auth identity has no staff profile/session if provisioning
-    // fails. Remove the orphan credential identity so the same invite can retry.
+    // Compensate the Supabase Auth identity if D1 provisioning did not commit.
     try {
-      await env.DB.prepare('DELETE FROM "user" WHERE id = ?').bind(authUserId).run();
+      await deleteSupabaseAuthUser(env, authUserId);
     } catch {
-      // The orphan remains blocked by the session-create staff-profile gate.
+      // The invitation remains pending; an orphan identity cannot access Worker APIs without a staff profile.
     }
     return json(409, { ok: false, error: { code: "INVITATION_PROVISIONING_FAILED" } }, requestId, origin);
   }
@@ -2622,10 +2623,6 @@ async function listStaffAudit(
   }, requestId, origin);
 }
 
-function isAuthPath(pathname: string): boolean {
-  return pathname === "/api/auth" || pathname.startsWith("/api/auth/");
-}
-
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -2644,23 +2641,7 @@ export default {
       return new Response(null, { status: 204, headers: authCorsHeaders(origin) });
     }
 
-    if (isAuthPath(url.pathname)) {
-      if (request.method !== "GET" && request.method !== "POST") {
-        return json(405, {
-          ok: false,
-          error: { code: "METHOD_NOT_ALLOWED", message: "Method not allowed." },
-        }, requestId, origin);
-      }
-      try {
-        const auth = createAuth(env);
-        return withSecurityHeaders(await auth.handler(request), origin);
-      } catch {
-        return json(503, {
-          ok: false,
-          error: { code: "AUTH_NOT_CONFIGURED", message: "Authentication is not configured for this environment." },
-        }, requestId, origin);
-      }
-    }
+    // Sign-in, refresh, recovery, and logout stay on the existing Pages-to-Supabase Auth proxy.
 
 function hasScopedGrant(
   context: Extract<Awaited<ReturnType<typeof resolveStaffContext>>, { state: "authenticated" }>,
