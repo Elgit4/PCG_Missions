@@ -181,3 +181,14 @@ No production Supabase data, Auth identities, Pages variables or production Clou
 - Added tests for valid Supabase identity-to-D1 staff resolution, branch role/capability context, temporary-password workspace gating, expired temporary passwords and Auth upstream outage handling.
 - Added pagination support and a consistent response envelope to the Worker follow-up task list. The browser adapter deliberately keeps follow-up operations on Supabase until the complete Worker response/authorization contract is validated.
 - PR #85 remains draft and unmerged. No production Worker deployment, Pages environment change, Supabase production migration, Auth user change or cutover has occurred.
+
+## Cloudflare preview wiring follow-up — 21 November 2026
+
+- Corrected the Pages build-watch include pattern from `web/**` to `web/*`. Cloudflare Pages documents `*` as the wildcard for nested repository paths; the prior pattern had caused preview pushes containing frontend files to be marked `path_config` and skipped.
+- Verified a new Pages preview deployment from commit `c4b39fb77327cd03861bbc82f1c14c5583dbff8f` completed successfully. Preview URL: `https://80435232.pcg-missions.pages.dev`; branch alias: `https://feat-cloudflare-d1-migration.pcg-missions.pages.dev`.
+- Added the correctly prefixed `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` variables to the Pages preview configuration. Production Pages environment variables were left unchanged.
+- Added the branch preview Pages origin to the preview Worker CORS allowlist. The production Worker configuration and existing `pcg-missions-api-nonprod` Worker were not changed.
+- Updated the Worker preview workflow so missing GitHub Actions token access fails visibly rather than silently skipping deployment, and added `wrangler whoami` before deployment for account/token diagnostics.
+- The preview Worker `pcg-missions-api-preview` still does not exist at the time of this update. `VITE_CMI_WORKER_API_URL` remains unset in Pages preview, so the preview frontend continues to use its existing Supabase business API until the Worker is deployed and verified.
+- The latest PR branch commit is `d68ea44959dd48235e6481c9c7a819578c3d35c1`. Frontend CI and Cloudflare D1 Foundation CI were still running when this note was written; no pass is claimed for those in-progress runs.
+- The production Pages branch, canonical production deployment, Supabase production database, Auth identities, and all production routing remain unchanged.
