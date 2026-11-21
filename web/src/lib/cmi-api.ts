@@ -1212,6 +1212,16 @@ export class CmiApiClient {
   }
 
   async uploadEventFlyer(branchId: string, eventId: string, file: File): Promise<ApiEnvelope<EventFlyerResult>> {
+    // This multipart write bypasses request(), so enforce the same preview isolation
+    // boundary here until event-flyer upload is implemented on the preview Worker.
+    if (this.previewMode && this.workerApiBaseUrl !== null) {
+      throw new CmiApiError(
+        503,
+        "PREVIEW_OPERATION_NOT_MIGRATED",
+        "Event-flyer uploads are not available in the Cloudflare preview yet. No data was changed.",
+        null,
+      );
+    }
     const token = await this.getAccessToken();
     if (!token) throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
     const url = new URL(`${this.baseUrl}/event-flyers/events/${encodeURIComponent(eventId)}`);
