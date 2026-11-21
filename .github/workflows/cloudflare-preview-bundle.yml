@@ -79,6 +79,38 @@ jobs:
           grep -qi "access-control-allow-origin: https://feat-cloudflare-d1-migration.pcg-missions.pages.dev" <<< "$headers"
           grep -qi "idempotency-key" <<< "$headers"
 
+      - name: Verify team and service-area mutation routes are live and protected
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
+          branch="00000000-0000-4000-8000-000000000001"
+          team="00000000-0000-4000-8000-000000000002"
+          area="00000000-0000-4000-8000-000000000003"
+          member="00000000-0000-4000-8000-000000000004"
+          staff="00000000-0000-4000-8000-000000000005"
+          coverage="00000000-0000-4000-8000-000000000006"
+          assert_unauth() {
+            method="$1"; path="$2"; body="${3:-}"
+            if [[ -n "$body" ]]; then
+              status="$(curl --silent --show-error -o /tmp/route.json -w "%{http_code}" -X "$method" "$url$path" -H "Content-Type: application/json" --data "$body")"
+            else
+              status="$(curl --silent --show-error -o /tmp/route.json -w "%{http_code}" -X "$method" "$url$path")"
+            fi
+            test "$status" = "401"
+            node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/route.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          }
+          assert_unauth POST "/api/v1/teams" "{\"branch_id\":\"$branch\",\"name\":\"Welcome\",\"description\":null}"
+          assert_unauth PATCH "/api/v1/teams/$team?branch_id=$branch" '{"is_active":false}'
+          assert_unauth POST "/api/v1/teams/$team/members?branch_id=$branch" "{\"staff_profile_id\":\"$staff\",\"membership_role\":\"member\"}"
+          assert_unauth PATCH "/api/v1/teams/$team/members/$member?branch_id=$branch" '{"membership_role":"leader"}'
+          assert_unauth POST "/api/v1/teams/$team/members/$member/revoke?branch_id=$branch"
+          assert_unauth POST "/api/v1/areas" "{\"branch_id\":\"$branch\",\"name\":\"Tema West\",\"code\":\"TEMA-W\"}"
+          assert_unauth PATCH "/api/v1/areas/$area?branch_id=$branch" '{"is_active":false}'
+          assert_unauth POST "/api/v1/areas/$area/coverage?branch_id=$branch" "{\"staff_profile_id\":\"$staff\"}"
+          assert_unauth POST "/api/v1/areas/$area/coverage/$coverage/revoke?branch_id=$branch"
+          echo "All team and service-area mutation routes reject anonymous access."
+ 
       - name: Verify Pages preview was built with the Worker API origin
         shell: bash
         run: |
