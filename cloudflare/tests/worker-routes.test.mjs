@@ -500,6 +500,38 @@ test("Coordinator can record a scoped contact interaction through the D1 Worker"
   ));
 });
 
+test("Prayer Intercessor cannot write visitor contact interactions", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("prayer_intercessor");
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/contacts/" + CONTACT_ID + "/interactions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        interaction_type: "call",
+        summary: "Must not be stored",
+      }),
+    },
+  ), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 403);
+  assert.equal(payload.error.code, "CAPABILITY_DENIED");
+  assert.equal(
+    fixture.calls.some((call) => call.kind === "run" || call.kind === "batch"),
+    false,
+  );
+});
+
 test("contact detail reads fail closed when no active branch is selected", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
     const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
