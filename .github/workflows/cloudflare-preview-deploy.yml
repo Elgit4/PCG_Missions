@@ -46,16 +46,14 @@ jobs:
       - name: Test Supabase Auth integration
         run: npm test
 
-      - name: Check Cloudflare deployment token
-        id: token-check
+      - name: Require Cloudflare deployment credentials
+        shell: bash
         run: |
-          if [ -n "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "Preview deployment skipped: CLOUDFLARE_API_TOKEN is not configured."
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error title=Cloudflare token unavailable::CLOUDFLARE_API_TOKEN was not passed to this workflow run. The secret must be a repository Actions secret, or the job must target the GitHub Environment that contains it. The workflow will not silently report a successful skipped deployment."
+            exit 1
           fi
+          echo "Cloudflare token is present (value withheld)."
 
       - name: Deploy isolated preview Worker
-        if: steps.token-check.outputs.available == 'true'
         run: npm run deploy:preview
