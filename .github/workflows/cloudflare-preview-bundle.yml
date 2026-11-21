@@ -1,0 +1,86 @@
+name: Cloudflare Preview Worker Bundle
+
+on:
+  push:
+    branches:
+      - feat/cloudflare-d1-migration-foundation
+    paths:
+      - "cloudflare/**"
+      - ".github/workflows/cloudflare-preview-bundle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pcg-missions-preview-worker-bundle
+  cancel-in-progress: true
+
+jobs:
+  build-bundle:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/cloudflare-d1-migration-foundation
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install pinned Worker dependencies
+        run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
+
+      - name: Type-check Worker
+        run: npm run typecheck
+
+      - name: Test Worker authentication and routes
+        run: npm test
+
+      - name: Bundle preview Worker without deploying
+        run: |
+          rm -rf dist
+          npx wrangler deploy --env preview --dry-run --outdir dist
+          test -s dist/index.js
+          node --check dist/index.js
+
+      - name: Publish immutable bundle branch for direct Cloudflare deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pcg-worker-bundle
+          cp dist/index.js /tmp/pcg-worker-bundle/index.js
+          cat > /tmp/pcg-worker-bundle/build-info.json <<EOF
+          {
+            "source_branch": "feat/cloudflare-d1-migration-foundation",
+            "source_commit": "${GITHUB_SHA}",
+            "built_at": "${GITHUB_RUN_ID}",
+            "worker_name": "pcg-missions-api-preview",
+            "database_id": "74074d53-1edc-4ad7-83e6-bb3333a6ab4f",
+            "environment": "non-production"
+          }
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch --orphan artifacts/pcg-missions-preview-worker
+          git rm -rf . >/dev/null 2>&1 || true
+          mkdir -p worker
+          cp /tmp/pcg-worker-bundle/index.js worker/index.js
+          cp /tmp/pcg-worker-bundle/build-info.json worker/build-info.json
+          git add worker/index.js worker/build-info.json
+          git commit -m "build: publish verified PCG Missions preview Worker bundle [skip ci]"
+          git push --force origin HEAD:refs/heads/artifacts/pcg-missions-preview-worker
+
+      - name: Upload bundle for audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: pcg-missions-preview-worker-${{ github.sha }}
+          path: cloudflare/dist/index.js
+          if-no-files-found: error
+          retention-days: 14
