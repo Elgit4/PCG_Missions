@@ -1469,9 +1469,9 @@ async function getContact(
     "c", access.staff.userId, access.activeBranch.branchId, now,
   );
   const row = await env.DB.prepare(`
-    SELECT c.id, c.first_name, c.last_name, c.preferred_name,
+    SELECT c.id, c.branch_id, c.first_name, c.last_name, c.preferred_name,
            CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.phone_e164 ELSE NULL END AS phone_e164,
-           CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.email_normalized ELSE NULL END AS email,
+           CASE WHEN ? = 1 AND (${detailPredicate.sql}) THEN c.email_normalized ELSE NULL END AS email_normalized,
            CASE WHEN ? = 1 AND (${privatePredicate.sql}) THEN c.age_range ELSE NULL END AS age_range,
            CASE WHEN ? = 1 AND (${privatePredicate.sql}) THEN c.preferred_language ELSE NULL END AS preferred_language,
            c.contact_status, c.created_at, c.updated_at
@@ -1486,7 +1486,10 @@ async function getContact(
     contactId, access.activeBranch.branchId, ...predicate.values,
   ).first<Record<string, unknown>>();
   if (!row) return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND" } }, requestId, origin);
-  return json(200, { ok: true, contact: row }, requestId, origin);
+  return json(200, {
+    ok: true,
+    data: { ...row, identity_redacted: !includeDetails },
+  }, requestId, origin);
 }
 
 async function updateContact(
