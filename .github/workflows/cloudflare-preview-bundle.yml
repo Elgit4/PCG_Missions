@@ -127,7 +127,11 @@ jobs:
             echo "Worker API origin was not embedded in the preview bundle."
             exit 1
           fi
-          echo "Pages preview HTML and built JavaScript both respond; the Worker API origin is embedded."
+          if ! grep -Fq "PREVIEW_OPERATION_NOT_MIGRATED" <<< "$bundle"; then
+            echo "Preview write-isolation guard was not embedded in the Pages JavaScript."
+            exit 1
+          fi
+          echo "Pages preview HTML and JavaScript respond; Worker API origin and preview write-isolation guard are embedded."
 
       - name: Publish immutable bundle branch for direct Cloudflare deployment
         shell: bash
