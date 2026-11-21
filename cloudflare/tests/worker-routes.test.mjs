@@ -221,6 +221,7 @@ function authorizedDirectoryEnv(roleCode) {
       ? [
           ["team.read", "branch"], ["area.read", "branch"],
           ["staff.directory.read", "branch"], ["contacts.read", "branch"],
+          ["contacts.interaction.create", "branch"],
         ]
       : [["team.read", "team"], ["area.read", "team"]];
   const staff = {
@@ -261,6 +262,17 @@ function authorizedDirectoryEnv(roleCode) {
               contact_status: "active",
               created_at: "2026-01-01T00:00:00.000Z",
               updated_at: "2026-01-01T00:00:00.000Z",
+            };
+          }
+          if (this.sql.includes("FROM contact_interaction") && this.sql.includes("SELECT id, interaction_type")) {
+            return {
+              id: this.values[0],
+              interaction_type: "call",
+              occurred_at: "2026-11-21T12:00:00.000Z",
+              outcome_code: "answered",
+              summary: "Spoke with visitor",
+              next_action_at: null,
+              created_at: "2026-11-21T12:00:01.000Z",
             };
           }
           if (this.sql.includes("JOIN branch b") && this.sql.includes("JOIN role_capability rc")) {
@@ -452,6 +464,40 @@ test("Coordinator contact detail read uses the branch-scoped Worker projection a
   assert.equal(payload.data.phone_e164, null);
   assert.equal(payload.data.email_normalized, null);
   assert.equal(payload.contact, undefined);
+});
+
+test("Coordinator can record a scoped contact interaction through the D1 Worker", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("coordinator");
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/contacts/" + CONTACT_ID + "/interactions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        interaction_type: "call",
+        occurred_at: "2026-11-21T12:00:00.000Z",
+        outcome_code: "answered",
+        summary: "Spoke with visitor",
+      }),
+    },
+  ), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(payload.data.interaction_type, "call");
+  assert.equal(payload.data.outcome_code, "answered");
+  assert.ok(fixture.calls.some((call) =>
+    call.kind === "run" && call.sql.includes("INSERT INTO contact_interaction")
+  ));
 });
 
 test("contact detail reads fail closed when no active branch is selected", async (t) => {
