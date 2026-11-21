@@ -2865,7 +2865,7 @@ async function handleTeamMembershipOrCoverageMutation(
   origin: string | undefined,
 ): Promise<Response> {
   const url = new URL(request.url);
-  const segments = url.pathname.split("/").filter(Boolean).slice(3);
+  const segments = url.pathname.split("/").filter(Boolean).slice(2);
   const resource = segments[0] ?? "";
   const isTeam = resource === "teams";
   const isArea = resource === "areas";
@@ -3093,7 +3093,7 @@ async function handleTeamOperationsMutation(
   origin: string | undefined,
 ): Promise<Response> {
   const url = new URL(request.url);
-  const segments = url.pathname.split("/").filter(Boolean).slice(3);
+  const segments = url.pathname.split("/").filter(Boolean).slice(2);
   const resource = segments[0] ?? "";
   const isTeam = resource === "teams";
   const isArea = resource === "areas";
