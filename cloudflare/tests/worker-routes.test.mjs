@@ -187,6 +187,7 @@ const OWN_AREA_ID = "50000000-0000-4000-8000-000000000001";
 const OTHER_AREA_ID = "50000000-0000-4000-8000-000000000002";
 const COVERED_STAFF_ID = "20000000-0000-4000-8000-000000000002";
 const OTHER_STAFF_ID = "20000000-0000-4000-8000-000000000003";
+const CONTACT_ID = "80000000-0000-4000-8000-000000000001";
 
 function authorizedDirectoryEnv(roleCode) {
   const calls = [];
@@ -219,7 +220,7 @@ function authorizedDirectoryEnv(roleCode) {
     : roleCode === "coordinator"
       ? [
           ["team.read", "branch"], ["area.read", "branch"],
-          ["staff.directory.read", "branch"],
+          ["staff.directory.read", "branch"], ["contacts.read", "branch"],
         ]
       : [["team.read", "team"], ["area.read", "team"]];
   const staff = {
@@ -242,6 +243,26 @@ function authorizedDirectoryEnv(roleCode) {
         async first() {
           calls.push({ kind: "first", sql: this.sql, values: this.values });
           if (this.sql.includes("FROM staff_profile") && this.sql.includes("WHERE auth_user_id = ?")) return staff;
+          if (this.sql.includes("SELECT id FROM contact") && this.sql.includes("contact_status <> 'merged'")) {
+            return this.values[0] === CONTACT_ID && this.values[1] === BRANCH_ID ? { id: CONTACT_ID } : null;
+          }
+          if (this.sql.includes("SELECT ca.team_id") && this.sql.includes("FROM contact_assignment ca")) return null;
+          if (this.sql.includes("FROM contact c") && this.sql.includes("SELECT c.id")) {
+            return {
+              id: CONTACT_ID,
+              branch_id: BRANCH_ID,
+              first_name: "Ama",
+              last_name: "Mensah",
+              preferred_name: null,
+              phone_e164: null,
+              email_normalized: null,
+              age_range: null,
+              preferred_language: null,
+              contact_status: "active",
+              created_at: "2026-01-01T00:00:00.000Z",
+              updated_at: "2026-01-01T00:00:00.000Z",
+            };
+          }
           if (this.sql.includes("JOIN branch b") && this.sql.includes("JOIN role_capability rc")) {
             const requestedCapability = this.values[2];
             const grant = capabilityRows.find(([code]) => code === requestedCapability);
@@ -408,6 +429,29 @@ test("Admin/Pastor with branch management grant can create a team and writes aud
   assert.equal(response.status, 201);
   assert.equal(payload.data.name, "New Team");
   assert.equal(fixture.writes, 2);
+});
+
+test("Coordinator contact detail read uses the branch-scoped Worker projection and redacts restricted identity", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const { env } = authorizedDirectoryEnv("coordinator");
+  const response = await worker.fetch(
+    authenticatedDirectoryRequest("/api/v1/contacts/" + CONTACT_ID + "?branch_id=" + BRANCH_ID),
+    env,
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.id, CONTACT_ID);
+  assert.equal(payload.data.branch_id, BRANCH_ID);
+  assert.equal(payload.data.first_name, "Ama");
+  assert.equal(payload.data.identity_redacted, true);
+  assert.equal(payload.data.phone_e164, null);
+  assert.equal(payload.data.email_normalized, null);
+  assert.equal(payload.contact, undefined);
 });
 
 test("returns a stable 404 envelope for an unimplemented route", async () => {
