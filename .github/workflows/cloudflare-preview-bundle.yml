@@ -78,7 +78,7 @@ jobs:
           set -euo pipefail
           page="https://feat-cloudflare-d1-migration.pcg-missions.pages.dev"
           html="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error "$page")"
-          asset="$(grep -oE 'src="[^"]+\\.js"' <<< "$html" | head -n1 | cut -d '"' -f2)"
+          asset="$(grep -oE 'src="[^"]+\.js"' <<< "$html" | head -n1 | cut -d '"' -f2)"
           test -n "$asset"
           if [[ "$asset" == http* ]]; then js_url="$asset"; else js_url="$page$asset"; fi
           bundle="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error "$js_url")"
