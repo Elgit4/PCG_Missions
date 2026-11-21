@@ -171,3 +171,13 @@ No production Supabase data, Auth identities, Pages variables or production Clou
 - Added frontend tests for Worker session, contact-list and notification routing. Existing unsupported domains continue to use their existing Edge Function paths; this is a staged migration, not a full API cutover.
 - Worker typecheck and D1 security/schema tests pass on the latest backend change. Frontend typecheck, lint, tests and production build are running on the latest frontend commit.
 - The Worker URL is not set in Pages production or preview, and no Worker deployment has been performed. The integration remains opt-in until the preview Worker is configured with its own D1 binding and Supabase Auth secrets and passes end-to-end acceptance.
+
+## Latest verification — 21 November 2026
+
+- Latest PR #85 head: `4ebe745b4078d7e999a887e9f4598074605bf169`.
+- Cloudflare Worker typecheck and Supabase Auth/staff-context tests: passed.
+- D1 schema/security invariant tests: passed.
+- Frontend typecheck, lint, unit tests and production build: passed.
+- Added tests for valid Supabase identity-to-D1 staff resolution, branch role/capability context, temporary-password workspace gating, expired temporary passwords and Auth upstream outage handling.
+- Added pagination support and a consistent response envelope to the Worker follow-up task list. The browser adapter deliberately keeps follow-up operations on Supabase until the complete Worker response/authorization contract is validated.
+- PR #85 remains draft and unmerged. No production Worker deployment, Pages environment change, Supabase production migration, Auth user change or cutover has occurred.
