@@ -681,7 +681,7 @@ describe("CmiApiClient", () => {
     expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
   });
 
-  it("keeps Worker-unsupported operations on their existing Supabase function", async () => {
+  it("keeps Worker-unsupported reads on their existing Supabase function", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: [], request_id: "supabase-fallback-1" }),
       { status: 200 },
@@ -691,6 +691,26 @@ describe("CmiApiClient", () => {
     const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
     expect(url.pathname).toBe("/functions/v1/staff-operations/contacts/contact-123/interactions");
   });
+  it("blocks Worker-unsupported business writes in preview instead of mutating the shared Supabase project", async () => {
+    const fetcher = vi.fn();
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    await expect(client.createEventDraft({
+      branch_id: "branch-abc",
+      title: "Preview test event",
+      description: null,
+      starts_at: "2026-11-22T08:00:00.000Z",
+      ends_at: "2026-11-22T10:00:00.000Z",
+      timezone: "Africa/Accra",
+      location: null,
+      capacity: null,
+    })).rejects.toMatchObject({ status: 503, code: "PREVIEW_OPERATION_NOT_MIGRATED" });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("routes staff notifications through the Worker API", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: { notifications: [], unread_count: 0 }, request_id: "worker-notifications-1" }),
