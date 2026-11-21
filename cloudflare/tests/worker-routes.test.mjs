@@ -523,6 +523,72 @@ test("Admin/Pastor with branch management grant can create a team and writes aud
   assert.equal(fixture.writes, 2);
 });
 
+test("Coordinator updates a scoped contact and receives the redacted D1 projection", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("coordinator", [
+    ["contacts.update", "branch"],
+    ["contacts.contact_details.read", "branch"],
+  ]);
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/contacts/" + CONTACT_ID,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: "Bearer verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        first_name: "Ama",
+        email: "ama@example.com",
+      }),
+    },
+  ), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.id, CONTACT_ID);
+  assert.equal(payload.data.first_name, "Ama");
+  assert.equal(payload.data.identity_redacted, false);
+  assert.ok(fixture.calls.some((call) =>
+    call.kind === "run" && call.sql.includes("UPDATE contact SET")
+  ));
+  assert.equal(payload.contact_id, undefined);
+});
+
+test("Field Worker without contact-update capability cannot edit a contact", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("field_worker", [["contacts.create", "branch"]]);
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/contacts/" + CONTACT_ID,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: "Bearer verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ first_name: "Must not be saved" }),
+    },
+  ), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 403);
+  assert.equal(payload.error.code, "CAPABILITY_DENIED");
+  assert.equal(
+    fixture.calls.some((call) => call.kind === "run" && call.sql.includes("UPDATE contact SET")),
+    false,
+  );
+});
+
 test("Field Worker creates a visitor contact through the idempotent D1 capture route", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
     const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
