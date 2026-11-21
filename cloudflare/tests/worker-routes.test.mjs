@@ -475,21 +475,21 @@ test("Team Leader directory reads return only own-team data and omit staff ident
 
   const teamQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM team t"));
   assert.ok(teamQuery);
-  assert.match(teamQuery.sql, /t\\.is_active = 1/);
+  assert.match(teamQuery.sql, /t\.is_active = 1/);
 
   const teamMembershipQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM staff_team_membership stm"));
   assert.ok(teamMembershipQuery);
-  assert.match(teamMembershipQuery.sql, /active_team\\.is_active = 1/);
+  assert.match(teamMembershipQuery.sql, /active_team\.is_active = 1/);
 
   const areaQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM service_area sa"));
   assert.ok(areaQuery);
   assert.match(areaQuery.sql, /covered_profile\\.account_status = 'active'/);
   assert.match(areaQuery.sql, /covered_profile\\.deactivated_at IS NULL/);
-  assert.match(areaQuery.sql, /covered_team\\.is_active = 1/);
+  assert.match(areaQuery.sql, /covered_team\.is_active = 1/);
 
   const coverageQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM staff_area_coverage"));
   assert.ok(coverageQuery);
-  assert.match(coverageQuery.sql, /covered_team\\.is_active = 1/);
+  assert.match(coverageQuery.sql, /covered_team\.is_active = 1/);
 });
 
 test("Field Worker, Follow-up Volunteer and Prayer Intercessor cannot read team or service-area directories", async (t) => {
