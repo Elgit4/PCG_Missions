@@ -131,6 +131,7 @@ function parseIsoTimestamp(value: unknown, fallback: string): string | null {
 
 function mapCapabilityFailure(state: string, requestId: string, origin?: string): Response {
   const status = state === "unauthenticated" ? 401 :
+    state === "auth_unavailable" ? 503 :
     state === "branch_required" ? 400 : 403;
   return json(status, {
     ok: false,
@@ -3364,6 +3365,9 @@ async function updatePrayerRequestStatus(
         const context = await resolveStaffContext(request, env);
         if (context.state === "unauthenticated") {
           return json(401, { ok: false, error: { code: "UNAUTHENTICATED" } }, requestId, origin);
+        }
+        if (context.state === "auth_unavailable") {
+          return json(503, { ok: false, error: { code: "AUTH_SERVICE_UNAVAILABLE" } }, requestId, origin);
         }
         if (context.state === "staff_not_provisioned") {
           return json(403, { ok: false, error: { code: "STAFF_NOT_PROVISIONED" } }, requestId, origin);
