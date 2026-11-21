@@ -839,25 +839,59 @@ async function listStaffDirectory(
 ): Promise<Response> {
   const access = await authorizeRequestCapability(request, env, "staff.directory.read");
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const url = new URL(request.url);
+  const rawLimit = url.searchParams.get("limit");
+  const limit = rawLimit === null ? 25 : Number(rawLimit);
+  const rawOffset = url.searchParams.get("offset");
+  const offset = rawOffset === null ? 0 : Number(rawOffset);
+  const search = (url.searchParams.get("search") ?? "").trim().slice(0, 100);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
+      !Number.isInteger(offset) || offset < 0 || offset > 10000 ||
+      [...url.searchParams.keys()].some((key) => !["branch_id", "limit", "offset", "search"].includes(key))) {
+    return json(400, { ok: false, error: { code: "INVALID_STAFF_DIRECTORY_QUERY" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
   const rows = await env.DB.prepare(`
     SELECT sp.id, sp.full_name, sp.account_status, sp.last_active_at,
-           GROUP_CONCAT(DISTINCT r.name) AS roles
+           (
+             SELECT json_group_array(json_object('code', r2.code, 'name', r2.name))
+             FROM staff_role_assignment sra2
+             JOIN role r2 ON r2.id = sra2.role_id AND r2.is_active = 1
+             WHERE sra2.staff_profile_id = sp.id
+               AND sra2.branch_id = ?
+               AND sra2.revoked_at IS NULL
+               AND sra2.starts_at <= ?
+               AND (sra2.ends_at IS NULL OR sra2.ends_at > ?)
+           ) AS roles_json
     FROM staff_profile sp
-    JOIN staff_role_assignment sra ON sra.staff_profile_id = sp.id
-    JOIN role r ON r.id = sra.role_id AND r.is_active = 1
-    WHERE sra.branch_id = ?
-      AND sra.revoked_at IS NULL
-      AND sra.starts_at <= ?
-      AND (sra.ends_at IS NULL OR sra.ends_at > ?)
-    GROUP BY sp.id, sp.full_name, sp.account_status, sp.last_active_at
+    WHERE EXISTS (
+      SELECT 1 FROM staff_role_assignment sra
+      JOIN role r ON r.id = sra.role_id AND r.is_active = 1
+      WHERE sra.staff_profile_id = sp.id
+        AND sra.branch_id = ?
+        AND sra.revoked_at IS NULL
+        AND sra.starts_at <= ?
+        AND (sra.ends_at IS NULL OR sra.ends_at > ?)
+    )
+      AND (? = '' OR sp.full_name LIKE ?)
     ORDER BY sp.full_name COLLATE NOCASE
-    LIMIT 100
-  `).bind(access.activeBranch.branchId, new Date().toISOString(), new Date().toISOString()).all<{
-    id: string; full_name: string; account_status: string; last_active_at: string | null; roles: string | null;
+    LIMIT ? OFFSET ?
+  `).bind(
+    access.activeBranch.branchId, now, now,
+    access.activeBranch.branchId, now, now,
+    search, search ? `%${search}%` : "",
+    limit, offset,
+  ).all<{
+    id: string; full_name: string; account_status: string; last_active_at: string | null; roles_json: string | null;
   }>();
-  return json(200, { ok: true, staff: rows.results ?? [] }, requestId, origin);
+  const staff = (rows.results ?? []).map((row) => {
+    let roles: Array<{ code: string; name: string }> = [];
+    try { roles = JSON.parse(row.roles_json ?? "[]") as Array<{ code: string; name: string }>; }
+    catch { roles = []; }
+    return { id: row.id, full_name: row.full_name, account_status: row.account_status, roles };
+  });
+  return json(200, { ok: true, data: staff }, requestId, origin);
 }
-
 async function changeStaffAccountStatus(
   request: Request,
   env: Env,
