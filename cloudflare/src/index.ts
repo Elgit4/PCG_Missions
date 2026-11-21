@@ -2857,6 +2857,235 @@ function parseAreaCode(value: unknown): string | null | undefined {
   return normalized;
 }
 
+
+async function handleTeamMembershipOrCoverageMutation(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin: string | undefined,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const segments = url.pathname.split("/").filter(Boolean).slice(3);
+  const resource = segments[0] ?? "";
+  const isTeam = resource === "teams";
+  const isArea = resource === "areas";
+  const teamMemberCreate = isTeam && segments.length === 3 && segments[2] === "members" && request.method === "POST";
+  const teamMemberRoleUpdate = isTeam && segments.length === 4 && segments[2] === "members" && request.method === "PATCH";
+  const teamMemberRevoke = isTeam && segments.length === 5 && segments[2] === "members" && segments[4] === "revoke" && request.method === "POST";
+  const areaCoverageCreate = isArea && segments.length === 3 && segments[2] === "coverage" && request.method === "POST";
+  const areaCoverageRevoke = isArea && segments.length === 5 && segments[2] === "coverage" && segments[4] === "revoke" && request.method === "POST";
+  if (!(teamMemberCreate || teamMemberRoleUpdate || teamMemberRevoke || areaCoverageCreate || areaCoverageRevoke)) {
+    return json(404, { ok: false, error: { code: "ROUTE_NOT_FOUND" } }, requestId, origin);
+  }
+
+  const parentId = segments[1] ?? "";
+  const childId = teamMemberRoleUpdate || teamMemberRevoke || areaCoverageRevoke ? segments[3] ?? "" : "";
+  if (!isUuidValue(parentId) || (childId && !isUuidValue(childId))) {
+    return json(400, { ok: false, error: { code: "INVALID_RESOURCE_ID" } }, requestId, origin);
+  }
+  const branchIds = url.searchParams.getAll("branch_id");
+  const branchId = branchIds[0] ?? "";
+  if (branchIds.length !== 1 || !isUuidValue(branchId)) {
+    return json(400, { ok: false, error: { code: "INVALID_QUERY" } }, requestId, origin);
+  }
+
+  let body: Record<string, unknown> = {};
+  if (!teamMemberRevoke && !areaCoverageRevoke) {
+    const bodyResult = await readJsonBody(request);
+    if (!bodyResult.ok) {
+      return json(bodyResult.status, { ok: false, error: { code: bodyResult.status === 413 ? "PAYLOAD_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+    }
+    if (!isPlainObject(bodyResult.value)) {
+      return json(422, { ok: false, error: { code: "VALIDATION_ERROR" } }, requestId, origin);
+    }
+    body = bodyResult.value;
+    const allowed = teamMemberCreate
+      ? ["staff_profile_id", "membership_role"]
+      : teamMemberRoleUpdate
+        ? ["membership_role"]
+        : ["staff_profile_id"];
+    if (Object.keys(body).length === 0 || Object.keys(body).some((key) => !allowed.includes(key))) {
+      return json(422, { ok: false, error: { code: "VALIDATION_ERROR" } }, requestId, origin);
+    }
+  }
+
+  const capability = isTeam ? "team.manage" : "area.manage";
+  const access = await authorizeRequestCapability(request, env, capability);
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  if (access.activeBranch.branchId !== branchId) {
+    return json(403, { ok: false, error: { code: "BRANCH_SCOPE_MISMATCH" } }, requestId, origin);
+  }
+
+  const now = new Date().toISOString();
+  const actorProfileId = access.staff.profileId;
+  const staffProfileId = body.staff_profile_id;
+  const membershipRole = body.membership_role ?? "member";
+  if ((teamMemberCreate || areaCoverageCreate) && !isUuidValue(staffProfileId)) {
+    return json(422, { ok: false, error: { code: "VALIDATION_ERROR", message: "A valid staff profile is required." } }, requestId, origin);
+  }
+  if ((teamMemberCreate || teamMemberRoleUpdate) && membershipRole !== "member" && membershipRole !== "leader") {
+    return json(422, { ok: false, error: { code: "VALIDATION_ERROR", message: "membership_role must be member or leader." } }, requestId, origin);
+  }
+
+  try {
+    if (isTeam) {
+      const parent = await env.DB.prepare("SELECT id FROM team WHERE id = ? AND branch_id = ? LIMIT 1")
+        .bind(parentId, branchId).first<{ id: string }>();
+      if (!parent) return json(404, { ok: false, error: { code: "TEAM_NOT_FOUND" } }, requestId, origin);
+    } else {
+      const parent = await env.DB.prepare("SELECT id FROM service_area WHERE id = ? AND branch_id = ? LIMIT 1")
+        .bind(parentId, branchId).first<{ id: string }>();
+      if (!parent) return json(404, { ok: false, error: { code: "SERVICE_AREA_NOT_FOUND" } }, requestId, origin);
+    }
+
+    if (teamMemberCreate || areaCoverageCreate) {
+      const staff = await env.DB.prepare(`
+        SELECT sp.id
+        FROM staff_profile sp
+        WHERE sp.id = ?
+          AND sp.account_status = 'active'
+          AND sp.deactivated_at IS NULL
+          AND EXISTS (
+            SELECT 1
+            FROM staff_role_assignment assignment
+            WHERE assignment.staff_profile_id = sp.id
+              AND assignment.branch_id = ?
+              AND assignment.revoked_at IS NULL
+              AND assignment.starts_at <= ?
+              AND (assignment.ends_at IS NULL OR assignment.ends_at > ?)
+          )
+        LIMIT 1
+      `).bind(staffProfileId, branchId, now, now).first<{ id: string }>();
+      if (!staff) return json(422, { ok: false, error: { code: "STAFF_NOT_ACTIVE_IN_BRANCH" } }, requestId, origin);
+    }
+
+    if (teamMemberCreate) {
+      const duplicate = await env.DB.prepare(`
+        SELECT id FROM staff_team_membership
+        WHERE team_id = ? AND branch_id = ? AND staff_profile_id = ?
+          AND revoked_at IS NULL AND (ends_at IS NULL OR ends_at > ?)
+        LIMIT 1
+      `).bind(parentId, branchId, staffProfileId, now).first<{ id: string }>();
+      if (duplicate) return json(409, { ok: false, error: { code: "TEAM_MEMBER_ALREADY_ACTIVE" } }, requestId, origin);
+      const id = crypto.randomUUID();
+      const auditId = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare(`
+          INSERT INTO staff_team_membership (id, staff_profile_id, team_id, branch_id, membership_role, starts_at, ends_at, revoked_at, created_by, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+        `).bind(id, staffProfileId, parentId, branchId, membershipRole, now, actorProfileId, now),
+        env.DB.prepare(`
+          INSERT INTO team_management_audit (id, branch_id, actor_profile_id, target_type, target_id, action, metadata, created_at)
+          VALUES (?, ?, ?, 'team_membership', ?, 'team.member.added', ?, ?)
+        `).bind(auditId, branchId, actorProfileId, id, JSON.stringify({ team_id: parentId, staff_profile_id: staffProfileId, membership_role: membershipRole }), now),
+      ]);
+      if (results.some((result) => !result.success)) throw new Error("TEAM_MEMBER_CREATE_FAILED");
+      return json(201, { ok: true, data: { id, team_id: parentId, staff_profile_id: staffProfileId, membership_role: membershipRole, starts_at: now, ends_at: null, created_at: now } }, requestId, origin);
+    }
+
+    if (teamMemberRoleUpdate) {
+      const current = await env.DB.prepare(`
+        SELECT id FROM staff_team_membership
+        WHERE id = ? AND team_id = ? AND branch_id = ? AND revoked_at IS NULL
+        LIMIT 1
+      `).bind(childId, parentId, branchId).first<{ id: string }>();
+      if (!current) return json(404, { ok: false, error: { code: "TEAM_MEMBERSHIP_NOT_FOUND" } }, requestId, origin);
+      const auditId = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare("UPDATE staff_team_membership SET membership_role = ? WHERE id = ? AND team_id = ? AND branch_id = ? AND revoked_at IS NULL")
+          .bind(membershipRole, childId, parentId, branchId),
+        env.DB.prepare(`
+          INSERT INTO team_management_audit (id, branch_id, actor_profile_id, target_type, target_id, action, metadata, created_at)
+          VALUES (?, ?, ?, 'team_membership', ?, 'team.member.role_changed', ?, ?)
+        `).bind(auditId, branchId, actorProfileId, childId, JSON.stringify({ team_id: parentId, membership_role: membershipRole }), now),
+      ]);
+      if (results.some((result) => !result.success)) throw new Error("TEAM_MEMBER_UPDATE_FAILED");
+      const updated = await env.DB.prepare(`
+        SELECT id, team_id, staff_profile_id, membership_role, starts_at, ends_at, created_at
+        FROM staff_team_membership WHERE id = ? LIMIT 1
+      `).bind(childId).first<Record<string, unknown>>();
+      return json(200, { ok: true, data: updated }, requestId, origin);
+    }
+
+    if (teamMemberRevoke) {
+      const current = await env.DB.prepare(`
+        SELECT id FROM staff_team_membership
+        WHERE id = ? AND team_id = ? AND branch_id = ? AND revoked_at IS NULL
+        LIMIT 1
+      `).bind(childId, parentId, branchId).first<{ id: string }>();
+      if (!current) return json(404, { ok: false, error: { code: "TEAM_MEMBERSHIP_NOT_FOUND" } }, requestId, origin);
+      const auditId = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare("UPDATE staff_team_membership SET revoked_at = ? WHERE id = ? AND team_id = ? AND branch_id = ? AND revoked_at IS NULL")
+          .bind(now, childId, parentId, branchId),
+        env.DB.prepare(`
+          INSERT INTO team_management_audit (id, branch_id, actor_profile_id, target_type, target_id, action, metadata, created_at)
+          VALUES (?, ?, ?, 'team_membership', ?, 'team.member.revoked', ?, ?)
+        `).bind(auditId, branchId, actorProfileId, childId, JSON.stringify({ team_id: parentId }), now),
+      ]);
+      if (results.some((result) => !result.success)) throw new Error("TEAM_MEMBER_REVOKE_FAILED");
+      const updated = await env.DB.prepare(`
+        SELECT id, team_id, staff_profile_id, membership_role, starts_at, ends_at, created_at
+        FROM staff_team_membership WHERE id = ? LIMIT 1
+      `).bind(childId).first<Record<string, unknown>>();
+      return json(200, { ok: true, data: updated }, requestId, origin);
+    }
+
+    if (areaCoverageCreate) {
+      const duplicate = await env.DB.prepare(`
+        SELECT id FROM staff_area_coverage
+        WHERE service_area_id = ? AND branch_id = ? AND staff_profile_id = ?
+          AND revoked_at IS NULL AND (ends_at IS NULL OR ends_at > ?)
+        LIMIT 1
+      `).bind(parentId, branchId, staffProfileId, now).first<{ id: string }>();
+      if (duplicate) return json(409, { ok: false, error: { code: "AREA_COVERAGE_ALREADY_ACTIVE" } }, requestId, origin);
+      const id = crypto.randomUUID();
+      const auditId = crypto.randomUUID();
+      const results = await env.DB.batch([
+        env.DB.prepare(`
+          INSERT INTO staff_area_coverage (id, staff_profile_id, service_area_id, branch_id, starts_at, ends_at, created_by, created_at, revoked_at, revoked_by)
+          VALUES (?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL)
+        `).bind(id, staffProfileId, parentId, branchId, now, actorProfileId, now),
+        env.DB.prepare(`
+          INSERT INTO team_management_audit (id, branch_id, actor_profile_id, target_type, target_id, action, metadata, created_at)
+          VALUES (?, ?, ?, 'area_coverage', ?, 'area.coverage.added', ?, ?)
+        `).bind(auditId, branchId, actorProfileId, id, JSON.stringify({ service_area_id: parentId, staff_profile_id: staffProfileId }), now),
+      ]);
+      if (results.some((result) => !result.success)) throw new Error("AREA_COVERAGE_CREATE_FAILED");
+      return json(201, { ok: true, data: { id, service_area_id: parentId, staff_profile_id: staffProfileId, starts_at: now, ends_at: null, created_at: now } }, requestId, origin);
+    }
+
+    const current = await env.DB.prepare(`
+      SELECT id FROM staff_area_coverage
+      WHERE id = ? AND service_area_id = ? AND branch_id = ? AND revoked_at IS NULL
+      LIMIT 1
+    `).bind(childId, parentId, branchId).first<{ id: string }>();
+    if (!current) return json(404, { ok: false, error: { code: "AREA_COVERAGE_NOT_FOUND" } }, requestId, origin);
+    const auditId = crypto.randomUUID();
+    const results = await env.DB.batch([
+      env.DB.prepare("UPDATE staff_area_coverage SET revoked_at = ?, revoked_by = ? WHERE id = ? AND service_area_id = ? AND branch_id = ? AND revoked_at IS NULL")
+        .bind(now, actorProfileId, childId, parentId, branchId),
+      env.DB.prepare(`
+        INSERT INTO team_management_audit (id, branch_id, actor_profile_id, target_type, target_id, action, metadata, created_at)
+        VALUES (?, ?, ?, 'area_coverage', ?, 'area.coverage.revoked', ?, ?)
+      `).bind(auditId, branchId, actorProfileId, childId, JSON.stringify({ service_area_id: parentId }), now),
+    ]);
+    if (results.some((result) => !result.success)) throw new Error("AREA_COVERAGE_REVOKE_FAILED");
+    const updated = await env.DB.prepare(`
+      SELECT id, service_area_id, staff_profile_id, starts_at, ends_at, created_at
+      FROM staff_area_coverage WHERE id = ? LIMIT 1
+    `).bind(childId).first<Record<string, unknown>>();
+    return json(200, { ok: true, data: updated }, requestId, origin);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const conflict = message.includes("UNIQUE") || message.includes("constraint");
+    return json(conflict ? 409 : 500, {
+      ok: false,
+      error: { code: conflict ? "TEAM_OR_AREA_ASSIGNMENT_CONFLICT" : "TEAM_OR_AREA_ASSIGNMENT_FAILED" },
+    }, requestId, origin);
+  }
+}
+
 async function handleTeamOperationsMutation(
   request: Request,
   env: Env,
