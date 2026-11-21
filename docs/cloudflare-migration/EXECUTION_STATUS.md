@@ -88,3 +88,43 @@ No production Pages environment variable, route, deployment or alias has been ch
 The live Supabase security advisor also reports that `private.first_admin_bootstrap_lease` has RLS disabled. The current live role grants and schema privileges restrict direct access for `anon` and `authenticated`, but the source-controlled RLS-hardening migration remains pending. It has not been applied automatically as part of this work.
 
 SMS/Arkesel remains deferred. Transport remains excluded. No Supabase production migrations were applied, no Supabase Edge Functions were redeployed, no production database was created, and the official frontend remains connected to the current Supabase backend.
+
+
+## Follow-up production-readiness review — 21 November 2026
+
+A further source and infrastructure review was performed after the initial rehearsal.
+
+### Confirmed source state
+
+- PR #85 remains open and draft, based on `feat/cmi-pcg-missions-final-review-v6`.
+- The latest D1 foundation workflow on commit `d0c1f07171e199969385c460ada7571654890018` completed successfully.
+- The Worker source still uses Better Auth in `src/auth.ts`, `src/staff-context.ts` and `src/index.ts`; this is a confirmed blocker, not a completed integration.
+- The Worker package still declares `better-auth`.
+- The current Worker configuration binds `pcg-missions-dev`, not the migration rehearsal database.
+- The current frontend business API adapter still targets Supabase Edge Functions.
+- The account currently lists `pcg-missions-api-nonprod` and `pcg-missions-d1-smoke`; neither is a production Worker.
+
+### Safe configuration improvement committed
+
+Commit `023dab5dc0689007199550c3293a5d0a0bcbe16c` updates only the non-production `cloudflare/wrangler.toml`:
+
+- enables source-map uploads;
+- updates the Worker compatibility date to 2026-11-21;
+- enables Workers logs and traces with explicit sampling;
+- preserves the existing non-production Worker name and `pcg-missions-dev` binding.
+
+This follows current Cloudflare Worker operational guidance. The configuration has **not** been deployed yet; the latest commit still requires CI validation. The existing non-production Worker was deliberately not redeployed because its source still uses Better Auth and the configured D1 binding is the older development database, not the rehearsal database.
+
+### Release status remains blocked
+
+No production D1 database or production Worker has been created. No R2 bucket has been created. No Supabase production migrations, Edge Function deployments, Pages environment changes or traffic cutover have occurred. No Auth identities were modified.
+
+The next safe implementation sequence is:
+1. Convert Worker authentication and staff context to verified Supabase Auth identity, then remove Better Auth from the Worker route handler and package.
+2. Add automated tests for valid/invalid tokens, inactive staff, missing profiles, branch isolation and Auth upstream failure.
+3. Port the required backend handlers and reconcile the route inventory against the 14 Supabase Edge Functions and 26 RPC operations.
+4. Build a repeatable, side-effect-free data import and resolve the extra bootstrap audit row.
+5. Deploy an isolated preview Worker bound to the rehearsal D1 database, not the existing development database.
+6. Connect a preview frontend build and complete six-role acceptance before any production provisioning or cutover.
+
+Cloudflare recommends source maps, environment separation, bindings, and Workers logs/traces for production operations; see the official [Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/).
