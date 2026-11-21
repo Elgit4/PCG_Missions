@@ -666,10 +666,6 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     return "/api/v1/contacts";
   }
 
-  if (functionName === "pastoral-operations" && suffix === "/prayer/requests/assigned" && verb === "GET") {
-    return "/api/v1/pastoral/prayer/assigned";
-  }
-
   return null;
 }
 
