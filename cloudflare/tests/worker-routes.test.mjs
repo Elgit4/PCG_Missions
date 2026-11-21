@@ -330,7 +330,7 @@ function authenticatedDirectoryRequest(path) {
 
 test("Team Leader directory reads return only own-team data and omit staff identities", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
-    const url = new URL(typeof input === "string" ? input : input.url);
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
     assert.equal(url.pathname, "/auth/v1/user");
     return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
   });
@@ -361,7 +361,7 @@ test("Team Leader directory reads return only own-team data and omit staff ident
 
 test("Coordinator can read the branch directory and staff names, but cannot manage teams", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
-    const url = new URL(typeof input === "string" ? input : input.url);
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
     assert.equal(url.pathname, "/auth/v1/user");
     return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
   });
@@ -394,7 +394,7 @@ test("Coordinator can read the branch directory and staff names, but cannot mana
 
 test("Admin/Pastor with branch management grant can create a team and writes audit in the same D1 batch", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
-    const url = new URL(typeof input === "string" ? input : input.url);
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
     assert.equal(url.pathname, "/auth/v1/user");
     return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
   });
