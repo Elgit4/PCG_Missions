@@ -8,8 +8,10 @@
 --   * all tables have RLS enabled (deny by default);
 --   * Auth credentials remain in Supabase Auth; no PIN/password columns exist.
 --
--- Stakeholder approvals R-01..R-12 and D-01..D-13 remain pending.
--- This is a reviewable local-development migration and has not been applied.
+-- Historical hosted migration version: 20261110134538.
+-- The production ledger records this identity foundation as applied. Later
+-- migrations add approved role-capability grants and feature-specific access.
+-- Preserve this version to keep the repository aligned with hosted history.
 
 begin;
 
