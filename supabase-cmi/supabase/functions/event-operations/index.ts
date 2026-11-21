@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
+import { createAllowedOrigins } from "../_shared/cors.ts";
 import {
   type CanonicalJson,
   createRequestDigest,
@@ -29,13 +30,9 @@ const EVENT_IDEMPOTENCY_HMAC_KEY =
 const EVENT_IDEMPOTENCY_KEY_VERSION = Number(
   Deno.env.get("CMI_EVENT_IDEMPOTENCY_KEY_VERSION") ?? "1",
 );
-const allowedOrigins = new Set([
-  "https://pcg-missions.vercel.app",
-  ...(Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
-]);
+const allowedOrigins = createAllowedOrigins(
+  Deno.env.get("CMI_ALLOWED_ORIGINS"),
+);
 
 function createServiceClient() {
   return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
