@@ -555,19 +555,12 @@ describe("CmiApiClient", () => {
     expect(new Headers(init.headers).has("apikey")).toBe(false);
   });
 
-  it("routes the verified paginated follow-up task list to the Worker", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
-      data: [{ id: "task-1", branch_id: "branch-abc", contact_id: "contact-1", priority: 2, due_at: null, task_note: null, status: "open" }],
-      request_id: "worker-followup-1",
-    }), { status: 200 }));
+  it("keeps follow-up task listing on Supabase until the Worker contract is verified", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ data: [], request_id: "followup-fallback" }), { status: 200 }));
     const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
-    const result = await client.listFollowUpTasks("branch-abc", { limit: 25, offset: 50, status: "open" });
-    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/api/v1/followup/tasks");
-    expect(url.searchParams.get("branch_id")).toBeNull();
-    expect(url.searchParams.get("offset")).toBe("50");
-    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
-    expect(result.data[0]?.branch_id).toBe("branch-abc");
+    await client.listFollowUpTasks("branch-abc", { limit: 25, offset: 50, status: "open" });
+    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/functions/v1/staff-operations/followup/tasks");
   });
 
   it("routes Worker-supported contact notes through the Worker", async () => {
