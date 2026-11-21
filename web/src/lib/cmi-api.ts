@@ -693,7 +693,7 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
 
   if (functionName === "staff-operations") {
     if (suffix === "/contacts" && (verb === "GET" || verb === "POST")) return "/api/v1/contacts";
-    if (/^\/contacts\/[^/]+$/.test(suffix) && verb === "GET") return "/api/v1" + suffix;
+    if (/^\/contacts\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix;
     if (/^\/contacts\/[^/]+\/interactions$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
     if (/^\/contacts\/[^/]+\/notes$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
     if (suffix === "/staff" && verb === "GET") return "/api/v1/staff";
@@ -889,8 +889,26 @@ export class CmiApiClient {
     });
   }
   updateContact(branchId: string, contactId: string, input: ContactUpdateInput) {
+    if (input.service_area_id !== undefined) {
+      throw new TypeError("Service-area changes must use the dedicated service-area assignment workflow.");
+    }
+    const body = {
+      first_name: input.first_name,
+      last_name: input.last_name,
+      preferred_name: input.preferred_name,
+      phone_e164: input.phone_e164,
+      email: input.email_normalized,
+      age_range: input.age_range,
+      preferred_language: input.preferred_language,
+    };
+    const allowedBody = Object.fromEntries(
+      Object.entries(body).filter(([, value]) => value !== undefined),
+    );
+    if (Object.keys(allowedBody).length === 0) {
+      throw new TypeError("Provide at least one supported contact field to update.");
+    }
     return this.request<ContactRecord>("staff-operations", `/contacts/${encodeURIComponent(contactId)}`, {
-      method: "PATCH", query: { branch_id: branchId }, body: input,
+      method: "PATCH", query: { branch_id: branchId }, body: allowedBody,
     });
   }
 
