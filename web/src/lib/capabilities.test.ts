@@ -117,6 +117,34 @@ describe("capability-driven staff navigation", () => {
     expect(canOpenStaffPage(teamGrant, "Teams & Areas", "branch-b")).toBe(false);
   });
 
+  it("allows coordinator and Team Leader directory browsing without granting management controls", () => {
+    const coordinatorReadOnly = {
+      ...baseSession,
+      roles: [{ code: "coordinator", name: "Coordinator", branch_id: "branch-a" }],
+      capabilities: [
+        { code: "team.read", scope_mode: "branch", branch_id: "branch-a" },
+        { code: "area.read", scope_mode: "branch", branch_id: "branch-a" },
+      ],
+    };
+    const teamLeaderReadOnly = {
+      ...baseSession,
+      roles: [{ code: "team_leader", name: "Team Leader", branch_id: "branch-a" }],
+      capabilities: [
+        { code: "team.read", scope_mode: "team", branch_id: "branch-a" },
+      ],
+    };
+    const fieldWorker = {
+      ...baseSession,
+      roles: [{ code: "field_worker", name: "Field Worker", branch_id: "branch-a" }],
+      capabilities: [],
+    };
+
+    expect(canOpenStaffPage(coordinatorReadOnly, "Teams & Areas", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(teamLeaderReadOnly, "Teams & Areas", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(fieldWorker, "Teams & Areas", "branch-a")).toBe(false);
+    expect(canOpenStaffPage(teamLeaderReadOnly, "Teams & Areas", "branch-b")).toBe(false);
+  });
+
   it("shows event drafts only with event read or management grants", () => {
     const noGrant = { ...baseSession, capabilities: [] };
     const readGrant = { ...baseSession, capabilities: [{ code: "event.read.scoped", scope_mode: "branch", branch_id: "branch-a" }] };
