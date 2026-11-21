@@ -99,7 +99,7 @@ Do not deploy functions before their RPCs, tables, Storage bucket and required s
 
 ## 6. Security warning requiring deliberate review
 
-The Supabase security advisor reports `private.first_admin_bootstrap_lease` has RLS disabled. The pending PR migration enables RLS and is covered by isolated database tests. Do not bypass this by applying an improvised SQL fix outside the reviewed migration. Review the private-schema exposure and role grants, then include this migration in the ordered, approved release.
+The Supabase security advisor reports `private.first_admin_bootstrap_lease` has RLS disabled. A direct privilege check found that `anon` and `authenticated` have no USAGE on schema `private` and no SELECT privilege on this table; `service_role` also has no direct table privileges. The lease is intended to be accessed only through its SECURITY DEFINER RPCs. This means the advisor's generic exposure warning is not evidence of direct API-role access in the current grants, but RLS remains an important defense-in-depth control. The pending PR migration enables RLS and is covered by isolated database tests. Do not bypass this by applying an improvised SQL fix outside the reviewed migration. Include this migration in the ordered, approved release.
 
 Supabase Auth leaked-password protection is also reported disabled. This is a separate Auth configuration task and must be deliberately enabled/reviewed before production acceptance.
 
