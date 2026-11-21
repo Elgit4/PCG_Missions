@@ -2506,7 +2506,7 @@ async function reassignFollowupTask(
     reason,
   });
   try {
-    const results = await env.DB.batch([
+    const statements: D1PreparedStatement[] = [
       env.DB.prepare(`
         UPDATE followup_task ft
         SET assignee_user_id = ?, team_id = ?, updated_at = ?
@@ -2543,10 +2543,26 @@ async function reassignFollowupTask(
         eventId, access.staff.userId, task.status, task.status, details, now,
         taskId, context.activeBranch.branchId,
       ),
-    ]);
+    ];
+    if (nextAssignee !== null) {
+      statements.push(env.DB.prepare(`
+        INSERT OR IGNORE INTO staff_notification
+          (id, branch_id, recipient_user_id, category, title, body, target_type, target_id, idempotency_key, created_at)
+        SELECT ?, ?, ?, 'followup_assigned', 'Follow-up task reassigned',
+               'A follow-up task has been assigned to you.', 'followup_task', ?, ?, ?
+        FROM followup_task
+        WHERE id = ? AND branch_id = ? AND assignee_user_id = ?
+      `).bind(
+        crypto.randomUUID(), context.activeBranch.branchId, nextAssignee,
+        taskId, `followup-task:${taskId}:assignment:${eventId}`, now,
+        taskId, context.activeBranch.branchId, nextAssignee,
+      ));
+    }
+    const results = await env.DB.batch(statements);
     if (results.some((result) => !result.success) ||
         (results[0]?.meta?.changes ?? 0) !== 1 ||
-        (results[1]?.meta?.changes ?? 0) !== 1) {
+        (results[1]?.meta?.changes ?? 0) !== 1 ||
+        (nextAssignee !== null && (results[2]?.meta?.changes ?? 0) !== 1)) {
       return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_CHANGED" } }, requestId, origin);
     }
   } catch {
