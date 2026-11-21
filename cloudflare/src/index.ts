@@ -2722,39 +2722,86 @@ async function listTeamOperationsCollection(
     return json(400, { ok: false, error: { code: "INVALID_QUERY" } }, requestId, origin);
   }
 
-  const capability = resource === "teams" ? "team.manage" : "area.manage";
-  const access = await authorizeRequestCapability(request, env, capability);
-  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
-  if (access.activeBranch.branchId !== branchId) {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") {
+    return mapCapabilityFailure(context.state, requestId, origin);
+  }
+  if (!context.activeBranch) {
+    return mapCapabilityFailure("branch_required", requestId, origin);
+  }
+  if (context.activeBranch.branchId !== branchId) {
     return json(403, { ok: false, error: { code: "BRANCH_SCOPE_MISMATCH" } }, requestId, origin);
   }
 
-  const directoryAccess = await authorizeRequestCapability(request, env, "staff.directory.read");
-  const includeStaffNames = directoryAccess.state === "authorized" &&
-    directoryAccess.activeBranch.branchId === branchId;
+  const readCapability = resource === "teams" ? "team.read" : "area.read";
+  const grants = context.activeBranch.capabilities.filter((item) => item.code === readCapability);
+  const branchRead = grants.some((item) => item.scopeMode === "branch");
+  const teamRead = resource === "teams" && grants.some((item) => item.scopeMode === "team");
+  if (!branchRead && !teamRead) {
+    return mapCapabilityFailure("capability_denied", requestId, origin);
+  }
+
+  // Staff names are an independent, branch-scoped permission. Team Leaders can
+  // inspect their own team directory without receiving the wider staff directory.
+  const includeStaffNames = context.activeBranch.capabilities.some(
+    (item) => item.code === "staff.directory.read" && item.scopeMode === "branch",
+  );
   const now = new Date().toISOString();
 
   try {
     if (resource === "teams") {
       const teamsResult = await env.DB.prepare(`
-        SELECT id, branch_id, name, description, is_active, created_at, updated_at
-        FROM team
-        WHERE branch_id = ?
-        ORDER BY is_active DESC, name ASC
-      `).bind(branchId).all<Record<string, unknown>>();
+        SELECT t.id, t.branch_id, t.name, t.description, t.is_active, t.created_at, t.updated_at
+        FROM team t
+        WHERE t.branch_id = ?
+          AND (
+            ? = 1
+            OR EXISTS (
+              SELECT 1
+              FROM staff_team_membership actor_membership
+              WHERE actor_membership.team_id = t.id
+                AND actor_membership.branch_id = t.branch_id
+                AND actor_membership.staff_profile_id = ?
+                AND actor_membership.membership_role = 'leader'
+                AND actor_membership.starts_at <= ?
+                AND actor_membership.revoked_at IS NULL
+                AND (actor_membership.ends_at IS NULL OR actor_membership.ends_at > ?)
+            )
+          )
+        ORDER BY t.is_active DESC, t.name ASC
+      `).bind(branchId, branchRead ? 1 : 0, context.staff.profileId, now, now)
+        .all<Record<string, unknown>>();
       const membershipsResult = await env.DB.prepare(`
-        SELECT id, team_id, staff_profile_id, membership_role, starts_at, ends_at, created_at
-        FROM staff_team_membership
-        WHERE branch_id = ?
-          AND starts_at <= ?
-          AND revoked_at IS NULL
-          AND (ends_at IS NULL OR ends_at > ?)
-        ORDER BY created_at ASC
-      `).bind(branchId, now, now).all<Record<string, unknown>>();
+        SELECT stm.id, stm.team_id, stm.staff_profile_id, stm.membership_role,
+               stm.starts_at, stm.ends_at, stm.created_at
+        FROM staff_team_membership stm
+        WHERE stm.branch_id = ?
+          AND stm.starts_at <= ?
+          AND stm.revoked_at IS NULL
+          AND (stm.ends_at IS NULL OR stm.ends_at > ?)
+          AND (
+            ? = 1
+            OR EXISTS (
+              SELECT 1
+              FROM staff_team_membership actor_membership
+              WHERE actor_membership.team_id = stm.team_id
+                AND actor_membership.branch_id = stm.branch_id
+                AND actor_membership.staff_profile_id = ?
+                AND actor_membership.membership_role = 'leader'
+                AND actor_membership.starts_at <= ?
+                AND actor_membership.revoked_at IS NULL
+                AND (actor_membership.ends_at IS NULL OR actor_membership.ends_at > ?)
+            )
+          )
+        ORDER BY stm.created_at ASC
+      `).bind(branchId, now, now, branchRead ? 1 : 0, context.staff.profileId, now, now)
+        .all<Record<string, unknown>>();
       const memberships = membershipsResult.results ?? [];
-      const profileIds = [...new Set(memberships.map((item) => String(item.staff_profile_id)))];
+      const profileIds = includeStaffNames
+        ? [...new Set(memberships.map((item) => String(item.staff_profile_id)))]
+        : [];
       let profiles: Record<string, unknown>[] = [];
-      if (includeStaffNames && profileIds.length) {
+      if (profileIds.length) {
         const placeholders = profileIds.map(() => "?").join(", ");
         const result = await env.DB.prepare(`
           SELECT id, full_name, account_status
@@ -2764,20 +2811,26 @@ async function listTeamOperationsCollection(
         profiles = result.results ?? [];
       }
       const profileById = new Map(profiles.map((profile) => [String(profile.id), profile]));
-      const teams = (teamsResult.results ?? []).map((team) => ({
-        ...team,
-        is_active: Boolean(team.is_active),
-        members: memberships
-          .filter((membership) => membership.team_id === team.id)
-          .map((membership) => ({
+      const teams = (teamsResult.results ?? []).map((team) => {
+        const teamMembers = memberships.filter((membership) => membership.team_id === team.id);
+        return {
+          ...team,
+          is_active: Boolean(team.is_active),
+          member_count: teamMembers.length,
+          members: includeStaffNames ? teamMembers.map((membership) => ({
             ...membership,
             staff: profileById.get(String(membership.staff_profile_id)) ?? null,
-          }))
-          .filter((membership) => membership.staff !== null),
-      }));
+          })) : [],
+        };
+      });
       return json(200, { ok: true, data: { teams } }, requestId, origin);
     }
 
+    // Service-area directory visibility is branch-scoped only. Team membership
+    // alone does not imply authority to inspect branch-wide service coverage.
+    if (!branchRead) {
+      return mapCapabilityFailure("capability_denied", requestId, origin);
+    }
     const areasResult = await env.DB.prepare(`
       SELECT id, branch_id, name, code, is_active, created_at, updated_at
       FROM service_area
@@ -2794,9 +2847,11 @@ async function listTeamOperationsCollection(
       ORDER BY starts_at DESC
     `).bind(branchId, now, now).all<Record<string, unknown>>();
     const coverage = coverageResult.results ?? [];
-    const profileIds = [...new Set(coverage.map((item) => String(item.staff_profile_id)))];
+    const profileIds = includeStaffNames
+      ? [...new Set(coverage.map((item) => String(item.staff_profile_id)))]
+      : [];
     let profiles: Record<string, unknown>[] = [];
-    if (includeStaffNames && profileIds.length) {
+    if (profileIds.length) {
       const placeholders = profileIds.map(() => "?").join(", ");
       const result = await env.DB.prepare(`
         SELECT id, full_name, account_status
@@ -2806,17 +2861,18 @@ async function listTeamOperationsCollection(
       profiles = result.results ?? [];
     }
     const profileById = new Map(profiles.map((profile) => [String(profile.id), profile]));
-    const areas = (areasResult.results ?? []).map((area) => ({
-      ...area,
-      is_active: Boolean(area.is_active),
-      coverage: coverage
-        .filter((item) => item.service_area_id === area.id)
-        .map((item) => ({
+    const areas = (areasResult.results ?? []).map((area) => {
+      const areaCoverage = coverage.filter((item) => item.service_area_id === area.id);
+      return {
+        ...area,
+        is_active: Boolean(area.is_active),
+        coverage_count: areaCoverage.length,
+        coverage: includeStaffNames ? areaCoverage.map((item) => ({
           ...item,
           staff: profileById.get(String(item.staff_profile_id)) ?? null,
-        }))
-        .filter((item) => item.staff !== null),
-    }));
+        })) : [],
+      };
+    });
     return json(200, { ok: true, data: { areas } }, requestId, origin);
   } catch {
     return json(500, {
