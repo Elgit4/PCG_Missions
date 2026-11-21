@@ -520,6 +520,7 @@ export interface CmiRequestOptions {
   query?: Record<string, string | number | undefined>;
   body?: unknown;
   authenticated?: boolean;
+  idempotencyKey?: string;
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -683,7 +684,8 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     if (/^\/contacts\/[^/]+\/interactions$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
     if (/^\/contacts\/[^/]+\/notes$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
     if (suffix === "/staff" && verb === "GET") return "/api/v1/staff";
-    if (suffix === "/followup/tasks" && verb === "GET") return "/api/v1/followup/tasks";
+    if (suffix === "/followup/tasks" && (verb === "GET" || verb === "POST")) return "/api/v1/followup/tasks";
+    if (/^\\/followup\\/tasks\\/[^/]+$/.test(suffix) && verb === "PATCH") return "/api/v1" + suffix;
   }
 
   return null;
@@ -785,6 +787,7 @@ export class CmiApiClient {
     const headers = new Headers({ Accept: "application/json" });
     if (!useWorkerApi) headers.set("apikey", this.config.publishableKey);
     if (token) headers.set("Authorization", `Bearer ${token}`);
+    if (options.idempotencyKey) headers.set("Idempotency-Key", options.idempotencyKey);
     const bodyBranchId = options.body && typeof options.body === "object" && "branch_id" in options.body
       ? (options.body as { branch_id?: unknown }).branch_id
       : undefined;
@@ -898,7 +901,13 @@ export class CmiApiClient {
   }
   createFollowUpTask(input: TaskCreateInput) {
     assertExactlyOneTaskTarget(input);
-    return this.request<FollowUpTask>("staff-operations", "/followup/tasks", { method: "POST", body: input });
+    const { branch_id, client_request_id, ...body } = input;
+    return this.request<FollowUpTask>("staff-operations", "/followup/tasks", {
+      method: "POST",
+      query: { branch_id },
+      body,
+      idempotencyKey: client_request_id,
+    });
   }
   updateFollowUpTask(branchId: string, taskId: string, input: TaskUpdateInput) {
     return this.request<FollowUpTask>("staff-operations", `/followup/tasks/${encodeURIComponent(taskId)}`, {
