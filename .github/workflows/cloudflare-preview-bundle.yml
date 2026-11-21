@@ -1,5 +1,5 @@
 name: Cloudflare Preview Worker Bundle
-# This workflow validates the live preview endpoint and Pages bundle; it does not deploy or alter production.
+# This workflow validates the live preview endpoint (including the v39 rehearsal schema) and Pages bundle; it does not deploy or alter production.
 # Keep the smoke step after Pages environment changes to verify build-time configuration and route access boundaries.
 
 on:
