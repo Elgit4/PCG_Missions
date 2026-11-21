@@ -641,6 +641,89 @@ describe("CmiApiClient", () => {
     expect(new Headers(init.headers).has("apikey")).toBe(false);
   });
 
+  it("routes follow-up task creation to the Worker with auth-user assignment and idempotency header", async () => {
+    const task = {
+      id: "task-123",
+      branch_id: "branch-abc",
+      contact_id: "contact-123",
+      assignee_user_id: "auth-user-9",
+      team_id: null,
+      priority: 2,
+      due_at: null,
+      task_note: "Call the visitor",
+      status: "open",
+      created_at: "2026-11-21T12:00:00Z",
+      updated_at: "2026-11-21T12:00:00Z",
+    };
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: task, request_id: "worker-followup-create" }),
+      { status: 201 },
+    ));
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    const result = await client.createFollowUpTask({
+      branch_id: "branch-abc",
+      contact_id: "contact-123",
+      client_request_id: "request-key-123456",
+      assignee_user_id: "auth-user-9",
+      priority: 2,
+      due_at: null,
+      task_note: "Call the visitor",
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+
+    expect(url.pathname).toBe("/api/v1/followup/tasks");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).get("Idempotency-Key")).toBe("request-key-123456");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(JSON.parse(String(init.body))).toEqual({
+      contact_id: "contact-123",
+      assignee_user_id: "auth-user-9",
+      priority: 2,
+      due_at: null,
+      task_note: "Call the visitor",
+    });
+    expect(result.data.id).toBe("task-123");
+  });
+
+  it("routes follow-up task status updates to the Worker and returns the updated task", async () => {
+    const updatedTask = {
+      id: "task-123",
+      branch_id: "branch-abc",
+      contact_id: "contact-123",
+      assignee_user_id: "auth-user-9",
+      team_id: null,
+      priority: 2,
+      due_at: null,
+      task_note: "Call the visitor",
+      status: "completed",
+      created_at: "2026-11-21T12:00:00Z",
+      updated_at: "2026-11-21T12:30:00Z",
+    };
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: updatedTask, request_id: "worker-followup-update" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    const result = await client.updateFollowUpTask("branch-abc", "task-123", { status: "completed" });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+
+    expect(url.pathname).toBe("/api/v1/followup/tasks/task-123");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(init.method).toBe("PATCH");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(JSON.parse(String(init.body))).toEqual({ status: "completed" });
+    expect(result.data.status).toBe("completed");
+  });
+
   it("routes contact note reads through the Worker using the compatible data envelope", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: [{ id: "note-1", body: "Followed up", created_at: "2026-11-21T10:00:00Z", updated_at: "2026-11-21T10:00:00Z" }], request_id: "worker-note-list" }),
