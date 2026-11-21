@@ -435,13 +435,13 @@ export function TeamAdministrationWorkspace({
                           <span className="cmi-structure-avatar">{displayName(member.staff).split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
                           <div className="cmi-structure-person-copy"><strong>{displayName(member.staff)}</strong><small>{member.membership_role === "leader" ? "Team Leader" : "Member"} · Joined {new Intl.DateTimeFormat("en-GH", { dateStyle: "medium" }).format(new Date(member.starts_at))}</small></div>
                           {member.membership_role === "leader" && <span className="cmi-structure-role">Leader</span>}
-                          {canReadStaff && (
+                          {canManageTeams && canReadStaff && (
                             <div className="cmi-structure-person-actions">
                               {canPromote && <button type="button" className="cmi-text-action" onClick={() => void changeMemberRole(member)} disabled={saving}>{member.membership_role === "leader" ? "Set member" : "Make leader"}</button>}
                               <button type="button" className="cmi-text-action danger" onClick={() => setConfirmMemberId(confirmMemberId === member.id ? null : member.id)} disabled={saving}>Remove</button>
                             </div>
                           )}
-                          {confirmMemberId === member.id && (
+                          {canManageTeams && canReadStaff && confirmMemberId === member.id && (
                             <div className="cmi-inline-confirm">
                               <span>End this team membership? Historical assignment records will remain.</span>
                               <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setConfirmMemberId(null)} disabled={saving}>Keep</button>
@@ -477,7 +477,7 @@ export function TeamAdministrationWorkspace({
                   onClick={() => { setSelectedAreaId(area.id); setShowAreaForm(false); setShowCoverageForm(false); setConfirmCoverageId(null); }}
                 >
                   <span className="cmi-structure-index-icon"><MapPin size={17} /></span>
-                  <span className="cmi-structure-index-copy"><strong>{area.name}</strong><small>{area.coverage.length} active assignment{area.coverage.length === 1 ? "" : "s"}{area.code ? " · " + area.code : ""}</small></span>
+                  <span className="cmi-structure-index-copy"><strong>{area.name}</strong><small>{area.coverage_count ?? area.coverage.length} active assignment{(area.coverage_count ?? area.coverage.length) === 1 ? "" : "s"}{area.code ? " · " + area.code : ""}</small></span>
                   <span className={"cmi-structure-dot" + (area.is_active ? " active" : "")} aria-label={area.is_active ? "Active" : "Inactive"} />
                   <ChevronRight size={15} />
                 </button>
@@ -534,8 +534,8 @@ export function TeamAdministrationWorkspace({
                       <article className="cmi-structure-person" key={coverage.id}>
                         <span className="cmi-structure-avatar"><MapPin size={16} /></span>
                         <div className="cmi-structure-person-copy"><strong>{displayName(coverage.staff)}</strong><small>Assigned {new Intl.DateTimeFormat("en-GH", { dateStyle: "medium" }).format(new Date(coverage.starts_at))}</small></div>
-                        {canReadStaff && <div className="cmi-structure-person-actions"><button type="button" className="cmi-text-action danger" onClick={() => setConfirmCoverageId(confirmCoverageId === coverage.id ? null : coverage.id)} disabled={saving}>End coverage</button></div>}
-                        {confirmCoverageId === coverage.id && (
+                        {canManageAreas && canReadStaff && <div className="cmi-structure-person-actions"><button type="button" className="cmi-text-action danger" onClick={() => setConfirmCoverageId(confirmCoverageId === coverage.id ? null : coverage.id)} disabled={saving}>End coverage</button></div>}
+                        {canManageAreas && canReadStaff && confirmCoverageId === coverage.id && (
                           <div className="cmi-inline-confirm">
                             <span>End this staff member's coverage for the selected area?</span>
                             <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setConfirmCoverageId(null)} disabled={saving}>Keep</button>
