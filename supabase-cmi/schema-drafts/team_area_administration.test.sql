@@ -1,5 +1,5 @@
 begin;
-select plan(31);
+select plan(32);
 
 select has_table('public','team_management_audit','Team administration audit ledger exists');
 select ok(
