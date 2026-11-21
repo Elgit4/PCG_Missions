@@ -711,6 +711,23 @@ describe("CmiApiClient", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it("blocks the direct multipart event-flyer upload from bypassing the preview write guard", async () => {
+    const fetcher = vi.fn();
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    const file = new Blob(["image fixture"], { type: "image/png" }) as File;
+
+    await expect(client.uploadEventFlyer("branch-abc", "event-123", file))
+      .rejects.toMatchObject({
+        status: 503,
+        code: "PREVIEW_OPERATION_NOT_MIGRATED",
+      });
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it("routes staff notifications through the Worker API", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: { notifications: [], unread_count: 0 }, request_id: "worker-notifications-1" }),
