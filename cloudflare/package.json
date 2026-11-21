@@ -6,7 +6,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "dev": "wrangler dev --local",
-    "test": "node --experimental-strip-types --test tests/*.test.mjs"
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "deploy:preview": "wrangler deploy --env preview"
   },
   "dependencies": {},
   "devDependencies": {
