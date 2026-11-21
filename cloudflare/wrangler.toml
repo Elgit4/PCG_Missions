@@ -37,7 +37,7 @@ workers_dev = true
 
 [env.preview.vars]
 APP_ENV = "non-production"
-APP_ALLOWED_ORIGINS = "http://localhost:5173"
+APP_ALLOWED_ORIGINS = "http://localhost:5173,https://feat-cloudflare-d1-migration.pcg-missions.pages.dev"
 SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
 SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
 
