@@ -483,8 +483,8 @@ test("Team Leader directory reads return only own-team data and omit staff ident
 
   const areaQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM service_area sa"));
   assert.ok(areaQuery);
-  assert.match(areaQuery.sql, /covered_profile\\.account_status = 'active'/);
-  assert.match(areaQuery.sql, /covered_profile\\.deactivated_at IS NULL/);
+  assert.match(areaQuery.sql, /covered_profile\.account_status = 'active'/);
+  assert.match(areaQuery.sql, /covered_profile\.deactivated_at IS NULL/);
   assert.match(areaQuery.sql, /covered_team\.is_active = 1/);
 
   const coverageQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM staff_area_coverage"));
