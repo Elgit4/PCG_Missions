@@ -2897,6 +2897,7 @@ async function listTeamOperationsCollection(
         SELECT t.id, t.branch_id, t.name, t.description, t.is_active, t.created_at, t.updated_at
         FROM team t
         WHERE t.branch_id = ?
+          AND (? = 1 OR t.is_active = 1)
           AND (
             ? = 1
             OR EXISTS (
@@ -2912,7 +2913,7 @@ async function listTeamOperationsCollection(
             )
           )
         ORDER BY t.is_active DESC, t.name ASC
-      `).bind(branchId, branchRead ? 1 : 0, context.staff.profileId, now, now)
+      `).bind(branchId, branchRead ? 1 : 0, branchRead ? 1 : 0, context.staff.profileId, now, now)
         .all<Record<string, unknown>>();
       const membershipsResult = await env.DB.prepare(`
         SELECT stm.id, stm.team_id, stm.staff_profile_id, stm.membership_role,
@@ -2934,6 +2935,10 @@ async function listTeamOperationsCollection(
             OR EXISTS (
               SELECT 1
               FROM staff_team_membership actor_membership
+              JOIN team active_team
+                ON active_team.id = actor_membership.team_id
+               AND active_team.branch_id = actor_membership.branch_id
+               AND active_team.is_active = 1
               WHERE actor_membership.team_id = stm.team_id
                 AND actor_membership.branch_id = stm.branch_id
                 AND actor_membership.staff_profile_id = ?
@@ -2991,6 +2996,14 @@ async function listTeamOperationsCollection(
             JOIN staff_team_membership covered_member
               ON covered_member.staff_profile_id = sac.staff_profile_id
              AND covered_member.branch_id = sac.branch_id
+            JOIN staff_profile covered_profile
+              ON covered_profile.id = covered_member.staff_profile_id
+             AND covered_profile.account_status = 'active'
+             AND covered_profile.deactivated_at IS NULL
+            JOIN team covered_team
+              ON covered_team.id = covered_member.team_id
+             AND covered_team.branch_id = covered_member.branch_id
+             AND covered_team.is_active = 1
             WHERE sac.service_area_id = sa.id
               AND sac.branch_id = sa.branch_id
               AND sac.starts_at <= ?
@@ -3039,6 +3052,10 @@ async function listTeamOperationsCollection(
                 ON active_member.id = covered_member.staff_profile_id
                AND active_member.account_status = 'active'
                AND active_member.deactivated_at IS NULL
+              JOIN team covered_team
+                ON covered_team.id = covered_member.team_id
+               AND covered_team.branch_id = covered_member.branch_id
+               AND covered_team.is_active = 1
               WHERE covered_member.staff_profile_id = staff_area_coverage.staff_profile_id
                 AND covered_member.branch_id = staff_area_coverage.branch_id
                 AND covered_member.starts_at <= ?
