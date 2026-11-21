@@ -28,7 +28,7 @@ export async function verifySupabaseAccessToken(
   env: SupabaseAuthEnvironment,
 ): Promise<SupabaseTokenVerification> {
   const authorization = request.headers.get("Authorization") ?? "";
-  const match = authorization.match(/^Bearer\\s+([A-Za-z0-9._~-]+)$/i);
+  const match = authorization.match(/^Bearer\s+([A-Za-z0-9._~-]+)$/i);
   if (!match) return { state: "unauthenticated" };
   if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return { state: "unavailable" };
 
