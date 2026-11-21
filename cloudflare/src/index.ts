@@ -2779,6 +2779,13 @@ async function listTeamOperationsCollection(
           AND stm.starts_at <= ?
           AND stm.revoked_at IS NULL
           AND (stm.ends_at IS NULL OR stm.ends_at > ?)
+          AND EXISTS (
+            SELECT 1
+            FROM staff_profile active_member
+            WHERE active_member.id = stm.staff_profile_id
+              AND active_member.account_status = 'active'
+              AND active_member.deactivated_at IS NULL
+          )
           AND (
             ? = 1
             OR EXISTS (
@@ -2880,8 +2887,38 @@ async function listTeamOperationsCollection(
           AND starts_at <= ?
           AND revoked_at IS NULL
           AND (ends_at IS NULL OR ends_at > ?)
+          AND (
+            ? = 1
+            OR EXISTS (
+              SELECT 1
+              FROM staff_team_membership covered_member
+              JOIN staff_profile active_member
+                ON active_member.id = covered_member.staff_profile_id
+               AND active_member.account_status = 'active'
+               AND active_member.deactivated_at IS NULL
+              WHERE covered_member.staff_profile_id = staff_area_coverage.staff_profile_id
+                AND covered_member.branch_id = staff_area_coverage.branch_id
+                AND covered_member.starts_at <= ?
+                AND covered_member.revoked_at IS NULL
+                AND (covered_member.ends_at IS NULL OR covered_member.ends_at > ?)
+                AND EXISTS (
+                  SELECT 1
+                  FROM staff_team_membership actor_membership
+                  WHERE actor_membership.team_id = covered_member.team_id
+                    AND actor_membership.branch_id = covered_member.branch_id
+                    AND actor_membership.staff_profile_id = ?
+                    AND actor_membership.membership_role = 'leader'
+                    AND actor_membership.starts_at <= ?
+                    AND actor_membership.revoked_at IS NULL
+                    AND (actor_membership.ends_at IS NULL OR actor_membership.ends_at > ?)
+                )
+            )
+          )
         ORDER BY starts_at DESC
-      `).bind(branchId, ...areaIds, now, now).all<Record<string, unknown>>();
+      `).bind(
+        branchId, ...areaIds, now, now,
+        branchRead ? 1 : 0, now, now, context.staff.profileId, now, now,
+      ).all<Record<string, unknown>>();
       coverage = coverageResult.results ?? [];
     }
     const profileIds = includeStaffNames
