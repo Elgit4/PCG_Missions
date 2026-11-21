@@ -79,10 +79,14 @@ jobs:
           page="https://feat-cloudflare-d1-migration.pcg-missions.pages.dev"
           html="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error "$page")"
           asset="$(grep -oE 'src="[^"]+\.js"' <<< "$html" | head -n1 | cut -d '"' -f2)"
+          echo "Pages preview JavaScript asset: $asset"
           test -n "$asset"
           if [[ "$asset" == http* ]]; then js_url="$asset"; else js_url="$page$asset"; fi
           bundle="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error "$js_url")"
-          grep -Fq "pcg-missions-api-preview.pcg-missions-nonprod.workers.dev" <<< "$bundle"
+          if ! grep -Fq "pcg-missions-api-preview.pcg-missions-nonprod.workers.dev" <<< "$bundle"; then
+            echo "Worker API origin was not embedded in the preview bundle."
+            exit 1
+          fi
           echo "Pages preview HTML and built JavaScript both respond; the Worker API origin is embedded."
 
       - name: Publish immutable bundle branch for direct Cloudflare deployment
