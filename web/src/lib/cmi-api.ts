@@ -508,7 +508,9 @@ export type TaskAssignmentTarget =
   | { assignee_user_id: string; team_id?: never }
   | { team_id: string; assignee_user_id?: never };
 export type TaskCreateInput = TaskCreateBase & TaskAssignmentTarget;
-export type TaskReassignmentInput = TaskAssignmentTarget;
+export type TaskReassignmentInput =
+  | { assignee_profile_id: string; team_id?: never; reason: string }
+  | { team_id: string; assignee_profile_id?: never; reason: string };
 export interface TaskUpdateInput {
   priority?: number;
   due_at?: string | null;
@@ -532,11 +534,22 @@ function parseJson(text: string): unknown {
 }
 function assertExactlyOneTaskTarget(
   input: { assignee_user_id?: unknown; team_id?: unknown },
-): asserts input is TaskReassignmentInput {
+): asserts input is TaskAssignmentTarget {
   const hasAssignee = typeof input.assignee_user_id === "string" && input.assignee_user_id.trim().length > 0;
   const hasTeam = typeof input.team_id === "string" && input.team_id.trim().length > 0;
   if (hasAssignee === hasTeam) {
     throw new TypeError("Exactly one non-empty task assignment target is required.");
+  }
+}
+
+function assertValidTaskReassignment(
+  input: { assignee_profile_id?: unknown; team_id?: unknown; reason?: unknown },
+): asserts input is TaskReassignmentInput {
+  const hasAssignee = typeof input.assignee_profile_id === "string" && input.assignee_profile_id.trim().length > 0;
+  const hasTeam = typeof input.team_id === "string" && input.team_id.trim().length > 0;
+  const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+  if (hasAssignee === hasTeam || reason.length < 10 || reason.length > 500) {
+    throw new TypeError("Exactly one task reassignment target and a reason of 10–500 characters are required.");
   }
 }
 
@@ -686,6 +699,7 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     if (suffix === "/staff" && verb === "GET") return "/api/v1/staff";
     if (suffix === "/followup/tasks" && (verb === "GET" || verb === "POST")) return "/api/v1/followup/tasks";
     if (suffix.startsWith("/followup/tasks/") && suffix.split("/").length === 4 && verb === "PATCH") return "/api/v1" + suffix;
+    if (/^\/followup\/tasks\/[^/]+\/assign$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
   }
 
   return null;
@@ -915,8 +929,8 @@ export class CmiApiClient {
     });
   }
   reassignFollowUpTask(branchId: string, taskId: string, input: TaskReassignmentInput) {
-    assertExactlyOneTaskTarget(input);
-    return this.request<FollowUpTask>("staff-operations", `/followup/tasks/${encodeURIComponent(taskId)}/reassign`, {
+    assertValidTaskReassignment(input);
+    return this.request<FollowUpTask>("staff-operations", `/followup/tasks/${encodeURIComponent(taskId)}/assign`, {
       method: "POST", query: { branch_id: branchId }, body: input,
     });
   }
