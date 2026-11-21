@@ -222,7 +222,7 @@ No production Supabase data, Auth identities, Pages variables or production Clou
 
 - Worker: `pcg-missions-api-preview`
 - Worker URL: `https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev`
-- Worker version/deployment: `c85692cdf49c40faab6b3a0eb2f495bf`
+- Worker deployment: `a79b83d8-05ca-42c8-8f09-78931fe85d7d`; active Worker version: `1292566a-e715-4a7a-b8b3-2971366e6a85` (100% of preview Worker traffic)
 - Worker D1 binding: `pcg-missions-migration-test` (`74074d53-1edc-4ad7-83e6-bb3333a6ab4f`, EU jurisdiction)
 - Pages preview alias: `https://feat-cloudflare-d1-migration.pcg-missions.pages.dev`
 - Latest successful Pages preview deployment at the time of this update: `f8c92720-b29f-41a5-91da-a6f032de9b3b`
@@ -252,6 +252,15 @@ The frontend API adapter now selects the Worker for:
 Unsupported operations deliberately retain their existing Supabase Edge Function path. This is not yet a full backend cutover.
 
 ### Verification evidence
+### Latest preview deployment verification — 21 November 2026, 19:38–19:40 UTC
+
+- Uploaded the verified bundle from build run [44941942879](https://github.com/Elgit4/PCG_Missions/actions/runs/44941942879) to the isolated preview Worker through the connected Cloudflare account. Cloudflare reports active version `1292566a-e715-4a7a-b8b3-2971366e6a85` at 100% of this preview Worker deployment.
+- Bundle source commit: `2dd8e39557b179c8d24e82e4eca2ff2dfbb69bd2`. The current PR head adds only deployment-workflow/documentation changes after that source commit; no Worker or frontend source changes were omitted.
+- Re-ran the preview-bundle workflow after the upload. Type-check, Worker tests, deployed health/schema check, anonymous /me rejection, CORS/idempotency preflight, team/service-area mutation route checks, and Pages bundle-origin verification all passed.
+- The Worker has the EU rehearsal D1 binding, preview-only origins, Supabase URL/publishable key, and Cloudflare observability enabled. It does **not** have a `SUPABASE_SERVICE_ROLE_KEY` secret binding. Worker-side Supabase Auth Admin invitation provisioning must therefore remain disabled; those frontend flows continue through the existing Supabase Edge Function path.
+- GitHub Actions still does not inject `CLOUDFLARE_API_TOKEN` into the manual credential-based deploy workflow. The connected Cloudflare account was used for this isolated preview upload; this does not restore automatic GitHub-to-Cloudflare deployment.
+- The preview bundle's smoke tests validate unauthenticated route boundaries, not authenticated six-role CRUD acceptance. No production Pages, Worker, D1, Supabase schema, Auth identity, DNS, or SMS configuration was changed.
+
 
 - [Cloudflare D1 Foundation CI 44941795903](https://github.com/Elgit4/PCG_Missions/actions/runs/44941795903) — Worker type-check, Supabase Auth tests and SQLite/D1 schema checks passed.
 - [CMI web CI 44941795678](https://github.com/Elgit4/PCG_Missions/actions/runs/44941795678) — frontend type-check, lint, unit tests and production build passed.
