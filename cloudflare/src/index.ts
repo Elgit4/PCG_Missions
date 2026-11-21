@@ -1638,7 +1638,7 @@ async function updateContact(
   if (!result.success || (result.meta?.changes ?? 0) !== 1) {
     return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND_OR_NOT_ACCESSIBLE" } }, requestId, origin);
   }
-  return json(200, { ok: true, contact_id: contactId, updated_at: now }, requestId, origin);
+  return getContact(request, env, contactId, requestId, origin);
 }
 
 
