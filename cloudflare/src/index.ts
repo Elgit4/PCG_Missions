@@ -3555,7 +3555,12 @@ async function updatePrayerRequestStatus(
           "SELECT schema_version, environment FROM app_meta WHERE id = 1 LIMIT 1",
         ).first<{ schema_version: number; environment: string }>();
 
-        if (!result || result.environment !== "non-production") {
+        const expectedEnvironment = env.APP_ENV;
+        if (
+          !result ||
+          (expectedEnvironment !== "non-production" && expectedEnvironment !== "production") ||
+          result.environment !== expectedEnvironment
+        ) {
           return json(503, {
             ok: false,
             service: "pcg-missions-cloudflare-api",
