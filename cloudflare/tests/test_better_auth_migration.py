@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "migrations"
 
 class BetterAuthMigrationTests(unittest.TestCase):
-    def test_version_44_restores_better_auth_tables_and_preserves_identity_rows(self):
+    def test_version_45_promotes_production_and_preserves_better_auth_identity_rows(self):
         db = sqlite3.connect(":memory:")
         db.execute("PRAGMA foreign_keys = ON")
         for migration in sorted(MIGRATIONS.glob("*.sql")):
@@ -20,7 +20,8 @@ class BetterAuthMigrationTests(unittest.TestCase):
                       VALUES (?,?,?,?,?,?,?,'supabase')
                     """, (user_id, "Staff " + str(index), "staff" + str(index) + "@example.test", 1, None, 1, 1))
                 db.commit()
-        self.assertEqual(db.execute("SELECT schema_version FROM app_meta WHERE id=1").fetchone()[0], 44)
+        self.assertEqual(db.execute("SELECT schema_version FROM app_meta WHERE id=1").fetchone()[0], 45)
+        self.assertEqual(db.execute("SELECT environment FROM app_meta WHERE id=1").fetchone()[0], "production")
         self.assertIsNotNone(db.execute("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='user'").fetchone())
         self.assertIsNone(db.execute("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='supabase_auth_identity'").fetchone())
         self.assertEqual(db.execute('SELECT COUNT(*) FROM "user"').fetchone()[0], 3)
