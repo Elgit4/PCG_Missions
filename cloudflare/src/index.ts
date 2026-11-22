@@ -3951,8 +3951,11 @@ async function listPrayerQueue(
   const url = new URL(request.url);
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
+  const rawOffset = url.searchParams.get("offset");
+  const offset = rawOffset === null ? 0 : Number(rawOffset);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
-      [...url.searchParams.keys()].some((key) => key !== "limit")) {
+      !Number.isInteger(offset) || offset < 0 || offset > 100000 ||
+      [...url.searchParams.keys()].some((key) => key !== "limit" && key !== "offset")) {
     return json(400, { ok: false, error: { code: "INVALID_PRAYER_QUEUE_QUERY" } }, requestId, origin);
   }
   const now = new Date().toISOString();
@@ -4096,11 +4099,11 @@ async function listAssignedPrayerRequests(
         AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
         AND ${activeShareAndAssignment}
       ORDER BY prayer_request.created_at DESC, prayer_request.id DESC
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `).bind(
       context.staff.userId, requestId, now, context.activeBranch.branchId, now,
       context.staff.userId, now, now, context.staff.profileId, now, now,
-      context.staff.profileId, now, now, limit,
+      context.staff.profileId, now, now, limit, offset,
     ),
     env.DB.prepare(`
       INSERT INTO sensitive_record_access_audit
@@ -4117,11 +4120,11 @@ async function listAssignedPrayerRequests(
         AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
         AND ${activeShareAndAssignment}
       ORDER BY prayer_request.created_at DESC, prayer_request.id DESC
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `).bind(
       context.staff.profileId, now, context.activeBranch.branchId, now,
       context.staff.userId, now, now, context.staff.profileId, now, now,
-      context.staff.profileId, now, now, limit,
+      context.staff.profileId, now, now, limit, offset,
     ),
     env.DB.prepare(`
       SELECT prayer_request.id, prayer_request.request_text, prayer_request.status,
@@ -4135,11 +4138,11 @@ async function listAssignedPrayerRequests(
         AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
         AND ${activeShareAndAssignment}
       ORDER BY prayer_request.created_at DESC, prayer_request.id DESC
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `).bind(
       context.activeBranch.branchId, now,
       context.staff.userId, now, now, context.staff.profileId, now, now,
-      context.staff.profileId, now, now, limit,
+      context.staff.profileId, now, now, limit, offset,
     ),
   ]);
   const rows = (batch[2] as unknown as {
