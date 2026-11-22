@@ -37,7 +37,7 @@ jobs:
 
       - name: Install Worker tooling
         working-directory: cloudflare
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Create isolated EU rehearsal database
         id: database
