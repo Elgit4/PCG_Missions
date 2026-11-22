@@ -5636,6 +5636,21 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
     if (url.pathname === "/api/v1/pastoral/prayer/assigned" && request.method === "GET") {
       return listAssignedPrayerRequests(request, env, requestId, origin);
     }
+
+    const pastoralPrayerReadMatch = url.pathname.match(/^\/api\/v1\/pastoral\/prayer\/requests\/([^/]+)\/read$/);
+    if (pastoralPrayerReadMatch && request.method === "POST") {
+      let prayerId: string;
+      try { prayerId = decodeURIComponent(pastoralPrayerReadMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_PRAYER_REQUEST_ID" } }, requestId, origin); }
+      return readSensitivePrayerRequest(request, env, prayerId, requestId, origin);
+    }
+    const pastoralCareReadMatch = url.pathname.match(/^\/api\/v1\/pastoral\/care\/records\/([^/]+)\/read$/);
+    if (pastoralCareReadMatch && request.method === "POST") {
+      let careRecordId: string;
+      try { careRecordId = decodeURIComponent(pastoralCareReadMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CARE_RECORD_ID" } }, requestId, origin); }
+      return readSensitiveCareRecord(request, env, careRecordId, requestId, origin);
+    }
     const prayerShareRevokeMatch = url.pathname.match(/^\/api\/v1\/pastoral\/prayer\/requests\/([^/]+)\/shares\/([^/]+)\/revoke$/);
     if (prayerShareRevokeMatch && request.method === "POST") {
       let prayerId: string;
