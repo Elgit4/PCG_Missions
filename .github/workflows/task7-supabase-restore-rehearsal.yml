@@ -55,7 +55,7 @@ jobs:
           # projects; use the IPv4-compatible Session Pooler for dump/restore.
           for label in SOURCE RESTORE; do
             if [[ "$label" == "SOURCE" ]]; then url="$SUPABASE_SOURCE_DB_URL"; else url="$SUPABASE_RESTORE_DB_URL"; fi
-            endpoint="$(python -c 'import os,sys,urllib.parse; u=urllib.parse.urlparse(os.environ["DB_URL"]); print((u.hostname or "")+"|"+str(u.port or 5432))' DB_URL="$url")"
+            endpoint="$(DB_URL="$url" python -c 'import os,urllib.parse; u=urllib.parse.urlparse(os.environ["DB_URL"]); print((u.hostname or "")+"|"+str(u.port or 5432))')"
             host="${endpoint%%|*}"
             port="${endpoint##*|}"
             if [[ "$host" != *.pooler.supabase.com || "$port" != "5432" ]]; then
