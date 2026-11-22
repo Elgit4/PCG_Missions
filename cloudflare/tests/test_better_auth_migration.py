@@ -20,8 +20,16 @@ class BetterAuthMigrationTests(unittest.TestCase):
                       VALUES (?,?,?,?,?,?,?,'supabase')
                     """, (user_id, "Staff " + str(index), "staff" + str(index) + "@example.test", 1, None, 1, 1))
                 db.commit()
-        self.assertEqual(db.execute("SELECT schema_version FROM app_meta WHERE id=1").fetchone()[0], 45)
+        self.assertEqual(db.execute("SELECT schema_version FROM app_meta WHERE id=1").fetchone()[0], 46)
         self.assertEqual(db.execute("SELECT environment FROM app_meta WHERE id=1").fetchone()[0], "non-production")
+        expected_grants = [["admin_pastor","report.review.scoped","branch"],["coordinator","report.review.scoped","branch"],["team_leader","report.review.scoped","team"],["field_worker","report.submit.scoped","self"],["follow_up_volunteer","report.submit.scoped","self"],["admin_pastor","event.closeout.submit","branch"],["admin_pastor","event.closeout.review","branch"],["coordinator","event.closeout.review","branch"]]
+        actual_grants = db.execute("""
+            SELECT r.code, c.code, rc.scope_mode FROM role_capability rc
+            JOIN role r ON r.id=rc.role_id JOIN capability c ON c.id=rc.capability_id
+            WHERE c.code LIKE 'report.%' OR c.code LIKE 'event.closeout.%'
+        """).fetchall()
+        for grant in expected_grants:
+            self.assertIn(tuple(grant), actual_grants)
         self.assertIsNotNone(db.execute("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='user'").fetchone())
         self.assertIsNone(db.execute("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='supabase_auth_identity'").fetchone())
         self.assertEqual(db.execute('SELECT COUNT(*) FROM "user"').fetchone()[0], 3)
