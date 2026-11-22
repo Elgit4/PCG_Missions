@@ -5440,7 +5440,7 @@ async function readSensitivePrayerRequest(request: Request, env: Env, prayerRequ
         SELECT ?, p.id, p.branch_id, ?, ?, ?, ?, json_object('access_mode', ?), ?
         FROM prayer_request p
         WHERE p.id = ? AND p.branch_id = ? AND (p.expires_at IS NULL OR p.expires_at > ?)
-          \${assignmentClause}
+          ${assignmentClause}
       `).bind(
         crypto.randomUUID(), context.staff.userId, accessMode === "oversight" ? "oversight" : "read",
         accessMode === "oversight" ? reasonCode : null, requestId, accessMode, now,
@@ -5452,7 +5452,7 @@ async function readSensitivePrayerRequest(request: Request, env: Env, prayerRequ
         SELECT ?, p.branch_id, ?, 'prayer_request', p.id, 'read', ?, NULL, ?
         FROM prayer_request p
         WHERE p.id = ? AND p.branch_id = ? AND (p.expires_at IS NULL OR p.expires_at > ?)
-          \${assignmentClause}
+          ${assignmentClause}
       `).bind(
         crypto.randomUUID(), context.staff.profileId,
         accessMode === "oversight" ? "oversight:" + reasonCode : "assigned_prayer_read",
@@ -5463,7 +5463,7 @@ async function readSensitivePrayerRequest(request: Request, env: Env, prayerRequ
                p.expires_at, p.answered_at, p.created_at, p.updated_at
         FROM prayer_request p
         WHERE p.id = ? AND p.branch_id = ? AND (p.expires_at IS NULL OR p.expires_at > ?)
-          \${assignmentClause}
+          ${assignmentClause}
         LIMIT 1
       `).bind(prayerRequestId, context.activeBranch.branchId, now, ...assignmentValues),
     ]);
@@ -5525,7 +5525,7 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
         INSERT INTO care_access_audit
           (id, care_record_id, branch_id, actor_user_id, action, reason, request_id, safe_metadata, accessed_at)
         SELECT ?, cr.id, cr.branch_id, ?, ?, ?, ?, json_object('access_mode', ?), ?
-        FROM care_record cr WHERE cr.id = ? AND cr.branch_id = ? \${assignmentClause}
+        FROM care_record cr WHERE cr.id = ? AND cr.branch_id = ? ${assignmentClause}
       `).bind(
         crypto.randomUUID(), context.staff.userId, accessMode === "oversight" ? "oversight" : "read",
         accessMode === "oversight" ? reasonCode : null, requestId, accessMode, now,
@@ -5535,7 +5535,7 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
         INSERT INTO sensitive_record_access_audit
           (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, share_reference, created_at)
         SELECT ?, cr.branch_id, ?, 'pastoral_case', cr.id, 'read', ?, NULL, ?
-        FROM care_record cr WHERE cr.id = ? AND cr.branch_id = ? \${assignmentClause}
+        FROM care_record cr WHERE cr.id = ? AND cr.branch_id = ? ${assignmentClause}
       `).bind(
         crypto.randomUUID(), context.staff.profileId,
         accessMode === "oversight" ? "oversight:" + reasonCode : "assigned_care_read",
@@ -5543,7 +5543,7 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
       ),
       env.DB.prepare(`
         SELECT cr.id, cr.branch_id, cr.status, cr.reviewed_at, cr.created_at, cr.updated_at
-        FROM care_record cr WHERE cr.id = ? AND cr.branch_id = ? \${assignmentClause} LIMIT 1
+        FROM care_record cr WHERE cr.id = ? AND cr.branch_id = ? ${assignmentClause} LIMIT 1
       `).bind(careRecordId, context.activeBranch.branchId, ...assignmentValues),
       env.DB.prepare(`
         SELECT ci.id, ci.interaction_type, ci.outcome_code, ci.restricted_note, ci.occurred_at
