@@ -111,8 +111,11 @@ jobs:
           SQL="SELECT 'public_tables' AS item, count(*)::bigint AS row_count FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' UNION ALL SELECT 'capability', count(*) FROM public.capability UNION ALL SELECT 'role_capability', count(*) FROM public.role_capability UNION ALL SELECT 'staff_access_audit', count(*) FROM public.staff_access_audit UNION ALL SELECT 'role', count(*) FROM public.role UNION ALL SELECT 'staff_profile', count(*) FROM public.staff_profile UNION ALL SELECT 'migration_history', count(*) FROM supabase_migrations.schema_migrations"
           psql "$SUPABASE_SOURCE_DB_URL" -X -v ON_ERROR_STOP=1 -AtF '|' -c "$SQL" | sort > /tmp/cmi-source-counts.txt
           psql "$SUPABASE_RESTORE_DB_URL" -X -v ON_ERROR_STOP=1 -AtF '|' -c "$SQL" | sort > /tmp/cmi-target-counts.txt
-          diff -u /tmp/cmi-source-counts.txt /tmp/cmi-target-counts.txt
-          echo "Supabase restore verification passed: public table count and critical CMI row counts match."
+          diff -u /tmp/cmi-source-counts.txt /tmp/cmi-target-counts.txt /tmp/cmi-source-migration-versions.txt /tmp/cmi-target-migration-versions.txt
+          psql "$SUPABASE_SOURCE_DB_URL" -X -v ON_ERROR_STOP=1 -Atc "SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;" > /tmp/cmi-source-migration-versions.txt
+          psql "$SUPABASE_RESTORE_DB_URL" -X -v ON_ERROR_STOP=1 -Atc "SELECT version FROM supabase_migrations.schema_migrations ORDER BY version;" > /tmp/cmi-target-migration-versions.txt
+          diff -u /tmp/cmi-source-migration-versions.txt /tmp/cmi-target-migration-versions.txt
+          echo "Supabase restore verification passed: public table count, critical CMI row counts, and exact migration-version history match."
 
       - name: Remove logical backup files from ephemeral runner
         if: always()
