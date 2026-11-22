@@ -1636,3 +1636,34 @@ test("expired temporary-password gate blocks Better Auth credential mutation", a
   assert.equal((await response.json()).error.code, "PASSWORD_SETUP_EXPIRED");
   assert.equal(fixture.batches?.length ?? 0, 0);
 });
+
+
+test("content draft routes reject anonymous access before querying D1", async () => {
+  const { env, calls } = fakeEnv();
+  const branch = "30000000-0000-4000-8000-000000000001";
+  const sermon = await worker.fetch(new Request(`https://worker.example/api/v1/content/sermons?branch_id=${branch}`), env);
+  const welcome = await worker.fetch(new Request(`https://worker.example/api/v1/content/welcome-messages?branch_id=${branch}`), env);
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/content/sermons", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ branch_id: branch, title: "A sermon", body: "Private draft", public_slug: "a-sermon" }),
+  }), env);
+  for (const response of [sermon, welcome, create]) {
+    const payload = await response.json();
+    assert.equal(response.status, 401);
+    assert.equal(payload.error.code, "UNAUTHENTICATED");
+  }
+  assert.equal(calls.length, 0);
+});
+
+test("announcement archival rejects anonymous access before querying D1", async () => {
+  const { env, calls } = fakeEnv();
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/announcements/80000000-0000-4000-8000-000000000001/archive?branch_id=30000000-0000-4000-8000-000000000001",
+    { method: "POST" },
+  ), env);
+  const payload = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(payload.error.code, "UNAUTHENTICATED");
+  assert.equal(calls.length, 0);
+});
