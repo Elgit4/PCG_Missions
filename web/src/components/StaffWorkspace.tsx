@@ -954,7 +954,44 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             <div className="cmi-task-list">
               {staffMembers.map((member) => <article className="cmi-task-row cmi-staff-directory-row" key={member.id}>
                 <div className="cmi-task-symbol"><Users size={18} /></div>
-                <div className="cmi-task-copy"><strong>{member.full_name}</strong><p>{member.roles.map((role) => role.name).join(" · ")}</p></div>
+                <div className="cmi-task-copy">
+                  <strong>{member.full_name}</strong>
+                  <p>{member.roles.map((role) => role.name).join(" · ") || "No active role"}</p>
+                  {canAssignStaffRoles && member.id !== session.staff.id && member.account_status === "active" && (
+                    <div className="cmi-staff-role-management">
+                      <div className="cmi-staff-role-list">
+                        {member.roles.map((role) => <div className="cmi-staff-role-item" key={role.assignment_id}>
+                          <span>{role.name}</span>
+                          <button type="button" className="cmi-button cmi-button-secondary" onClick={() => {
+                            setRoleAction({ profileId: member.id, action: role.code === "admin_pastor" ? "revoke_admin" : "revoke", assignmentId: role.assignment_id, roleName: role.name });
+                            setRoleActionReason(""); setActionError("");
+                          }}>{role.code === "admin_pastor" ? "Request removal" : "Remove role"}</button>
+                        </div>)}
+                      </div>
+                      <div className="cmi-form-actions">
+                        <button type="button" className="cmi-button cmi-button-secondary" onClick={() => {
+                          setRoleAction({ profileId: member.id, action: "assign" }); setRoleActionReason(""); setActionError("");
+                        }}>Assign another role</button>
+                        {!member.roles.some((role) => role.code === "admin_pastor") && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => {
+                          setRoleAction({ profileId: member.id, action: "elevate" }); setRoleActionReason(""); setActionError("");
+                        }}>Request Admin/Pastor access</button>}
+                      </div>
+                      {roleAction?.profileId === member.id && <form className="cmi-staff-status-form" onSubmit={submitStaffRoleAction}>
+                        <strong>{roleAction.action === "assign" ? "Assign a role" : roleAction.action === "revoke" ? "Remove " + roleAction.roleName : roleAction.action === "elevate" ? "Request Admin/Pastor access" : "Request Admin/Pastor role removal"}</strong>
+                        {roleAction.action === "assign" && <label>Role<select value={roleActionCode} onChange={(event) => setRoleActionCode(event.target.value as StandardStaffRoleCode)}>
+                          <option value="coordinator">Coordinator</option><option value="team_leader">Team Leader</option><option value="field_worker">Field Worker</option><option value="follow_up_volunteer">Follow-up Volunteer</option><option value="prayer_intercessor">Prayer Intercessor</option>
+                        </select></label>}
+                        <label>{roleAction.action === "elevate" || roleAction.action === "revoke_admin" ? "Reason for two-person review" : "Audit reason"}
+                          <textarea value={roleActionReason} onChange={(event) => setRoleActionReason(event.target.value)} minLength={10} maxLength={500} rows={2} required placeholder="Record the appointment, authorisation or operational reason (10–500 characters)." />
+                        </label>
+                        <div className="cmi-form-actions">
+                          <button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setRoleAction(null); setRoleActionReason(""); }}>Cancel</button>
+                          <button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Confirm"}</button>
+                        </div>
+                      </form>}
+                    </div>
+                  )}
+                </div>
                 <span className={member.account_status === "active" ? "cmi-task-status status-open" : "cmi-task-status status-cancelled"}>{member.account_status === "active" ? "Active" : "Inactive"}</span>
                 {canManageStaffAccounts && member.id !== session.staff.id && <button type="button" className="cmi-button cmi-button-secondary cmi-staff-status-action" onClick={() => { setStaffStatusEdit({ profileId: member.id, nextStatus: member.account_status === "active" ? "inactive" : "active" }); setStaffStatusReason(""); setActionError(""); }}>{member.account_status === "active" ? "Deactivate" : "Reactivate"}</button>}
                 {staffStatusEdit?.profileId === member.id && <form className="cmi-staff-status-form" onSubmit={updateStaffAccountStatus}>
@@ -964,6 +1001,19 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               </article>)}
               {!staffMembers.length && !loading && <p className="cmi-empty-row">No staff accounts are assigned to this branch yet.</p>}
             </div>
+            {canApproveStaffRoles && (elevationRequests.length > 0 || revocationRequests.length > 0) && <section className="cmi-panel cmi-staff-role-approvals">
+              <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">DUAL-CONTROL ACCESS</p><h3>Admin/Pastor role requests</h3><p>Every approval or rejection requires an independent reviewer and a recorded reason.</p></div></div>
+              {elevationRequests.map((request) => <article className="cmi-task-row" key={request.id}>
+                <div className="cmi-task-copy"><strong>Admin/Pastor access for {request.target_name}</strong><p>Requested by {request.requester_name} · {formatDate(request.requested_at, session.branches.find((branch) => branch.id === branchId)?.timezone ?? "Africa/Accra")}</p><small>{request.reason}</small></div>
+                <label>Review reason<textarea value={roleReviewReasons[request.id] ?? ""} onChange={(event) => setRoleReviewReasons((current) => ({ ...current, [request.id]: event.target.value }))} minLength={10} maxLength={500} rows={2} /></label>
+                <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("elevation", request, "reject")}>Reject</button><button type="button" className="cmi-button cmi-button-primary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("elevation", request, "approve")}>Approve</button></div>
+              </article>)}
+              {revocationRequests.map((request) => <article className="cmi-task-row" key={request.id}>
+                <div className="cmi-task-copy"><strong>Remove Admin/Pastor access from {request.target_name}</strong><p>Requested by {request.requester_name} · {formatDate(request.requested_at, session.branches.find((branch) => branch.id === branchId)?.timezone ?? "Africa/Accra")}</p><small>{request.reason}</small></div>
+                <label>Review reason<textarea value={roleReviewReasons[request.id] ?? ""} onChange={(event) => setRoleReviewReasons((current) => ({ ...current, [request.id]: event.target.value }))} minLength={10} maxLength={500} rows={2} /></label>
+                <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("revocation", request, "reject")}>Reject</button><button type="button" className="cmi-button cmi-button-primary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("revocation", request, "approve")}>Approve</button></div>
+              </article>)}
+            </section>}
           </div>}
 
           {page === "Contacts" && (canReadContacts || canCreateContacts) && <div className="cmi-panel">
