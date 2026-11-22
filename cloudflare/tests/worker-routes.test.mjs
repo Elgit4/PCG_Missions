@@ -342,6 +342,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
   };
   let writes = 0;
   let followupTaskStatus = "open";
+  let calendarEntryRow = null;
 
   const DB = {
     prepare(sql) {
@@ -351,6 +352,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         bind(...values) { this.values = values; return this; },
         async first() {
           calls.push({ kind: "first", sql: this.sql, values: this.values });
+          if (this.sql.includes("FROM calendar_entry")) return calendarEntryRow;
           if (this.sql.includes("SELECT id, branch_id, first_name") && this.sql.includes("FROM contact")) {
             return {
               id: CONTACT_ID,
@@ -431,6 +433,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         },
         async all() {
           calls.push({ kind: "all", sql: this.sql, values: this.values });
+          if (this.sql.includes("FROM calendar_entry")) return { results: calendarEntryRow ? [calendarEntryRow] : [] };
           if (this.sql.includes("SELECT DISTINCT b.id, b.name, b.timezone")) {
             return { results: [{ id: BRANCH_ID, name: "Main Branch", timezone: "Africa/Accra" }] };
           }
@@ -485,6 +488,13 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         },
         async run() {
           calls.push({ kind: "run", sql: this.sql, values: this.values });
+          if (this.sql.includes("INSERT INTO calendar_entry")) {
+            const [id, branch_id, entry_type, title, starts_at, ends_at, created_by, updated_by, created_at, updated_at] = this.values;
+            calendarEntryRow = { id, branch_id, entry_type, title, starts_at, ends_at, scope_type: "branch", created_by, created_at, updated_at };
+          } else if (this.sql.includes("UPDATE calendar_entry") && calendarEntryRow) {
+            const [entry_type, title, starts_at, ends_at, , updated_at] = this.values;
+            calendarEntryRow = { ...calendarEntryRow, entry_type, title, starts_at, ends_at, updated_at };
+          }
           return { success: true, meta: { changes: 1 } };
         },
       };
@@ -521,6 +531,95 @@ function authenticatedDirectoryRequest(path) {
     },
   });
 }
+
+test("Admin/Pastor can list, create and update branch calendar entries through D1", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("admin_pastor", [
+    ["calendar.read.scoped", "branch"],
+    ["calendar.manage.scoped", "branch"],
+  ]);
+
+  const list = await worker.fetch(
+    authenticatedDirectoryRequest("/api/v1/calendar/entries?branch_id=" + BRANCH_ID),
+    fixture.env,
+  );
+  assert.equal(list.status, 200);
+  assert.deepEqual((await list.json()).data, []);
+  assert.ok(fixture.calls.some((call) => call.kind === "all" && call.sql.includes("FROM calendar_entry") && call.sql.includes("scope_type = 'branch'")));
+
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/calendar/entries", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      entry_type: "service",
+      title: "Sunday service",
+      starts_at: "2026-11-29T09:00:00+00:00",
+      ends_at: "2026-11-29T11:00:00+00:00",
+    }),
+  }), fixture.env);
+  const created = await create.json();
+  assert.equal(create.status, 201);
+  assert.equal(created.data.scope_type, "branch");
+  assert.equal(created.data.created_by, AUTH_USER_ID);
+  const insert = fixture.calls.find((call) => call.kind === "run" && call.sql.includes("INSERT INTO calendar_entry"));
+  assert.ok(insert);
+  assert.match(insert.sql, /'branch',NULL,NULL,NULL/);
+
+  const update = await worker.fetch(new Request(
+    "https://worker.example/api/v1/calendar/entries/" + created.data.id + "?branch_id=" + BRANCH_ID,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: "Bearer verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: "Updated Sunday service" }),
+    },
+  ), fixture.env);
+  const updated = await update.json();
+  assert.equal(update.status, 200);
+  assert.equal(updated.data.title, "Updated Sunday service");
+  const updateStatement = fixture.calls.find((call) => call.kind === "run" && call.sql.includes("UPDATE calendar_entry"));
+  assert.ok(updateStatement);
+  assert.match(updateStatement.sql, /updated_at=\?/);
+  assert.match(updateStatement.sql, /updated_by=\?/);
+});
+
+test("non-admin roles cannot manage branch calendar entries", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ id: AUTH_USER_ID, email: "staff@example.com" }),
+  );
+  const fixture = authorizedDirectoryEnv("field_worker");
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/calendar/entries", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      entry_type: "service",
+      title: "Must not be created",
+      starts_at: "2026-11-29T09:00:00+00:00",
+      ends_at: null,
+    }),
+  }), fixture.env);
+  const payload = await response.json();
+  assert.equal(response.status, 403);
+  assert.equal(payload.error.code, "CAPABILITY_DENIED");
+  assert.equal(fixture.calls.some((call) => call.kind === "run" && call.sql.includes("calendar_entry")), false);
+});
 
 test("Team Leader directory reads return only own-team data and omit staff identities", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
