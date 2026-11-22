@@ -193,6 +193,55 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         ]
         self.assertFalse(any(code.startswith("sms.") for code in all_grants))
 
+    def test_all_canonical_grants_match_the_live_source_policy(self):
+        migration = (MIGRATIONS / "0041_align_live_authorization_catalogue.sql").read_text(encoding="utf-8")
+        start = migration.index("WITH source_grants(")
+        end = migration.index("\n)\nINSERT INTO role_capability", start)
+        expected = {
+            (role_code, capability_code, scope_mode)
+            for role_code, capability_code, scope_mode in re.findall(
+                r"\('([^']+)','([^']+)','([^']+)','[^']+'\)",
+                migration[start:end],
+            )
+        }
+        self.assertEqual(len(expected), 65)
+
+        capability_codes = sorted({code for _, code, _ in expected})
+        placeholders = ",".join("?" for _ in capability_codes)
+        actual = {
+            (row[0], row[1], row[2])
+            for row in self.db.execute(
+                f"""
+                SELECT r.code, c.code, rc.scope_mode
+                FROM role_capability rc
+                JOIN role r ON r.id = rc.role_id
+                JOIN capability c ON c.id = rc.capability_id
+                WHERE c.code IN ({placeholders})
+                """,
+                capability_codes,
+            )
+        }
+        self.assertEqual(actual, expected, "D1 canonical grants must exactly match the six-role source policy")
+
+    def test_directory_capabilities_have_only_the_approved_eight_grants(self):
+        expected = {
+            "admin_pastor": {
+                ("team.manage", "branch"), ("area.manage", "branch"),
+                ("team.read", "branch"), ("area.read", "branch"),
+            },
+            "coordinator": {("team.read", "branch"), ("area.read", "branch")},
+            "team_leader": {("team.read", "team"), ("area.read", "team")},
+            "field_worker": set(),
+            "follow_up_volunteer": set(),
+            "prayer_intercessor": set(),
+        }
+        for role_code, allowed in expected.items():
+            actual = {
+                grant for grant in self.grants(role_code)
+                if grant[0] in {"team.manage", "area.manage", "team.read", "area.read"}
+            }
+            self.assertEqual(actual, allowed, f"unexpected team/area scope for {role_code}")
+
     def test_worker_compatibility_grants_match_the_explicit_migration_allowlist(self):
         migration = (MIGRATIONS / "0042_worker_route_capability_compatibility.sql").read_text(encoding="utf-8")
         start = migration.index("WITH worker_aliases(")
