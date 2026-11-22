@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { Activity, AlertTriangle, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, HandHeart, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { StaffNotificationCenter } from "./StaffNotificationCenter";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
-import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
+import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffRoleApprovalRequest, StaffSession, StandardStaffRoleCode, TaskCreateInput } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 import { ThemeToggle } from "../lib/theme";
 import { formatApplicationError } from "../lib/error-messages";
@@ -155,6 +155,18 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [showMobileMore, setShowMobileMore] = useState(false);
   const [staffStatusEdit, setStaffStatusEdit] = useState<{ profileId: string; nextStatus: "active" | "inactive" } | null>(null);
   const [staffStatusReason, setStaffStatusReason] = useState("");
+  const [roleAction, setRoleAction] = useState<{
+    profileId: string;
+    action: "assign" | "revoke" | "elevate" | "revoke_admin";
+    assignmentId?: string;
+    roleName?: string;
+  } | null>(null);
+  const [roleActionReason, setRoleActionReason] = useState("");
+  const [roleActionCode, setRoleActionCode] = useState<StandardStaffRoleCode>("field_worker");
+  const [elevationRequests, setElevationRequests] = useState<StaffRoleApprovalRequest[]>([]);
+  const [revocationRequests, setRevocationRequests] = useState<StaffRoleApprovalRequest[]>([]);
+  const [roleReviewReasons, setRoleReviewReasons] = useState<Record<string, string>>({});
+  const [processingRoleRequestId, setProcessingRoleRequestId] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState("");
   const [resetReasons, setResetReasons] = useState<Record<string, string>>({});
   const [processingResetId, setProcessingResetId] = useState<string | null>(null);
@@ -217,6 +229,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canReadStaffDirectory = hasCapability(session, "staff.directory.read", branchId);
   const canManageStaffAccounts = hasCapability(session, "staff.account.manage", branchId);
   const canCreateStaffAccounts = hasCapability(session, "staff.account.manage", branchId) && hasCapability(session, "access.role.assign", branchId);
+  const canAssignStaffRoles = hasCapability(session, "staff.role.assign", branchId);
+  const canApproveStaffRoles = hasCapability(session, "staff.role.approve", branchId);
   useEffect(() => {
     if (
       !showTaskForm || !canReadContacts ||
@@ -408,11 +422,13 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setLoadingMore(false);
     setRefreshing(true); setActionError("");
     try {
-      const [contactResult, taskResult, resetResult, staffResult] = await Promise.all([
+      const [contactResult, taskResult, resetResult, staffResult, elevationResult, revocationResult] = await Promise.all([
         canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0, search: debouncedQuery || undefined }) : Promise.resolve(null),
         canReadTasks ? api.listFollowUpTasks(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
         canManagePasswordResets ? api.listStaffPasswordResetRequests(branchId) : Promise.resolve(null),
         canReadStaffDirectory ? api.listStaffDirectory(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
+        canApproveStaffRoles ? api.listAdminElevationRequests(branchId) : Promise.resolve(null),
+        canApproveStaffRoles ? api.listAdminRevocationRequests(branchId) : Promise.resolve(null),
       ]);
       if (contactResult) {
         setContacts(contactResult.data);
@@ -424,6 +440,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       }
       if (resetResult) setResetRequests(resetResult.data);
       if (staffResult) setStaffMembers(staffResult.data);
+      if (elevationResult) setElevationRequests(elevationResult.data);
+      if (revocationResult) setRevocationRequests(revocationResult.data);
     } catch (error) { handleActionError(error); }
     finally { setRefreshing(false); }
   };
@@ -503,6 +521,84 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     finally {
       staffMutationInFlight.current = false;
       setSaving(false);
+    }
+  };
+
+  const submitStaffRoleAction = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!roleAction || !branchId || !canAssignStaffRoles || staffMutationInFlight.current || saving) return;
+    const reason = roleActionReason.trim();
+    if (reason.length < 10 || reason.length > 500) {
+      setActionError("Provide an audit reason between 10 and 500 characters.");
+      return;
+    }
+    staffMutationInFlight.current = true;
+    setSaving(true); setActionError(""); setActionNotice("");
+    try {
+      if (roleAction.action === "assign") {
+        await api.assignStaffRole(branchId, roleAction.profileId, roleActionCode, reason);
+        setActionNotice("Staff role assigned. The change is recorded in the access audit.");
+      } else if (roleAction.action === "revoke" && roleAction.assignmentId) {
+        await api.revokeStaffRole(branchId, roleAction.assignmentId, reason);
+        setActionNotice("Staff role revoked. The change is recorded in the access audit.");
+      } else if (roleAction.action === "elevate") {
+        await api.requestAdminElevation(branchId, roleAction.profileId, reason);
+        setActionNotice("Admin/Pastor elevation request submitted for independent review.");
+      } else if (roleAction.action === "revoke_admin" && roleAction.assignmentId) {
+        await api.requestAdminRevocation(branchId, roleAction.assignmentId, reason);
+        setActionNotice("Admin/Pastor revocation request submitted for independent review.");
+      }
+      setRoleAction(null);
+      setRoleActionReason("");
+      const directory = await api.listStaffDirectory(branchId, { limit: 50, offset: 0 });
+      setStaffMembers(directory.data);
+      if (canApproveStaffRoles) {
+        const [elevations, revocations] = await Promise.all([
+          api.listAdminElevationRequests(branchId), api.listAdminRevocationRequests(branchId),
+        ]);
+        setElevationRequests(elevations.data);
+        setRevocationRequests(revocations.data);
+      }
+    } catch (error) { handleActionError(error); }
+    finally {
+      staffMutationInFlight.current = false;
+      setSaving(false);
+    }
+  };
+
+  const reviewStaffRoleRequest = async (
+    kind: "elevation" | "revocation",
+    request: StaffRoleApprovalRequest,
+    decision: "approve" | "reject",
+  ) => {
+    if (!canApproveStaffRoles || !branchId || staffMutationInFlight.current || processingRoleRequestId) return;
+    const reason = (roleReviewReasons[request.id] ?? "").trim();
+    if (reason.length < 10 || reason.length > 500) {
+      setActionError("Enter a review reason between 10 and 500 characters.");
+      return;
+    }
+    staffMutationInFlight.current = true;
+    setProcessingRoleRequestId(request.id);
+    setActionError(""); setActionNotice("");
+    try {
+      if (kind === "elevation") await api.reviewAdminElevation(branchId, request.id, decision, reason);
+      else await api.reviewAdminRevocation(branchId, request.id, decision, reason);
+      setActionNotice(decision === "approve"
+        ? (kind === "elevation" ? "Admin/Pastor role elevation approved and applied." : "Admin/Pastor role revocation approved and applied.")
+        : "The role request was rejected.");
+      setRoleReviewReasons((current) => { const next = { ...current }; delete next[request.id]; return next; });
+      const [directory, elevations, revocations] = await Promise.all([
+        api.listStaffDirectory(branchId, { limit: 50, offset: 0 }),
+        api.listAdminElevationRequests(branchId),
+        api.listAdminRevocationRequests(branchId),
+      ]);
+      setStaffMembers(directory.data);
+      setElevationRequests(elevations.data);
+      setRevocationRequests(revocations.data);
+    } catch (error) { handleActionError(error); }
+    finally {
+      staffMutationInFlight.current = false;
+      setProcessingRoleRequestId(null);
     }
   };
 
