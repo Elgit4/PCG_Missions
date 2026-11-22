@@ -460,3 +460,21 @@ Verification for source commit `9b5602ed34852cc24904394b4e69d5e15909ec19`:
 - The deployed preview Worker currently has `SUPABASE_SERVICE_ROLE_KEY` as a **plain-text variable**, while its secret inventory has no corresponding `secret_text` binding. Rotate the Supabase server key, add the replacement as a Cloudflare Worker Secret with this name, and remove the plain-text variable before deploying the latest Admin-only staff-provisioning bundle. Never place it in Wrangler `[vars]`, Pages variables, GitHub comments, or browser code.
 - Cloudflare R2 remains unavailable on this account (previous API response 10042). No event-media R2 bucket exists. The Supabase project also currently has no Storage buckets; no alternative storage backend was created or switched without explicit approval.
 - No production Worker, production Pages routing, production D1 data, Supabase production records, or SMS delivery was changed in this work.
+
+
+## 2026-11-22 — Preview Worker v19 deployed and smoke-verified
+
+The Worker bundle built from source commit `9b5602ed34852cc24904394b4e69d5e15909ec19` is now deployed to the non-production preview Worker:
+- Worker: `pcg-missions-api-preview`
+- Version: `19` (`c53a5d90-bfdc-4478-b030-2fb8e7d39c3a`)
+- Deployment: `d0f5885c-8279-4f7b-a7d4-a6ce6262b9bf` at 100%
+- D1: `pcg-missions-migration-test` (`74074d53-1edc-4ad7-83e6-bb3333a6ab4f`), schema version 43
+- Environment: `non-production`
+
+Post-deployment GitHub smoke run `44985511475` passed. It verified health/environment/schema, anonymous `401 UNAUTHENTICATED` boundaries for existing and new calendar/announcement routes, team/service-area route protection, and CORS for the Pages preview origin.
+
+The plaintext `SUPABASE_SERVICE_ROLE_KEY` binding was removed from the Worker during this deployment, and query-string redaction is enabled. The Worker secret inventory is currently empty. Consequently, Admin-only Supabase Auth account provisioning correctly fails closed until the replacement server key is added as a Cloudflare Worker Secret. Do not reintroduce it as a plaintext variable.
+
+The Pages preview containing the latest frontend adapter changes is confirmed successful at `https://b47d0419.pcg-missions.pages.dev` (branch `feat/cloudflare-d1-migration-foundation`, commit `62c171036eea6a930533927b187162d17a948007`). A later docs-only Pages deployment is still queued; no frontend source changes were made after the successful deployment. The Pages preview branch filter now excludes `artifacts/*` so immutable Worker bundle branches do not consume Pages preview builds.
+
+This remains a non-production verification. Authenticated real-D1 writes, six-role browser acceptance, staff provisioning, password-reset acceptance, private flyer storage, backup/restore rehearsal, and final data reconciliation remain release gates. No production deployment or production data change was made.
