@@ -12,7 +12,7 @@ const PublicVisitorSite = lazy(async () => {
   return { default: module.PublicVisitorSite };
 });
 import { PcgAuthClient } from "./lib/auth";
-import { CMI_PREVIEW_MODE, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./lib/supabase-config";
+import { CMI_PREVIEW_MODE, CMI_WORKER_API_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./lib/supabase-config";
 import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
 import { ThemeToggle } from "./lib/theme";
 import { formatApplicationError } from "./lib/error-messages";
@@ -28,7 +28,7 @@ function StaffApp() {
   const auth = useMemo(() => {
     if (!supabaseUrl || !publishableKey) return null;
     try {
-      return new PcgAuthClient(supabaseUrl, publishableKey, undefined, undefined, CMI_PREVIEW_MODE);
+      return new PcgAuthClient(supabaseUrl, publishableKey, undefined, undefined, CMI_PREVIEW_MODE, CMI_WORKER_API_URL);
     } catch {
       return null;
     }
