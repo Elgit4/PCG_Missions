@@ -1486,3 +1486,71 @@ test("non-admin staff cannot manage event assignment workspace or create assignm
   assert.equal(response.status, 403);
   assert.equal((await response.json()).error.code, "CAPABILITY_DENIED");
 });
+
+
+test("Admin/Pastor approval performs server-side Auth reset and returns a one-time credential without storing it", async (t) => {
+  const authCalls = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    authCalls.push({ url: String(url), method: init?.method ?? "GET", body: init?.body ?? null });
+    if (String(url).endsWith("/auth/v1/user")) {
+      return Response.json({ id: AUTH_USER_ID, email: "admin@example.test" });
+    }
+    return new Response(null, { status: 200 });
+  });
+  const fixture = authorizedDirectoryEnv("admin_pastor", [["staff.password_reset.manage", "branch"]]);
+  const resetId = "90000000-0000-4000-8000-000000000002";
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/admin/password-reset-requests/" + resetId + "/approve",
+    {
+      method: "POST",
+      headers: { Authorization: "Bearer synthetic-admin-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+      body: JSON.stringify({ branch_id: BRANCH_ID, reason: "Verified the staff member through a direct call" }),
+    },
+  ), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.status, "approved");
+  assert.equal(payload.data.temporary_password_sent, false);
+  assert.equal(payload.data.manual_handoff_required, true);
+  assert.equal(payload.data.must_change_password, true);
+  assert.equal(payload.data.password_expires_in_hours, 24);
+  assert.match(payload.data.temporary_password, /[A-Z]/);
+  assert.match(payload.data.temporary_password, /[a-z]/);
+  assert.match(payload.data.temporary_password, /[0-9]/);
+
+  assert.equal(authCalls.length, 2);
+  assert.equal(authCalls[1].url, "https://example.supabase.co/auth/v1/admin/users/10000000-0000-4000-8000-000000000002");
+  assert.equal(authCalls[1].method, "PUT");
+  assert.deepEqual(JSON.parse(authCalls[1].body), { password: payload.data.temporary_password });
+  assert.equal(fixture.batches.length, 1);
+  assert.match(fixture.batches[0][0].sql, /UPDATE staff_profile/);
+  assert.match(fixture.batches[0][1].sql, /UPDATE staff_password_reset_request/);
+  assert.match(fixture.batches[0][2].sql, /INSERT INTO staff_password_reset_audit/);
+  assert.equal(JSON.stringify(fixture.batches).includes(payload.data.temporary_password), false);
+});
+
+test("Admin/Pastor denial records a reason and does not mutate the Supabase Auth password", async (t) => {
+  const authCalls = [];
+  t.mock.method(globalThis, "fetch", async (url) => {
+    authCalls.push(String(url));
+    return Response.json({ id: AUTH_USER_ID, email: "admin@example.test" });
+  });
+  const fixture = authorizedDirectoryEnv("admin_pastor", [["staff.password_reset.manage", "branch"]]);
+  const resetId = "90000000-0000-4000-8000-000000000002";
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/admin/password-reset-requests/" + resetId + "/deny",
+    {
+      method: "POST",
+      headers: { Authorization: "Bearer synthetic-admin-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+      body: JSON.stringify({ branch_id: BRANCH_ID, reason: "The request could not be independently verified" }),
+    },
+  ), fixture.env);
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).data, { status: "denied" });
+  assert.deepEqual(authCalls, ["https://example.supabase.co/auth/v1/user"]);
+  assert.equal(fixture.batches.length, 1);
+  assert.match(fixture.batches[0][0].sql, /status = 'denied'/);
+  assert.match(fixture.batches[0][1].sql, /INSERT INTO staff_password_reset_audit/);
+  assert.match(fixture.batches[0][1].values.join(" "), /The request could not be independently verified/);
+});
