@@ -349,6 +349,7 @@ async function listAdminElevationRequests(
 
   return json(200, {
     ok: true,
+    data: rows.results ?? [],
     requests: rows.results ?? [],
   }, requestId, origin);
 }
