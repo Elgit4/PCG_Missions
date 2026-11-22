@@ -1368,3 +1368,21 @@ test("password change and admin reset endpoints reject anonymous requests before
   assert.equal(listPayload.error.code, "UNAUTHENTICATED");
   assert.equal(calls.length, 0);
 });
+
+test("password lifecycle endpoints reject anonymous callers before D1 access", async () => {
+  const { env, calls } = fakeEnv();
+  const change = await worker.fetch(new Request("https://worker.example/api/v1/auth/password/change", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  }), env);
+  const changePayload = await change.json();
+  assert.equal(change.status, 401);
+  assert.equal(changePayload.error.code, "UNAUTHENTICATED");
+
+  const requests = await worker.fetch(new Request("https://worker.example/api/v1/admin/password-reset-requests"), env);
+  const requestsPayload = await requests.json();
+  assert.equal(requests.status, 401);
+  assert.equal(requestsPayload.error.code, "UNAUTHENTICATED");
+  assert.equal(calls.length, 0);
+});
