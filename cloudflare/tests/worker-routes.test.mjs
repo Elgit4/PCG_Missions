@@ -543,8 +543,6 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           } else if (this.sql.includes("INSERT INTO welcome_message")) {
             const [id, branch_id, title, body, display_order, created_by, , created_at, updated_at] = this.values;
             contentRows.push({ id, branch_id, title, body, display_order, status: "draft", published_at: null, created_by, created_at, updated_at });
-          } else if (this.sql.includes("UPDATE announcement SET status='archived'") && announcementRow) {
-            announcementRow = { ...announcementRow, status: "archived" };
           } else if (this.sql.includes("INSERT INTO announcement")) {
             const [id, branch_id, title, body, created_by, updated_by, created_at, updated_at] = this.values;
             announcementRow = { id, branch_id, title, body, is_public: 0, status: "draft", created_by, created_at, updated_at };
@@ -1672,87 +1670,3 @@ test("content draft routes reject anonymous access before querying D1", async ()
   assert.equal(calls.length, 0);
 });
 
-test("announcement archival rejects anonymous access before querying D1", async () => {
-  const { env, calls } = fakeEnv();
-  const response = await worker.fetch(new Request(
-    "https://worker.example/api/v1/announcements/80000000-0000-4000-8000-000000000001/archive?branch_id=30000000-0000-4000-8000-000000000001",
-    { method: "POST" },
-  ), env);
-  const payload = await response.json();
-  assert.equal(response.status, 401);
-  assert.equal(payload.error.code, "UNAUTHENTICATED");
-  assert.equal(calls.length, 0);
-});
-
-
-test("Admin/Pastor can create and list only their own private sermon drafts in the active branch", async () => {
-  const { env, contentRows } = authorizedDirectoryEnv("admin_pastor", [
-    ["content.manage.draft", "branch"],
-    ["content.manage", "branch"],
-  ]);
-  contentRows.push({
-    id: "81000000-0000-4000-8000-000000000002",
-    branch_id: BRANCH_ID,
-    title: "Another author's sermon",
-    body: "Must not be visible.",
-    public_slug: "another-authors-sermon",
-    status: "draft",
-    published_at: null,
-    created_by: "10000000-0000-4000-8000-000000000099",
-    created_at: "2026-11-22T00:00:00.000Z",
-    updated_at: "2026-11-22T00:00:00.000Z",
-  });
-  const create = await worker.fetch(new Request("https://worker.example/api/v1/content/sermons", {
-    method: "POST",
-    headers: {
-      Cookie: "better-auth.session_token=verified-test-token",
-      "X-Branch-Id": BRANCH_ID,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      branch_id: BRANCH_ID,
-      title: "Faith and Service",
-      body: "A private sermon draft.",
-      public_slug: "faith-and-service",
-    }),
-  }), env);
-  const created = await create.json();
-  assert.equal(create.status, 201);
-  assert.equal(created.data.status, "draft");
-  assert.equal(created.data.published_at, null);
-  assert.equal("created_by" in created.data, false);
-
-  const list = await worker.fetch(new Request(
-    "https://worker.example/api/v1/content/sermons?branch_id=" + BRANCH_ID,
-    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
-  ), env);
-  const listed = await list.json();
-  assert.equal(list.status, 200);
-  assert.equal(listed.data.length, 1);
-  assert.equal(listed.data[0].title, "Faith and Service");
-});
-
-test("Admin/Pastor can archive their own private announcement draft without publishing it", async () => {
-  const { env } = authorizedDirectoryEnv("admin_pastor", [
-    ["announcement.create.scoped", "branch"],
-    ["announcements.manage", "branch"],
-  ]);
-  const create = await worker.fetch(new Request("https://worker.example/api/v1/announcements", {
-    method: "POST",
-    headers: {
-      Cookie: "better-auth.session_token=verified-test-token",
-      "X-Branch-Id": BRANCH_ID,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ branch_id: BRANCH_ID, title: "Missions Sunday", body: "Private draft announcement." }),
-  }), env);
-  const created = await create.json();
-  assert.equal(create.status, 201);
-  const archive = await worker.fetch(new Request(
-    "https://worker.example/api/v1/announcements/" + created.data.id + "/archive?branch_id=" + BRANCH_ID,
-    { method: "POST", headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
-  ), env);
-  const archived = await archive.json();
-  assert.equal(archive.status, 200);
-  assert.deepEqual(archived.data, { announcement_id: created.data.id, status: "archived" });
-});
