@@ -789,6 +789,7 @@ export class CmiApiClient {
     const method = (options.method ?? "GET").toUpperCase();
     const workerPath = workerApiPath(functionName, suffix, method);
     const workerFollowupListRequest = functionName === "staff-operations" && suffix === "/followup/tasks" && method === "GET";
+    const workerAssignedPrayerRequest = functionName === "pastoral-operations" && suffix === "/prayer/requests/assigned" && method === "GET";
     const useWorkerApi = this.workerApiBaseUrl !== null && workerPath !== null;
     if (this.previewMode && this.workerApiBaseUrl !== null && !useWorkerApi && method !== "GET") {
       throw new CmiApiError(
@@ -808,7 +809,7 @@ export class CmiApiClient {
         ? new URL("/api/auth?resource=staff-session", window.location.origin)
         : new URL(`${this.baseUrl}/${functionName}${suffix}`);
     for (const [key, value] of Object.entries(options.query ?? {})) {
-      if (useWorkerApi && workerFollowupListRequest && key === "branch_id") continue;
+      if (useWorkerApi && (workerFollowupListRequest || workerAssignedPrayerRequest) && key === "branch_id") continue;
       if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
     }
     const headers = new Headers({ Accept: "application/json" });
