@@ -108,6 +108,38 @@ test("rejects protected staff context without a bearer token before querying D1"
   assert.equal(calls.length, 0);
 });
 
+test("direct staff account provisioning rejects anonymous requests before database access", async () => {
+  const { env, calls } = fakeEnv();
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/staff/accounts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      branch_id: "00000000-0000-4000-8000-000000000001",
+      full_name: "Test Staff",
+      email: "staff@example.test",
+      role_code: "field_worker",
+      reason: "Create a test staff account",
+    }),
+  }), env);
+  const payload = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(payload.error.code, "UNAUTHENTICATED");
+  assert.equal(calls.length, 0);
+});
+
+test("legacy staff invitation endpoints are permanently disabled", async () => {
+  const { env, calls } = fakeEnv();
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/staff/invitations/accept", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ invitation_token: "x".repeat(43), password: "not-used" }),
+  }), env);
+  const payload = await response.json();
+  assert.equal(response.status, 410);
+  assert.equal(payload.error.code, "STAFF_INVITATIONS_DISABLED");
+  assert.equal(calls.length, 0);
+});
+
 test("team collection reads reject anonymous requests", async () => {
   const { env, calls } = fakeEnv();
   const response = await worker.fetch(new Request("https://worker.example/api/v1/teams?branch_id=00000000-0000-4000-8000-000000000001"), env);
