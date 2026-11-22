@@ -233,17 +233,7 @@ async function assignStaffRole(
     return json(409, { ok: false, error: { code: "ROLE_ASSIGNMENT_CONFLICT" } }, requestId, origin);
   }
 
-  return json(201, {
-    ok: true,
-    assignment: {
-      id: assignmentId,
-      target_profile_id: target.id,
-      role_code: roleCode,
-      branch_id: access.activeBranch.branchId,
-      starts_at: startsAt,
-      ends_at: endsAt,
-    },
-  }, requestId, origin);
+  return json(201, { ok: true, data: { id: assignmentId, target_profile_id: target.id, role_code: roleCode, branch_id: access.activeBranch.branchId, starts_at: startsAt, ends_at: endsAt }, assignment: { id: assignmentId, target_profile_id: target.id, role_code: roleCode, branch_id: access.activeBranch.branchId, starts_at: startsAt, ends_at: endsAt } }, requestId, origin);
 }
 
 async function revokeStaffRole(
@@ -324,7 +314,7 @@ async function revokeStaffRole(
     return json(409, { ok: false, error: { code: "ROLE_REVOCATION_CONFLICT" } }, requestId, origin);
   }
 
-  return json(200, { ok: true, revoked_assignment_id: existing.id }, requestId, origin);
+  return json(200, { ok: true, data: { revoked_assignment_id: existing.id }, revoked_assignment_id: existing.id }, requestId, origin);
 }
 
 
@@ -432,13 +422,8 @@ async function createAdminElevationRequest(
 
   return json(201, {
     ok: true,
-    elevation_request: {
-      id: elevationId,
-      target_profile_id: target.id,
-      branch_id: access.activeBranch.branchId,
-      status: "pending",
-      requested_at: requestedAt,
-    },
+    data: { id: elevationId, target_profile_id: target.id, branch_id: access.activeBranch.branchId, status: "pending", requested_at: requestedAt },
+    elevation_request: { id: elevationId, target_profile_id: target.id, branch_id: access.activeBranch.branchId, status: "pending", requested_at: requestedAt },
   }, requestId, origin);
 }
 
@@ -495,7 +480,7 @@ async function reviewAdminElevationRequest(
     } catch {
       return json(409, { ok: false, error: { code: "ELEVATION_REVIEW_NOT_AUTHORIZED" } }, requestId, origin);
     }
-    return json(200, { ok: true, elevation_request_id: elevationId, status: "rejected" }, requestId, origin);
+    return json(200, { ok: true, data: { elevation_request_id: elevationId, status: "rejected" }, elevation_request_id: elevationId, status: "rejected" }, requestId, origin);
   }
 
   const assignmentId = crypto.randomUUID();
@@ -536,12 +521,7 @@ async function reviewAdminElevationRequest(
     }, requestId, origin);
   }
 
-  return json(200, {
-    ok: true,
-    elevation_request_id: elevationId,
-    assignment_id: assignmentId,
-    status: "applied",
-  }, requestId, origin);
+  return json(200, { ok: true, data: { elevation_request_id: elevationId, assignment_id: assignmentId, status: "applied" }, elevation_request_id: elevationId, assignment_id: assignmentId, status: "applied" }, requestId, origin);
 }
 
 
@@ -969,7 +949,7 @@ async function listStaffDirectory(
   const rows = await env.DB.prepare(`
     SELECT sp.id, sp.full_name, sp.account_status, sp.last_active_at,
            (
-             SELECT json_group_array(json_object('code', r2.code, 'name', r2.name))
+             SELECT json_group_array(json_object('assignment_id', sra2.id, 'code', r2.code, 'name', r2.name, 'starts_at', sra2.starts_at, 'ends_at', sra2.ends_at))
              FROM staff_role_assignment sra2
              JOIN role r2 ON r2.id = sra2.role_id AND r2.is_active = 1
              WHERE sra2.staff_profile_id = sp.id
@@ -1000,8 +980,8 @@ async function listStaffDirectory(
     id: string; full_name: string; account_status: string; last_active_at: string | null; roles_json: string | null;
   }>();
   const staff = (rows.results ?? []).map((row) => {
-    let roles: Array<{ code: string; name: string }> = [];
-    try { roles = JSON.parse(row.roles_json ?? "[]") as Array<{ code: string; name: string }>; }
+    let roles: Array<{ assignment_id: string; code: string; name: string; starts_at: string; ends_at: string | null }> = [];
+    try { roles = JSON.parse(row.roles_json ?? "[]") as Array<{ assignment_id: string; code: string; name: string; starts_at: string; ends_at: string | null }>; }
     catch { roles = []; }
     return { id: row.id, full_name: row.full_name, account_status: row.account_status, roles };
   });
@@ -1109,7 +1089,7 @@ async function listAdminRevocationRequests(
     id: string; assignment_id: string; target_profile_id: string; target_name: string;
     requested_by: string; requester_name: string; reason: string; requested_at: string;
   }>();
-  return json(200, { ok: true, requests: rows.results ?? [] }, requestId, origin);
+  return json(200, { ok: true, data: rows.results ?? [], requests: rows.results ?? [] }, requestId, origin);
 }
 
 async function createAdminRevocationRequest(
@@ -1158,17 +1138,7 @@ async function createAdminRevocationRequest(
   } catch {
     return json(409, { ok: false, error: { code: "REVOCATION_REQUEST_CONFLICT" } }, requestId, origin);
   }
-  return json(201, {
-    ok: true,
-    revocation_request: {
-      id: requestIdForRevocation,
-      assignment_id: assignment.id,
-      target_profile_id: assignment.staff_profile_id,
-      branch_id: access.activeBranch.branchId,
-      status: "pending",
-      requested_at: now,
-    },
-  }, requestId, origin);
+  return json(201, { ok: true, data: { id: requestIdForRevocation, assignment_id: assignment.id, target_profile_id: assignment.staff_profile_id, branch_id: access.activeBranch.branchId, status: "pending", requested_at: now }, revocation_request: { id: requestIdForRevocation, assignment_id: assignment.id, target_profile_id: assignment.staff_profile_id, branch_id: access.activeBranch.branchId, status: "pending", requested_at: now } }, requestId, origin);
 }
 
 async function reviewAdminRevocationRequest(
@@ -1206,7 +1176,7 @@ async function reviewAdminRevocationRequest(
     } catch {
       return json(409, { ok: false, error: { code: "REVOCATION_REVIEW_NOT_AUTHORIZED" } }, requestId, origin);
     }
-    return json(200, { ok: true, revocation_request_id: revocationId, status: "rejected" }, requestId, origin);
+    return json(200, { ok: true, data: { revocation_request_id: revocationId, status: "rejected" }, revocation_request_id: revocationId, status: "rejected" }, requestId, origin);
   }
 
   try {
@@ -1244,7 +1214,7 @@ async function reviewAdminRevocationRequest(
   } catch {
     return json(409, { ok: false, error: { code: "REVOCATION_REVIEW_NOT_AUTHORIZED" } }, requestId, origin);
   }
-  return json(200, { ok: true, revocation_request_id: revocationId, status: "applied" }, requestId, origin);
+  return json(200, { ok: true, data: { revocation_request_id: revocationId, status: "applied" }, revocation_request_id: revocationId, status: "applied" }, requestId, origin);
 }
 
 
