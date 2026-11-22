@@ -4039,7 +4039,7 @@ async function eventOperationContext(request: Request, env: Env, branchId: strin
   const context=await resolveStaffContext(request,env);
   if(context.state!=="authenticated") return {response:mapCapabilityFailure(context.state,requestId,origin)} as const;
   if(!context.activeBranch||context.activeBranch.branchId!==branchId) return {response:json(403,{ok:false,error:{code:"BRANCH_NOT_AUTHORIZED"}},requestId,origin)} as const;
-  const event=await env.DB.prepare("SELECT id,branch_id,status,visibility,registration_state,capacity FROM event WHERE id=? AND branch_id=?").bind(eventId,branchId).first<Record<string,unknown>>();
+  const event=await env.DB.prepare("SELECT id,branch_id,title,starts_at,ends_at,status,visibility,registration_state,capacity FROM event WHERE id=? AND branch_id=?").bind(eventId,branchId).first<Record<string,unknown>>();
   if(!event) return {response:json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin)} as const;
   return {context,event} as const;
 }
@@ -4269,6 +4269,95 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
   if("response" in operation && operation.response) return operation.response;
   const {context,event}=operation;
   const now=new Date().toISOString();
+
+  const isAssignmentWorkspace=parts.length===5&&parts[4]==="assignments";
+  const assignmentKind=parts[4]==="staff-assignments"?"staff":parts[4]==="team-assignments"?"team":null;
+  const isAssignmentCollection=parts.length===5&&assignmentKind!==null;
+  const isAssignmentRevoke=parts.length===7&&assignmentKind!==null&&parts[6]==="revoke";
+  const canManageAssignments=eventHasScopedGrant(context,"events.manage","branch");
+
+  if(isAssignmentWorkspace&&request.method==="GET"){
+    if(!canManageAssignments) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    const [staffRows,teamRows,staffCandidates,teamCandidates]=await Promise.all([
+      env.DB.prepare("SELECT a.id,a.event_id,a.branch_id,a.staff_auth_user_id,a.assignment_role,a.starts_at,a.ends_at,a.revoked_at,a.created_at,sp.full_name AS staff_name FROM event_staff_assignment a LEFT JOIN staff_profile sp ON sp.auth_user_id=a.staff_auth_user_id WHERE a.event_id=? AND a.branch_id=? ORDER BY a.starts_at,a.id").bind(eventId,branchId).all(),
+      env.DB.prepare("SELECT a.id,a.event_id,a.branch_id,a.team_id,a.assignment_role,a.starts_at,a.ends_at,a.revoked_at,a.created_at,t.name AS team_name FROM event_team_assignment a LEFT JOIN team t ON t.id=a.team_id AND t.branch_id=a.branch_id WHERE a.event_id=? AND a.branch_id=? ORDER BY a.starts_at,a.id").bind(eventId,branchId).all(),
+      env.DB.prepare("SELECT DISTINCT sp.auth_user_id,sp.full_name FROM staff_profile sp JOIN staff_role_assignment sra ON sra.staff_profile_id=sp.id JOIN role r ON r.id=sra.role_id AND r.is_active=1 WHERE sra.branch_id=? AND sp.account_status='active' AND sra.revoked_at IS NULL AND sra.starts_at<=? AND (sra.ends_at IS NULL OR sra.ends_at>?) ORDER BY sp.full_name COLLATE NOCASE LIMIT 200").bind(branchId,now,now).all(),
+      env.DB.prepare("SELECT id,name FROM team WHERE branch_id=? AND is_active=1 ORDER BY name COLLATE NOCASE LIMIT 200").bind(branchId).all(),
+    ]);
+    return json(200,{ok:true,data:{
+      staff_assignments:staffRows.results??[],
+      team_assignments:teamRows.results??[],
+      staff_candidates:staffCandidates.results??[],
+      team_candidates:teamCandidates.results??[],
+    }},requestId,origin);
+  }
+
+  if(isAssignmentCollection&&request.method==="POST"){
+    if(!canManageAssignments) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    if(event.status==="cancelled"||event.status==="completed") return json(409,{ok:false,error:{code:"EVENT_NOT_ASSIGNABLE"}},requestId,origin);
+    const parsed=await readJsonBody(request,8192);
+    if(!parsed.ok||!isPlainObject(parsed.value)) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_ASSIGNMENT"}},requestId,origin);
+    const payload=parsed.value;
+    const allowedKeys=assignmentKind==="staff"?["staff_auth_user_id","assignment_role","starts_at","ends_at"]:["team_id","assignment_role","starts_at","ends_at"];
+    if(Object.keys(payload).some(key=>!allowedKeys.includes(key))) return json(400,{ok:false,error:{code:"INVALID_ASSIGNMENT"}},requestId,origin);
+    const targetId=assignmentKind==="staff"?payload.staff_auth_user_id:payload.team_id;
+    const role=payload.assignment_role;
+    const roles=assignmentKind==="staff"?["owner","organizer","checkin","support"]:["organizer","ushering","support"];
+    if(!isUuidValue(targetId)||typeof role!=="string"||!roles.includes(role)||typeof payload.starts_at!=="string"||
+       (payload.ends_at!==undefined&&payload.ends_at!==null&&typeof payload.ends_at!=="string")){
+      return json(400,{ok:false,error:{code:"INVALID_ASSIGNMENT"}},requestId,origin);
+    }
+    const start=Date.parse(payload.starts_at);
+    const eventStart=Date.parse(String(event.starts_at??""));
+    const eventEnd=Date.parse(String(event.ends_at??""));
+    const requestedEnd=payload.ends_at?Date.parse(String(payload.ends_at)):eventEnd;
+    if(!Number.isFinite(start)||!Number.isFinite(eventStart)||!Number.isFinite(eventEnd)||
+       !Number.isFinite(requestedEnd)||start<eventStart||start>=eventEnd||requestedEnd<=start||requestedEnd>eventEnd){
+      return json(422,{ok:false,error:{code:"INVALID_ASSIGNMENT_WINDOW"}},requestId,origin);
+    }
+    const startsAt=new Date(start).toISOString(),endsAt=new Date(requestedEnd).toISOString();
+    if(assignmentKind==="staff"){
+      const profile=await env.DB.prepare("SELECT id,account_status FROM staff_profile WHERE auth_user_id=? LIMIT 1").bind(targetId).first<{id:string;account_status:string}>();
+      if(!profile||profile.account_status!=="active") return json(422,{ok:false,error:{code:"STAFF_NOT_ASSIGNABLE"}},requestId,origin);
+      const membership=await env.DB.prepare("SELECT sra.id FROM staff_role_assignment sra JOIN role r ON r.id=sra.role_id AND r.is_active=1 WHERE sra.staff_profile_id=? AND sra.branch_id=? AND sra.revoked_at IS NULL AND sra.starts_at<=? AND (sra.ends_at IS NULL OR sra.ends_at>?) LIMIT 1")
+        .bind(profile.id,branchId,startsAt,endsAt).first();
+      if(!membership) return json(422,{ok:false,error:{code:"STAFF_NOT_IN_BRANCH"}},requestId,origin);
+    }else{
+      const team=await env.DB.prepare("SELECT id FROM team WHERE id=? AND branch_id=? AND is_active=1 LIMIT 1").bind(targetId,branchId).first();
+      if(!team) return json(422,{ok:false,error:{code:"TEAM_NOT_ASSIGNABLE"}},requestId,origin);
+    }
+    const id=crypto.randomUUID();
+    const table=assignmentKind==="staff"?"event_staff_assignment":"event_team_assignment";
+    const targetColumn=assignmentKind==="staff"?"staff_auth_user_id":"team_id";
+    const statement=env.DB.prepare("INSERT INTO "+table+" (id,event_id,branch_id,"+targetColumn+",assignment_role,assigned_by,starts_at,ends_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)")
+      .bind(id,eventId,branchId,targetId,role,context.staff.userId,startsAt,endsAt,now);
+    try{
+      const result=await statement.run();
+      if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"ASSIGNMENT_CONFLICT"}},requestId,origin);
+    }catch{
+      return json(409,{ok:false,error:{code:"ASSIGNMENT_CONFLICT"}},requestId,origin);
+    }
+    return json(201,{ok:true,data:{
+      id,event_id:eventId,branch_id:branchId,[targetColumn]:targetId,assignment_role:role,
+      starts_at:startsAt,ends_at:endsAt,revoked_at:null,created_at:now,
+    }},requestId,origin);
+  }
+
+  if(isAssignmentRevoke&&request.method==="POST"){
+    if(!canManageAssignments) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    const assignmentId=parts[5];
+    if(!isUuidValue(assignmentId)) return json(400,{ok:false,error:{code:"INVALID_ASSIGNMENT_ID"}},requestId,origin);
+    const table=assignmentKind==="staff"?"event_staff_assignment":"event_team_assignment";
+    const existing=await env.DB.prepare("SELECT id,event_id,branch_id,starts_at,ends_at,revoked_at FROM "+table+" WHERE id=? AND event_id=? AND branch_id=? LIMIT 1")
+      .bind(assignmentId,eventId,branchId).first<Record<string,unknown>>();
+    if(!existing) return json(404,{ok:false,error:{code:"ASSIGNMENT_NOT_FOUND"}},requestId,origin);
+    if(existing.revoked_at) return json(200,{ok:true,data:existing,already_revoked:true},requestId,origin);
+    const revokedAt=new Date(Math.max(Date.now(),Date.parse(String(existing.starts_at)))).toISOString();
+    const result=await env.DB.prepare("UPDATE "+table+" SET revoked_at=? WHERE id=? AND event_id=? AND branch_id=? AND revoked_at IS NULL")
+      .bind(revokedAt,assignmentId,eventId,branchId).run();
+    if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"ASSIGNMENT_CHANGED"}},requestId,origin);
+    return json(200,{ok:true,data:{...existing,revoked_at:revokedAt},already_revoked:false},requestId,origin);
+  }
 
   if(parts.length===5&&parts[4]==="flyer"&&(request.method==="GET"||request.method==="POST")){
     return handleEventFlyer(request,env,eventId,branchId,context,requestId,origin);
