@@ -122,10 +122,6 @@ No announcement message is sent and no SMS provider is called. D-09, D-10 and D-
 
 ## 8. Verification
 
-The Cloudflare implementation is covered by Worker route tests for authentication boundaries, branch scope, draft creation and editing. The earlier Deno validation suite remains historical reference material.
-- branch UUID, title and body validation;
-- rejection of status, visibility, publication, actor and audience fields;
-- create/update allowlists;
-- bounded pagination and rejection of duplicate/unknown query parameters.
+The Cloudflare Worker route suite verifies the Better Auth session boundary, branch-scoped authorization, private draft creation and creator-only editing. The frontend API client tests verify same-origin routing, cookie credentials and branch headers. The Cloudflare D1 foundation workflow validates the migration/schema invariants.
 
-CI type-checks the function and runs the validation suite alongside the existing CMI Deno checks and isolated local database tests. No SQL migration or hosted Supabase change is included.
+No SQL migration or capability grant is introduced by this implementation. Production writes remain restricted to the existing Admin/Pastor branch grants.
