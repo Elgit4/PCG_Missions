@@ -3748,7 +3748,9 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     if(!["approved","returned","comment"].includes(String(decision))||comment.length>2000||(decision==="returned"&&comment.length===0)) return json(400,{ok:false,error:{code:"INVALID_REVIEW"}},requestId,origin);
     const row=await env.DB.prepare("SELECT id,branch_id,author_profile_id,team_id,status FROM ministry_report WHERE id=?").bind(reportIdForReview).first<Record<string,unknown>>();
     if(!row) return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
-    const context=await resolveStaffContext(request,env);
+    const scopedHeaders=new Headers(request.headers); scopedHeaders.set("x-branch-id",String(row.branch_id));
+    const scopedRequest=new Request(request.url,{headers:scopedHeaders});
+    const context=await resolveStaffContext(scopedRequest,env);
     if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
     if(!context.activeBranch||context.activeBranch.branchId!==row.branch_id) return json(403,{ok:false,error:{code:"BRANCH_NOT_AUTHORIZED"}},requestId,origin);
     if(row.author_profile_id===context.staff.profileId) return json(403,{ok:false,error:{code:"SELF_REVIEW_FORBIDDEN"}},requestId,origin);
@@ -3776,9 +3778,12 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     const correction=reportInput(parsed.value,true);
     if(!correction) return json(400,{ok:false,error:{code:"INVALID_REPORT_CORRECTION"}},requestId,origin);
     const row=await env.DB.prepare(`SELECT id,branch_id,author_profile_id,status,${REPORT_FIELDS.join(",")} FROM ministry_report WHERE id=?`).bind(reportIdForSubmit).first<Record<string,unknown>>();
-    const context=await resolveStaffContext(request,env);
+    if(!row) return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
+    const scopedHeaders=new Headers(request.headers); scopedHeaders.set("x-branch-id",String(row.branch_id));
+    const scopedRequest=new Request(request.url,{headers:scopedHeaders});
+    const context=await resolveStaffContext(scopedRequest,env);
     if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
-    if(!row||row.author_profile_id!==context.staff.profileId) return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
+    if(row.author_profile_id!==context.staff.profileId) return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
     if(!context.activeBranch||context.activeBranch.branchId!==row.branch_id) return json(403,{ok:false,error:{code:"BRANCH_NOT_AUTHORIZED"}},requestId,origin);
     if(row.status!=="returned") return json(409,{ok:false,error:{code:"REPORT_NOT_RETURNED"}},requestId,origin);
     const now=new Date().toISOString();
