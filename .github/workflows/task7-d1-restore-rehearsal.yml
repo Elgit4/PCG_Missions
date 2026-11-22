@@ -178,7 +178,7 @@ jobs:
             --data-binary @"$dump_file" \
             --dump-header "$headers_file" \
             --output /dev/null
-          upload_etag="$(awk 'BEGIN { IGNORECASE=1 } /^etag:/ { gsub(/\r/, ""); gsub(/"/, "", $2); print $2 }' "$headers_file" | tail -n 1)"
+          upload_etag="$(grep -i '^etag:' "$headers_file" | tail -n 1 | cut -d' ' -f2 | tr -d '\r"')"
           if [[ "$upload_etag" != "$etag" ]]; then
             echo "::error::D1 upload ETag did not match the SQL dump; ingestion was not started."
             exit 1
