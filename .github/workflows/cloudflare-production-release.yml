@@ -101,13 +101,13 @@ jobs:
         run: |
           set -euo pipefail
           secrets_json="$(npx wrangler secret list --env production)"
-          if ! printf '%s' "$secrets_json" | grep -q '"name":"BETTER_AUTH_SECRET"'; then
+          if ! printf '%s' "$secrets_json" | jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' >/dev/null; then
             openssl rand -hex 32 | npx wrangler secret put BETTER_AUTH_SECRET --env production >/dev/null
           fi
           printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --env production >/dev/null
           secrets_json="$(npx wrangler secret list --env production)"
-          printf '%s' "$secrets_json" | grep -q '"name":"BETTER_AUTH_SECRET"'
-          printf '%s' "$secrets_json" | grep -q '"name":"SUPABASE_SERVICE_ROLE_KEY"'
+          printf '%s' "$secrets_json" | jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' >/dev/null
+          printf '%s' "$secrets_json" | jq -e 'any(.[]; .name == "SUPABASE_SERVICE_ROLE_KEY")' >/dev/null
 
       - name: Deploy production Better Auth and D1 Worker
         run: npx wrangler deploy --env production
