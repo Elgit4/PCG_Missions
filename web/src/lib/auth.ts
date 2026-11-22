@@ -21,7 +21,7 @@ async function readPayload(response: Response): Promise<Record<string, unknown> 
 }
 
 export class PcgAuthClient {
-  constructor(private readonly fetcher: typeof fetch = fetch) {}
+  constructor(private readonly fetcher: typeof fetch = fetch.bind(globalThis)) {}
 
   private async request(path: string, method = "GET", body?: Record<string, unknown>): Promise<Record<string, unknown> | null> {
     let response: Response;
