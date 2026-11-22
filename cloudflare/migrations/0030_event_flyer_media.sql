@@ -1,4 +1,4 @@
--- Event flyer media metadata. Binary objects live in the isolated R2 bucket.
+-- Event flyer media metadata. Private image objects live in the Supabase Storage bucket.
 ALTER TABLE event ADD COLUMN flyer_key TEXT;
 ALTER TABLE event ADD COLUMN flyer_content_type TEXT CHECK(flyer_content_type IS NULL OR flyer_content_type IN ('image/jpeg','image/png','image/webp'));
 ALTER TABLE event ADD COLUMN flyer_size INTEGER CHECK(flyer_size IS NULL OR flyer_size BETWEEN 16 AND 5242880);
