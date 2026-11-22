@@ -514,6 +514,8 @@ export interface TaskUpdateInput {
 }
 export interface CmiRequestOptions {
   method?: "GET" | "POST" | "PATCH";
+  /** Branch scope sent as trusted request context, independently of route query parameters. */
+  branchId?: string;
   query?: Record<string, string | number | undefined>;
   body?: unknown;
   authenticated?: boolean;
@@ -759,7 +761,7 @@ export class CmiApiClient {
     const bodyBranchId = options.body && typeof options.body === "object" && "branch_id" in options.body
       ? (options.body as { branch_id?: unknown }).branch_id
       : undefined;
-    const branchId = options.query?.branch_id ?? bodyBranchId;
+    const branchId = options.branchId ?? options.query?.branch_id ?? bodyBranchId;
     if (branchId !== undefined && branchId !== null && branchId !== "") headers.set("X-Branch-Id", String(branchId));
     if (options.body !== undefined) headers.set("Content-Type", "application/json");
 
@@ -888,7 +890,8 @@ export class CmiApiClient {
 
   listFollowUpTasks(branchId: string, options: { limit?: number; offset?: number; status?: FollowUpTask["status"] } = {}) {
     return this.request<FollowUpTask[]>("staff-operations", "/followup/tasks", {
-      query: { branch_id: branchId, limit: options.limit ?? 25, offset: options.offset ?? 0, status: options.status },
+      branchId,
+      query: { limit: options.limit ?? 25, offset: options.offset ?? 0, status: options.status },
     });
   }
   createFollowUpTask(input: TaskCreateInput) {

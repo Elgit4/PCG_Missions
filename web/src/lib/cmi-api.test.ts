@@ -57,6 +57,22 @@ describe("Cloudflare Worker API client", () => {
     expect(init.credentials).toBe("include");
   });
 
+  it("sends follow-up branch scope in the header without an unsupported branch_id query parameter", async () => {
+    const fetcher = vi.fn(async () => response([]));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+
+    await api.listFollowUpTasks("branch-1", { limit: 50, offset: 0 });
+
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    const parsed = new URL(url);
+    expect(parsed.pathname).toBe("/api/v1/followup/tasks");
+    expect(parsed.searchParams.get("limit")).toBe("50");
+    expect(parsed.searchParams.get("offset")).toBe("0");
+    expect([...parsed.searchParams.keys()]).toEqual(["limit", "offset"]);
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(init.credentials).toBe("include");
+  });
+
   it("routes event-flyer uploads through the Worker using cookie credentials", async () => {
     const data = {
       object_path: "events/branch-1/event-1/flyer.png", mime_type: "image/png", size_bytes: 20,
