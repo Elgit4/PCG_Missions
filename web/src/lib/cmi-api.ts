@@ -698,6 +698,9 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     if (/^\/events\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix;
     if (/^\/events\/[^/]+\/cancel$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
     if (/^\/events\/[^/]+\/registrations$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/assignments$/.test(suffix) && verb === "GET") return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/(staff-assignments|team-assignments)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/(staff-assignments|team-assignments)\/[^/]+\/revoke$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
     if (/^\/events\/[^/]+\/staff-registration\/(open|close)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
     if (/^\/events\/[^/]+\/registrations\/[^/]+\/(check-in|cancel)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
     if (/^\/events\/[^/]+\/closeout$/.test(suffix) && verb === "GET") return "/api/v1" + suffix;
