@@ -9,38 +9,33 @@ import {
 } from "./public-content";
 
 describe("public content client", () => {
-  it("uses the public-content function and sends only the publishable key", async () => {
+  it("uses the same-origin Cloudflare public-content route without Supabase credentials", async () => {
     const fetcher = vi.fn(async () =>
       new Response(JSON.stringify({ data: [{ id: "sermon-1" }] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       })
     ) as unknown as typeof fetch;
-    const client = createPublicContentClient({
-      supabaseUrl: "https://example.supabase.co/",
-      publishableKey: "public-key",
-    }, fetcher);
+    const client = createPublicContentClient(fetcher);
 
     const result = await client.listSermons();
 
     expect(result).toEqual([{ id: "sermon-1" }]);
     expect(fetcher).toHaveBeenCalledOnce();
     const [url, init] = vi.mocked(fetcher).mock.calls[0] ?? [];
-    expect(String(url)).toContain("/functions/v1/public-content?");
+    expect(String(url)).toContain("/api/v1/public-content?");
     expect(String(url)).toContain("resource=sermons");
     expect(String(url)).toContain("limit=20");
-    expect(new Headers(init?.headers).get("apikey")).toBe("public-key");
+    expect(new Headers(init?.headers).has("apikey")).toBe(false);
     expect(new Headers(init?.headers).has("authorization")).toBe(false);
+    expect(init?.credentials).toBe("omit");
   });
 
   it("does not add list pagination to the church profile request", async () => {
     const fetcher = vi.fn(async () =>
       new Response(JSON.stringify({ data: null }), { status: 200 })
     ) as unknown as typeof fetch;
-    const client = createPublicContentClient({
-      supabaseUrl: "https://example.supabase.co",
-      publishableKey: "public-key",
-    }, fetcher);
+    const client = createPublicContentClient(fetcher);
 
     await client.getChurchProfile();
 
@@ -51,14 +46,11 @@ describe("public content client", () => {
 
   it("returns a safe service error without leaking transport details", async () => {
     const fetcher = vi.fn(async () =>
-      new Response(JSON.stringify({ error: "Unable to retrieve public content." }), {
+      new Response(JSON.stringify({ error: { message: "Unable to retrieve public content." } }), {
         status: 503,
       })
     ) as unknown as typeof fetch;
-    const client = createPublicContentClient({
-      supabaseUrl: "https://example.supabase.co",
-      publishableKey: "public-key",
-    }, fetcher);
+    const client = createPublicContentClient(fetcher);
 
     await expect(client.listEvents()).rejects.toMatchObject({
       name: "PublicContentError",
