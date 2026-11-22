@@ -3415,6 +3415,156 @@ function reportForbidden(access: Awaited<ReturnType<typeof authorizeRequestCapab
 
 
 
+
+type AnnouncementDraftRow = {
+  id: string;
+  branch_id: string;
+  title: string;
+  body: string;
+  is_public: number;
+  status: "draft";
+  created_at: string;
+  updated_at: string;
+};
+
+const ANNOUNCEMENT_DRAFT_COLUMNS = "id,branch_id,title,body,is_public,status,created_at,updated_at";
+
+function parseAnnouncementDraft(value: unknown, patch = false):
+  | { ok: true; value: { branch_id?: string; title?: string; body?: string } }
+  | { ok: false } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false };
+  const payload = value as Record<string, unknown>;
+  const allowed = patch ? new Set(["title", "body"]) : new Set(["branch_id", "title", "body"]);
+  if (Object.keys(payload).some((key) => !allowed.has(key))) return { ok: false };
+  const result: { branch_id?: string; title?: string; body?: string } = {};
+  if (!patch) {
+    if (typeof payload.branch_id !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.branch_id)) return { ok: false };
+    result.branch_id = payload.branch_id;
+  }
+  if (!patch || "title" in payload) {
+    if (typeof payload.title !== "string" || payload.title.trim().length < 2 || payload.title.trim().length > 180) return { ok: false };
+    result.title = payload.title.trim();
+  }
+  if (!patch || "body" in payload) {
+    if (typeof payload.body !== "string" || payload.body.trim().length < 1 || payload.body.trim().length > 20000) return { ok: false };
+    result.body = payload.body.trim();
+  }
+  if (patch && Object.keys(result).length === 0) return { ok: false };
+  return { ok: true, value: result };
+}
+
+async function handleAnnouncementCollection(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const method = request.method.toUpperCase();
+  const capability = method === "GET" ? "announcement.read.scoped" : "announcement.create.scoped";
+  const access = await authorizeRequestCapability(request, env, capability);
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const url = new URL(request.url);
+
+  if (method === "GET") {
+    const keys = [...url.searchParams.keys()];
+    const branchIds = url.searchParams.getAll("branch_id");
+    const limits = url.searchParams.getAll("limit");
+    const offsets = url.searchParams.getAll("offset");
+    const branchId = branchIds[0];
+    const limit = limits.length ? Number(limits[0]) : 50;
+    const offset = offsets.length ? Number(offsets[0]) : 0;
+    if (keys.some((key) => !["branch_id", "limit", "offset"].includes(key)) ||
+        branchIds.length !== 1 || limits.length > 1 || offsets.length > 1 ||
+        branchId !== access.activeBranch.branchId ||
+        !Number.isInteger(limit) || limit < 1 || limit > 50 ||
+        !Number.isInteger(offset) || offset < 0 || offset > 5000) {
+      return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_QUERY" } }, requestId, origin);
+    }
+    const rows = await env.DB.prepare(`
+      SELECT ${ANNOUNCEMENT_DRAFT_COLUMNS}
+      FROM announcement
+      WHERE branch_id=? AND status='draft'
+      ORDER BY updated_at DESC, id DESC
+      LIMIT ? OFFSET ?
+    `).bind(branchId, limit, offset).all<AnnouncementDraftRow>();
+    return json(200, { ok: true, data: rows.results ?? [] }, requestId, origin);
+  }
+
+  const body = await readJsonBody(request, 24_000);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const parsed = parseAnnouncementDraft(body.value);
+  if (!parsed.ok) return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT" } }, requestId, origin);
+  if (parsed.value.branch_id !== access.activeBranch.branchId) {
+    return json(403, { ok: false, error: { code: "BRANCH_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  try {
+    const result = await env.DB.prepare(`
+      INSERT INTO announcement
+        (id,branch_id,title,body,audience_type,is_public,status,publish_at,published_at,created_by,updated_by,created_at,updated_at)
+      VALUES (?,?,?,?,'branch',0,'draft',NULL,NULL,?,?,?,?)
+    `).bind(
+      id, access.activeBranch.branchId, parsed.value.title, parsed.value.body,
+      access.staff.userId, access.staff.userId, now, now,
+    ).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+      return json(500, { ok: false, error: { code: "ANNOUNCEMENT_CREATE_FAILED" } }, requestId, origin);
+    }
+    const row = await env.DB.prepare(`SELECT ${ANNOUNCEMENT_DRAFT_COLUMNS} FROM announcement WHERE id=? AND branch_id=?`)
+      .bind(id, access.activeBranch.branchId).first<AnnouncementDraftRow>();
+    if (!row) return json(500, { ok: false, error: { code: "ANNOUNCEMENT_CREATE_FAILED" } }, requestId, origin);
+    return json(201, { ok: true, data: row }, requestId, origin);
+  } catch {
+    return json(500, { ok: false, error: { code: "ANNOUNCEMENT_CREATE_FAILED" } }, requestId, origin);
+  }
+}
+
+async function handleAnnouncementItem(request: Request, env: Env, announcementId: string, requestId: string, origin?: string): Promise<Response> {
+  const method = request.method.toUpperCase();
+  if (method !== "GET" && method !== "PATCH") return json(405, { ok: false, error: { code: "METHOD_NOT_ALLOWED" } }, requestId, origin);
+  const capability = method === "GET" ? "announcement.read.scoped" : "announcement.create.scoped";
+  const access = await authorizeRequestCapability(request, env, capability);
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const url = new URL(request.url);
+  const branchIds = url.searchParams.getAll("branch_id");
+  const branchId = branchIds[0];
+  if (branchIds.length !== 1 || [...url.searchParams.keys()].some((key) => key !== "branch_id") ||
+      branchId !== access.activeBranch.branchId) {
+    return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_QUERY" } }, requestId, origin);
+  }
+  const current = await env.DB.prepare(`
+    SELECT id,branch_id,title,body,created_by,status,updated_at
+    FROM announcement
+    WHERE id=? AND branch_id=? AND status='draft'
+  `).bind(announcementId, branchId).first<AnnouncementDraftRow & { created_by: string }>();
+  if (!current) return json(404, { ok: false, error: { code: "ANNOUNCEMENT_NOT_FOUND" } }, requestId, origin);
+  if (method === "GET") {
+    const { created_by: _createdBy, ...visible } = current;
+    return json(200, { ok: true, data: visible }, requestId, origin);
+  }
+  if (current.created_by !== access.staff.userId) {
+    return json(404, { ok: false, error: { code: "ANNOUNCEMENT_NOT_FOUND" } }, requestId, origin);
+  }
+  const body = await readJsonBody(request, 24_000);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const parsed = parseAnnouncementDraft(body.value, true);
+  if (!parsed.ok) return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT" } }, requestId, origin);
+  const nextTitle = parsed.value.title ?? current.title;
+  const nextBody = parsed.value.body ?? current.body;
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare(`
+    UPDATE announcement
+    SET title=?, body=?, updated_by=?, updated_at=?
+    WHERE id=? AND branch_id=? AND created_by=? AND status='draft' AND updated_at=?
+  `).bind(
+    nextTitle, nextBody, access.staff.userId, now,
+    announcementId, branchId, access.staff.userId, current.updated_at,
+  ).run();
+  if (!result.success) return json(500, { ok: false, error: { code: "ANNOUNCEMENT_UPDATE_FAILED" } }, requestId, origin);
+  if ((result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "ANNOUNCEMENT_NOT_EDITABLE" } }, requestId, origin);
+  const updated = await env.DB.prepare(`SELECT ${ANNOUNCEMENT_DRAFT_COLUMNS} FROM announcement WHERE id=? AND branch_id=?`)
+    .bind(announcementId, branchId).first<AnnouncementDraftRow>();
+  if (!updated) return json(404, { ok: false, error: { code: "ANNOUNCEMENT_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, data: updated }, requestId, origin);
+}
+
 type CalendarEntryRow = {
   id: string;
   branch_id: string;
@@ -4667,6 +4817,17 @@ async function updatePrayerRequestStatus(
 }
 
 
+
+    if (url.pathname === "/api/v1/announcements" && (request.method === "GET" || request.method === "POST")) {
+      return handleAnnouncementCollection(request, env, requestId, origin);
+    }
+    const announcementMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)$/);
+    if (announcementMatch && (request.method === "GET" || request.method === "PATCH")) {
+      let announcementId: string;
+      try { announcementId = decodeURIComponent(announcementMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_ID" } }, requestId, origin); }
+      return handleAnnouncementItem(request, env, announcementId, requestId, origin);
+    }
 
     if (url.pathname === "/api/v1/calendar/entries" && (request.method === "GET" || request.method === "POST")) {
       return handleCalendarCollection(request, env, requestId, origin);
