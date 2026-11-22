@@ -212,3 +212,18 @@ Still blocked:
 - Cutover: reconcile the production-named D1 database against the migration-test D1 and Supabase data, then complete audit/data reconciliation, rollback checks, and explicit release approval before changing production Pages routing.
 
 No production Worker deployment, production Pages routing change, production D1 write, or SMS send was performed in this implementation slice.
+
+
+## Preview deployment verification — 2026-11-22
+
+The verified bundle was deployed to the isolated `pcg-missions-api-preview` Worker:
+- Worker version: `17`
+- Version ID: `38916fe1-9120-4af3-9e36-b5342b4dd042`
+- Deployment ID: `a2e48bae-f0cc-4f1f-b77c-0a367ef2d966`
+- Source commit: `6e680e50966736c3d6727106065335b3231daac5`
+- D1 binding: `pcg-missions-migration-test` (`74074d53-1edc-4ad7-83e6-bb3333a6ab4f`)
+- Worker environment: `non-production`
+
+Post-deployment smoke passed: health returned `ok=true`, schema version `43`; the report, event registration/check-in/closeout, prayer inbox, team, and service-area route probes returned the expected anonymous `401 UNAUTHENTICATED` response. Worker typecheck and SQLite foundation checks passed; bundle tests were 47/47.
+
+This proves deployment and anonymous boundary protection only. It does not prove successful authenticated writes, six-role browser acceptance, flyer uploads, staff Auth Admin provisioning, or production readiness.
