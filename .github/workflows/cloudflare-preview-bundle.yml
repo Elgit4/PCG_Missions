@@ -171,6 +171,8 @@ jobs:
           assert_unauth POST "/api/v1/events/$event/closeout/submit?branch_id=$branch" '{"idempotency_key":"closeout-key-123","summary_notes":null}'
           assert_unauth POST "/api/v1/events/$event/closeout/review?branch_id=$branch" '{"idempotency_key":"review-key-123","decision":"approved","reason":null}'
           assert_unauth POST "/api/v1/events/$event/staff-registration/open?branch_id=$branch"
+          assert_unauth POST "/api/v1/staff/$staff/deactivate?branch_id=$branch" '{"reason":"Preview anonymous access probe"}'
+          assert_unauth POST "/api/v1/staff/$staff/reactivate?branch_id=$branch" '{"reason":"Preview anonymous access probe"}'
           assert_unauth GET "/api/v1/pastoral/prayer/assigned?limit=10&offset=0"
           echo "All team, service-area, ministry-report, event-lifecycle and prayer-inbox routes reject anonymous access."
  
