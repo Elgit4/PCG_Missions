@@ -85,9 +85,6 @@ jobs:
           if-no-files-found: error
           retention-days: 2
 
-      - name: Preflight Worker script write permission without changing traffic
-        run: npx wrangler versions upload --env preview --message "PCG Missions Better Auth schema 44 deployment preflight"
-
       - name: Install PostgreSQL client for the one-time credential bridge
         run: |
           sudo apt-get update
@@ -100,6 +97,9 @@ jobs:
         env:
           SUPABASE_SOURCE_DB_URL: ${{ secrets.SUPABASE_SOURCE_DB_URL }}
         run: python scripts/import_supabase_auth_credentials.py
+
+      - name: Preflight Worker script write permission without changing traffic
+        run: npx wrangler versions upload --env preview --message "PCG Missions Better Auth schema 44 deployment preflight"
 
       # BETTER_AUTH_SECRET was provisioned directly on the isolated preview Worker.
       # Keep it out of GitHub logs and repository configuration.
