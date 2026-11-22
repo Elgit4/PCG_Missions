@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""One-time, idempotent bridge for existing Supabase Auth bcrypt hashes to preview D1.
+
+Credentials are read directly from the source Postgres connection and sent to the
+isolated EU D1 database over the Cloudflare API. Hashes are never written to disk,
+printed, uploaded as artifacts, or placed in GitHub outputs.
+"""
+from __future__ import annotations
+
+import csv
+import io
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+import uuid
+
+ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "1697f36d4227453d2e25cfb49b347e5f")
+DATABASE_ID = os.environ.get("PCG_MISSIONS_PREVIEW_D1_ID", "74074d53-1edc-4ad7-83e6-bb3333a6ab4f")
+API_BASE = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/d1/database/{DATABASE_ID}"
+BCRYPT_PATTERN = re.compile(r"^\\$2[aby]\\$[0-9]{2}\\$[./A-Za-z0-9]{53}$")
+
+
+def parse_source_rows(output: str) -> list[tuple[str, str, str]]:
+    rows: list[tuple[str, str, str]] = []
+    for row in csv.reader(io.StringIO(output), delimiter="\\t"):
+        if not row or len(row) != 3:
+            raise ValueError("Source credential query returned an invalid row shape.")
+        user_id, email, password_hash = row
+        uuid.UUID(user_id)
+        normalized_email = email.strip().lower()
+        if not normalized_email or len(normalized_email) > 320:
+            raise ValueError("A linked staff identity has an invalid email address.")
+        if not BCRYPT_PATTERN.fullmatch(password_hash):
+            raise ValueError("A linked staff identity does not have a supported bcrypt password hash.")
+        rows.append((user_id, normalized_email, password_hash))
+    if not rows:
+        raise ValueError("No linked staff credentials were found in the source database.")
+    if len({row[0] for row in rows}) != len(rows):
+        raise ValueError("The source returned duplicate staff identity IDs.")
+    if len({row[1] for row in rows}) != len(rows):
+        raise ValueError("The source returned duplicate staff email addresses.")
+    return rows
+
+
+def psql_source_rows(database_url: str) -> list[tuple[str, str, str]]:
+    sql = """
+      SELECT u.id::text, lower(u.email), u.encrypted_password
+      FROM auth.users AS u
+      INNER JOIN public.staff_profile AS sp ON sp.auth_user_id = u.id
+      WHERE sp.auth_user_id IS NOT NULL
+      ORDER BY u.id
+    """
+    try:
+        completed = subprocess.run(
+            ["psql", database_url, "-X", "-v", "ON_ERROR_STOP=1", "-At", "-F", "\\t", "-c", sql],
+            check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=90,
+            env={**os.environ, "PGCONNECT_TIMEOUT": "15"},
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        raise RuntimeError("Could not securely read linked staff credentials from the Supabase source.") from None
+    return parse_source_rows(completed.stdout)
+
+
+def d1_query(token: str, sql: str, params: list[str] | None = None) -> list[dict]:
+    body = {"sql": sql}
+    if params is not None:
+        body["params"] = params
+    request = urllib.request.Request(
+        API_BASE + "/query",
+        data=json.dumps(body).encode("utf-8"),
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=45) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        raise RuntimeError("Cloudflare D1 query failed; credential values were not logged.") from None
+    if not payload.get("success") or payload.get("errors"):
+        raise RuntimeError("Cloudflare D1 rejected a credential-import query; credential values were not logged.")
+    result = payload.get("result") or []
+    if not result or not result[0].get("success"):
+        raise RuntimeError("Cloudflare D1 returned an unsuccessful credential-import result.")
+    return result[0].get("results") or []
+
+
+def main() -> int:
+    source_url = os.environ.get("SUPABASE_SOURCE_DB_URL", "")
+    token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+    if not source_url or not token:
+        raise RuntimeError("The source database URL and Cloudflare D1 token are required.")
+    if "cgwffpxlwgbnlinzwfoj" not in source_url:
+        raise RuntimeError("The source connection is not the approved PCG Missions Supabase project.")
+
+    meta = d1_query(token, "SELECT schema_version, environment FROM app_meta WHERE id=1")
+    if len(meta) != 1 or meta[0].get("schema_version") != 44 or meta[0].get("environment") != "non-production":
+        raise RuntimeError("Credential import is restricted to schema 44 in the isolated non-production D1 database.")
+
+    source_rows = psql_source_rows(source_url)
+    target_rows = d1_query(token, 'SELECT id, lower(email) AS email FROM "user" ORDER BY id')
+    target = {row["id"]: row["email"] for row in target_rows}
+    source = {user_id: email for user_id, email, _ in source_rows}
+    if target != source:
+        raise RuntimeError("Supabase and D1 staff identity IDs/emails do not match exactly; no credential was imported.")
+
+    now_ms = str(int(time.time() * 1000))
+    for user_id, _email, password_hash in source_rows:
+        account_id = user_id + ":credential"
+        d1_query(
+            token,
+            """INSERT INTO account (id, accountId, providerId, userId, password, createdAt, updatedAt)
+               VALUES (?, ?, 'credential', ?, ?, ?, ?)
+               ON CONFLICT(providerId, accountId) DO UPDATE
+               SET password=excluded.password, updatedAt=excluded.updatedAt""",
+            [account_id, user_id, user_id, password_hash, now_ms, now_ms],
+        )
+
+    imported = d1_query(
+        token,
+        "SELECT COUNT(*) AS count FROM account WHERE providerId='credential'",
+    )
+    count = int(imported[0]["count"]) if imported else -1
+    if count != len(source_rows):
+        raise RuntimeError("Credential-import verification did not match the linked staff identity count.")
+
+    # Confirm every imported hash equals its source value without printing either value.
+    stored = d1_query(
+        token,
+        "SELECT userId, password FROM account WHERE providerId='credential' ORDER BY userId",
+    )
+    stored_hashes = {row["userId"]: row["password"] for row in stored}
+    expected_hashes = {user_id: password_hash for user_id, _, password_hash in source_rows}
+    if stored_hashes != expected_hashes:
+        raise RuntimeError("Credential-import hash verification failed; no hash values were logged.")
+
+    print(f"Verified {count} linked staff credential hashes in isolated non-production D1. No password hashes or tokens were logged.")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except Exception as error:
+        # Error text is deliberately generic; do not include source rows, SQL output, or credentials.
+        print(f"Credential import stopped safely: {error}", file=sys.stderr)
+        sys.exit(1)
