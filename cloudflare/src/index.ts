@@ -4394,7 +4394,24 @@ async function listAssignedPrayerRequests(
       (batch[1]?.meta?.changes ?? 0) !== rows.length) {
     return json(503, { ok: false, error: { code: "PRAYER_READ_AUDIT_FAILED" } }, requestId, origin);
   }
-  return json(200, { ok: true, requests: rows }, requestId, origin);
+  const totalRow = await env.DB.prepare(`
+    SELECT COUNT(*) AS total
+    FROM prayer_request
+    JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
+    JOIN staff_record_share ON staff_record_share.record_id = prayer_request.id
+    WHERE prayer_request.branch_id = ?
+      AND prayer_request.status IN ('assigned','in_progress','answered')
+      AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
+      AND ${activeShareAndAssignment}
+  `).bind(
+    context.activeBranch.branchId, now,
+    context.staff.userId, now, now, context.staff.profileId, now, now,
+    context.staff.profileId, now, now,
+  ).first<{ total: number }>();
+  return json(200, {
+    ok: true,
+    data: { requests: rows, total: totalRow?.total ?? 0, limit, offset },
+  }, requestId, origin);
 }
 
 async function sharePrayerRequest(
