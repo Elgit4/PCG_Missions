@@ -36,8 +36,8 @@ These are live read-only metadata/count observations, not a database backup or a
 - Export format: D1-compatible SQL (`compatibility: d1`)
 - Export task: completed successfully
 - Source schema: 87 tables; latest migration row: 43
-- The export API returned a short-lived signed download URL, but downloading that URL returned HTTP 403 in the execution environment.
-- Consequently, no durable SQL artifact, independently verified checksum, or completed SQL import was produced by this run.
+- The export API returned a short-lived signed download URL. The execution environment rejected the download with HTTP 403 and the explicit message that requests to the Cloudflare R2 host are not allowed.
+- Consequently, no durable SQL artifact, independently verified checksum, or completed SQL import was produced by this run. This is an execution-environment egress restriction, not evidence that the D1 export itself failed.
 
 The export task completing is a positive backup-generation check, but it is not sufficient evidence of a usable off-database backup. Repeat the export using Wrangler from a trusted operator environment, preserve the SQL file in approved encrypted backup storage, and record its SHA-256 checksum and byte size.
 
