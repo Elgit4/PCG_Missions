@@ -60,6 +60,16 @@ These are source-code routes, not a live service yet: the full Cloudflare API Wo
 - Public registration, public prayer intake, offline access, SMS and email notifications.
 - Invitation/password-reset email delivery. Invitation tokens are currently returned once for authorized manual delivery; password reset fails closed until a provider is configured.
 
+## Private event media
+
+Event flyers use the private Supabase Storage bucket `pcg-missions-event-media`; Cloudflare R2 is not used. The Worker checks the authenticated staff session, active branch and `events.manage` capability before accepting an upload. It accepts PNG, JPEG and WebP files up to 5 MiB, stores objects under branch/event-scoped keys, keeps the bucket private, and returns 15-minute signed preview URLs. Preview reads are also checked against the staff session and branch scope.
+
+The Worker requires these bindings on the non-production preview script:
+- `SUPABASE_URL` — non-secret project URL, already configured in Wrangler.
+- `SUPABASE_SERVICE_ROLE_KEY` — Worker Secret only. Never put this value in Wrangler vars, GitHub source, browser configuration or chat.
+
+Configure the secret securely for the preview Worker with Cloudflare's dashboard (Workers & Pages → pcg-missions-api-preview → Settings → Variables and Secrets → Add → Secret; name it exactly `SUPABASE_SERVICE_ROLE_KEY`). Do not add it to the production Worker until the production cutover is separately approved. The bucket is private and limited to JPEG, PNG, WebP and AVIF at 10 MiB; the application deliberately enforces the smaller 5 MiB flyer limit.
+
 ## Local development
 
 From the repository root:
