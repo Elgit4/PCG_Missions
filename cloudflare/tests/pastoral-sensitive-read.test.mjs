@@ -21,6 +21,7 @@ function makePastoralEnv(options = {}) {
         sql, values: [],
         bind(...values) { this.values = values; return this; },
         async first() {
+          if (this.sql.includes("FROM app_meta")) return { schema_version: 44, environment: "non-production" };
           if (this.sql.includes("FROM staff_profile") && this.sql.includes("WHERE auth_user_id = ?")) return staff;
           return null;
         },
@@ -60,22 +61,24 @@ function makePastoralEnv(options = {}) {
       });
     },
   };
-  return { env: { DB, APP_ENV: "non-production", APP_ALLOWED_ORIGINS: "https://preview.example", SUPABASE_URL: "https://example.supabase.co", SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test" }, batches };
+  return { env: {
+    DB, APP_ENV: "non-production", APP_ALLOWED_ORIGINS: "https://preview.example",
+    BETTER_AUTH_SECRET: "integration-test-secret-that-is-long-enough-123456",
+    BETTER_AUTH_URL: "https://worker.example",
+    BETTER_AUTH_TRUSTED_ORIGINS: "https://preview.example",
+    __TEST_SESSION_RESOLVER: async (request) => request.headers.has("Cookie")
+      ? { user: { id: AUTH_ID, email: "pastoral@example.test" } } : null,
+  }, batches };
 }
 
 function makeRequest(path, body) {
   return new Request("https://worker.example" + path, {
     method: "POST",
-    headers: { Authorization: "Bearer synthetic-access-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+    headers: { Cookie: "better-auth.session_token=synthetic-pastoral-session", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
 }
-function mockAuth(t) {
-  t.mock.method(globalThis, "fetch", async () => Response.json({ id: AUTH_ID, email: "pastoral@example.test" }));
-}
-
 test("assigned prayer read audits before returning the allowlisted narrative", async (t) => {
-  mockAuth(t);
   const f = makePastoralEnv({ roleCode: "prayer_intercessor", grants: [["prayer.request.read.assigned", "assigned"]], assignmentExists: true });
   const r = await worker.fetch(makeRequest("/api/v1/pastoral/prayer/requests/" + PRAYER_ID + "/read", { branch_id: BRANCH_ID, access_mode: "assigned" }), f.env);
   const p = await r.json();
@@ -90,7 +93,6 @@ test("assigned prayer read audits before returning the allowlisted narrative", a
 });
 
 test("oversight prayer read requires and audits an allowlisted reason code", async (t) => {
-  mockAuth(t);
   const f = makePastoralEnv({ roleCode: "admin_pastor", grants: [["prayer.oversight.read", "oversight"]], assignmentExists: false });
   const r = await worker.fetch(makeRequest("/api/v1/pastoral/prayer/requests/" + PRAYER_ID + "/read", { branch_id: BRANCH_ID, access_mode: "oversight", reason_code: "safeguarding_concern" }), f.env);
   const p = await r.json();
@@ -102,7 +104,6 @@ test("oversight prayer read requires and audits an allowlisted reason code", asy
 });
 
 test("assigned prayer read does not disclose a request without a live assignment", async (t) => {
-  mockAuth(t);
   const f = makePastoralEnv({ roleCode: "prayer_intercessor", grants: [["prayer.request.read.assigned", "assigned"]], assignmentExists: false });
   const r = await worker.fetch(makeRequest("/api/v1/pastoral/prayer/requests/" + PRAYER_ID + "/read", { branch_id: BRANCH_ID, access_mode: "assigned" }), f.env);
   assert.equal(r.status, 404);
@@ -110,7 +111,6 @@ test("assigned prayer read does not disclose a request without a live assignment
 });
 
 test("care oversight read audits and returns only the approved record projection and interactions", async (t) => {
-  mockAuth(t);
   const f = makePastoralEnv({ roleCode: "admin_pastor", grants: [["care.oversight.read", "oversight"]] });
   const r = await worker.fetch(makeRequest("/api/v1/pastoral/care/records/" + CARE_ID + "/read", { branch_id: BRANCH_ID, access_mode: "oversight", reason_code: "continuity_of_care" }), f.env);
   const p = await r.json();
@@ -126,7 +126,6 @@ test("care oversight read audits and returns only the approved record projection
 });
 
 test("oversight read rejects unsupported reason codes before any D1 operation", async (t) => {
-  mockAuth(t);
   const f = makePastoralEnv({ roleCode: "admin_pastor", grants: [["care.oversight.read", "oversight"]] });
   const r = await worker.fetch(makeRequest("/api/v1/pastoral/care/records/" + CARE_ID + "/read", { branch_id: BRANCH_ID, access_mode: "oversight", reason_code: "curiosity" }), f.env);
   assert.equal(r.status, 400);
@@ -136,7 +135,6 @@ test("oversight read rejects unsupported reason codes before any D1 operation", 
 
 
 test("assigned care read requires a live assignment and writes both access audits", async (t) => {
-  mockAuth(t);
   const f = makePastoralEnv({
     roleCode: "field_worker",
     grants: [["care.record.read.assigned", "assigned"]],
@@ -155,7 +153,6 @@ test("assigned care read requires a live assignment and writes both access audit
 });
 
 test("assigned care read does not disclose a record without a live assignment", async (t) => {
-  mockAuth(t);
   const f = makePastoralEnv({
     roleCode: "field_worker",
     grants: [["care.record.read.assigned", "assigned"]],
@@ -170,7 +167,6 @@ test("assigned care read does not disclose a record without a live assignment", 
 });
 
 test("sensitive pastoral reads fail closed when append-only audit writes fail", async (t) => {
-  mockAuth(t);
   const f = makePastoralEnv({
     roleCode: "admin_pastor",
     grants: [["care.oversight.read", "oversight"]],
@@ -186,7 +182,6 @@ test("sensitive pastoral reads fail closed when append-only audit writes fail", 
 });
 
 test("sensitive pastoral read rejects a mismatched branch before querying records", async (t) => {
-  mockAuth(t);
   const f = makePastoralEnv({
     roleCode: "admin_pastor",
     grants: [["care.oversight.read", "oversight"]],
@@ -203,7 +198,6 @@ test("sensitive pastoral read rejects a mismatched branch before querying record
 
 
 test("six-role pastoral read matrix grants oversight only to Admin/Pastor and assigned prayer reads only to Intercessors", async (t) => {
-  mockAuth(t);
   const cases = [
     { role: "admin_pastor", mode: "oversight", capability: ["prayer.oversight.read", "oversight"], expected: 200, reason_code: "pastoral_review" },
     { role: "coordinator", mode: "oversight", capability: null, expected: 403, reason_code: "pastoral_review" },
