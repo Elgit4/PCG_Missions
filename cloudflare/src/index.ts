@@ -5548,9 +5548,9 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
       env.DB.prepare(`
         SELECT ci.id, ci.interaction_type, ci.outcome_code, ci.restricted_note, ci.occurred_at
         FROM care_interaction ci JOIN care_record cr ON cr.id = ci.care_record_id
-        WHERE ci.care_record_id = ? AND cr.branch_id = ?
+        WHERE ci.care_record_id = ? AND cr.branch_id = ? ${assignmentClause}
         ORDER BY ci.occurred_at DESC, ci.id DESC LIMIT 100
-      `).bind(careRecordId, context.activeBranch.branchId),
+      `).bind(careRecordId, context.activeBranch.branchId, ...assignmentValues),
     ]);
   } catch {
     return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
