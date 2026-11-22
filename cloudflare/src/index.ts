@@ -3636,11 +3636,11 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     if (!canSubmit) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     const now=new Date().toISOString();
     const staffEvents=await env.DB.prepare(`SELECT e.id,e.title,e.starts_at FROM event e JOIN event_staff_assignment a ON a.event_id=e.id AND a.branch_id=e.branch_id WHERE e.branch_id=? AND a.staff_auth_user_id=? AND a.revoked_at IS NULL AND a.starts_at<=? AND (a.ends_at IS NULL OR a.ends_at>?) AND a.assignment_role IN ('owner','organizer','checkin','ushering','support') ORDER BY e.starts_at DESC LIMIT 100`).bind(branchId,context.staff.userId,now,now).all();
-    const teamIds=canReviewTeam?await reportTeamIds(env,context.staff.profileId,branchId,now):[];
+    const teamIds=(canSubmit||canReviewTeam)?await reportTeamIds(env,context.staff.profileId,branchId,now):[];
     let teamEvents:{results?:Record<string,unknown>[]}={results:[]};
     if(teamIds.length){
       const marks=teamIds.map(()=>"?").join(",");
-      teamEvents=await env.DB.prepare(`SELECT DISTINCT e.id,e.title,e.starts_at FROM event e JOIN event_team_assignment a ON a.event_id=e.id AND a.branch_id=e.branch_id WHERE e.branch_id=? AND a.team_id IN (${marks}) AND a.revoked_at IS NULL AND a.starts_at<=? AND (a.ends_at IS NULL OR a.ends_at>?) AND a.assignment_role IN ('owner','organizer','checkin','ushering','support') ORDER BY e.starts_at DESC LIMIT 100`).bind(branchId,...teamIds,now,now).all();
+      teamEvents=await env.DB.prepare(`SELECT DISTINCT e.id,e.title,e.starts_at FROM event e JOIN event_team_assignment a ON a.event_id=e.id AND a.branch_id=e.branch_id WHERE e.branch_id=? AND a.team_id IN (${marks}) AND a.revoked_at IS NULL AND a.starts_at<=? AND (a.ends_at IS NULL OR a.ends_at>?) AND a.assignment_role IN ('organizer','ushering','support') ORDER BY e.starts_at DESC LIMIT 100`).bind(branchId,...teamIds,now,now).all();
     }
     const map=new Map<string,Record<string,unknown>>();
     for(const row of [...(staffEvents.results??[]),...(teamEvents.results??[])]) map.set(String(row.id),row);
