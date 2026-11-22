@@ -1,58 +1,71 @@
-name: PCG Missions Availability Monitor
+name: PCG Missions Production Availability Monitor
 
 on:
   schedule:
     - cron: "*/15 * * * *"
   workflow_dispatch:
-  push:
-    branches:
-      - feat/cloudflare-d1-migration-foundation
-      - migration/cloudflare-auth-consolidation
-    paths:
-      - ".github/workflows/pcg-missions-availability-monitor.yml"
 
 permissions:
   contents: read
   issues: write
 
 concurrency:
-  group: pcg-missions-availability-monitor
-  cancel-in-progress: true
+  group: pcg-missions-production-availability-monitor
+  cancel-in-progress: false
 
 jobs:
   monitor:
-    name: Check live Pages and non-production Worker
+    name: Verify production Pages, Worker, API and auth boundaries
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
-      - name: Check current public Pages production site
+      - name: Check public Pages document and security headers
         shell: bash
         run: |
           set -euo pipefail
-          url="https://pcg-missions.pages.dev/"
-          status="$(curl --location --silent --show-error --output /tmp/pages.html --write-out "%{http_code}" --max-time 30 "$url")"
-          echo "Pages HTTP status: $status"
+          status="$(curl --location --silent --show-error --dump-header /tmp/pages-headers.txt --output /tmp/pages.html --write-out "%{http_code}" --max-time 30 https://pcg-missions.pages.dev/)"
           test "$status" = "200"
           grep -Eiq "PCG Missions|PCG" /tmp/pages.html
+          grep -Eiq '^x-content-type-options: nosniff' /tmp/pages-headers.txt
+          grep -Eiq '^referrer-policy: strict-origin-when-cross-origin' /tmp/pages-headers.txt
+          grep -Eiq '^strict-transport-security: max-age=31536000' /tmp/pages-headers.txt
+          echo "Production Pages returned HTTP 200 with the expected security response headers."
 
-      - name: Check preview Worker health and schema marker
+      - name: Check the direct production Worker health and schema marker
         shell: bash
         run: |
           set -euo pipefail
-          url="https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
-          body="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error --max-time 20 "$url/health")"
-          echo "$body"
-          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="non-production" || p.schema_version!==44) { console.error("Preview Worker health/schema mismatch"); process.exit(1); }' "$body"
+          body="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error --max-time 25 https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev/health)"
+          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="production" || !Number.isInteger(p.schema_version) || p.schema_version<45) { console.error("Production Worker health/schema mismatch"); process.exit(1); } console.log("Worker schema:",p.schema_version)' "$body"
 
-      - name: Check authentication boundary remains closed
+      - name: Check same-origin Pages API gateway and production D1 readiness
         shell: bash
         run: |
           set -euo pipefail
-          url="https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev/api/v1/me"
-          status="$(curl --silent --show-error --output /tmp/me.json --write-out "%{http_code}" --max-time 20 "$url")"
-          cat /tmp/me.json
-          test "$status" = "401"
-          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/me.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          body="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error --max-time 25 https://pcg-missions.pages.dev/api/v1/health)"
+          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="production" || !Number.isInteger(p.schema_version) || p.schema_version<45) process.exit(1); console.log("Pages gateway reaches production D1 schema",p.schema_version)' "$body"
+
+      - name: Verify unauthenticated staff API remains closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          for base in "https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev" "https://pcg-missions.pages.dev"; do
+            status="$(curl --silent --show-error --output /tmp/me.json --write-out "%{http_code}" --max-time 20 "$base/api/v1/me")"
+            test "$status" = "401"
+            node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/me.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") { console.error(p); process.exit(1) }'
+          done
+          echo "Direct Worker and Pages proxy reject anonymous staff-context requests."
+
+      - name: Verify Better Auth session endpoint and CORS preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(curl --silent --show-error --output /tmp/session.json --write-out "%{http_code}" --max-time 20 https://pcg-missions.pages.dev/api/auth/get-session)"
+          test "$status" = "200"
+          cors="$(curl --silent --show-error --dump-header /tmp/cors-headers.txt --output /dev/null --write-out "%{http_code}" --max-time 20 -X OPTIONS "https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev/api/auth/sign-in/email" -H "Origin: https://pcg-missions.pages.dev" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type")"
+          test "$cors" = "204"
+          grep -qi '^access-control-allow-origin: https://pcg-missions.pages.dev' /tmp/cors-headers.txt
+          echo "Better Auth session and exact-origin CORS checks passed."
 
       - name: Publish monitoring result
         if: always()
@@ -61,20 +74,21 @@ jobs:
           JOB_STATUS: ${{ job.status }}
         run: |
           {
-            echo "## PCG Missions availability monitor"
+            echo "## PCG Missions production availability monitor"
             echo ""
             echo "- Result: **${JOB_STATUS}**"
-            echo "- Public Pages: https://pcg-missions.pages.dev/"
-            echo "- Preview Worker: https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev/health"
-            echo "- Scope: read-only HTTP checks; no database writes, credential changes, production routing changes, or SMS sends."
+            echo "- Pages: https://pcg-missions.pages.dev/"
+            echo "- Worker: https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev/health"
+            echo "- Scope: production read-only checks. No database writes, credential changes, destructive restores or SMS sends."
+            echo "- Expected anonymous staff API result: HTTP 401 / UNAUTHENTICATED."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Open or update a monitoring incident
+      - name: Open or update a production monitoring incident
         if: failure()
         uses: actions/github-script@v7
         with:
           script: |
-            const title = "PCG Missions availability monitor failure";
+            const title = "PCG Missions production availability monitor failure";
             const { owner, repo } = context.repo;
             const open = await github.rest.issues.listForRepo({
               owner, repo, state: "open", per_page: 100
@@ -82,23 +96,20 @@ jobs:
             const existing = open.data.find(issue => issue.title === title && !issue.pull_request);
             const runUrl = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}`;
             const body = [
-              "The scheduled/manual PCG Missions availability monitor detected a failed check.",
+              "The scheduled/manual PCG Missions production monitor failed one or more read-only checks.",
               "",
               `- Workflow run: ${runUrl}`,
               `- Commit: ${context.sha}`,
               `- Trigger: ${context.eventName}`,
               "",
-              "Inspect the failing step and recent Cloudflare Pages/Workers deployments. This monitor is read-only and does not authorize production cutover.",
-              "",
-              "The monitor checks the current public Pages site and the non-production preview Worker. It does not imply that a production application Worker exists."
+              "Check the failed step, Cloudflare Pages deployment and production Worker telemetry. Do not retry mutating user actions blindly.",
+              "This monitor does not run database writes, restore data, change secrets or dispatch SMS."
             ].join("\n");
             if (existing) {
               await github.rest.issues.createComment({
                 owner, repo, issue_number: existing.number,
-                body: `Additional monitor failure: ${runUrl}`
+                body: `Additional production monitor failure: ${runUrl}`
               });
             } else {
-              await github.rest.issues.create({
-                owner, repo, title, body
-              });
+              await github.rest.issues.create({ owner, repo, title, body });
             }
