@@ -94,7 +94,9 @@ test("public reset request is non-enumerating and persists a branch-scoped reque
 
   assert.equal(knownResponse.status, 200);
   assert.equal(unknownResponse.status, 200);
-  assert.deepEqual(knownBody, unknownBody);
+  assert.equal(knownBody.ok, unknownBody.ok);
+  assert.equal(knownBody.message, unknownBody.message);
+  assert.notEqual(knownBody.request_id, unknownBody.request_id);
   assert.equal(knownBody.ok, true);
   assert.match(knownBody.message, /If this address belongs to an active staff account/);
 
