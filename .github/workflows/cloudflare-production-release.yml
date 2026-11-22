@@ -143,13 +143,11 @@ jobs:
       - name: Confirm Pages cutover configuration is pre-provisioned
         run: echo "Pages production branch and API origin were applied and verified through the Cloudflare control plane."
 
-      - name: Build and deploy reviewed frontend to production Pages
-        working-directory: web
+      - name: Trigger reviewed frontend deployment through Pages Git integration
         run: |
-          npm install --no-package-lock --no-audit --no-fund
-          npm run build
-          test -s dist/index.html
-          npx wrangler pages deploy dist --project-name pcg-missions --branch migration/cloudflare-auth-consolidation
+          set -euo pipefail
+          echo "The reviewed web/public/cloudflare-release.json commit triggers the configured Cloudflare Pages Git integration."
+          echo "Pages builds from web/ using the project's configured build command and production branch."
 
       - name: Wait for production Pages deployment and verify public app
         shell: bash
