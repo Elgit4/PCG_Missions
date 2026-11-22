@@ -72,7 +72,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "SELECT schema_version, environment, (SELECT MAX(id) FROM d1_migrations) AS latest_migration_id FROM app_meta WHERE id = 1" > /tmp/pcg-d1-before.json
+          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "SELECT schema_version, environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT MIN(id) FROM d1_migrations) AS first_migration_id, (SELECT MAX(id) FROM d1_migrations) AS latest_migration_id, (SELECT SUM(id) FROM d1_migrations) AS migration_id_sum FROM app_meta WHERE id = 1" > /tmp/pcg-d1-before.json
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           const root = JSON.parse(fs.readFileSync("/tmp/pcg-d1-before.json", "utf8"));
@@ -87,7 +87,7 @@ jobs:
           const row = candidates[0];
           if (!row || row.environment !== "production" ||
               Number(row.schema_version) < 45 ||
-              Number(row.schema_version) !== Number(row.latest_migration_id)) {
+              Number(row.schema_version) !== Number(row.latest_migration_id) ||\n              Number(row.migration_count) !== Number(row.schema_version) ||\n              Number(row.first_migration_id) !== 1 ||\n              Number(row.migration_id_sum) !== Number(row.schema_version) * (Number(row.schema_version) + 1) / 2) {
             throw new Error("Production D1 marker/schema/migration ledger mismatch; refusing deployment.");
           }
           console.log(JSON.stringify({
@@ -139,7 +139,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "SELECT schema_version, environment, (SELECT MAX(id) FROM d1_migrations) AS latest_migration_id FROM app_meta WHERE id = 1" > /tmp/pcg-d1-after.json
+          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "SELECT schema_version, environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT MIN(id) FROM d1_migrations) AS first_migration_id, (SELECT MAX(id) FROM d1_migrations) AS latest_migration_id, (SELECT SUM(id) FROM d1_migrations) AS migration_id_sum FROM app_meta WHERE id = 1" > /tmp/pcg-d1-after.json
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           const root = JSON.parse(fs.readFileSync("/tmp/pcg-d1-after.json", "utf8"));
@@ -154,7 +154,7 @@ jobs:
           const row = candidates[0];
           if (!row || row.environment !== "production" ||
               Number(row.schema_version) < 45 ||
-              Number(row.schema_version) !== Number(row.latest_migration_id)) {
+              Number(row.schema_version) !== Number(row.latest_migration_id) ||\n              Number(row.migration_count) !== Number(row.schema_version) ||\n              Number(row.first_migration_id) !== 1 ||\n              Number(row.migration_id_sum) !== Number(row.schema_version) * (Number(row.schema_version) + 1) / 2) {
             throw new Error("Post-migration production marker/schema/ledger mismatch.");
           }
           console.log(JSON.stringify({
