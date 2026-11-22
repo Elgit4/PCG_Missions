@@ -23,6 +23,7 @@ interface Env extends Omit<StaffEnvironment, "DB"> {
   DB: D1Database;
   EVENT_MEDIA?: R2Bucket;
   APP_ENV?: string;
+  APP_ALLOWED_ORIGINS?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
   FIRST_ADMIN_BOOTSTRAP_TOKEN?: string;
@@ -50,6 +51,7 @@ function allowedOrigins(env: Env): Set<string> {
   const values = [
     env.BETTER_AUTH_URL ?? "",
     ...(env.BETTER_AUTH_TRUSTED_ORIGINS ?? "").split(","),
+    ...(env.APP_ALLOWED_ORIGINS ?? "").split(","),
   ].map((value) => value.trim()).filter(Boolean);
   return new Set(values.map((value) => new URL(value).origin));
 }
