@@ -1,0 +1,9 @@
+{
+  "application": "PCG Missions",
+  "platform": "Cloudflare Pages + Workers + D1",
+  "environment": "production",
+  "schemaVersion": 45,
+  "authentication": "Better Auth",
+  "eventFlyerStorage": "Supabase private storage only",
+  "smsEnabled": false
+}
