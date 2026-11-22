@@ -8,7 +8,7 @@ PCG Missions helps church staff capture visitors, coordinate follow-up, manage m
 
 ## Production status — 22 November 2026
 
-<badge>Production infrastructure deployed</badge>
+**Production infrastructure:** deployed
 
 - **Web application:** [https://pcg-missions.pages.dev](https://pcg-missions.pages.dev) — Cloudflare Pages.
 - **Application API:** `pcg-missions-api-production` — Cloudflare Worker using Better Auth and D1.
