@@ -1110,7 +1110,7 @@ async function listContacts(
     age_range: string | null; preferred_language: string | null;
     contact_status: string; created_at: string; updated_at: string;
   }>();
-  return json(200, { ok: true, data: rows.results ?? [] }, requestId, origin);
+  return json(200, { ok: true, data: (rows.results ?? []).map((row) => ({ ...row, is_public: false })) }, requestId, origin);
 }
 
 async function createContact(
@@ -3105,7 +3105,7 @@ async function handleTeamMembershipOrCoverageMutation(
         SELECT id, team_id, staff_profile_id, membership_role, starts_at, ends_at, created_at
         FROM staff_team_membership WHERE id = ? LIMIT 1
       `).bind(childId).first<Record<string, unknown>>();
-      return json(200, { ok: true, data: updated }, requestId, origin);
+      return json(200, { ok: true, data: { ...updated, is_public: false } }, requestId, origin);
     }
 
     if (teamMemberRevoke) {
@@ -3421,7 +3421,7 @@ type AnnouncementDraftRow = {
   branch_id: string;
   title: string;
   body: string;
-  is_public: number;
+  is_public: number | boolean;
   status: "draft";
   created_at: string;
   updated_at: string;
@@ -3510,7 +3510,7 @@ async function handleAnnouncementCollection(request: Request, env: Env, requestI
     const row = await env.DB.prepare(`SELECT ${ANNOUNCEMENT_DRAFT_COLUMNS} FROM announcement WHERE id=? AND branch_id=?`)
       .bind(id, access.activeBranch.branchId).first<AnnouncementDraftRow>();
     if (!row) return json(500, { ok: false, error: { code: "ANNOUNCEMENT_CREATE_FAILED" } }, requestId, origin);
-    return json(201, { ok: true, data: row }, requestId, origin);
+    return json(201, { ok: true, data: { ...row, is_public: false } }, requestId, origin);
   } catch {
     return json(500, { ok: false, error: { code: "ANNOUNCEMENT_CREATE_FAILED" } }, requestId, origin);
   }
@@ -3537,7 +3537,7 @@ async function handleAnnouncementItem(request: Request, env: Env, announcementId
   if (!current) return json(404, { ok: false, error: { code: "ANNOUNCEMENT_NOT_FOUND" } }, requestId, origin);
   if (method === "GET") {
     const { created_by: _createdBy, ...visible } = current;
-    return json(200, { ok: true, data: visible }, requestId, origin);
+    return json(200, { ok: true, data: { ...visible, is_public: false } }, requestId, origin);
   }
   if (current.created_by !== access.staff.userId) {
     return json(404, { ok: false, error: { code: "ANNOUNCEMENT_NOT_FOUND" } }, requestId, origin);
