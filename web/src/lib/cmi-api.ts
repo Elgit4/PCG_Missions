@@ -726,7 +726,7 @@ export class CmiApiClient {
     config: CmiApiConfig = {},
     /** @deprecated No bearer token is sent; the Worker authenticates the HttpOnly session cookie. */
     _getAccessToken: AccessTokenProvider = async () => null,
-    private readonly fetcher: typeof fetch = fetch,
+    private readonly fetcher: typeof fetch = fetch.bind(globalThis),
   ) {
     const configured = normalizeBaseUrl(config.apiUrl ?? "");
     this.baseUrl = configured || (typeof window !== "undefined" ? window.location.origin : "http://localhost");
