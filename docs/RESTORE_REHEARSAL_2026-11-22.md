@@ -6,7 +6,7 @@
 
 ## Scope and safety
 
-This rehearsal uses the Cloudflare D1 migration-test database as the export source and the isolated EU database `pcg-missions-restore-rehearsal` as the restore target. The D1 database named `pcg-missions-production` and the hosted Supabase project were not modified. Read-only queries were used for inventory and reconciliation. No SMS operations were invoked.
+This rehearsal uses the Cloudflare D1 migration-test database as the export source and the isolated EU database `pcg-missions-restore-rehearsal` as the restore target. The D1 database named `pcg-missions-production` and the hosted Supabase project were not modified. Read-only queries were used for inventory and reconciliation. A fresh read-only check of `pcg-missions-migration-test` confirmed schema version 43, 43 `d1_migrations` rows, 86 application tables (87 including the D1 internal table), 89 capabilities, 128 role-capability grants, and 3 staff profiles. `PRAGMA foreign_key_check` returned no violations on the source; the scratch target remained empty. No SMS operations were invoked.
 
 ## Verified live inventory
 
@@ -56,7 +56,7 @@ Two manual-only GitHub Actions workflows are now committed on this branch:
 
 Both workflows require an exact typed confirmation string in the GitHub Actions manual-run form. They do not run on pushes or pull requests. They do not use or target the D1 production database. The Supabase workflow will not create a restore project or incur project charges; the project owner must provision the separate target first. Configure secrets in GitHub repository **Settings → Secrets and variables → Actions**. Never put connection strings or tokens in workflow inputs, commits, issues, or chat.
 
-**Execution has not yet occurred.** The workflows are automation prepared for a trusted GitHub-hosted runner. The D1 verifier was strengthened after review to compare schema-object SQL rather than only table totals, include the `d1_migrations` ledger count, and require clean foreign-key checks on both databases. The Supabase verifier now preserves `supabase_migrations` explicitly and compares the ordered migration-version list as well as critical row counts. These are code-level safeguards, not restore evidence. The workflows are prepared for a trusted GitHub-hosted runner; their presence is not restore evidence. The D1 workflow may be run once `CLOUDFLARE_API_TOKEN` is configured. The Supabase workflow additionally requires a fresh target Supabase project and both connection-string secrets.
+**Execution has not yet occurred.** The workflows are prepared for a trusted GitHub-hosted runner, but their presence is not restore evidence. The D1 verifier compares schema-object SQL rather than only table totals, includes the `d1_migrations` ledger count, and requires clean foreign-key checks on both databases. The Supabase verifier preserves `supabase_migrations` explicitly and compares the ordered migration-version list as well as critical row counts. These are code-level safeguards, not restore evidence. The D1 workflow may be run once `CLOUDFLARE_API_TOKEN` is configured. The Supabase workflow additionally requires a fresh target Supabase project and both connection-string secrets.
 
 ## Remaining acceptance criteria
 
