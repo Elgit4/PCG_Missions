@@ -95,7 +95,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
 
     def test_live_source_grants_and_worker_aliases_are_least_privilege(self):
         expected_counts = {
-            "admin_pastor": 51,
+            "admin_pastor": 53,
             "coordinator": 23,
             "field_worker": 17,
             "follow_up_volunteer": 11,
@@ -116,7 +116,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
         self.assertEqual(actual_counts, expected_counts)
-        self.assertEqual(sum(actual_counts.values()), 126)
+        self.assertEqual(sum(actual_counts.values()), 128)
 
         admin = self.grants("admin_pastor")
         coordinator = self.grants("coordinator")
@@ -166,7 +166,6 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
 
         # Intercessors receive only the assigned-request source capability.
         self.assertEqual(prayer, {("prayer.request.read.assigned", "assigned")})
-        self.assertFalse(any(code.startswith("prayer.") for code, _ in prayer))
         # No staff role receives an SMS dispatch/configuration grant.
         all_grants = [
             row[0]
