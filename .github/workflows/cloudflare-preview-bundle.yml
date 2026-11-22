@@ -108,6 +108,29 @@ jobs:
             test "$status" = "401"
             node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)' "/tmp/$route.json"
           done
+          branch="00000000-0000-4000-8000-000000000001"
+          for path in "/api/v1/calendar/entries?branch_id=$branch" "/api/v1/announcements?branch_id=$branch"; do
+            status="$(curl --silent --show-error -o /tmp/new-route-read.json -w "%{http_code}" "$url$path")"
+            cat /tmp/new-route-read.json
+            test "$status" = "401"
+            node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/new-route-read.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          done
+          calendar_create_status="$(curl --silent --show-error -o /tmp/calendar-create.json -w "%{http_code}" -X POST "$url/api/v1/calendar/entries" -H "Content-Type: application/json" --data "{\"branch_id\":\"$branch\",\"entry_type\":\"service\",\"title\":\"Preview smoke\",\"starts_at\":\"2026-11-29T09:00:00+00:00\"}")"
+          cat /tmp/calendar-create.json
+          test "$calendar_create_status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/calendar-create.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          calendar_update_status="$(curl --silent --show-error -o /tmp/calendar-update.json -w "%{http_code}" -X PATCH "$url/api/v1/calendar/entries/10000000-0000-4000-8000-000000000001?branch_id=$branch" -H "Content-Type: application/json" --data '{"title":"Preview smoke"}')"
+          cat /tmp/calendar-update.json
+          test "$calendar_update_status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/calendar-update.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          announcement_create_status="$(curl --silent --show-error -o /tmp/announcement-create.json -w "%{http_code}" -X POST "$url/api/v1/announcements" -H "Content-Type: application/json" --data "{\"branch_id\":\"$branch\",\"title\":\"Preview smoke\",\"body\":\"Preview route probe\"}")"
+          cat /tmp/announcement-create.json
+          test "$announcement_create_status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/announcement-create.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          announcement_update_status="$(curl --silent --show-error -o /tmp/announcement-update.json -w "%{http_code}" -X PATCH "$url/api/v1/announcements/10000000-0000-4000-8000-000000000001?branch_id=$branch" -H "Content-Type: application/json" --data '{"title":"Preview smoke"}')"
+          cat /tmp/announcement-update.json
+          test "$announcement_update_status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/announcement-update.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
           node --input-type=module <<'NODE'
           const origin = "https://feat-cloudflare-d1-migration.pcg-missions.pages.dev";
           const workerUrl = "https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev";
