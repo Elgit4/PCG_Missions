@@ -3874,6 +3874,91 @@ async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:
   return json(200,{ok:true,data:{object_path:key,mime_type:type,size_bytes:file.size,signed_url:signedUrl,signed_url_expires_in:900}},requestId,origin);
 }
 
+const EVENT_RESPONSE_COLUMNS="id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,status,visibility,registration_state,transport_enabled,flyer_content_type AS flyer_mime_type,flyer_size AS flyer_size_bytes,flyer_updated_at,created_at,updated_at";
+
+function eventBranchId(request:Request,url:URL):string{
+  return request.headers.get("x-branch-id")??url.searchParams.get("branch_id")??"";
+}
+function validEventFields(value:Record<string,unknown>,partial:boolean):{ok:true;values:Record<string,unknown>}|{ok:false}{
+  const allowed=["title","description","starts_at","ends_at","timezone","location","capacity"];
+  if(Object.keys(value).some(k=>!allowed.includes(k))||(!partial&&["title","starts_at","ends_at","timezone"].some(k=>!(k in value)))) return {ok:false};
+  const values:Record<string,unknown>={};
+  if("title" in value){if(typeof value.title!=="string"||value.title.trim().length<2||value.title.trim().length>180)return {ok:false};values.title=value.title.trim();}
+  if("description" in value){if(value.description!==null&&typeof value.description!=="string")return {ok:false};if(typeof value.description==="string"&&value.description.length>8000)return {ok:false};values.description=value.description;}
+  if("starts_at" in value){if(typeof value.starts_at!=="string"||!Number.isFinite(Date.parse(value.starts_at)))return {ok:false};values.starts_at=new Date(value.starts_at).toISOString();}
+  if("ends_at" in value){if(typeof value.ends_at!=="string"||!Number.isFinite(Date.parse(value.ends_at)))return {ok:false};values.ends_at=new Date(value.ends_at).toISOString();}
+  if("timezone" in value){if(typeof value.timezone!=="string"||value.timezone.trim().length<3||value.timezone.trim().length>64)return {ok:false};values.timezone=value.timezone.trim();}
+  if("location" in value){if(value.location!==null&&typeof value.location!=="string")return {ok:false};if(typeof value.location==="string"&&value.location.length>240)return {ok:false};values.location=value.location;}
+  if("capacity" in value){if(value.capacity!==null&&(!Number.isInteger(value.capacity)||Number(value.capacity)<1||Number(value.capacity)>100000))return {ok:false};values.capacity=value.capacity;}
+  const starts="starts_at" in values?String(values.starts_at):undefined,ends="ends_at" in values?String(values.ends_at):undefined;
+  if(starts&&ends&&Date.parse(ends)<=Date.parse(starts))return {ok:false};
+  return {ok:true,values};
+}
+
+async function handleEventCollection(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
+  const url=new URL(request.url),branchId=eventBranchId(request,url);
+  const context=await resolveStaffContext(request,env);
+  if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
+  if(!isUuidValue(branchId)||context.activeBranch?.branchId!==branchId) return json(403,{ok:false,error:{code:"BRANCH_NOT_AUTHORIZED"}},requestId,origin);
+  if(request.method==="GET"){
+    if(!eventHasScopedGrant(context,"events.read","branch")&&!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    const limit=Math.min(100,Math.max(1,Number(url.searchParams.get("limit")||50)));
+    const offset=Math.max(0,Number(url.searchParams.get("offset")||0));
+    if(!Number.isInteger(limit)||!Number.isInteger(offset)) return json(400,{ok:false,error:{code:"INVALID_PAGINATION"}},requestId,origin);
+    const rows=await env.DB.prepare("SELECT "+EVENT_RESPONSE_COLUMNS+" FROM event WHERE branch_id=? ORDER BY starts_at ASC,id ASC LIMIT ? OFFSET ?")
+      .bind(branchId,limit,offset).all();
+    return json(200,{ok:true,data:rows.results??[]},requestId,origin);
+  }
+  if(request.method!=="POST") return json(405,{ok:false,error:{code:"METHOD_NOT_ALLOWED"}},requestId,origin);
+  if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  const parsed=await readJsonBody(request,12*1024);
+  if(!parsed.ok||!isPlainObject(parsed.value)) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_EVENT"}},requestId,origin);
+  const fields=validEventFields(parsed.value,false);
+  if(!fields.ok) return json(400,{ok:false,error:{code:"INVALID_EVENT"}},requestId,origin);
+  const value=fields.values;
+  if(Date.parse(String(value.ends_at))<=Date.parse(String(value.starts_at))) return json(400,{ok:false,error:{code:"INVALID_EVENT_TIME_RANGE"}},requestId,origin);
+  const id=crypto.randomUUID(),now=new Date().toISOString();
+  try{
+    await env.DB.prepare("INSERT INTO event(id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,status,visibility,registration_state,transport_enabled,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'draft','private','closed',0,?,?,?)")
+      .bind(id,branchId,value.title,value.description??null,value.starts_at,value.ends_at,value.timezone,value.location??null,value.capacity??null,context.staff.userId,now,now).run();
+  }catch{return json(409,{ok:false,error:{code:"EVENT_CREATE_FAILED"}},requestId,origin);}
+  const event=await env.DB.prepare("SELECT "+EVENT_RESPONSE_COLUMNS+" FROM event WHERE id=? AND branch_id=?").bind(id,branchId).first<Record<string,unknown>>();
+  if(!event) return json(500,{ok:false,error:{code:"EVENT_CREATE_FAILED"}},requestId,origin);
+  return json(201,{ok:true,data:event},requestId,origin);
+}
+
+async function handleEventItem(request:Request,env:Env,eventId:string,requestId:string,origin?:string):Promise<Response>{
+  const url=new URL(request.url),branchId=eventBranchId(request,url);
+  if(!isUuidValue(eventId)||!isUuidValue(branchId)) return json(400,{ok:false,error:{code:"INVALID_EVENT_SCOPE"}},requestId,origin);
+  const operation=await eventOperationContext(request,env,branchId,eventId,requestId,origin);
+  if("response" in operation&&operation.response) return operation.response;
+  const {context,event}=operation;
+  if(request.method==="GET"){
+    if(!eventHasScopedGrant(context,"events.read","branch")&&!eventHasScopedGrant(context,"events.manage","branch")) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+    const row=await env.DB.prepare("SELECT "+EVENT_RESPONSE_COLUMNS+" FROM event WHERE id=? AND branch_id=?").bind(eventId,branchId).first<Record<string,unknown>>();
+    return row?json(200,{ok:true,data:row},requestId,origin):json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  }
+  if(request.method!=="PATCH") return json(405,{ok:false,error:{code:"METHOD_NOT_ALLOWED"}},requestId,origin);
+  if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  if(event.status!=="draft"||event.registration_state!=="closed") return json(409,{ok:false,error:{code:"EVENT_NOT_EDITABLE"}},requestId,origin);
+  const parsed=await readJsonBody(request,12*1024);
+  if(!parsed.ok||!isPlainObject(parsed.value)) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_EVENT"}},requestId,origin);
+  const fields=validEventFields(parsed.value,true);
+  if(!fields.ok||Object.keys(fields.values).length===0) return json(400,{ok:false,error:{code:"INVALID_EVENT"}},requestId,origin);
+  const mergedStarts=String(fields.values.starts_at??(await env.DB.prepare("SELECT starts_at FROM event WHERE id=?").bind(eventId).first<{starts_at:string}>())?.starts_at??"");
+  const mergedEnds=String(fields.values.ends_at??(await env.DB.prepare("SELECT ends_at FROM event WHERE id=?").bind(eventId).first<{ends_at:string}>())?.ends_at??"");
+  if(Date.parse(mergedEnds)<=Date.parse(mergedStarts)) return json(400,{ok:false,error:{code:"INVALID_EVENT_TIME_RANGE"}},requestId,origin);
+  const assignments=Object.keys(fields.values).map(key=>key+"=?");
+  const values=Object.values(fields.values);
+  const now=new Date().toISOString();
+  assignments.push("updated_at=?");values.push(now);
+  const result=await env.DB.prepare("UPDATE event SET "+assignments.join(",")+" WHERE id=? AND branch_id=? AND status='draft' AND registration_state='closed'")
+    .bind(...values,eventId,branchId).run();
+  if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
+  const row=await env.DB.prepare("SELECT "+EVENT_RESPONSE_COLUMNS+" FROM event WHERE id=? AND branch_id=?").bind(eventId,branchId).first<Record<string,unknown>>();
+  return row?json(200,{ok:true,data:row},requestId,origin):json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+}
+
 async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
   const url=new URL(request.url), parts=url.pathname.split("/").filter(Boolean);
   const branchId=request.headers.get("x-branch-id")??url.searchParams.get("branch_id")??"";
@@ -4933,6 +5018,15 @@ async function updatePrayerRequestStatus(
       return handleCalendarEntry(request, env, calendarEntryId, requestId, origin);
     }
 
+    if (url.pathname === "/api/v1/events" && (request.method === "GET" || request.method === "POST")) {
+      return handleEventCollection(request, env, requestId, origin);
+    }
+    const eventItemRoute=url.pathname.match(/^\/api\/v1\/events\/([^/]+)$/);
+    if(eventItemRoute&&(request.method==="GET"||request.method==="PATCH")){
+      let eventId:string;
+      try{eventId=decodeURIComponent(eventItemRoute[1]);}catch{return json(400,{ok:false,error:{code:"INVALID_EVENT_ID"}},requestId,origin);}
+      return handleEventItem(request,env,eventId,requestId,origin);
+    }
     if (url.pathname.startsWith("/api/v1/events/") && (request.method === "GET" || request.method === "POST")) {
       return handleEventWorkspaceOperations(request, env, requestId, origin);
     }
