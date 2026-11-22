@@ -32,7 +32,7 @@ test("event staff and team assignment writes recipient-scoped in-app notificatio
   assert.match(assignment, /INSERT OR IGNORE INTO staff_notification/g);
   assert.match(assignment, /'event_assigned'/);
   assert.match(assignment, /JOIN event_staff_assignment a ON a\.id=\?/);
-  assert.match(assignment, /JOIN staff_team_membership stm/);
+  assert.match(assignment, /FROM staff_team_membership stm/);
   assert.match(assignment, /JOIN staff_profile sp ON sp\.id=stm\.staff_profile_id AND sp\.account_status='active'/);
   assert.match(assignment, /event-assignment:/);
   assert.match(assignment, /event-team-assignment:/);
