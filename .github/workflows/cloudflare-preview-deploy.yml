@@ -5,7 +5,10 @@ on:
     branches:
       - migration/cloudflare-auth-consolidation
     paths:
-      - "cloudflare/**"
+      - "cloudflare/src/**"
+      - "cloudflare/migrations/**"
+      - "cloudflare/package.json"
+      - "cloudflare/wrangler.toml"
       - ".github/workflows/cloudflare-preview-deploy.yml"
   workflow_dispatch:
 
@@ -63,14 +66,11 @@ jobs:
           fi
           npx wrangler whoami
 
-      - name: Create a stable Better Auth secret on the preview Worker if missing
-        shell: bash
-        run: |
-          set -euo pipefail
-          secret_names="$(npx wrangler secret list --env preview)"
-          if ! grep -q "BETTER_AUTH_SECRET" <<< "$secret_names"; then
-            openssl rand -base64 48 | npx wrangler secret put BETTER_AUTH_SECRET --env preview
-          fi
+      - name: Preflight Worker script write permission without changing traffic
+        run: npx wrangler versions upload --env preview --message "PCG Missions Better Auth schema 44 deployment preflight"
+
+      # BETTER_AUTH_SECRET was provisioned directly on the isolated preview Worker.
+      # Keep it out of GitHub logs and repository configuration.
 
       - name: Apply forward-only schema 44 to the isolated EU preview D1
         run: npx wrangler d1 migrations apply pcg-missions-migration-test --remote --env preview --yes
