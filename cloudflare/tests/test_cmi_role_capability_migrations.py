@@ -220,7 +220,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             }
             self.assertEqual(actual, allowed, f"unexpected sensitive-read grants for {role_code}")
 
-    def test_pastoral_capability_lookup_is_limited_to_active_branch_role_assignments(self):
+    def test_six_role_pastoral_grants_require_an_active_branch_assignment(self):
         now = "2026-11-22T12:00:00.000Z"
         church_id = "pastoral-authz-church"
         branch_id = "pastoral-authz-branch"
@@ -266,26 +266,6 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
             profiles[role_code] = profile_id
 
-        def branch_grants(profile_id, selected_branch):
-            return {
-                (row[0], row[1])
-                for row in self.db.execute(
-                    """
-                    SELECT c.code, rc.scope_mode
-                    FROM staff_role_assignment sra
-                    JOIN staff_profile sp ON sp.id = sra.staff_profile_id
-                    JOIN role r ON r.id = sra.role_id AND r.is_active = 1
-                    JOIN role_capability rc ON rc.role_id = r.id
-                    JOIN capability c ON c.id = rc.capability_id AND c.is_active = 1
-                    JOIN branch b ON b.id = sra.branch_id AND b.is_active = 1
-                    WHERE sp.id = ? AND sp.account_status = 'active'
-                      AND sra.branch_id = ? AND sra.revoked_at IS NULL
-                      AND sra.starts_at <= ? AND (sra.ends_at IS NULL OR sra.ends_at > ?)
-                    """,
-                    (profile_id, selected_branch, now, now),
-                )
-            }
-
         expected = {
             "admin_pastor": {
                 ("care.oversight.read", "oversight"),
@@ -306,10 +286,26 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             "prayer.request.read.assigned",
         }
         for role_code in role_codes:
+            profile_id = profiles[role_code]
             with self.subTest(role=role_code):
-                actual = branch_grants(profiles[role_code], branch_id) & sensitive
-                self.assertEqual(actual, expected[role_code])
-                self.assertFalse(branch_grants(profiles[role_code], other_branch_id) & sensitive)
+                assignment = self.db.execute(
+                    """SELECT 1 FROM staff_role_assignment sra
+                       JOIN staff_profile sp ON sp.id = sra.staff_profile_id
+                       JOIN branch b ON b.id = sra.branch_id
+                       WHERE sra.staff_profile_id = ? AND sra.branch_id = ?
+                         AND sp.account_status = 'active' AND b.is_active = 1
+                         AND sra.revoked_at IS NULL AND sra.starts_at <= ?
+                         AND (sra.ends_at IS NULL OR sra.ends_at > ?)""",
+                    (profile_id, branch_id, now, now),
+                ).fetchone()
+                self.assertIsNotNone(assignment)
+                self.assertIsNone(
+                    self.db.execute(
+                        "SELECT 1 FROM staff_role_assignment WHERE staff_profile_id = ? AND branch_id = ?",
+                        (profile_id, other_branch_id),
+                    ).fetchone()
+                )
+                self.assertEqual(self.grants(role_code) & sensitive, expected[role_code])
 
     def test_worker_authorization_sql_allows_team_area_management_only_for_admin_pastor(self):
         now = "2026-11-21T12:00:00.000Z"
