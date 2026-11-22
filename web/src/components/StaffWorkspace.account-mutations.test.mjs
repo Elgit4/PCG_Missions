@@ -6,8 +6,8 @@ const source = readFileSync(new URL("./StaffWorkspace.tsx", import.meta.url), "u
 describe("staff account and password-reset mutation concurrency", () => {
   it("serializes staff account, role assignment and dual-control mutations synchronously", () => {
     expect(source).toContain("const staffMutationInFlight = useRef(false)");
-    expect(source.match(/staffMutationInFlight\.current = true;/g)).toHaveLength(2);
-    expect(source.match(/staffMutationInFlight\.current = false;/g)).toHaveLength(2);
+    expect(source.match(/staffMutationInFlight\.current = true;/g)).toHaveLength(4);
+    expect(source.match(/staffMutationInFlight\.current = false;/g)).toHaveLength(4);
     expect(source).toContain("staffMutationInFlight.current || !canCreateStaffAccounts");
     expect(source).toContain("staffMutationInFlight.current || !staffStatusEdit");
     expect(source).toContain("staffMutationInFlight.current || !roleAction");
