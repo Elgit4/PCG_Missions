@@ -48,11 +48,29 @@ export interface StaffSession {
   password_setup_expires_at: string | null;
 }
 
+export interface StaffDirectoryRole {
+  assignment_id: string;
+  code: string;
+  name: string;
+  starts_at: string;
+  ends_at: string | null;
+}
 export interface StaffDirectoryEntry {
   id: string;
   full_name: string;
   account_status: "active" | "inactive";
-  roles: Array<{ code: string; name: string }>;
+  roles: StaffDirectoryRole[];
+}
+export type StandardStaffRoleCode = "coordinator" | "team_leader" | "field_worker" | "follow_up_volunteer" | "prayer_intercessor";
+export interface StaffRoleApprovalRequest {
+  id: string;
+  target_profile_id: string;
+  target_name: string;
+  assignment_id?: string;
+  requested_by: string;
+  requester_name: string;
+  reason: string;
+  requested_at: string;
 }
 
 export interface StaffAccountCreateInput {
@@ -706,6 +724,18 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     return null;
   }
 
+  if (functionName === "staff-role-operations") {
+    if (suffix === "/staff/roles" && verb === "POST") return "/api/v1/staff/roles";
+    if (/^\\/staff\\/roles\\/[^/]+$/.test(suffix) && verb === "DELETE") return "/api/v1" + suffix;
+    if ((suffix === "/staff/role-elevations" || suffix === "/staff/role-revocations") && (verb === "GET" || verb === "POST")) {
+      return "/api/v1" + suffix;
+    }
+    if (/^\\/staff\\/role-(elevations|revocations)\\/[^/]+\\/(approve|reject)$/.test(suffix) && verb === "POST") {
+      return "/api/v1" + suffix;
+    }
+    return null;
+  }
+
   if (functionName === "staff-operations") {
     if (suffix === "/contacts" && (verb === "GET" || verb === "POST")) return "/api/v1/contacts";
     if (/^\/contacts\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix;
@@ -920,6 +950,56 @@ export class CmiApiClient {
     return this.request<StaffDirectoryEntry[]>("staff-operations", "/staff", {
       query: { branch_id: branchId, limit: options.limit ?? 25, offset: options.offset ?? 0, search: options.search },
     });
+  }
+
+  assignStaffRole(branchId: string, targetProfileId: string, roleCode: StandardStaffRoleCode, reason: string) {
+    return this.request<{ id: string; target_profile_id: string; role_code: StandardStaffRoleCode; branch_id: string; starts_at: string; ends_at: string | null }>(
+      "staff-role-operations", "/staff/roles", {
+        method: "POST", branchId,
+        body: { target_profile_id: targetProfileId, role_code: roleCode, starts_at: new Date().toISOString(), ends_at: null, reason },
+      },
+    );
+  }
+  revokeStaffRole(branchId: string, assignmentId: string, reason: string) {
+    return this.request<{ revoked_assignment_id: string }>(
+      "staff-role-operations", "/staff/roles/" + encodeURIComponent(assignmentId), {
+        method: "DELETE", branchId, body: { reason },
+      },
+    );
+  }
+  listAdminElevationRequests(branchId: string) {
+    return this.request<StaffRoleApprovalRequest[]>("staff-role-operations", "/staff/role-elevations", { branchId });
+  }
+  requestAdminElevation(branchId: string, targetProfileId: string, reason: string) {
+    return this.request<{ id: string; target_profile_id: string; status: string }>(
+      "staff-role-operations", "/staff/role-elevations", {
+        method: "POST", branchId, body: { target_profile_id: targetProfileId, reason },
+      },
+    );
+  }
+  reviewAdminElevation(branchId: string, requestId: string, decision: "approve" | "reject", reason: string) {
+    return this.request<{ elevation_request_id: string; assignment_id?: string; status: string }>(
+      "staff-role-operations", "/staff/role-elevations/" + encodeURIComponent(requestId) + "/" + decision, {
+        method: "POST", branchId, body: { review_reason: reason },
+      },
+    );
+  }
+  listAdminRevocationRequests(branchId: string) {
+    return this.request<StaffRoleApprovalRequest[]>("staff-role-operations", "/staff/role-revocations", { branchId });
+  }
+  requestAdminRevocation(branchId: string, assignmentId: string, reason: string) {
+    return this.request<{ id: string; assignment_id: string; status: string }>(
+      "staff-role-operations", "/staff/role-revocations", {
+        method: "POST", branchId, body: { assignment_id: assignmentId, reason },
+      },
+    );
+  }
+  reviewAdminRevocation(branchId: string, requestId: string, decision: "approve" | "reject", reason: string) {
+    return this.request<{ revocation_request_id: string; status: string }>(
+      "staff-role-operations", "/staff/role-revocations/" + encodeURIComponent(requestId) + "/" + decision, {
+        method: "POST", branchId, body: { review_reason: reason },
+      },
+    );
   }
 
   createStaffAccount(input: StaffAccountCreateInput) {
