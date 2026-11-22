@@ -17,6 +17,8 @@ interface Env extends Omit<StaffEnvironment, "DB"> {
   DB: D1Database;
   APP_ENV?: string;
   APP_ALLOWED_ORIGINS?: string;
+  SUPABASE_URL?: string;
+  SUPABASE_SERVICE_ROLE_KEY?: string;
 }
 
 function json(status: number, body: Record<string, unknown>, requestId: string, origin?: string): Response {
@@ -3797,6 +3799,69 @@ async function eventReceiptReplay(env:Env,eventId:string,operation:string,key:st
   if(!bytesEqual(receipt.request_digest,digest)) return json(409,{ok:false,error:{code:"IDEMPOTENCY_KEY_REUSED"}},requestId,origin);
   return receipt;
 }
+async function eventFlyerStorageRequest(env:Env,key:string,method:"GET"|"PUT"|"DELETE",body?:ArrayBuffer,contentType?:string):Promise<Response>{
+  if(!env.SUPABASE_URL||!env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("EVENT_MEDIA_STORAGE_NOT_CONFIGURED");
+  const base=new URL(env.SUPABASE_URL);
+  if(base.protocol!=="https:") throw new Error("EVENT_MEDIA_STORAGE_URL_INVALID");
+  const objectPath=key.split("/").map(encodeURIComponent).join("/");
+  const url=new URL("/storage/v1/object/pcg-missions-event-media/"+objectPath,base);
+  const headers=new Headers({
+    apikey:env.SUPABASE_SERVICE_ROLE_KEY,
+    Authorization:"Bearer "+env.SUPABASE_SERVICE_ROLE_KEY,
+  });
+  if(contentType) headers.set("Content-Type",contentType);
+  return fetch(url.toString(),{method,headers,body});
+}
+
+async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:string,context:Extract<Awaited<ReturnType<typeof resolveStaffContext>>,{state:"authenticated"}>,requestId:string,origin?:string):Promise<Response>{
+  const event=await env.DB.prepare("SELECT id,branch_id,status,flyer_key,flyer_content_type,flyer_size FROM event WHERE id=? AND branch_id=? LIMIT 1")
+    .bind(eventId,branchId).first<{id:string;branch_id:string;status:string;flyer_key:string|null;flyer_content_type:string|null;flyer_size:number|null}>();
+  if(!event) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+  if(request.method==="GET"){
+    if(!eventHasScopedGrant(context,"events.read","branch")&&!eventHasScopedGrant(context,"events.manage","branch"))
+      return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    if(!event.flyer_key||!event.flyer_content_type) return json(404,{ok:false,error:{code:"EVENT_FLYER_NOT_FOUND"}},requestId,origin);
+    let stored:Response;
+    try{stored=await eventFlyerStorageRequest(env,event.flyer_key,"GET");}
+    catch{return json(503,{ok:false,error:{code:"EVENT_MEDIA_STORAGE_UNAVAILABLE"}},requestId,origin);}
+    if(stored.status===404) return json(404,{ok:false,error:{code:"EVENT_FLYER_NOT_FOUND"}},requestId,origin);
+    if(!stored.ok) return json(502,{ok:false,error:{code:"EVENT_FLYER_READ_FAILED"}},requestId,origin);
+    const headers=new Headers({"Content-Type":event.flyer_content_type,"Content-Disposition":"inline","Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","X-Request-Id":requestId});
+    return new Response(stored.body,{status:200,headers});
+  }
+  if(request.method!=="POST") return json(405,{ok:false,error:{code:"METHOD_NOT_ALLOWED"}},requestId,origin);
+  if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+  if(event.status!=="draft") return json(409,{ok:false,error:{code:"EVENT_NOT_EDITABLE"}},requestId,origin);
+  const length=Number(request.headers.get("content-length")||0);
+  if(length>5*1024*1024+65536) return json(413,{ok:false,error:{code:"EVENT_FLYER_TOO_LARGE"}},requestId,origin);
+  let form:FormData;
+  try{form=await request.formData();}catch{return json(400,{ok:false,error:{code:"INVALID_EVENT_FLYER_FORM"}},requestId,origin);}
+  const file=form.get("file");
+  if(!(file instanceof File)) return json(400,{ok:false,error:{code:"EVENT_FLYER_REQUIRED"}},requestId,origin);
+  if(file.size<16||file.size>5*1024*1024) return json(413,{ok:false,error:{code:"EVENT_FLYER_SIZE_INVALID"}},requestId,origin);
+  const bytes=await file.arrayBuffer(),v=new Uint8Array(bytes);
+  const png=v.length>=8&&[137,80,78,71,13,10,26,10].every((n,i)=>v[i]===n);
+  const jpeg=v.length>=3&&v[0]===255&&v[1]===216&&v[2]===255;
+  const webp=v.length>=12&&String.fromCharCode(...v.slice(0,4))==="RIFF"&&String.fromCharCode(...v.slice(8,12))==="WEBP";
+  const type=png?"image/png":jpeg?"image/jpeg":webp?"image/webp":"";
+  if(!type||file.type!==type) return json(415,{ok:false,error:{code:"UNSUPPORTED_EVENT_FLYER_TYPE"}},requestId,origin);
+  const ext=type==="image/png"?"png":type==="image/jpeg"?"jpg":"webp";
+  const key="events/"+branchId+"/"+eventId+"/"+crypto.randomUUID()+"."+ext;
+  let stored:Response;
+  try{stored=await eventFlyerStorageRequest(env,key,"PUT",bytes,type);}
+  catch{return json(503,{ok:false,error:{code:"EVENT_MEDIA_STORAGE_UNAVAILABLE"}},requestId,origin);}
+  if(!stored.ok) return json(502,{ok:false,error:{code:"EVENT_FLYER_UPLOAD_FAILED"}},requestId,origin);
+  const now=new Date().toISOString();
+  const updated=await env.DB.prepare("UPDATE event SET flyer_key=?,flyer_content_type=?,flyer_size=?,flyer_updated_at=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
+    .bind(key,type,file.size,now,now,eventId,branchId).run();
+  if(!updated.success||(updated.meta?.changes??0)!==1){
+    await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);
+    return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
+  }
+  if(event.flyer_key) await eventFlyerStorageRequest(env,event.flyer_key,"DELETE").catch(()=>undefined);
+  return json(200,{ok:true,data:{event_id:eventId,flyer_url:"/api/v1/events/"+eventId+"/flyer",content_type:type,size:file.size}},requestId,origin);
+}
+
 async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
   const url=new URL(request.url), parts=url.pathname.split("/").filter(Boolean);
   const branchId=request.headers.get("x-branch-id")??url.searchParams.get("branch_id")??"";
@@ -3806,6 +3871,10 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
   if("response" in operation && operation.response) return operation.response;
   const {context,event}=operation;
   const now=new Date().toISOString();
+
+  if(parts.length===5&&parts[4]==="flyer"&&(request.method==="GET"||request.method==="POST")){
+    return handleEventFlyer(request,env,eventId,branchId,context,requestId,origin);
+  }
 
   if(parts.length===6&&parts[4]==="staff-registration"&&request.method==="POST"){
     if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
