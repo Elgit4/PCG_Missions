@@ -106,3 +106,57 @@ References:
 ## 6. Release decision
 
 **Task 7 remains open. Production deployment and Pages production routing must remain blocked.** The D1 same-bookmark restore passed, but the D1 SQL import and Supabase restore rehearsal are incomplete. Do not mark this task complete until every unchecked recovery gate is evidenced.
+
+
+## 7. Follow-up verification — 2026-11-22
+
+A second read-only pass was performed after the initial rehearsal report. No writes were made to either D1 database or the Supabase source project.
+
+### D1 database inventory and data checks
+
+- Re-queried `sqlite_master` on `pcg-missions-migration-test`: **86 application tables plus Cloudflare's internal `_cf_KV` table** (87 total); `d1_migrations` latest ID is **43**.
+- Re-queried the isolated `pcg-missions-restore-rehearsal`: it still contains only `_cf_KV`; no application tables or rows have been imported.
+- Cloudflare's D1 database-list metadata returned `num_tables: 0` for every database, including the populated migration-test database. This field is inconsistent with direct SQL inspection and must not be used as evidence of an empty database; `sqlite_master` is the authoritative check used here.
+- All D1 reads were served by the EU primary (`EEUR`).
+
+### Source-to-target sample reconciliation
+
+These counts were read independently from the live Supabase source and the D1 migration-test database:
+
+| Table | Supabase source | D1 migration-test | Difference |
+|---|---:|---:|---:|
+| church | 1 | 1 | 0 |
+| branch | 1 | 1 | 0 |
+| role | 6 | 6 | 0 |
+| capability | 61 | 89 | +28 |
+| role_capability | 65 | 128 | +63 |
+| staff_profile | 3 | 3 | 0 |
+| staff_role_assignment | 2 | 2 | 0 |
+| staff_access_audit | 5 | 6 | +1 |
+
+**Reconciliation result: FAILED / unexplained differences remain.** Matching counts for selected identity tables do not prove matching identifiers, row contents, foreign-key relationships or authorization semantics. The capability and role-capability differences are material and must be resolved by comparing canonical keys and grant contents before any production import. The extra D1 audit row also needs explanation; do not delete it merely to force counts to match.
+
+### Supabase backup eligibility and restore constraints
+
+- The connected Supabase organization `El_Tech` is on the **Free** plan.
+- Current Supabase documentation says automatic daily backups are provided for Pro, Team and Enterprise projects; Free projects should regularly create off-site logical exports using `supabase db dump`.
+- Supabase's documented **Restore to a New Project** clone flow is restricted to paid plans and requires physical backups. It is therefore not available under the currently observed Free plan.
+- A new blank project quote returned $0/month, but creating an empty project would not constitute a backup clone and would not recover source data. No empty project was created.
+- The connected Supabase tools expose project/schema/SQL inspection but do not expose the source project's backup listing, physical backup download, or restore-to-new-project operation. The latest backup timestamp and restore-point availability remain unverified.
+- No restore was attempted against the live source project. No source schema, rows, Auth users, Storage objects or settings were changed.
+
+Official references (checked 2026-11-22):
+- [Supabase database backups](https://supabase.com/docs/guides/platform/backups) — Free projects require operator-managed logical exports; automatic daily backups are for paid plans.
+- [Supabase restore to a new project](https://supabase.com/docs/guides/platform/clone-project) — paid-plan and physical-backup prerequisites; database-only clone with additional configuration to reapply.
+- [Supabase CLI v3 breaking change](https://supabase.com/changelog?types=breaking-change) — CLI v3 defaults database commands to the local stack; use the documented remote-target option deliberately and verify the target before any hosted operation.
+
+### Updated release decision
+
+Task 7 remains **OPEN / BLOCKED**. The blockers are now more specific:
+
+1. D1 SQL export download is still blocked from this execution environment by the Cloudflare R2 egress restriction; the scratch D1 remains empty.
+2. The current migration-test dataset does not reconcile with Supabase on capabilities, role-capability grants and audit rows.
+3. Supabase's organization is Free, which does not meet the documented eligibility for restore-to-new-project cloning; no automatic daily backup should be assumed.
+4. A manual logical export, or an approved paid-plan restore-to-new-project workflow, is still needed to prove source recovery.
+
+**Do not cut over or mark Task 7 complete.** Next safe actions require a trusted operator environment with Wrangler and an approved Supabase backup path. Preserve both source datasets unchanged until the data differences are explained and reconciled.
