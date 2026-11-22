@@ -85,4 +85,25 @@ describe("Cloudflare Better Auth browser client", () => {
     const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ error: { code: "UNAUTHENTICATED", message: "Sign in required." } }), { status: 401 }));
     await expect(new PcgAuthClient(fetcher as typeof fetch).requestPasswordReset("staff@example.test")).rejects.toBeInstanceOf(AuthClientError);
   });
+  it("binds the native fetch receiver for session and health requests", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetcher = vi.fn(function (this: unknown, input: RequestInfo | URL) {
+      if (this !== globalThis) throw new TypeError("Illegal invocation");
+      const url = String(input);
+      return Promise.resolve(new Response(
+        url.endsWith("/health") ? JSON.stringify({ ok: true, schema_version: 45 }) : "null",
+        { status: 200 },
+      ));
+    });
+    globalThis.fetch = fetcher as unknown as typeof fetch;
+    try {
+      const client = new PcgAuthClient();
+      await expect(client.getSession()).resolves.toBeNull();
+      await expect(client.testConnection()).resolves.toContain("schema version 45");
+      expect(fetcher).toHaveBeenCalledTimes(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
 });
