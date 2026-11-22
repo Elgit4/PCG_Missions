@@ -139,4 +139,47 @@ describe("Cloudflare Worker API client", () => {
     }
   });
 
+
+  it("routes private sermon and welcome-message draft operations to Cloudflare", async () => {
+    const fetcher = vi.fn(async () => response([]));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+
+    await api.listSermonDrafts("branch-1");
+    await api.listWelcomeMessageDrafts("branch-1");
+    await api.createSermonDraft({
+      branch_id: "branch-1", title: "Faith and Service", body: "A private draft.", public_slug: "faith-and-service",
+    } as never);
+    await api.createWelcomeMessageDraft({
+      branch_id: "branch-1", title: "Welcome", body: "A private welcome message.", display_order: 0,
+    } as never);
+    await api.updateSermonDraft("branch-1", "sermon-1", { title: "Updated title" });
+
+    const calls = fetcher.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(calls.map(([url]) => new URL(url).pathname)).toEqual([
+      "/api/v1/content/sermons",
+      "/api/v1/content/welcome-messages",
+      "/api/v1/content/sermons",
+      "/api/v1/content/welcome-messages",
+      "/api/v1/content/sermons/sermon-1",
+    ]);
+    for (const [, init] of calls) {
+      expect(init.credentials).toBe("include");
+      expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+      expect(new Headers(init.headers).has("Authorization")).toBe(false);
+    }
+  });
+
+  it("routes announcement archival to the Cloudflare Worker", async () => {
+    const fetcher = vi.fn(async () => response({ announcement_id: "announcement-1", status: "archived" }));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+
+    await api.archiveAnnouncementDraft("branch-1", "announcement-1");
+
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URL(url).pathname).toBe("/api/v1/announcements/announcement-1/archive");
+    expect(init.method).toBe("POST");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(init.credentials).toBe("include");
+  });
+
 });
