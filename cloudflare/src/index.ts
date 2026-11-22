@@ -5868,12 +5868,31 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
     if (url.pathname === "/api/v1/announcements" && (request.method === "GET" || request.method === "POST")) {
       return handleAnnouncementCollection(request, env, requestId, origin);
     }
+    const announcementArchiveMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)\/archive$/);
+    if (announcementArchiveMatch && request.method === "POST") {
+      let announcementId: string;
+      try { announcementId = decodeURIComponent(announcementArchiveMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_ID" } }, requestId, origin); }
+      return archiveAnnouncementDraft(request, env, announcementId, requestId, origin);
+    }
     const announcementMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)$/);
     if (announcementMatch && (request.method === "GET" || request.method === "PATCH")) {
       let announcementId: string;
       try { announcementId = decodeURIComponent(announcementMatch[1]); }
       catch { return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_ID" } }, requestId, origin); }
       return handleAnnouncementItem(request, env, announcementId, requestId, origin);
+    }
+
+    const contentCollectionMatch = url.pathname.match(/^\/api\/v1\/content\/(sermons|welcome-messages)$/);
+    if (contentCollectionMatch && (request.method === "GET" || request.method === "POST")) {
+      return handleContentCollection(request, env, contentCollectionMatch[1] as ContentDraftResource, requestId, origin);
+    }
+    const contentItemMatch = url.pathname.match(/^\/api\/v1\/content\/(sermons|welcome-messages)\/([^/]+)$/);
+    if (contentItemMatch && (request.method === "GET" || request.method === "PATCH")) {
+      let contentId: string;
+      try { contentId = decodeURIComponent(contentItemMatch[2]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CONTENT_ID" } }, requestId, origin); }
+      return handleContentItem(request, env, contentItemMatch[1] as ContentDraftResource, contentId, requestId, origin);
     }
 
     if (url.pathname === "/api/v1/calendar/entries" && (request.method === "GET" || request.method === "POST")) {
