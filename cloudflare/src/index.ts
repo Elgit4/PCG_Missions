@@ -3414,6 +3414,174 @@ function reportForbidden(access: Awaited<ReturnType<typeof authorizeRequestCapab
 }
 
 
+
+type CalendarEntryRow = {
+  id: string;
+  branch_id: string;
+  entry_type: "service" | "event" | "other";
+  title: string;
+  starts_at: string;
+  ends_at: string | null;
+  scope_type: "branch";
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+const CALENDAR_ENTRY_COLUMNS = "id,branch_id,entry_type,title,starts_at,ends_at,scope_type,created_by,created_at,updated_at";
+
+function parseCalendarTimestamp(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 50 ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function parseCalendarEntryFields(value: unknown, current?: { starts_at: string; ends_at: string | null }):
+  | { ok: true; value: { entry_type?: "service" | "event" | "other"; title?: string; starts_at?: string; ends_at?: string | null } }
+  | { ok: false } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false };
+  const payload = value as Record<string, unknown>;
+  const allowed = new Set(current
+    ? ["entry_type", "title", "starts_at", "ends_at"]
+    : ["branch_id", "entry_type", "title", "starts_at", "ends_at"]);
+  if (Object.keys(payload).some((key) => !allowed.has(key))) return { ok: false };
+  const result: { entry_type?: "service" | "event" | "other"; title?: string; starts_at?: string; ends_at?: string | null } = {};
+  if (!current || "entry_type" in payload) {
+    if (!["service", "event", "other"].includes(String(payload.entry_type))) return { ok: false };
+    result.entry_type = payload.entry_type as "service" | "event" | "other";
+  }
+  if (!current || "title" in payload) {
+    if (typeof payload.title !== "string") return { ok: false };
+    const title = payload.title.trim();
+    if (title.length < 2 || title.length > 180) return { ok: false };
+    result.title = title;
+  }
+  let startsAt = current?.starts_at ?? "";
+  let endsAt: string | null = current?.ends_at ?? null;
+  if (!current || "starts_at" in payload) {
+    const parsed = parseCalendarTimestamp(payload.starts_at);
+    if (!parsed) return { ok: false };
+    startsAt = parsed;
+    result.starts_at = parsed;
+  }
+  if (!current || "ends_at" in payload) {
+    if (payload.ends_at === null || (!current && payload.ends_at === undefined)) {
+      endsAt = null;
+      result.ends_at = null;
+    } else {
+      const parsed = parseCalendarTimestamp(payload.ends_at);
+      if (!parsed) return { ok: false };
+      endsAt = parsed;
+      result.ends_at = parsed;
+    }
+  }
+  if (endsAt !== null && Date.parse(endsAt) <= Date.parse(startsAt)) return { ok: false };
+  if (current && Object.keys(result).length === 0) return { ok: false };
+  return { ok: true, value: result };
+}
+
+async function handleCalendarCollection(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const method = request.method.toUpperCase();
+  const access = await authorizeRequestCapability(
+    request, env, method === "GET" ? "calendar.read.scoped" : "calendar.manage.scoped",
+  );
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const url = new URL(request.url);
+  if (method === "GET") {
+    const allowed = new Set(["branch_id", "limit", "offset"]);
+    const keys = [...url.searchParams.keys()];
+    const branchId = url.searchParams.get("branch_id");
+    const limit = url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : 50;
+    const offset = url.searchParams.has("offset") ? Number(url.searchParams.get("offset")) : 0;
+    if (keys.some((key) => !allowed.has(key)) || !branchId ||
+        branchId !== access.activeBranch.branchId ||
+        !Number.isInteger(limit) || limit < 1 || limit > 100 ||
+        !Number.isInteger(offset) || offset < 0 || offset > 10000) {
+      return json(400, { ok: false, error: { code: "INVALID_CALENDAR_QUERY" } }, requestId, origin);
+    }
+    const rows = await env.DB.prepare(`
+      SELECT ${CALENDAR_ENTRY_COLUMNS}
+      FROM calendar_entry
+      WHERE branch_id = ? AND scope_type = 'branch' AND status = 'active'
+      ORDER BY starts_at ASC, id ASC
+      LIMIT ? OFFSET ?
+    `).bind(branchId, limit, offset).all<CalendarEntryRow>();
+    return json(200, { ok: true, data: rows.results ?? [] }, requestId, origin);
+  }
+
+  const body = await readJsonBody(request, 8192);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as Record<string, unknown>;
+  if (typeof payload?.branch_id !== "string" || payload.branch_id !== access.activeBranch.branchId) {
+    return json(403, { ok: false, error: { code: "BRANCH_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+  const parsed = parseCalendarEntryFields(body.value);
+  if (!parsed.ok) return json(400, { ok: false, error: { code: "INVALID_CALENDAR_ENTRY" } }, requestId, origin);
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  try {
+    await env.DB.prepare(`
+      INSERT INTO calendar_entry
+        (id,branch_id,entry_type,title,starts_at,ends_at,scope_type,team_id,event_id,owner_user_id,created_by,updated_by,created_at,updated_at)
+      VALUES (?,?,?,?,?,?,'branch',NULL,NULL,NULL,?,?,?,?)
+    `).bind(
+      id, access.activeBranch.branchId, parsed.value.entry_type, parsed.value.title,
+      parsed.value.starts_at, parsed.value.ends_at ?? null, access.staff.userId,
+      access.staff.userId, now, now,
+    ).run();
+    const row = await env.DB.prepare(`SELECT ${CALENDAR_ENTRY_COLUMNS} FROM calendar_entry WHERE id=? AND branch_id=?`)
+      .bind(id, access.activeBranch.branchId).first<CalendarEntryRow>();
+    if (!row) return json(500, { ok: false, error: { code: "CALENDAR_CREATE_FAILED" } }, requestId, origin);
+    return json(201, { ok: true, data: row }, requestId, origin);
+  } catch {
+    return json(500, { ok: false, error: { code: "CALENDAR_CREATE_FAILED" } }, requestId, origin);
+  }
+}
+
+async function handleCalendarEntry(request: Request, env: Env, entryId: string, requestId: string, origin?: string): Promise<Response> {
+  const method = request.method.toUpperCase();
+  if (method !== "GET" && method !== "PATCH") return json(405, { ok: false, error: { code: "METHOD_NOT_ALLOWED" } }, requestId, origin);
+  const access = await authorizeRequestCapability(
+    request, env, method === "GET" ? "calendar.read.scoped" : "calendar.manage.scoped",
+  );
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const url = new URL(request.url);
+  const branchId = url.searchParams.get("branch_id");
+  if ([...url.searchParams.keys()].some((key) => key !== "branch_id") ||
+      branchId !== access.activeBranch.branchId) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_QUERY" } }, requestId, origin);
+  }
+  const current = await env.DB.prepare(`
+    SELECT ${CALENDAR_ENTRY_COLUMNS}
+    FROM calendar_entry
+    WHERE id=? AND branch_id=? AND scope_type='branch' AND status='active'
+  `).bind(entryId, branchId).first<CalendarEntryRow>();
+  if (!current) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
+  if (method === "GET") return json(200, { ok: true, data: current }, requestId, origin);
+
+  const body = await readJsonBody(request, 8192);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const parsed = parseCalendarEntryFields(body.value, current);
+  if (!parsed.ok) return json(400, { ok: false, error: { code: "INVALID_CALENDAR_ENTRY" } }, requestId, origin);
+  const next = { ...current, ...parsed.value };
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare(`
+    UPDATE calendar_entry
+    SET entry_type=?, title=?, starts_at=?, ends_at=?, updated_by=?, updated_at=?
+    WHERE id=? AND branch_id=? AND scope_type='branch' AND status='active' AND updated_at=?
+  `).bind(
+    next.entry_type, next.title, next.starts_at, next.ends_at,
+    access.staff.userId, now, entryId, branchId, current.updated_at,
+  ).run();
+  if (!result.success) return json(500, { ok: false, error: { code: "CALENDAR_UPDATE_FAILED" } }, requestId, origin);
+  if ((result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "CALENDAR_CONFLICT" } }, requestId, origin);
+  const updated = await env.DB.prepare(`SELECT ${CALENDAR_ENTRY_COLUMNS} FROM calendar_entry WHERE id=? AND branch_id=?`)
+    .bind(entryId, branchId).first<CalendarEntryRow>();
+  if (!updated) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, data: updated }, requestId, origin);
+}
+
 async function eventOperationContext(request: Request, env: Env, branchId: string, eventId: string, requestId: string, origin?: string) {
   const context=await resolveStaffContext(request,env);
   if(context.state!=="authenticated") return {response:mapCapabilityFailure(context.state,requestId,origin)} as const;
@@ -4494,6 +4662,17 @@ async function updatePrayerRequestStatus(
 }
 
 
+
+    if (url.pathname === "/api/v1/calendar/entries" && (request.method === "GET" || request.method === "POST")) {
+      return handleCalendarCollection(request, env, requestId, origin);
+    }
+    const calendarEntryMatch = url.pathname.match(/^\/api\/v1\/calendar\/entries\/([^/]+)$/);
+    if (calendarEntryMatch && (request.method === "GET" || request.method === "PATCH")) {
+      let calendarEntryId: string;
+      try { calendarEntryId = decodeURIComponent(calendarEntryMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CALENDAR_ENTRY_ID" } }, requestId, origin); }
+      return handleCalendarEntry(request, env, calendarEntryId, requestId, origin);
+    }
 
     if (url.pathname.startsWith("/api/v1/events/") && (request.method === "GET" || request.method === "POST")) {
       return handleEventWorkspaceOperations(request, env, requestId, origin);
