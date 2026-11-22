@@ -85,6 +85,69 @@ INSERT INTO capability (id,code,description,sensitivity,is_active,created_at) VA
   ('cap-area-read','area.read','Read service areas and coverage summary within branch scope.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 ON CONFLICT(code) DO UPDATE SET description=excluded.description,sensitivity=excluded.sensitivity,is_active=excluded.is_active,created_at=excluded.created_at;
 
+-- Explicit legacy Worker API capability names. Each one is granted below only
+-- as an alias of its canonical source permission and with the same scope.
+INSERT INTO capability (id,code,description,sensitivity,is_active,created_at) VALUES
+  ('staff.role.assign','staff.role.assign','Assign standard staff roles using the source access.role.assign grant.','highly_restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('staff.role.approve','staff.role.approve','Approve controlled staff-role changes using the source access.role.assign grant.','highly_restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('announcements.manage','announcements.manage','Draft announcements using the source announcement.create.scoped grant; publishing remains separate.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('announcements.read','announcements.read','Read announcements using the source announcement.read.scoped grant.','ordinary',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('calendar.manage','calendar.manage','Manage calendar entries using the source calendar.manage.scoped grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('calendar.read','calendar.read','Read calendar entries using the source calendar.read.scoped grant.','ordinary',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('contacts.assign','contacts.assign','Assign contacts using the source contact.assign.scoped grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('contacts.create','contacts.create','Create contacts using the source contact.capture.create grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('contacts.contact_details.read','contacts.contact_details.read','Read contact identity details using the source contact.identity.read.scoped grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('contacts.private_fields.read','contacts.private_fields.read','Read separately protected contact identity fields using the source contact.identity.read.scoped grant.','highly_restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('contacts.private_fields.update','contacts.private_fields.update','Update contact identity fields using the source contact.identity.update.scoped grant.','highly_restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('contacts.interaction.create','contacts.interaction.create','Record interactions using the source contact.interaction.record grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('contacts.note.create','contacts.note.create','Create ordinary contact notes using the source contact.note.create grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('contacts.read','contacts.read','Read contacts using the source contact.read.scoped grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('contacts.update','contacts.update','Update ordinary contact fields using the source contact.update.scoped grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('content.manage','content.manage','Manage drafts using the source content.manage.draft grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('events.checkin','events.checkin','Check in to events using the source event.checkin.scoped grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('events.manage','events.manage','Manage events using the source event.manage.scoped grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('events.read','events.read','Read events using the source event.read.scoped grant.','ordinary',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('followup.assign','followup.assign','Assign follow-up tasks using the source followup.task.assign.scoped grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('followup.create','followup.create','Create follow-up tasks using the source followup.task.create grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('followup.read','followup.read','Read follow-up tasks using the source followup.task.read.scoped grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('followup.update','followup.update','Update follow-up tasks using the source followup.task.update.scoped grant.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('staff.audit.read','staff.audit.read','Worker compatibility capability for privileged staff audit reads; no role is granted this capability.','highly_restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('prayer.request.read','prayer.request.read','Worker compatibility capability for explicit-share prayer reads; no role is granted this legacy capability.','highly_restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  ('prayer.request.share','prayer.request.share','Worker compatibility capability for prayer sharing; no role is granted this capability.','highly_restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+ON CONFLICT(code) DO UPDATE SET description=excluded.description,sensitivity=excluded.sensitivity,is_active=1;
+
+-- Disable unused legacy permissions (including old broad prayer/pastoral/report
+-- grants) while retaining source capabilities and the exact Worker aliases.
+UPDATE capability SET is_active=0 WHERE code NOT IN (
+  'staff.role.assign',
+  'staff.role.approve',
+  'announcements.manage',
+  'announcements.read',
+  'calendar.manage',
+  'calendar.read',
+  'contacts.assign',
+  'contacts.create',
+  'contacts.contact_details.read',
+  'contacts.private_fields.read',
+  'contacts.private_fields.update',
+  'contacts.interaction.create',
+  'contacts.note.create',
+  'contacts.read',
+  'contacts.update',
+  'content.manage',
+  'events.checkin',
+  'events.manage',
+  'events.read',
+  'followup.assign',
+  'followup.create',
+  'followup.read',
+  'followup.update',
+  'staff.audit.read',
+  'prayer.request.read',
+  'prayer.request.share',
+  'team.read',
+  'area.read'
+);
 -- Drop the stale broad Worker seed grants before rebuilding the exact policy.
 DELETE FROM role_capability;
 
