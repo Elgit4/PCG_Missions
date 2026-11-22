@@ -673,6 +673,15 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
   const verb = method.toUpperCase();
   if (functionName === "staff-session" && suffix === "") return "/api/v1/me";
 
+  if (functionName === "event-operations") {
+    if (/^\/events\/[^/]+\/registrations$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/staff-registration\/(open|close)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/registrations\/[^/]+\/(check-in|cancel)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/closeout$/.test(suffix) && verb === "GET") return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/closeout\/(submit|review)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    return null;
+  }
+
   if (functionName === "pastoral-operations") {
     if (suffix === "/prayer/requests/assigned" && verb === "GET") return "/api/v1/pastoral/prayer/assigned";
     return null;
