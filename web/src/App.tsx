@@ -206,7 +206,7 @@ function StaffApp() {
     setNotice("");
     try {
       await auth.requestPasswordReset(email);
-      setNotice("If this address belongs to an active staff account, the church administrators have been notified. If approved, the administrator will email you a temporary password that you must replace after signing in.");
+      setNotice("If this address belongs to an active staff account, the church administrators have been notified. An administrator will verify your request and provide a temporary password through a private channel. You must change it at your next sign-in.");
     } catch (cause) {
       setError(messageFor(cause));
     } finally {
