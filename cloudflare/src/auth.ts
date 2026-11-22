@@ -128,3 +128,19 @@ export async function deleteSupabaseAuthUser(
     throw new Error(`SUPABASE_AUTH_USER_DELETE_FAILED:${response.status}`);
   }
 }
+
+/** Update a Supabase Auth user's password from a Worker-authorized staff workflow. */
+export async function updateSupabaseAuthUserPassword(
+  env: SupabaseAuthEnvironment,
+  userId: string,
+  password: string,
+): Promise<void> {
+  const response = await supabaseAdminRequest(
+    env,
+    `/auth/v1/admin/users/${encodeURIComponent(userId)}`,
+    { method: "PUT", body: JSON.stringify({ password }) },
+  );
+  if (!response.ok) {
+    throw new Error(`SUPABASE_AUTH_PASSWORD_UPDATE_FAILED:${response.status}`);
+  }
+}
