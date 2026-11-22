@@ -95,6 +95,9 @@ Do not create a secret in Pages. Never expose a secret through any `VITE_*` vari
 
 - Staff accounts are provisioned by authorized administrators; public self-sign-up remains disabled.
 - Staff must change temporary passwords during first use.
+- The 22 November 2026 production audit found one active profile with no effective role assignment and an expired first-login setup window. Do not extend the expired password window while retaining the old temporary password.
+- For that profile, the staff member should use **Forgot password?** on the sign-in screen. An Admin/Pastor reviews and approves the resulting request in **Access requests**, then privately hands over the one-time temporary credential shown by the application. The staff member must complete the forced password change before being assigned an operational role.
+- The Team Leader role assignment currently belongs to an inactive profile. Keep that profile inactive unless the church explicitly authorizes reactivation; its assignment does not give the inactive account access.
 - Password-reset requests must be reviewed by an authorized administrator.
 - Use an approved email provider only after delivery tests and sender/domain verification pass. Until then, use the application's guarded one-time manual handoff and deliver credentials privately.
 - Verify the staff member completes the forced password change. Confirm that old sessions are revoked when the reset flow requires it.
