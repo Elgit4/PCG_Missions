@@ -812,6 +812,11 @@ export class CmiApiClient {
       method: "PATCH", query: { branch_id: branchId }, body: input,
     });
   }
+  cancelEventDraft(branchId: string, eventId: string) {
+    return this.request<{ event_id: string; status: string }>("event-operations", "/events/" + encodeURIComponent(eventId) + "/cancel", {
+      method: "POST", query: { branch_id: branchId },
+    });
+  }
 
   listCalendarEntries(branchId: string, options: { limit?: number } = {}) {
     return this.request<{entries:CalendarEntryRecord[]}>("calendar-operations", "/entries", {
@@ -825,6 +830,11 @@ export class CmiApiClient {
   updateCalendarEntry(branchId: string, entryId: string, input: CalendarEntryPatchInput) {
     return this.request<CalendarEntryRecord>("calendar-operations", "/entries/" + encodeURIComponent(entryId), {
       method: "PATCH", query: { branch_id: branchId }, body: input,
+    });
+  }
+  cancelCalendarEntry(branchId: string, entryId: string, reason: string) {
+    return this.request<{ entry_id: string; status: string }>("calendar-operations", "/entries/" + encodeURIComponent(entryId) + "/cancel", {
+      method: "POST", query: { branch_id: branchId }, body: { reason },
     });
   }
 
@@ -885,6 +895,11 @@ export class CmiApiClient {
   updateAnnouncementDraft(branchId: string, announcementId: string, input: AnnouncementDraftPatchInput) {
     return this.request<AnnouncementDraftRecord>("announcement-operations", "/announcements/" + encodeURIComponent(announcementId), {
       method: "PATCH", query: { branch_id: branchId }, body: input,
+    });
+  }
+  archiveAnnouncementDraft(branchId: string, announcementId: string) {
+    return this.request<{ announcement_id: string; status: string }>("announcement-operations", "/announcements/" + encodeURIComponent(announcementId) + "/archive", {
+      method: "POST", query: { branch_id: branchId },
     });
   }
 
