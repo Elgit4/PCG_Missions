@@ -5471,11 +5471,17 @@ async function readSensitivePrayerRequest(request: Request, env: Env, prayerRequ
     return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
   }
   const row = (batch[2] as { results?: Array<Record<string, unknown>> })?.results?.[0];
-  if (!batch[0]?.success || !batch[1]?.success ||
-      (batch[0]?.meta?.changes ?? 0) !== 1 || (batch[1]?.meta?.changes ?? 0) !== 1) {
+  if (!batch[0]?.success || !batch[1]?.success) {
     return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
   }
-  if (!row) return json(404, { ok: false, error: { code: "PASTORAL_RECORD_NOT_FOUND" } }, requestId, origin);
+  const prayerAuditChanges = batch[0]?.meta?.changes ?? 0;
+  const sensitiveAuditChanges = batch[1]?.meta?.changes ?? 0;
+  if (!row && prayerAuditChanges === 0 && sensitiveAuditChanges === 0) {
+    return json(404, { ok: false, error: { code: "PASTORAL_RECORD_NOT_FOUND" } }, requestId, origin);
+  }
+  if (prayerAuditChanges !== 1 || sensitiveAuditChanges !== 1 || !row) {
+    return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
+  }
   return json(200, { ok: true, data: { request: row } }, requestId, origin);
 }
 
@@ -5550,11 +5556,17 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
     return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
   }
   const record = (batch[2] as { results?: Array<Record<string, unknown>> })?.results?.[0];
-  if (!batch[0]?.success || !batch[1]?.success ||
-      (batch[0]?.meta?.changes ?? 0) !== 1 || (batch[1]?.meta?.changes ?? 0) !== 1) {
+  if (!batch[0]?.success || !batch[1]?.success) {
     return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
   }
-  if (!record) return json(404, { ok: false, error: { code: "PASTORAL_RECORD_NOT_FOUND" } }, requestId, origin);
+  const careAuditChanges = batch[0]?.meta?.changes ?? 0;
+  const sensitiveAuditChanges = batch[1]?.meta?.changes ?? 0;
+  if (!record && careAuditChanges === 0 && sensitiveAuditChanges === 0) {
+    return json(404, { ok: false, error: { code: "PASTORAL_RECORD_NOT_FOUND" } }, requestId, origin);
+  }
+  if (careAuditChanges !== 1 || sensitiveAuditChanges !== 1 || !record) {
+    return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
+  }
   const interactions = (batch[3] as { results?: Array<Record<string, unknown>> })?.results ?? [];
   return json(200, { ok: true, data: { record, interactions } }, requestId, origin);
 }
