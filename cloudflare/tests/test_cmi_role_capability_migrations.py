@@ -50,12 +50,12 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
 
-    def test_full_migration_chain_reaches_schema_45(self):
+    def test_full_migration_chain_reaches_schema_46(self):
         self.assertEqual(
             self.db.execute(
                 "SELECT schema_version, environment FROM app_meta WHERE id = 1"
             ).fetchone(),
-            (45, "non-production"),
+            (46, "non-production"),
         )
         self.assertEqual(
             self.role_codes(),
@@ -68,6 +68,154 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
                 "prayer_intercessor",
             },
         )
+
+
+    def test_report_event_registration_checkin_and_closeout_lifecycle(self):
+        now = "2026-11-22T23:00:00.000Z"
+        church_id = "acceptance-church"
+        branch_id = "acceptance-branch"
+        self.db.execute(
+            "INSERT INTO church(id,name,created_at,updated_at) VALUES(?,?,?,?)",
+            (church_id, "Acceptance Church", now, now),
+        )
+        self.db.execute(
+            "INSERT INTO branch(id,church_id,name,timezone,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+            (branch_id, church_id, "Acceptance Branch", "Africa/Accra", now, now),
+        )
+
+        identities = {
+            "author": ("acceptance-author-user", "acceptance-author-profile", "Field Worker", "author@example.test", "field_worker"),
+            "admin": ("acceptance-admin-user", "acceptance-admin-profile", "Admin Pastor", "admin@example.test", "admin_pastor"),
+            "reviewer": ("acceptance-reviewer-user", "acceptance-reviewer-profile", "Coordinator", "reviewer@example.test", "coordinator"),
+        }
+        for key, (user_id, profile_id, name, email, role_code) in identities.items():
+            self.db.execute(
+                'INSERT INTO "user"(id,name,email,emailVerified,image,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?)',
+                (user_id, name, email, 1, None, 1795390000000, 1795390000000),
+            )
+            self.db.execute(
+                """INSERT INTO staff_profile
+                   (id,auth_user_id,full_name,email,account_status,created_at,updated_at,must_change_password)
+                   VALUES(?,?,?,?,'active',?,?,0)""",
+                (profile_id, user_id, name, email, now, now),
+            )
+        for key, (user_id, profile_id, name, email, role_code) in identities.items():
+            role_id = self.db.execute("SELECT id FROM role WHERE code=?", (role_code,)).fetchone()[0]
+            assigned_by = identities["admin"][1] if key != "admin" else profile_id
+            self.db.execute(
+                """INSERT INTO staff_role_assignment
+                   (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at)
+                   VALUES(?,?,?,?,?,?,?)""",
+                ("assignment-" + key, profile_id, role_id, branch_id, assigned_by, "2026-11-01T00:00:00.000Z", now),
+            )
+
+        author_user, author_profile = identities["author"][0], identities["author"][1]
+        admin_user, admin_profile = identities["admin"][0], identities["admin"][1]
+        reviewer_user, reviewer_profile = identities["reviewer"][0], identities["reviewer"][1]
+
+        event_id = "acceptance-event"
+        self.db.execute(
+            """INSERT INTO event
+               (id,branch_id,title,starts_at,ends_at,timezone,registration_state,visibility,status,created_by,last_modified_by,created_at,updated_at)
+               VALUES(?,?,?,'2026-11-30T10:00:00.000Z','2026-11-30T11:00:00.000Z',
+                      'Africa/Accra','open','staff','published',?,?,?,?)""",
+            (event_id, branch_id, "Acceptance Event", admin_user, admin_user, now, now),
+        )
+        self.db.execute(
+            """INSERT INTO event_staff_assignment
+               (id,event_id,branch_id,staff_auth_user_id,assignment_role,assigned_by,starts_at,created_at)
+               VALUES(?,?,?,?, 'owner',?,?,?)""",
+            ("acceptance-event-assignment", event_id, branch_id, author_user, admin_user, now, now),
+        )
+        registration_id = "acceptance-registration"
+        self.db.execute(
+            """INSERT INTO event_registration
+               (id,event_id,branch_id,attendee_name_snapshot,registration_source,status,registered_at,client_request_id,created_by)
+               VALUES(?,?,?,'Synthetic Guest','staff','registered',?,?,?)""",
+            (registration_id, event_id, branch_id, now, "acceptance-register-1", author_user),
+        )
+        self.db.execute(
+            """INSERT INTO event_checkin
+               (id,event_id,branch_id,registration_id,attendee_name_snapshot,checked_in_at,recorded_by,source,client_request_id)
+               VALUES(?,?,?,?,?,?,?,'staff',?)""",
+            ("acceptance-checkin", event_id, branch_id, registration_id, "Synthetic Guest", now, author_user, "acceptance-checkin-1"),
+        )
+        self.db.execute(
+            "UPDATE event_registration SET status='attended' WHERE id=?",
+            (registration_id,),
+        )
+
+        closeout_id = "acceptance-closeout"
+        self.db.execute(
+            """INSERT INTO event_closeout
+               (id,event_id,branch_id,submitted_by,submitted_at,status,attendee_count,registration_count,
+                transport_seat_count,summary_notes,created_at,updated_at)
+               VALUES(?,?,?,?,?,'submitted',1,1,0,'Synthetic acceptance run',?,?)""",
+            (closeout_id, event_id, branch_id, admin_user, now, now, now),
+        )
+        self.db.execute(
+            """INSERT INTO event_closeout_event
+               (id,closeout_id,actor_user_id,action,details,created_at)
+               VALUES(?,?,?,'submitted','{"attendee_count":1}',?)""",
+            ("acceptance-closeout-submitted", closeout_id, admin_user, now),
+        )
+        self.db.execute(
+            "UPDATE event_closeout SET status='approved',reviewed_by=?,reviewed_at=?,updated_at=? WHERE id=?",
+            (reviewer_user, now, now, closeout_id),
+        )
+        self.db.execute(
+            """INSERT INTO event_closeout_event
+               (id,closeout_id,actor_user_id,action,details,created_at)
+               VALUES(?,?,?,'approved','{"reason":"Acceptance reviewer approval"}',?)""",
+            ("acceptance-closeout-approved", closeout_id, reviewer_user, now),
+        )
+
+        report_id = "acceptance-report"
+        self.db.execute(
+            """INSERT INTO ministry_report
+               (id,branch_id,report_type,period_start,period_end,author_profile_id,
+                contacts_captured,gospel_presentations,decisions_for_christ,followup_required,followup_completed,
+                visits_completed,calls_completed,events_supported,attendance_count,status,submitted_at,
+                created_at,updated_at,created_by,updated_by)
+               VALUES(?,?, 'daily_evangelism','2026-11-22','2026-11-22',?,
+                       1,1,1,1,0,0,0,0,0,'submitted',?,?,?,?,?)""",
+            (report_id, branch_id, author_profile, now, now, now, author_user, author_user),
+        )
+        self.db.execute(
+            """UPDATE ministry_report
+               SET status='approved',last_action_id='acceptance-report-review',
+                   last_action_by=?,last_action_decision='approved',
+                   last_action_comment='Synthetic acceptance approval',
+                   last_action_at=?,updated_at=?,updated_by=?
+               WHERE id=? AND status='submitted'""",
+            (admin_user, now, now, admin_user, report_id),
+        )
+
+        self.assertEqual(
+            self.db.execute("SELECT status FROM ministry_report WHERE id=?", (report_id,)).fetchone()[0],
+            "approved",
+        )
+        self.assertEqual(
+            self.db.execute("SELECT decision FROM report_review_event WHERE report_id=?", (report_id,)).fetchone()[0],
+            "approved",
+        )
+        self.assertEqual(
+            self.db.execute("SELECT status FROM event_registration WHERE id=?", (registration_id,)).fetchone()[0],
+            "attended",
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM event_checkin WHERE event_id=?", (event_id,)).fetchone()[0],
+            1,
+        )
+        self.assertEqual(
+            self.db.execute("SELECT status FROM event_closeout WHERE id=?", (closeout_id,)).fetchone()[0],
+            "approved",
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM event_closeout_event WHERE closeout_id=?", (closeout_id,)).fetchone()[0],
+            2,
+        )
+        self.assertEqual(self.db.execute("PRAGMA foreign_key_check").fetchall(), [])
 
     def test_team_and_area_management_are_branch_scoped_and_admin_only(self):
         self.assertEqual(
@@ -105,12 +253,12 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
 
     def test_live_source_grants_and_worker_aliases_are_least_privilege(self):
         expected_counts = {
-            "admin_pastor": 53,
-            "coordinator": 23,
-            "field_worker": 17,
-            "follow_up_volunteer": 11,
+            "admin_pastor": 56,
+            "coordinator": 25,
+            "field_worker": 19,
+            "follow_up_volunteer": 13,
             "prayer_intercessor": 1,
-            "team_leader": 23,
+            "team_leader": 26,
         }
         actual_counts = {
             row[0]: row[1]
@@ -126,7 +274,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
         self.assertEqual(actual_counts, expected_counts)
-        self.assertEqual(sum(actual_counts.values()), 128)
+        self.assertEqual(sum(actual_counts.values()), 140)
         self.assertEqual(
             self.db.execute("SELECT COUNT(*) FROM capability WHERE is_active = 1").fetchone()[0],
             89,
@@ -533,7 +681,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            45,
+            46,
         )
 
     def test_worker_authorization_query_enforces_team_leader_membership_for_directory_read(self):
@@ -642,7 +790,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            45,
+            46,
         )
 
     
@@ -726,7 +874,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         isolated.execute("PRAGMA foreign_keys = ON")
         try:
             for migration_file in sorted(MIGRATIONS.glob("[0-9][0-9][0-9][0-9]_*.sql")):
-                if migration_file.name in {"0040_production_environment_marker.sql", "0041_align_live_authorization_catalogue.sql", "0042_worker_route_capability_compatibility.sql", "0043_supabase_identity_import_controls.sql"}:
+                if migration_file.name in {"0040_production_environment_marker.sql", "0041_align_live_authorization_catalogue.sql", "0042_worker_route_capability_compatibility.sql", "0043_supabase_identity_import_controls.sql", "0044_restore_better_auth_identity.sql", "0045_promote_production_environment.sql", "0046_restore_report_and_event_capabilities.sql"}:
                     continue
                 isolated.executescript(migration_file.read_text(encoding="utf-8"))
             isolated.execute("UPDATE app_meta SET schema_version = 38 WHERE id = 1")
