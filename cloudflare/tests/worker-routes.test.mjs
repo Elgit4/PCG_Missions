@@ -1654,4 +1654,19 @@ test("Coordinator contact search matches normalized phone numbers as well as nam
   assert.match(query.sql, /COALESCE\(c\.phone_e164/);
   assert.match(query.sql, /COALESCE\(c\.phone_display/);
   assert.ok(query.values.includes("%0241234567%"));
+  assert.ok(query.values.includes("%233241234567%"));
+});
+
+test("ordinary name searches keep the optional phone predicate valid without phone parameters", async () => {
+  const { env, calls } = authorizedDirectoryEnv("coordinator", [
+    ["contacts.read", "branch"],
+  ]);
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/contacts?search=Elvis",
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  assert.equal(response.status, 200);
+  const query = calls.find((call) => call.kind === "all" && call.sql.includes("FROM contact c") && call.sql.includes("SELECT c.id"));
+  assert.ok(query);
+  assert.match(query.sql, /0 = 1/);
 });
