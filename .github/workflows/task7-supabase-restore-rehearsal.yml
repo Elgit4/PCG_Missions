@@ -1,0 +1,105 @@
+name: Task 7 — Supabase logical backup and isolated restore
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_isolated_restore:
+        description: "Type RESTORE-TO-ISOLATED-SUPABASE to authorize restore to the separate target project"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcg-missions-task7-supabase-restore
+  cancel-in-progress: false
+
+jobs:
+  backup-and-restore:
+    if: ${{ inputs.confirm_isolated_restore == 'RESTORE-TO-ISOLATED-SUPABASE' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SUPABASE_SOURCE_DB_URL: ${{ secrets.SUPABASE_SOURCE_DB_URL }}
+      SUPABASE_RESTORE_DB_URL: ${{ secrets.SUPABASE_RESTORE_DB_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require independent source and restore connection strings
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_SOURCE_DB_URL" || {
+            echo "::error::Add SUPABASE_SOURCE_DB_URL as a repository Actions secret."
+            exit 1
+          }
+          test -n "$SUPABASE_RESTORE_DB_URL" || {
+            echo "::error::Add SUPABASE_RESTORE_DB_URL as a repository Actions secret for a separate, disposable Supabase project."
+            exit 1
+          }
+          if [[ "$SUPABASE_SOURCE_DB_URL" == "$SUPABASE_RESTORE_DB_URL" ]]; then
+            echo "::error::Source and restore connection strings must be different."
+            exit 1
+          fi
+          source_host="$(python -c 'import os,urllib.parse; print(urllib.parse.urlparse(os.environ["SUPABASE_SOURCE_DB_URL"]).hostname or "")')"
+          target_host="$(python -c 'import os,urllib.parse; print(urllib.parse.urlparse(os.environ["SUPABASE_RESTORE_DB_URL"]).hostname or "")')"
+          if [[ -z "$source_host" || -z "$target_host" || "$source_host" == "$target_host" ]]; then
+            echo "::error::Could not prove that source and restore endpoints are separate hosts. Use two distinct project connection strings."
+            exit 1
+          fi
+          echo "Source and target are configured as distinct database endpoints."
+
+      - name: Install Supabase CLI and PostgreSQL client
+        uses: supabase/setup-cli@v3
+        with:
+          version: 3.0.0
+
+      - name: Verify restore target is a fresh empty public schema
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(psql "$SUPABASE_RESTORE_DB_URL" -X -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m');")"
+          if [[ "$count" != "0" ]]; then
+            echo "::error::Restore target public schema is not empty (found $count relations). Refusing to overwrite it."
+            exit 1
+          fi
+          echo "Restore target public schema is empty."
+
+      - name: Create Supabase-aware logical backup on ephemeral runner disk
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db dump --db-url "$SUPABASE_SOURCE_DB_URL" -f /tmp/cmi-roles.sql --role-only
+          supabase db dump --db-url "$SUPABASE_SOURCE_DB_URL" -f /tmp/cmi-schema.sql
+          supabase db dump --db-url "$SUPABASE_SOURCE_DB_URL" -f /tmp/cmi-data.sql --use-copy --data-only
+          test -s /tmp/cmi-roles.sql
+          test -s /tmp/cmi-schema.sql
+          test -s /tmp/cmi-data.sql
+          sha256sum /tmp/cmi-roles.sql /tmp/cmi-schema.sql /tmp/cmi-data.sql
+
+      - name: Restore only to the isolated Supabase target
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql "$SUPABASE_RESTORE_DB_URL" \
+            --single-transaction \
+            --set ON_ERROR_STOP=1 \
+            --file /tmp/cmi-roles.sql \
+            --file /tmp/cmi-schema.sql \
+            --command 'SET session_replication_role = replica' \
+            --file /tmp/cmi-data.sql
+
+      - name: Compare restored public schema and critical CMI row counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          SQL="SELECT 'public_tables' AS item, count(*)::bigint AS row_count FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' UNION ALL SELECT 'capability', count(*) FROM public.capability UNION ALL SELECT 'role_capability', count(*) FROM public.role_capability UNION ALL SELECT 'staff_access_audit', count(*) FROM public.staff_access_audit UNION ALL SELECT 'role', count(*) FROM public.role UNION ALL SELECT 'staff_profile', count(*) FROM public.staff_profile"
+          psql "$SUPABASE_SOURCE_DB_URL" -X -v ON_ERROR_STOP=1 -AtF '|' -c "$SQL" | sort > /tmp/cmi-source-counts.txt
+          psql "$SUPABASE_RESTORE_DB_URL" -X -v ON_ERROR_STOP=1 -AtF '|' -c "$SQL" | sort > /tmp/cmi-target-counts.txt
+          diff -u /tmp/cmi-source-counts.txt /tmp/cmi-target-counts.txt
+          echo "Supabase restore verification passed: public table count and critical CMI row counts match."
+
+      - name: Remove logical backup files from ephemeral runner
+        if: always()
+        run: rm -f /tmp/cmi-roles.sql /tmp/cmi-schema.sql /tmp/cmi-data.sql /tmp/cmi-source-counts.txt /tmp/cmi-target-counts.txt
