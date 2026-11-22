@@ -59,10 +59,10 @@ jobs:
           database_id = "833043cd-896e-4833-b5ae-17d520feba0f"
           EOF
 
-      - name: Confirm the scratch target has no application tables
+      - name: Confirm the scratch target has no application schema objects
         run: |
           set -euo pipefail
-          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "SELECT COUNT(*) AS existing_tables FROM sqlite_schema WHERE type='table' AND name NOT IN ('_cf_KV');" > /tmp/task7-target-check.json
+          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "SELECT COUNT(*) AS existing_objects FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' AND name <> '_cf_KV';" > /tmp/task7-target-check.json
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const root = JSON.parse(fs.readFileSync('/tmp/task7-target-check.json', 'utf8'));
@@ -71,14 +71,14 @@ jobs:
             if (!value || typeof value !== 'object' || seen.has(value)) return [];
             seen.add(value);
             if (Array.isArray(value)) return value.flatMap(find);
-            if (Object.hasOwn(value, 'existing_tables')) return [value.existing_tables];
+            if (Object.hasOwn(value, 'existing_objects')) return [value.existing_objects];
             return Object.values(value).flatMap(find);
           }
           const values = find(root);
           if (values.length !== 1 || Number(values[0]) !== 0) {
             throw new Error('Restore target is not demonstrably empty. Refusing to import.');
           }
-          console.log('Scratch target is empty; import may proceed.');
+          console.log('Scratch target has no application tables, views, indexes, or triggers; import may proceed.');
           NODE
 
       - name: Export migration-test database to ephemeral runner disk
@@ -94,38 +94,63 @@ jobs:
           set -euo pipefail
           npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --file=/tmp/pcg-missions-d1-recovery.sql --yes
 
-      - name: Compare source and restored schema and critical row counts
+      - name: Compare exact schema objects, migration ledger, and critical row counts
         run: |
           set -euo pipefail
-          SQL="SELECT 'tables' AS item, COUNT(*) AS row_count FROM sqlite_schema WHERE type='table' AND name NOT IN ('_cf_KV') UNION ALL SELECT 'church', COUNT(*) FROM church UNION ALL SELECT 'branch', COUNT(*) FROM branch UNION ALL SELECT 'role', COUNT(*) FROM role UNION ALL SELECT 'capability', COUNT(*) FROM capability UNION ALL SELECT 'role_capability', COUNT(*) FROM role_capability UNION ALL SELECT 'staff_profile', COUNT(*) FROM staff_profile UNION ALL SELECT 'staff_role_assignment', COUNT(*) FROM staff_role_assignment UNION ALL SELECT 'staff_access_audit', COUNT(*) FROM staff_access_audit UNION ALL SELECT 'contact', COUNT(*) FROM contact UNION ALL SELECT 'followup_task', COUNT(*) FROM followup_task UNION ALL SELECT 'ministry_report', COUNT(*) FROM ministry_report UNION ALL SELECT 'announcement', COUNT(*) FROM announcement UNION ALL SELECT 'event', COUNT(*) FROM event UNION ALL SELECT 'prayer_request', COUNT(*) FROM prayer_request"
-          npx wrangler d1 execute pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --json --command "$SQL" > /tmp/task7-source-counts.json
-          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "$SQL" > /tmp/task7-target-counts.json
+          SCHEMA_SQL="SELECT type, name, COALESCE(sql, '') AS sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' AND name <> '_cf_KV' ORDER BY type, name"
+          COUNTS_SQL="SELECT 'tables' AS item, COUNT(*) AS row_count FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name <> '_cf_KV' UNION ALL SELECT 'church', COUNT(*) FROM church UNION ALL SELECT 'branch', COUNT(*) FROM branch UNION ALL SELECT 'role', COUNT(*) FROM role UNION ALL SELECT 'capability', COUNT(*) FROM capability UNION ALL SELECT 'role_capability', COUNT(*) FROM role_capability UNION ALL SELECT 'staff_profile', COUNT(*) FROM staff_profile UNION ALL SELECT 'staff_role_assignment', COUNT(*) FROM staff_role_assignment UNION ALL SELECT 'staff_access_audit', COUNT(*) FROM staff_access_audit UNION ALL SELECT 'contact', COUNT(*) FROM contact UNION ALL SELECT 'followup_task', COUNT(*) FROM followup_task UNION ALL SELECT 'ministry_report', COUNT(*) FROM ministry_report UNION ALL SELECT 'announcement', COUNT(*) FROM announcement UNION ALL SELECT 'event', COUNT(*) FROM event UNION ALL SELECT 'prayer_request', COUNT(*) FROM prayer_request"
+          npx wrangler d1 execute pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --json --command "$SCHEMA_SQL" > /tmp/task7-source-schema.json
+          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "$SCHEMA_SQL" > /tmp/task7-target-schema.json
+          npx wrangler d1 execute pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --json --command "$COUNTS_SQL" > /tmp/task7-source-counts.json
+          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "$COUNTS_SQL" > /tmp/task7-target-counts.json
+          npx wrangler d1 execute pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --json --command "PRAGMA foreign_key_check;" > /tmp/task7-source-fk.json
+          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "PRAGMA foreign_key_check;" > /tmp/task7-target-fk.json
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          function rows(path) {
+          function resultRows(path, requiredKeys) {
             const root = JSON.parse(fs.readFileSync(path, 'utf8'));
             const seen = new Set();
             function find(value) {
               if (!value || typeof value !== 'object' || seen.has(value)) return [];
               seen.add(value);
               if (Array.isArray(value)) {
-                if (value.length && value.every(x => x && typeof x === 'object' && Object.hasOwn(x, 'item') && Object.hasOwn(x, 'row_count'))) return value;
+                if (value.every(x => x && typeof x === 'object' && requiredKeys.every(k => Object.hasOwn(x, k)))) return value;
                 return value.flatMap(find);
               }
               return Object.values(value).flatMap(find);
             }
-            const result = find(root);
-            if (result.length !== 15) throw new Error(`Expected 15 verification rows in ${path}; got ${result.length}`);
-            return result.map(x => [String(x.item), Number(x.row_count)]).sort((a,b) => a[0].localeCompare(b[0]));
+            return find(root);
           }
-          const source = rows('/tmp/task7-source-counts.json');
-          const target = rows('/tmp/task7-target-counts.json');
-          if (JSON.stringify(source) !== JSON.stringify(target)) {
-            console.error({source, target});
-            throw new Error('Restored D1 schema/core row counts do not match the source snapshot.');
+          function canonical(path, keys) {
+            return resultRows(path, keys).map(row => keys.map(key => String(row[key] ?? '')).join('\u001f'));
           }
-          console.log('D1 restore verification passed: table inventory and 14 critical table counts match.');
-          console.log(source);
+          const sourceSchema = canonical('/tmp/task7-source-schema.json', ['type','name','sql']);
+          const targetSchema = canonical('/tmp/task7-target-schema.json', ['type','name','sql']);
+          if (!sourceSchema.length || JSON.stringify(sourceSchema) !== JSON.stringify(targetSchema)) {
+            throw new Error('Exact D1 schema-object comparison failed (tables, indexes, views, triggers, or migration ledger differ).');
+          }
+          function countRows(path) {
+            const rows = resultRows(path, ['item','row_count']);
+            if (rows.length !== 15) throw new Error(`Expected 15 count rows in ${path}; got ${rows.length}`);
+            return rows.map(x => [String(x.item), Number(x.row_count)]).sort((a,b) => a[0].localeCompare(b[0]));
+          }
+          const sourceCounts = countRows('/tmp/task7-source-counts.json');
+          const targetCounts = countRows('/tmp/task7-target-counts.json');
+          if (JSON.stringify(sourceCounts) !== JSON.stringify(targetCounts)) {
+            console.error({sourceCounts, targetCounts});
+            throw new Error('Restored D1 critical table counts do not match the source snapshot.');
+          }
+          function foreignKeyRows(path) {
+            return resultRows(path, ['table','rowid','parent','fkid']);
+          }
+          const sourceFk = foreignKeyRows('/tmp/task7-source-fk.json');
+          const targetFk = foreignKeyRows('/tmp/task7-target-fk.json');
+          if (sourceFk.length !== 0 || targetFk.length !== 0) {
+            console.error({sourceFk, targetFk});
+            throw new Error('Foreign-key check returned violations on source or restored database.');
+          }
+          console.log(`D1 restore verification passed: ${sourceSchema.length} exact schema objects match; 14 critical table counts match; foreign_key_check is clean on both databases.`);
+          console.log(sourceCounts);
           NODE
 
       - name: Remove database dump from ephemeral runner
