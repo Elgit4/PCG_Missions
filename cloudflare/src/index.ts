@@ -3887,6 +3887,18 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
   if(parts.length===5&&parts[4]==="flyer"&&(request.method==="GET"||request.method==="POST")){
     return handleEventFlyer(request,env,eventId,branchId,context,requestId,origin);
   }
+  if(parts.length===6&&parts[4]==="flyer"&&parts[5]==="remove"&&request.method==="POST"){
+    if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    if(event.status!=="draft") return json(409,{ok:false,error:{code:"EVENT_NOT_EDITABLE"}},requestId,origin);
+    const current=await env.DB.prepare("SELECT flyer_key FROM event WHERE id=? AND branch_id=?").bind(eventId,branchId).first<{flyer_key:string|null}>();
+    if(!current?.flyer_key) return json(200,{ok:true,data:{removed:false}},requestId,origin);
+    const now=new Date().toISOString();
+    const result=await env.DB.prepare("UPDATE event SET flyer_key=NULL,flyer_content_type=NULL,flyer_size=NULL,flyer_updated_at=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
+      .bind(now,now,eventId,branchId).run();
+    if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
+    await eventFlyerStorageRequest(env,current.flyer_key,"DELETE").catch(()=>undefined);
+    return json(200,{ok:true,data:{removed:true}},requestId,origin);
+  }
 
   if(parts.length===6&&parts[4]==="staff-registration"&&request.method==="POST"){
     if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
