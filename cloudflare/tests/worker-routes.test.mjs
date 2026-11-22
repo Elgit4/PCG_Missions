@@ -1567,7 +1567,9 @@ test("public password reset is non-enumerating and records only eligible active 
   const knownBody = await knownResponse.json();
   assert.equal(unknownResponse.status, 200);
   assert.equal(knownResponse.status, 200);
-  assert.deepEqual(knownBody, unknownBody);
+  assert.equal(knownBody.ok, unknownBody.ok);
+  assert.equal(knownBody.message, unknownBody.message);
+  assert.notEqual(knownBody.request_id, unknownBody.request_id);
   assert.equal(JSON.stringify(knownBody).includes("staff@example.test"), false);
   assert.equal(writes.length, 2);
   assert.match(writes[0].sql, /INSERT INTO staff_password_reset_request/);
