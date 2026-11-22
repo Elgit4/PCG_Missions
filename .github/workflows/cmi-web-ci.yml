@@ -2,7 +2,7 @@ name: CMI web CI
 
 on:
   push:
-    branches: [main, feat/team-area-administration-mainline, "feat/cmi-*"]
+    branches: [main, feat/team-area-administration-mainline, "feat/cmi-*", "fix/*", migration/cloudflare-auth-consolidation]
     paths:
       - "web/**"
       - ".github/workflows/cmi-web-ci.yml"
@@ -11,6 +11,7 @@ on:
       - main
       - "feat/team-area-administration-mainline"
       - "feat/cmi-*"
+      - migration/cloudflare-auth-consolidation
     paths:
       - "web/**"
       - ".github/workflows/cmi-web-ci.yml"

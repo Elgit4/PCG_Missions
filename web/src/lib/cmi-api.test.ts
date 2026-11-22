@@ -105,4 +105,22 @@ describe("Cloudflare Worker API client", () => {
     expect(init.credentials).toBe("include");
     expect(new Headers(init.headers).has("Authorization")).toBe(false);
   });
+  it("binds the native fetch receiver when using the default browser fetch", async () => {
+    const originalFetch = globalThis.fetch;
+    const fetcher = vi.fn(function (this: unknown) {
+      if (this !== globalThis) throw new TypeError("Illegal invocation");
+      return Promise.resolve(response({ user: { id: "staff-user" }, branches: [] }));
+    });
+    globalThis.fetch = fetcher as unknown as typeof fetch;
+    try {
+      const api = new CmiApiClient();
+      await expect(api.getStaffSession()).resolves.toMatchObject({
+        data: { user: { id: "staff-user" } },
+      });
+      expect(fetcher).toHaveBeenCalledOnce();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
 });
