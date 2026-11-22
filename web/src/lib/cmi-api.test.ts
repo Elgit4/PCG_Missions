@@ -279,6 +279,42 @@ describe("CmiApiClient", () => {
     expect(second[0].searchParams.get("branch_id")).toBe("branch-a");
   });
 
+  it("routes branch calendar list, create and update operations through the Cloudflare Worker in preview", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ data: { id: "calendar-1" }, request_id: "calendar-worker" }),
+      { status: 200 },
+    ));
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+
+    await client.listCalendarEntries("branch-a");
+    await client.createCalendarEntry({
+      branch_id: "branch-a",
+      entry_type: "service",
+      title: "Sunday service",
+      starts_at: "2026-11-29T09:00:00.000Z",
+      ends_at: null,
+    });
+    await client.updateCalendarEntry("branch-a", "calendar-1", { title: "Updated service" });
+
+    const calls = fetcher.mock.calls as unknown as Array<[URL, RequestInit]>;
+    expect(calls.map(([url, init]) => [url.pathname, init.method ?? "GET"])).toEqual([
+      ["/api/v1/calendar/entries", "GET"],
+      ["/api/v1/calendar/entries", "POST"],
+      ["/api/v1/calendar/entries/calendar-1", "PATCH"],
+    ]);
+    for (const [url, init] of calls) {
+      const headers = new Headers(init.headers);
+      expect(headers.get("Authorization")).toBe("Bearer access-token");
+      expect(headers.get("X-Branch-Id")).toBe("branch-a");
+      expect(headers.get("apikey")).toBeNull();
+      expect(url.origin).toBe("https://worker.example.com");
+    }
+  });
+
   it("routes sermon and welcome-message drafts through the authenticated content function", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: [], request_id: "content-list" }), { status: 200 },
