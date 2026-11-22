@@ -624,7 +624,19 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
 
   if (functionName === "announcement-operations") {
     if (suffix === "/announcements" && (verb === "GET" || verb === "POST")) return "/api/v1/announcements";
+    const archiveMatch = suffix.match(/^\/announcements\/([^/]+)\/archive$/);
+    if (archiveMatch && verb === "POST") return "/api/v1/announcements/" + archiveMatch[1] + "/archive";
     if (/^\/announcements\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix;
+    return null;
+  }
+
+  if (functionName === "content-operations") {
+    if ((suffix === "/sermons" || suffix === "/welcome-messages") && (verb === "GET" || verb === "POST")) {
+      return "/api/v1/content" + suffix;
+    }
+    if (/^\/(sermons|welcome-messages)\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) {
+      return "/api/v1/content" + suffix;
+    }
     return null;
   }
 
