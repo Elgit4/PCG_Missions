@@ -685,6 +685,12 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     return null;
   }
 
+  if (functionName === "event-flyers") {
+    const flyerMatch = suffix.match(/^\/events\/([^/]+)$/);
+    if (flyerMatch && verb === "GET") return `/api/v1/events/${flyerMatch[1]}/flyer`;
+    return null;
+  }
+
   if (functionName === "event-operations") {
     if (/^\/events\/[^/]+\/registrations$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
     if (/^\/events\/[^/]+\/staff-registration\/(open|close)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
