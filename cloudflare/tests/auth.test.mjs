@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   createSupabaseAuthUser,
   deleteSupabaseAuthUser,
+  updateSupabaseAuthUserPassword,
   verifySupabaseAccessToken,
 } from "../src/auth.ts";
 
@@ -117,4 +118,20 @@ test("Admin API is unavailable without the service-role secret", async (t) => {
     /SUPABASE_ADMIN_AUTH_NOT_CONFIGURED/,
   );
   assert.equal(fetchMock.mock.callCount(), 0);
+});
+
+test("Admin password updates use the server-side Supabase Auth endpoint", async (t) => {
+  let receivedUrl = "";
+  let receivedMethod = "";
+  let receivedBody = null;
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    receivedUrl = String(url);
+    receivedMethod = init.method;
+    receivedBody = JSON.parse(init.body);
+    return new Response(null, { status: 200 });
+  });
+  await updateSupabaseAuthUserPassword(BASE_ENV, USER_ID, "test-password-value");
+  assert.equal(receivedUrl, `https://example.supabase.co/auth/v1/admin/users/${USER_ID}`);
+  assert.equal(receivedMethod, "PUT");
+  assert.deepEqual(receivedBody, { password: "test-password-value" });
 });
