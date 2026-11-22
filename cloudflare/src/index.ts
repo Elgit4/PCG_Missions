@@ -4337,8 +4337,39 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     const statement=env.DB.prepare("INSERT INTO "+table+" (id,event_id,branch_id,"+targetColumn+",assignment_role,assigned_by,starts_at,ends_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)")
       .bind(id,eventId,branchId,targetId,role,context.staff.userId,startsAt,endsAt,now);
     try{
-      const result=await statement.run();
-      if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"ASSIGNMENT_CONFLICT"}},requestId,origin);
+      const statements:D1PreparedStatement[]=[statement];
+      if(assignmentKind==="staff"){
+        statements.push(env.DB.prepare(`
+          INSERT OR IGNORE INTO staff_notification
+            (id,branch_id,recipient_user_id,category,title,body,target_type,target_id,idempotency_key,created_at)
+          SELECT ?,?,sp.auth_user_id,'event_assigned','Event assignment',
+                 'You have been assigned to an event. Open your event workspace for details.',
+                 'event',?,?,?
+          FROM staff_profile sp
+          JOIN event_staff_assignment a ON a.id=? AND a.branch_id=? AND a.staff_auth_user_id=sp.auth_user_id
+          WHERE sp.auth_user_id=? AND sp.account_status='active'
+        `).bind(
+          crypto.randomUUID(),branchId,eventId,
+          `event-assignment:${id}:${targetId}`,now,
+          id,branchId,targetId
+        ));
+      }else{
+        statements.push(env.DB.prepare(`
+          INSERT OR IGNORE INTO staff_notification
+            (id,branch_id,recipient_user_id,category,title,body,target_type,target_id,idempotency_key,created_at)
+          SELECT lower(hex(randomblob(16))),?,sp.auth_user_id,'event_assigned','Team event assignment',
+                 'Your team has been assigned to an event. Open your event workspace for details.',
+                 'event',?, 'event-team-assignment:' || ? || ':' || sp.auth_user_id, ?
+          FROM staff_team_membership stm
+          JOIN staff_profile sp ON sp.id=stm.staff_profile_id AND sp.account_status='active'
+          JOIN event_team_assignment a ON a.id=? AND a.branch_id=stm.branch_id AND a.team_id=stm.team_id
+          WHERE stm.team_id=? AND stm.branch_id=? AND stm.revoked_at IS NULL
+            AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+        `).bind(branchId,eventId,id,now,id,targetId,branchId,now,now));
+      }
+      const results=await env.DB.batch(statements);
+      if(results.some(result=>!result.success)||(results[0]?.meta?.changes??0)!==1)
+        return json(409,{ok:false,error:{code:"ASSIGNMENT_CONFLICT"}},requestId,origin);
     }catch{
       return json(409,{ok:false,error:{code:"ASSIGNMENT_CONFLICT"}},requestId,origin);
     }
@@ -4716,10 +4747,32 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     if(!branch&&!(team&&row.team_id&&teamIds.includes(String(row.team_id)))) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     if(row.status!=="submitted") return json(409,{ok:false,error:{code:"REPORT_NOT_SUBMITTED"}},requestId,origin);
     const now=new Date().toISOString();
-    const update=await env.DB.prepare(`UPDATE ministry_report SET status=?,last_action_id=?,last_action_by=?,last_action_decision=?,last_action_comment=?,last_action_at=?,updated_at=?,updated_by=? WHERE id=? AND status='submitted'`).bind(
-      decision==="comment"?"submitted":decision,crypto.randomUUID(),context.staff.userId,decision,comment||null,now,now,context.staff.userId,reportIdForReview
-    ).run();
-    if((update.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"REPORT_NOT_SUBMITTED"}},requestId,origin);
+    const actionId=crypto.randomUUID();
+    const nextStatus=decision==="comment"?"submitted":decision;
+    const reviewStatements=[
+      env.DB.prepare(`UPDATE ministry_report SET status=?,last_action_id=?,last_action_by=?,last_action_decision=?,last_action_comment=?,last_action_at=?,updated_at=?,updated_by=? WHERE id=? AND status='submitted'`).bind(
+        nextStatus,actionId,context.staff.userId,decision,comment||null,now,now,context.staff.userId,reportIdForReview
+      ),
+      env.DB.prepare(`
+        INSERT OR IGNORE INTO staff_notification
+          (id,branch_id,recipient_user_id,category,title,body,target_type,target_id,idempotency_key,created_at)
+        SELECT ?,mr.branch_id,author.auth_user_id,'report_reviewed','Ministry report reviewed',?,
+               'ministry_report',mr.id,?,?
+        FROM ministry_report mr
+        JOIN staff_profile author ON author.id=mr.author_profile_id
+        WHERE mr.id=? AND mr.branch_id=? AND mr.last_action_id=? AND changes()=1
+      `).bind(
+        crypto.randomUUID(),
+        decision==="approved"?"Your ministry report has been approved.":decision==="returned"?"Your ministry report was returned for correction.":"A reviewer commented on your ministry report.",
+        `ministry-report:${reportIdForReview}:review:${actionId}`,now,
+        reportIdForReview,String(row.branch_id),actionId
+      ),
+    ];
+    const reviewResults=await env.DB.batch(reviewStatements);
+    if(reviewResults.some(result=>!result.success)||
+       (reviewResults[0]?.meta?.changes??0)!==1||
+       (reviewResults[1]?.meta?.changes??0)!==1)
+      return json(409,{ok:false,error:{code:"REPORT_NOT_SUBMITTED"}},requestId,origin);
     const report=await env.DB.prepare(`SELECT ${REPORT_COLUMNS} FROM ministry_report WHERE id=?`).bind(reportIdForReview).first();
     const history=await env.DB.prepare("SELECT id,actor_profile_id,decision,comment,created_at FROM report_review_event WHERE report_id=? ORDER BY created_at ASC").bind(reportIdForReview).all();
     return json(200,{data:{report,review_history:history.results??[]}},requestId,origin);
