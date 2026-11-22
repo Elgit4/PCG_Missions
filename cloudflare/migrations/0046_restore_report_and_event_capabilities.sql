@@ -171,6 +171,7 @@ BEGIN
 END;
 
 DROP TRIGGER event_closeout_authorize_insert;
+DROP TRIGGER event_closeout_review_authorize_update;
 CREATE TRIGGER event_closeout_authorize_insert
 BEFORE INSERT ON event_closeout
 BEGIN
