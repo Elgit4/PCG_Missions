@@ -14,6 +14,7 @@ export interface AuthEnvironment {
   BETTER_AUTH_SECRET?: string;
   BETTER_AUTH_URL?: string;
   BETTER_AUTH_TRUSTED_ORIGINS?: string;
+  APP_ALLOWED_ORIGINS?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
 }
@@ -46,8 +47,11 @@ export async function sendResendEmail(
 }
 
 function trustedOrigins(env: AuthEnvironment, baseUrl: URL): string[] {
-  const configured = (env.BETTER_AUTH_TRUSTED_ORIGINS ?? "")
-    .split(",")
+  const configured = [
+    env.BETTER_AUTH_TRUSTED_ORIGINS ?? "",
+    env.APP_ALLOWED_ORIGINS ?? "",
+  ]
+    .flatMap((value) => value.split(","))
     .map((value) => value.trim())
     .filter(Boolean);
 
