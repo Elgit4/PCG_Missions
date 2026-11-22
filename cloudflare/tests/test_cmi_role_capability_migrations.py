@@ -50,12 +50,12 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
 
-    def test_full_migration_chain_reaches_schema_44(self):
+    def test_full_migration_chain_reaches_schema_45(self):
         self.assertEqual(
             self.db.execute(
                 "SELECT schema_version, environment FROM app_meta WHERE id = 1"
             ).fetchone(),
-            (44, "non-production"),
+            (45, "non-production"),
         )
         self.assertEqual(
             self.role_codes(),
@@ -533,7 +533,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            44,
+            45,
         )
 
     def test_worker_authorization_query_enforces_team_leader_membership_for_directory_read(self):
