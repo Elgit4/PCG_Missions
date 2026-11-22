@@ -1,0 +1,8 @@
+{
+  "source_branch": "feat/cloudflare-d1-migration-foundation",
+  "source_commit": "b1b156528ef56c2656b78fba054c736c81515c97",
+  "built_at": "45019420905",
+  "worker_name": "pcg-missions-api-preview",
+  "database_id": "74074d53-1edc-4ad7-83e6-bb3333a6ab4f",
+  "environment": "non-production"
+}
