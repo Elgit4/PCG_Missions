@@ -14,7 +14,17 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         for migration in sorted(MIGRATIONS.glob("[0-9][0-9][0-9][0-9]_*.sql")):
-            self.db.executescript(migration.read_text(encoding="utf-8"))
+            try:
+                self.db.executescript(migration.read_text(encoding="utf-8"))
+            except sqlite3.Error as error:
+                diagnostics = {
+                    "schema": self.db.execute("SELECT schema_version, environment FROM app_meta").fetchone(),
+                    "roles": self.db.execute("SELECT COUNT(*) FROM role").fetchone()[0],
+                    "grants": self.db.execute("SELECT COUNT(*) FROM role_capability").fetchone()[0],
+                    "capabilities": self.db.execute("SELECT COUNT(*) FROM capability").fetchone()[0],
+                    "active_capabilities": self.db.execute("SELECT COUNT(*) FROM capability WHERE is_active = 1").fetchone()[0],
+                }
+                raise AssertionError(f"Migration {migration.name} failed: {error}; state={diagnostics}") from error
 
     def tearDown(self):
         self.db.close()
@@ -40,12 +50,12 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
 
-    def test_full_migration_chain_reaches_schema_41(self):
+    def test_full_migration_chain_reaches_schema_42(self):
         self.assertEqual(
             self.db.execute(
                 "SELECT schema_version, environment FROM app_meta WHERE id = 1"
             ).fetchone(),
-            (41, "non-production"),
+            (42, "non-production"),
         )
         self.assertEqual(
             self.role_codes(),
@@ -117,6 +127,10 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         }
         self.assertEqual(actual_counts, expected_counts)
         self.assertEqual(sum(actual_counts.values()), 128)
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM capability WHERE is_active = 1").fetchone()[0],
+            89,
+        )
 
         admin = self.grants("admin_pastor")
         coordinator = self.grants("coordinator")
@@ -303,7 +317,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            41,
+            42,
         )
 
     def test_worker_authorization_query_enforces_team_leader_membership_for_directory_read(self):
@@ -412,7 +426,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            41,
+            42,
         )
 
     def test_environment_marker_allows_production_but_rejects_other_values(self):
@@ -429,7 +443,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         isolated.execute("PRAGMA foreign_keys = ON")
         try:
             for migration_file in sorted(MIGRATIONS.glob("[0-9][0-9][0-9][0-9]_*.sql")):
-                if migration_file.name in {"0040_production_environment_marker.sql", "0041_align_live_authorization_catalogue.sql"}:
+                if migration_file.name in {"0040_production_environment_marker.sql", "0041_align_live_authorization_catalogue.sql", "0042_worker_route_capability_compatibility.sql"}:
                     continue
                 isolated.executescript(migration_file.read_text(encoding="utf-8"))
             isolated.execute("UPDATE app_meta SET schema_version = 38 WHERE id = 1")
