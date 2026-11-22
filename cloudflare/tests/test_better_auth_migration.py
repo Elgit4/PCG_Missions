@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "migrations"
 
 class BetterAuthMigrationTests(unittest.TestCase):
-    def test_version_45_promotes_production_and_preserves_better_auth_identity_rows(self):
+    def test_version_46_preserves_identity_and_restores_report_event_capabilities(self):
         db = sqlite3.connect(":memory:")
         db.execute("PRAGMA foreign_keys = ON")
         for migration in sorted(MIGRATIONS.glob("*.sql")):
