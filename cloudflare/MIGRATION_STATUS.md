@@ -243,3 +243,16 @@ A read-only comparison was run between the D1 resource named `pcg-missions-produ
 The church, branch, staff-profile identity/status rows match. Staff-role assignments are semantically equivalent after joining the database-specific role IDs to `role.code` (the two assignments are `admin_pastor` and `team_leader`); raw role IDs differ because the role catalogue IDs are database-specific, and timestamp text precision differs. This is a limited identity-baseline comparison, not a full row-content or audit-log reconciliation, and it is not a verified backup.
 
 No D1 rows were written or changed. The resource named `pcg-missions-production` is not yet a production runtime database: its internal environment marker is `non-production`, and no production Worker exists.
+
+
+## Better Auth consolidation update — 22 November 2026
+
+The target architecture is now being consolidated on this branch: `migration/cloudflare-auth-consolidation`. It restores the Better Auth identity/account/session/verification/rate-limit tables with forward-only migration `0044_restore_better_auth_identity.sql`, keeps the six-role D1 authorization model, moves password/account operations into D1, and routes the browser through the Cloudflare Pages same-origin Worker gateway.
+
+The application tests are green on commit `71854b4ce78941adb531833d6879f2c7d9bd6bab`:
+- [Cloudflare D1 Foundation 45039540425](https://github.com/Elgit4/PCG_Missions/actions/runs/45039540425): SQLite migration/security tests, Worker type-check and 76/76 Worker tests passed.
+- [CMI web CI 45039540483](https://github.com/Elgit4/PCG_Missions/actions/runs/45039540483): frontend type-check, lint, unit tests and production build passed.
+
+The preview release workflow [45039791431](https://github.com/Elgit4/PCG_Missions/actions/runs/45039791431) reached the credential-provisioning step, but the GitHub Actions Cloudflare token lacks Workers Scripts Write permission. The Better Auth signing secret has since been created directly on the preview Worker through the connected Cloudflare account. The workflow can proceed after Workers Scripts Write is added to the existing token; the existing D1 Edit permission must be retained.
+
+**Do not treat the new auth implementation as deployed yet:** the live preview Worker is still the older schema-43 version 27, D1 migration 0044 has not been applied, and existing source bcrypt password hashes have not yet been imported into Better Auth. Real-user authentication and six-role browser acceptance remain outstanding. Production Pages, production D1, source Supabase services, Vercel and DNS are unchanged. The private Supabase event-flyer bucket remains the only planned Supabase runtime exception. SMS remains disabled.
