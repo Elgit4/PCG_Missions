@@ -441,11 +441,18 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             ("import-guard-branch", "import-guard-church", "Import Guard Branch", now, now),
         )
         for profile_id in ("import-guard-actor", "import-guard-target"):
+            auth_id = f"auth-{profile_id}"
+            self.db.execute(
+                """INSERT INTO supabase_auth_identity
+                   (id,name,email,emailVerified,createdAt,updatedAt,auth_provider)
+                   VALUES(?,?,?,?,?,?,?)""",
+                (auth_id, profile_id, f"{profile_id}@example.test", 1, 1795305600000, 1795305600000, "supabase"),
+            )
             self.db.execute(
                 """INSERT INTO staff_profile
                    (id,auth_user_id,full_name,account_status,created_at,updated_at)
                    VALUES(?,?,?,?,?,?)""",
-                (profile_id, f"auth-{profile_id}", profile_id, "active", now, now),
+                (profile_id, auth_id, profile_id, "active", now, now),
             )
         admin_role_id = self.db.execute(
             "SELECT id FROM role WHERE code = 'admin_pastor'"
