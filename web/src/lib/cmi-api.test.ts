@@ -1217,4 +1217,49 @@ describe("CmiApiClient", () => {
     expect(JSON.parse(String(denyInit.body))).toEqual({ branch_id: "branch-abc", reason: "Verified staff identity" });
   });
 
+  
+  it("routes event assignment workspace, staff/team writes and revocation through the Cloudflare Worker", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ ok: true, data: {} }), { status: 200 }));
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    const eventId = "40000000-0000-4000-8000-000000000001";
+    const branchId = "30000000-0000-4000-8000-000000000001";
+    const staffId = "10000000-0000-4000-8000-000000000001";
+    const teamId = "40000000-0000-4000-8000-000000000002";
+    const assignmentId = "50000000-0000-4000-8000-000000000001";
+    const window = { starts_at: "2026-12-01T10:00:00.000Z", ends_at: "2026-12-01T12:00:00.000Z" };
+
+    await client.getEventAssignments(branchId, eventId);
+    await client.createEventStaffAssignment(branchId, eventId, {
+      staff_auth_user_id: staffId, assignment_role: "checkin", ...window,
+    });
+    await client.createEventTeamAssignment(branchId, eventId, {
+      team_id: teamId, assignment_role: "ushering", ...window,
+    });
+    await client.revokeEventAssignment(branchId, eventId, "staff", assignmentId);
+
+    const calls = fetcher.mock.calls as unknown as Array<[URL, RequestInit]>;
+    expect(calls.map(([url]) => url.pathname)).toEqual([
+      "/api/v1/events/" + eventId + "/assignments",
+      "/api/v1/events/" + eventId + "/staff-assignments",
+      "/api/v1/events/" + eventId + "/team-assignments",
+      "/api/v1/events/" + eventId + "/staff-assignments/" + assignmentId + "/revoke",
+    ]);
+    for (const [url, init] of calls) {
+      expect(url.searchParams.get("branch_id")).toBe(branchId);
+      expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
+      expect(new Headers(init.headers).get("X-Branch-Id")).toBe(branchId);
+    }
+    expect(calls[1][1].method).toBe("POST");
+    expect(JSON.parse(String(calls[1][1].body))).toEqual({
+      staff_auth_user_id: staffId, assignment_role: "checkin", ...window,
+    });
+    expect(JSON.parse(String(calls[2][1].body))).toEqual({
+      team_id: teamId, assignment_role: "ushering", ...window,
+    });
+  });
+
 });
