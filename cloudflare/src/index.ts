@@ -1364,7 +1364,17 @@ async function listContacts(
   const search = (url.searchParams.get("search") ?? "").trim().slice(0, 100);
   const searchPattern = search ? "%" + search + "%" : "%%";
   const phoneSearch = search.replace(/\D/g, "");
-  const phonePattern = phoneSearch ? "%" + phoneSearch + "%" : "";
+  const phoneSearchCandidates = new Set<string>();
+  if (phoneSearch) phoneSearchCandidates.add(phoneSearch);
+  // Ghanaian staff and visitors commonly enter a local 0-prefixed number while
+  // the contact is stored in E.164 (+233). Match both representations.
+  if (/^0\d{9}$/.test(phoneSearch)) phoneSearchCandidates.add("233" + phoneSearch.slice(1));
+  if (/^233\d{9}$/.test(phoneSearch)) phoneSearchCandidates.add("0" + phoneSearch.slice(3));
+  const phonePatterns = [...phoneSearchCandidates].map((candidate) => "%" + candidate + "%");
+  const phoneMatchSql = phonePatterns.map(() =>
+    "(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone_e164, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') LIKE ? " +
+    "OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone_display, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') LIKE ?)"
+  ).join(" OR ");
   const status = url.searchParams.get("status") ?? "active";
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
@@ -1396,10 +1406,7 @@ async function listContacts(
         OR COALESCE(c.last_name, '') LIKE ?
         OR COALESCE(c.preferred_name, '') LIKE ?
         OR COALESCE(c.email_normalized, '') LIKE ?
-        OR (? <> '' AND (
-          REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone_e164, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') LIKE ?
-          OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone_display, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') LIKE ?
-        ))
+        OR (? = 1 AND (${phoneMatchSql}))
       )
       AND (${readPredicate.sql})
     ORDER BY c.created_at DESC, c.id DESC
@@ -1413,7 +1420,8 @@ async function listContacts(
     context.activeBranch.branchId,
     ...(status === "all" ? [] : [status]),
     searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
-    phoneSearch, phonePattern, phonePattern,
+    phonePatterns.length ? 1 : 0,
+    ...phonePatterns.flatMap((pattern) => [pattern, pattern]),
     ...readPredicate.values,
     limit, offset,
   ).all<{
