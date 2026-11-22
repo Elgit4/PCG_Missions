@@ -147,10 +147,84 @@ jobs:
           PY
           test -s /tmp/pcg-missions-d1-recovery-ordered.sql
 
-      - name: Import only into the fixed EU scratch database
+      - name: Import only into the fixed EU scratch database using D1 bulk import
+        shell: bash
         run: |
           set -euo pipefail
-          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --file=/tmp/pcg-missions-d1-recovery-ordered.sql --yes
+          import_url="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/833043cd-896e-4833-b5ae-17d520feba0f/import"
+          dump_file="/tmp/pcg-missions-d1-recovery-ordered.sql"
+          headers_file="/tmp/task7-d1-upload-headers.txt"
+          etag="$(md5sum "$dump_file" | awk '{print $1}')"
+
+          api_post() {
+            curl --fail --silent --show-error \
+              --request POST "$import_url" \
+              --header "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              --header "Content-Type: application/json" \
+              --data "$1"
+          }
+
+          init_response="$(api_post "$(jq -n --arg etag "$etag" '{action:"init",etag:$etag}')")"
+          if [[ "$(jq -r '.success' <<< "$init_response")" != "true" ]]; then
+            echo "::error::Cloudflare D1 import initialization failed."
+            jq -c '.errors // []' <<< "$init_response"
+            exit 1
+          fi
+          upload_url="$(jq -er '.result.upload_url' <<< "$init_response")"
+          filename="$(jq -er '.result.filename' <<< "$init_response")"
+
+          curl --fail --silent --show-error \
+            --request PUT "$upload_url" \
+            --data-binary @"$dump_file" \
+            --dump-header "$headers_file" \
+            --output /dev/null
+          upload_etag="$(grep -i '^etag:' "$headers_file" | tail -n 1 | cut -d' ' -f2 | tr -d '\r"')"
+          if [[ "$upload_etag" != "$etag" ]]; then
+            echo "::error::D1 upload ETag did not match the SQL dump; ingestion was not started."
+            exit 1
+          fi
+
+          ingest_response="$(api_post "$(jq -n --arg etag "$etag" --arg filename "$filename" '{action:"ingest",etag:$etag,filename:$filename}')")"
+          if [[ "$(jq -r '.success' <<< "$ingest_response")" != "true" ]]; then
+            echo "::error::Cloudflare D1 rejected the uploaded SQL dump."
+            jq -c '.errors // []' <<< "$ingest_response"
+            exit 1
+          fi
+          bookmark="$(jq -r '.result.at_bookmark // empty' <<< "$ingest_response")"
+          state="$(jq -r '.result.status // empty' <<< "$ingest_response")"
+          poll_response="$ingest_response"
+          polls=0
+
+          while [[ "$state" == "active" ]]; do
+            if [[ -z "$bookmark" ]]; then
+              echo "::error::D1 import is active but returned no polling bookmark."
+              exit 1
+            fi
+            polls=$((polls + 1))
+            if (( polls > 900 )); then
+              echo "::error::D1 bulk import did not finish within 30 minutes."
+              exit 1
+            fi
+            sleep 2
+            poll_response="$(api_post "$(jq -n --arg bookmark "$bookmark" '{action:"poll",current_bookmark:$bookmark}')")"
+            if [[ "$(jq -r '.success' <<< "$poll_response")" != "true" ]]; then
+              echo "::error::Cloudflare D1 import polling failed."
+              jq -c '.errors // []' <<< "$poll_response"
+              exit 1
+            fi
+            state="$(jq -r '.result.status // empty' <<< "$poll_response")"
+            if [[ "$state" == "error" ]]; then
+              echo "::error::Cloudflare D1 import failed."
+              jq -r '.result.error // "No import error detail returned."' <<< "$poll_response"
+              exit 1
+            fi
+          done
+
+          if [[ "$state" != "complete" ]]; then
+            echo "::error::D1 import returned an unexpected terminal state: $state"
+            exit 1
+          fi
+          jq -c '{status:.result.status, num_queries:.result.num_queries, rows_written:.result.result.meta.rows_written, size_after:.result.result.meta.size_after}' <<< "$poll_response"
 
       - name: Compare exact schema objects, migration ledger, and critical row counts
         run: |
@@ -220,4 +294,4 @@ jobs:
 
       - name: Remove database dump from ephemeral runner
         if: always()
-        run: rm -f /tmp/pcg-missions-d1-recovery.sql /tmp/pcg-missions-d1-recovery-ordered.sql /tmp/pcg-missions-d1-recovery.sha256 /tmp/task7-target-check.json /tmp/task7-source-schema.json /tmp/task7-target-schema.json /tmp/task7-source-counts.json /tmp/task7-target-counts.json /tmp/task7-source-migration-ledger.json /tmp/task7-target-migration-ledger.json /tmp/task7-source-fk.json /tmp/task7-target-fk.json wrangler.task7-recovery.toml
+        run: rm -f /tmp/pcg-missions-d1-recovery.sql /tmp/pcg-missions-d1-recovery-ordered.sql /tmp/pcg-missions-d1-recovery.sha256 /tmp/task7-target-check.json /tmp/task7-source-schema.json /tmp/task7-target-schema.json /tmp/task7-source-counts.json /tmp/task7-target-counts.json /tmp/task7-source-migration-ledger.json /tmp/task7-target-migration-ledger.json /tmp/task7-source-fk.json /tmp/task7-target-fk.json wrangler.task7-recovery.toml /tmp/task7-d1-upload-headers.txt
