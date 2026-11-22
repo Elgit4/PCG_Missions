@@ -1,8 +1,8 @@
 # PCG Missions — Announcement Draft Operations API Contract
 
 **Baseline:** CMI Follow-up v2.1  
-**Status:** Implemented on feature branch; role grants remain approval-gated  
-**Backend workspace:** `supabase-cmi/`  
+**Status:** Cloudflare Worker draft workflow; only the existing Admin/Pastor branch grants are enabled  
+**Backend workspace:** `cloudflare/src/index.ts`  
 **Related contracts:** [Staff API](19_CMI_STAFF_API_CONTRACT.md), [Event Transaction API](17_EVENT_TRANSACTION_API_CONTRACT.md)
 
 ## 1. Scope
@@ -24,15 +24,13 @@ Explicitly excluded:
 
 ## 2. Security boundary
 
-- Function: `announcement-operations`.
-- Base URL: `{SUPABASE_URL}/functions/v1`.
-- Every request requires a Supabase Auth bearer token and public publishable/anon key.
-- The Edge Function validates the bearer token with Supabase Auth and resolves an active staff profile.
-- Actor ID, role assignments, branch access and capability grants are resolved server-side.
-- The function uses a server-side service-role client only after authentication and capability/scope checks. The service-role key is never returned to or included in a browser bundle.
-- Exact browser origins are configured in the server-only `CMI_ALLOWED_ORIGINS` allowlist. CORS is not authorization.
+- Logical client operation: `announcement-operations`.
+- Base URL: same-origin Cloudflare Worker `/api/v1`.
+- Every staff request uses the Better Auth HttpOnly session cookie; no Supabase bearer token or service-role key is sent by the browser.
+- The Worker resolves the active staff profile, branch, role assignments and capability grants from D1.
+- The Worker enforces `announcement.read.scoped` or `announcement.create.scoped` with branch scope. The D1 update trigger independently checks the legacy `announcements.manage` grant.
 - Responses use `Cache-Control: no-store` and include a request correlation ID.
-- Request bodies are limited to 32 KiB.
+- Request bodies are limited to 24 KiB.
 
 The API accepts only explicit `branch` scope for announcement operations. Team, event, self and other scope modes do not imply branch-wide announcement authority.
 
@@ -44,11 +42,11 @@ The API accepts only explicit `branch` scope for announcement operations. Team, 
 | Create a draft | `announcement.create.scoped` | `branch` |
 | Edit own draft | `announcement.create.scoped` | `branch` plus creator match |
 
-No `role_capability` grants are seeded. These endpoints remain fail-closed until the church approves D-01 and applicable R-01–R-12 decisions and approved grants are provisioned.
+No role grants are added by this implementation. The current production D1 grants these branch-scoped capabilities to Admin/Pastor only; other roles remain denied unless a separately reviewed authorization change is approved.
 
 ## 4. Endpoints
 
-### `GET /announcement-operations/announcements?branch_id={uuid}&limit={n}&offset={n}`
+### `GET /api/v1/announcements?branch_id={uuid}&limit={n}&offset={n}`
 
 Requires `announcement.read.scoped` with branch scope.
 
@@ -58,11 +56,11 @@ Requires `announcement.read.scoped` with branch scope.
 - Unknown and duplicate query parameters are rejected.
 - Returns only rows with `status='draft'`, ordered by `updated_at` descending.
 
-### `GET /announcement-operations/announcements/{announcementId}?branch_id={uuid}`
+### `GET /api/v1/announcements/{announcementId}?branch_id={uuid}`
 
 Requires `announcement.read.scoped` with branch scope. Only a draft in the requested branch is returned. Unknown, non-draft and out-of-branch IDs return 404.
 
-### `POST /announcement-operations/announcements`
+### `POST /api/v1/announcements`
 
 Requires `announcement.create.scoped` with branch scope.
 
@@ -86,7 +84,7 @@ Allowed JSON fields:
 
 Returns 201 with the created draft projection.
 
-### `PATCH /announcement-operations/announcements/{announcementId}?branch_id={uuid}`
+### `PATCH /api/v1/announcements/{announcementId}?branch_id={uuid}`
 
 Requires `announcement.create.scoped` with branch scope.
 
@@ -114,7 +112,7 @@ The update repeats the creator, branch and draft-state predicates in the databas
 
 The API stores announcement body as text. The frontend must render it as text or through an explicit safe Markdown renderer; it must not inject the stored body as raw HTML.
 
-The draft workflow does not create an idempotency receipt. A client retry after an ambiguous network timeout can create another draft; the frontend should disable repeat submission while a create request is pending. A later approved change can add a dedicated receipt if operational requirements justify it.
+The draft workflow does not create an idempotency receipt. A client retry after an ambiguous network timeout can create another draft; the frontend disables repeat submission while a create request is pending. Archival and deletion are intentionally not exposed by this contract.
 
 ## 7. Publication and communication approval gate
 
@@ -124,7 +122,7 @@ No announcement message is sent and no SMS provider is called. D-09, D-10 and D-
 
 ## 8. Verification
 
-The feature branch adds Deno tests for:
+The Cloudflare implementation is covered by Worker route tests for authentication boundaries, branch scope, draft creation and editing. The earlier Deno validation suite remains historical reference material.
 - branch UUID, title and body validation;
 - rejection of status, visibility, publication, actor and audience fields;
 - create/update allowlists;
