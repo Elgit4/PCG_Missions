@@ -573,7 +573,7 @@ test("Admin/Pastor can list, create and update branch announcement drafts throug
   const created = await create.json();
   assert.equal(create.status, 201);
   assert.equal(created.data.status, "draft");
-  assert.equal(created.data.is_public, 0);
+  assert.equal(created.data.is_public, false);
   assert.equal(created.data.branch_id, BRANCH_ID);
   const insert = fixture.calls.find((call) => call.kind === "run" && call.sql.includes("INSERT INTO announcement"));
   assert.ok(insert);
