@@ -1100,6 +1100,24 @@ describe("CmiApiClient", () => {
     expect(init.body).toBeInstanceOf(FormData);
   });
 
+  it("routes preview event-flyer removal through the authenticated Worker", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ ok: true, data: { removed: true }, request_id: "worker-flyer-remove-1" }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    const result = await client.removeEventFlyer("branch-abc", "event-123");
+    expect(result.data.removed).toBe(true);
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(String(url)).toBe("https://worker.example.com/api/v1/events/event-123/flyer/remove");
+    expect((init.headers as Headers).get("Authorization")).toBe("Bearer access-token");
+    expect((init.headers as Headers).get("X-Branch-Id")).toBe("branch-abc");
+  });
+
   it("routes staff notifications through the Worker API", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ data: { notifications: [], unread_count: 0 }, request_id: "worker-notifications-1" }),
