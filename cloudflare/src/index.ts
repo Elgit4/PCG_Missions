@@ -5398,6 +5398,168 @@ async function updatePrayerRequestStatus(
 }
 
 
+async function readSensitivePrayerRequest(request: Request, env: Env, prayerRequestId: string, requestId: string, origin?: string): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  if (!isUuidValue(prayerRequestId)) return json(400, { ok: false, error: { code: "INVALID_PRAYER_REQUEST_ID" } }, requestId, origin);
+  const body = await readJsonBody(request, 4096);
+  if (!body.ok || !isPlainObject(body.value)) return json(body.ok ? 400 : body.status, { ok: false, error: { code: "INVALID_PASTORAL_READ" } }, requestId, origin);
+  const payload = body.value;
+  if (Object.keys(payload).some((key) => !["branch_id", "access_mode", "reason_code"].includes(key)) ||
+      payload.branch_id !== context.activeBranch.branchId ||
+      (payload.access_mode !== "assigned" && payload.access_mode !== "oversight")) {
+    return json(400, { ok: false, error: { code: "INVALID_PASTORAL_READ" } }, requestId, origin);
+  }
+  const accessMode = payload.access_mode;
+  const reasonCode = payload.reason_code;
+  const reasons = ["pastoral_review", "continuity_of_care", "safeguarding_concern", "complaint_review", "administrative_review"];
+  if ((accessMode === "assigned" && reasonCode !== undefined && reasonCode !== null) ||
+      (accessMode === "oversight" && (typeof reasonCode !== "string" || !reasons.includes(reasonCode)))) {
+    return json(400, { ok: false, error: { code: "OVERSIGHT_REASON_REQUIRED" } }, requestId, origin);
+  }
+  const requiredCapability = accessMode === "oversight" ? "prayer.oversight.read" : "prayer.request.read.assigned";
+  const requiredScope = accessMode === "oversight" ? "oversight" : "assigned";
+  if (!context.activeBranch.capabilities.some((grant) => grant.code === requiredCapability && grant.scopeMode === requiredScope)) {
+    return json(403, { ok: false, error: { code: "PASTORAL_READ_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const assignmentClause = accessMode === "assigned" ? \`
+    AND EXISTS (SELECT 1 FROM prayer_assignment pa
+      WHERE pa.prayer_request_id = p.id AND pa.branch_id = p.branch_id
+        AND pa.intercessor_user_id = ? AND pa.revoked_at IS NULL
+        AND pa.starts_at <= ? AND (pa.ends_at IS NULL OR pa.ends_at > ?))
+  \` : "";
+  const assignmentValues = accessMode === "assigned" ? [context.staff.userId, now, now] : [];
+  let batch;
+  try {
+    batch = await env.DB.batch([
+      env.DB.prepare(\`
+        INSERT INTO prayer_access_audit
+          (id, prayer_request_id, branch_id, actor_user_id, action, reason, request_id, safe_metadata, accessed_at)
+        SELECT ?, p.id, p.branch_id, ?, ?, ?, ?, json_object('access_mode', ?), ?
+        FROM prayer_request p
+        WHERE p.id = ? AND p.branch_id = ? AND (p.expires_at IS NULL OR p.expires_at > ?)
+          \${assignmentClause}
+      \`).bind(
+        crypto.randomUUID(), context.staff.userId, accessMode === "oversight" ? "oversight" : "read",
+        accessMode === "oversight" ? reasonCode : null, requestId, accessMode, now,
+        prayerRequestId, context.activeBranch.branchId, now, ...assignmentValues,
+      ),
+      env.DB.prepare(\`
+        INSERT INTO sensitive_record_access_audit
+          (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, share_reference, created_at)
+        SELECT ?, p.branch_id, ?, 'prayer_request', p.id, 'read', ?, NULL, ?
+        FROM prayer_request p
+        WHERE p.id = ? AND p.branch_id = ? AND (p.expires_at IS NULL OR p.expires_at > ?)
+          \${assignmentClause}
+      \`).bind(
+        crypto.randomUUID(), context.staff.profileId,
+        accessMode === "oversight" ? "oversight:" + reasonCode : "assigned_prayer_read",
+        now, prayerRequestId, context.activeBranch.branchId, now, ...assignmentValues,
+      ),
+      env.DB.prepare(\`
+        SELECT p.id, p.branch_id, p.request_text, p.status, p.sensitivity,
+               p.expires_at, p.answered_at, p.created_at, p.updated_at
+        FROM prayer_request p
+        WHERE p.id = ? AND p.branch_id = ? AND (p.expires_at IS NULL OR p.expires_at > ?)
+          \${assignmentClause}
+        LIMIT 1
+      \`).bind(prayerRequestId, context.activeBranch.branchId, now, ...assignmentValues),
+    ]);
+  } catch {
+    return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
+  }
+  const row = (batch[2] as { results?: Array<Record<string, unknown>> })?.results?.[0];
+  if (!batch[0]?.success || !batch[1]?.success ||
+      (batch[0]?.meta?.changes ?? 0) !== 1 || (batch[1]?.meta?.changes ?? 0) !== 1) {
+    return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
+  }
+  if (!row) return json(404, { ok: false, error: { code: "PASTORAL_RECORD_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, data: { request: row } }, requestId, origin);
+}
+
+async function readSensitiveCareRecord(request: Request, env: Env, careRecordId: string, requestId: string, origin?: string): Promise<Response> {
+  const context = await resolveStaffContext(request, env);
+  if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
+  if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
+  if (!isUuidValue(careRecordId)) return json(400, { ok: false, error: { code: "INVALID_CARE_RECORD_ID" } }, requestId, origin);
+  const body = await readJsonBody(request, 4096);
+  if (!body.ok || !isPlainObject(body.value)) return json(body.ok ? 400 : body.status, { ok: false, error: { code: "INVALID_PASTORAL_READ" } }, requestId, origin);
+  const payload = body.value;
+  if (Object.keys(payload).some((key) => !["branch_id", "access_mode", "reason_code"].includes(key)) ||
+      payload.branch_id !== context.activeBranch.branchId ||
+      (payload.access_mode !== "assigned" && payload.access_mode !== "oversight")) {
+    return json(400, { ok: false, error: { code: "INVALID_PASTORAL_READ" } }, requestId, origin);
+  }
+  const accessMode = payload.access_mode;
+  const reasonCode = payload.reason_code;
+  const reasons = ["pastoral_review", "continuity_of_care", "safeguarding_concern", "complaint_review", "administrative_review"];
+  if ((accessMode === "assigned" && reasonCode !== undefined && reasonCode !== null) ||
+      (accessMode === "oversight" && (typeof reasonCode !== "string" || !reasons.includes(reasonCode)))) {
+    return json(400, { ok: false, error: { code: "OVERSIGHT_REASON_REQUIRED" } }, requestId, origin);
+  }
+  const requiredCapability = accessMode === "oversight" ? "care.oversight.read" : "care.record.read.assigned";
+  const requiredScope = accessMode === "oversight" ? "oversight" : "assigned";
+  if (!context.activeBranch.capabilities.some((grant) => grant.code === requiredCapability && grant.scopeMode === requiredScope)) {
+    return json(403, { ok: false, error: { code: "PASTORAL_READ_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const assignmentClause = accessMode === "assigned" ? \`
+    AND EXISTS (SELECT 1 FROM care_assignment ca
+      WHERE ca.care_record_id = cr.id AND ca.branch_id = cr.branch_id
+        AND ca.assignee_user_id = ? AND ca.revoked_at IS NULL
+        AND ca.starts_at <= ? AND (ca.ends_at IS NULL OR ca.ends_at > ?))
+  \` : "";
+  const assignmentValues = accessMode === "assigned" ? [context.staff.userId, now, now] : [];
+  let batch;
+  try {
+    batch = await env.DB.batch([
+      env.DB.prepare(\`
+        INSERT INTO care_access_audit
+          (id, care_record_id, branch_id, actor_user_id, action, reason, request_id, safe_metadata, accessed_at)
+        SELECT ?, cr.id, cr.branch_id, ?, ?, ?, ?, json_object('access_mode', ?), ?
+        FROM care_record cr WHERE cr.id = ? AND cr.branch_id = ? \${assignmentClause}
+      \`).bind(
+        crypto.randomUUID(), context.staff.userId, accessMode === "oversight" ? "oversight" : "read",
+        accessMode === "oversight" ? reasonCode : null, requestId, accessMode, now,
+        careRecordId, context.activeBranch.branchId, ...assignmentValues,
+      ),
+      env.DB.prepare(\`
+        INSERT INTO sensitive_record_access_audit
+          (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, share_reference, created_at)
+        SELECT ?, cr.branch_id, ?, 'pastoral_case', cr.id, 'read', ?, NULL, ?
+        FROM care_record cr WHERE cr.id = ? AND cr.branch_id = ? \${assignmentClause}
+      \`).bind(
+        crypto.randomUUID(), context.staff.profileId,
+        accessMode === "oversight" ? "oversight:" + reasonCode : "assigned_care_read",
+        now, careRecordId, context.activeBranch.branchId, ...assignmentValues,
+      ),
+      env.DB.prepare(\`
+        SELECT cr.id, cr.branch_id, cr.status, cr.reviewed_at, cr.created_at, cr.updated_at
+        FROM care_record cr WHERE cr.id = ? AND cr.branch_id = ? \${assignmentClause} LIMIT 1
+      \`).bind(careRecordId, context.activeBranch.branchId, ...assignmentValues),
+      env.DB.prepare(\`
+        SELECT ci.id, ci.interaction_type, ci.outcome_code, ci.restricted_note, ci.occurred_at
+        FROM care_interaction ci JOIN care_record cr ON cr.id = ci.care_record_id
+        WHERE ci.care_record_id = ? AND cr.branch_id = ?
+        ORDER BY ci.occurred_at DESC, ci.id DESC LIMIT 100
+      \`).bind(careRecordId, context.activeBranch.branchId),
+    ]);
+  } catch {
+    return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
+  }
+  const record = (batch[2] as { results?: Array<Record<string, unknown>> })?.results?.[0];
+  if (!batch[0]?.success || !batch[1]?.success ||
+      (batch[0]?.meta?.changes ?? 0) !== 1 || (batch[1]?.meta?.changes ?? 0) !== 1) {
+    return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
+  }
+  if (!record) return json(404, { ok: false, error: { code: "PASTORAL_RECORD_NOT_FOUND" } }, requestId, origin);
+  const interactions = (batch[3] as { results?: Array<Record<string, unknown>> })?.results ?? [];
+  return json(200, { ok: true, data: { record, interactions } }, requestId, origin);
+}
+
+
 
     if (url.pathname === "/api/v1/announcements" && (request.method === "GET" || request.method === "POST")) {
       return handleAnnouncementCollection(request, env, requestId, origin);
