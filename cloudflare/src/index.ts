@@ -1362,6 +1362,9 @@ async function listContacts(
   const privatePredicate = contactScopePredicate(privateScope, "c", context.staff.userId, context.activeBranch.branchId, now);
   const url = new URL(request.url);
   const search = (url.searchParams.get("search") ?? "").trim().slice(0, 100);
+  const searchPattern = search ? "%" + search + "%" : "%%";
+  const phoneSearch = search.replace(/\\D/g, "");
+  const phonePattern = phoneSearch ? "%" + phoneSearch + "%" : "";
   const status = url.searchParams.get("status") ?? "active";
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
@@ -1387,7 +1390,17 @@ async function listContacts(
     FROM contact c
     WHERE c.branch_id = ?
       AND ${statusPredicate}
-      AND (? = '%%' OR c.first_name LIKE ? OR COALESCE(c.last_name, '') LIKE ?)
+      AND (
+        ? = '%%'
+        OR c.first_name LIKE ?
+        OR COALESCE(c.last_name, '') LIKE ?
+        OR COALESCE(c.preferred_name, '') LIKE ?
+        OR COALESCE(c.email_normalized, '') LIKE ?
+        OR (? <> '' AND (
+          REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone_e164, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') LIKE ?
+          OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone_display, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') LIKE ?
+        ))
+      )
       AND (${readPredicate.sql})
     ORDER BY c.created_at DESC, c.id DESC
     LIMIT ? OFFSET ?
@@ -1399,9 +1412,8 @@ async function listContacts(
     privateScope ? 1 : 0, ...privatePredicate.values,
     context.activeBranch.branchId,
     ...(status === "all" ? [] : [status]),
-    search ? `%${search}%` : "%%",
-    search ? `%${search}%` : "%%",
-    search ? `%${search}%` : "%%",
+    searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
+    phoneSearch, phonePattern, phonePattern,
     ...readPredicate.values,
     limit, offset,
   ).all<{
