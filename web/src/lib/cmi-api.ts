@@ -8,7 +8,8 @@
  * Supabase is retained server-side only for private event-flyer storage.
  */
 export interface CmiApiConfig { apiUrl?: string; }
-/** @deprecated Retained only for constructor compatibility; Cloudflare auth uses HttpOnly cookies. */\nexport type AccessTokenProvider = () => Promise<string | null>;
+/** @deprecated Retained only for constructor compatibility; Cloudflare auth uses HttpOnly cookies. */
+export type AccessTokenProvider = () => Promise<string | null>;
 export interface ApiEnvelope<T> {
   data: T;
   request_id: string;
@@ -549,7 +550,8 @@ function assertValidTaskReassignment(
 
 function requestErrorDetail(error: unknown): string {
   if (error instanceof Error) {
-    const message = error.message.replace(/[\\r\\n]+/g, " ").slice(0, 140);
+    const message = error.message.replace(/[\\r\
+]+/g, " ").slice(0, 140);
     return message ? `${error.name}: ${message}` : error.name;
   }
   return "Unknown network error";
@@ -723,7 +725,8 @@ export class CmiApiClient {
 
   constructor(
     config: CmiApiConfig = {},
-    /** @deprecated No bearer token is sent; the Worker authenticates the HttpOnly session cookie. */\n    _getAccessToken: AccessTokenProvider = async () => null,
+    /** @deprecated No bearer token is sent; the Worker authenticates the HttpOnly session cookie. */
+    _getAccessToken: AccessTokenProvider = async () => null,
     private readonly fetcher: typeof fetch = fetch,
   ) {
     const configured = normalizeBaseUrl(config.apiUrl ?? "");
