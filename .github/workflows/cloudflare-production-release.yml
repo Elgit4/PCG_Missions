@@ -98,6 +98,7 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
+          npx wrangler deploy --env production
           secrets_json="$(npx wrangler secret list --env production)"
           if ! printf '%s' "$secrets_json" | jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' >/dev/null; then
             openssl rand -hex 32 | npx wrangler secret put BETTER_AUTH_SECRET --env production >/dev/null
