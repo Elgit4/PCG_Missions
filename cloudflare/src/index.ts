@@ -1,4 +1,4 @@
-import { createSupabaseAuthUser, deleteSupabaseAuthUser } from "./auth.ts";
+import { createSupabaseAuthUser, deleteSupabaseAuthUser, updateSupabaseAuthUserPassword, verifySupabaseAccessToken } from "./auth.ts";
 import { authorizeRequestCapability, resolveStaffContext, type StaffEnvironment } from "./staff-context.ts";
 
 interface D1PreparedStatement {
@@ -554,6 +554,288 @@ function createTemporaryPassword(): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return `Pm!7Aa${btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")}`;
+}
+
+
+async function requestStaffPasswordReset(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { email?: unknown };
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => key !== "email") ||
+      typeof payload.email !== "string" || payload.email.trim().length > 254 ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(payload.email.trim())) {
+    return json(400, { ok: false, error: { code: "INVALID_RESET_REQUEST" } }, requestId, origin);
+  }
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+    return json(503, { ok: false, error: { code: "AUTH_SERVICE_UNAVAILABLE" } }, requestId, origin);
+  }
+  const email = payload.email.trim().toLowerCase();
+  const clientIp = request.headers.get("CF-Connecting-IP") ??
+    request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ?? "unknown";
+  const ipFingerprint = await sha256Hex(\`\${env.SUPABASE_SERVICE_ROLE_KEY}:\${clientIp}\`);
+  const emailFingerprint = await sha256Hex(\`\${env.SUPABASE_SERVICE_ROLE_KEY}:\${email}\`);
+  const now = new Date();
+  const requestedAt = now.toISOString();
+  const expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString();
+  const recent = await env.DB.prepare(\`
+    SELECT COUNT(*) AS count FROM staff_password_reset_request
+    WHERE ip_fingerprint = ? AND requested_at > ?
+  \`).bind(ipFingerprint, new Date(now.getTime() - 15 * 60 * 1000).toISOString())
+    .first<{ count: number }>();
+  if ((recent?.count ?? 0) >= 5) {
+    return json(429, { ok: false, error: { code: "RESET_REQUEST_RATE_LIMITED", message: "Too many requests. Try again later." } }, requestId, origin);
+  }
+
+  const target = await env.DB.prepare(\`
+    SELECT sp.id AS profile_id, sra.branch_id
+    FROM staff_profile sp
+    JOIN staff_role_assignment sra ON sra.staff_profile_id = sp.id
+    JOIN branch b ON b.id = sra.branch_id AND b.is_active = 1
+    WHERE lower(sp.email) = ? AND sp.account_status = 'active'
+      AND sra.revoked_at IS NULL AND sra.starts_at <= ?
+      AND (sra.ends_at IS NULL OR sra.ends_at > ?)
+    ORDER BY sra.starts_at DESC LIMIT 1
+  \`).bind(email, requestedAt, requestedAt)
+    .first<{ profile_id: string; branch_id: string }>();
+
+  // Keep the response identical for unknown, inactive, and valid staff addresses.
+  if (!target) return json(200, { ok: true, message: "If this address belongs to an active staff account, an administrator will review the request." }, requestId, origin);
+
+  const requestIdValue = crypto.randomUUID();
+  const adminRows = await env.DB.prepare(\`
+    SELECT DISTINCT sp.auth_user_id
+    FROM staff_role_assignment sra
+    JOIN staff_profile sp ON sp.id = sra.staff_profile_id AND sp.account_status = 'active'
+    JOIN role r ON r.id = sra.role_id AND r.code = 'admin_pastor' AND r.is_active = 1
+    WHERE sra.branch_id = ? AND sra.revoked_at IS NULL
+      AND sra.starts_at <= ? AND (sra.ends_at IS NULL OR sra.ends_at > ?)
+  \`).bind(target.branch_id, requestedAt, requestedAt).all<{ auth_user_id: string }>();
+
+  const statements = [
+    env.DB.prepare(\`
+      INSERT INTO staff_password_reset_request
+        (id, target_profile_id, branch_id, email_normalized, email_fingerprint, ip_fingerprint,
+         status, requested_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+    \`).bind(requestIdValue, target.profile_id, target.branch_id, email, emailFingerprint, ipFingerprint, requestedAt, expiresAt),
+    env.DB.prepare(\`
+      INSERT INTO staff_password_reset_audit
+        (id, request_id, branch_id, actor_profile_id, event_type, metadata, created_at)
+      VALUES (?, ?, ?, NULL, 'requested', '{}', ?)
+    \`).bind(crypto.randomUUID(), requestIdValue, target.branch_id, requestedAt),
+  ];
+  for (const admin of adminRows.results ?? []) {
+    statements.push(env.DB.prepare(\`
+      INSERT INTO staff_notification
+        (id, branch_id, recipient_user_id, category, title, body, target_type, target_id, idempotency_key, created_at)
+      VALUES (?, ?, ?, 'system', 'Password reset request', 'A staff member has requested a password reset. Review it in Access requests.', NULL, NULL, ?, ?)
+    \`).bind(crypto.randomUUID(), target.branch_id, admin.auth_user_id,
+      \`password-reset:\${requestIdValue}:\${admin.auth_user_id}\`, requestedAt));
+  }
+  try {
+    const results = await env.DB.batch(statements);
+    if (results.some((result) => !result.success || (result.meta?.changes ?? 0) !== 1)) throw new Error("RESET_REQUEST_WRITE_FAILED");
+  } catch {
+    return json(503, { ok: false, error: { code: "RESET_REQUEST_UNAVAILABLE" } }, requestId, origin);
+  }
+  return json(200, { ok: true, message: "If this address belongs to an active staff account, an administrator will review the request." }, requestId, origin);
+}
+
+async function listStaffPasswordResetRequests(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.password_reset.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  if (!access.activeBranch.roles.includes("admin_pastor")) {
+    return json(403, { ok: false, error: { code: "ADMIN_PASTOR_REQUIRED" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const rows = await env.DB.prepare(\`
+    SELECT req.id, req.email_normalized AS email, sp.full_name, req.requested_at,
+           req.expires_at, req.status
+    FROM staff_password_reset_request req
+    JOIN staff_profile sp ON sp.id = req.target_profile_id
+    WHERE req.branch_id = ? AND req.status IN ('pending','processing')
+      AND req.expires_at > ?
+    ORDER BY req.requested_at ASC LIMIT 100
+  \`).bind(access.activeBranch.branchId, now).all<{
+    id: string; email: string; full_name: string; requested_at: string;
+    expires_at: string; status: "pending" | "processing";
+  }>();
+  return json(200, { ok: true, data: rows.results ?? [] }, requestId, origin);
+}
+
+async function reviewStaffPasswordReset(
+  request: Request, env: Env, resetId: string, decision: "approve" | "deny",
+  requestId: string, origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "staff.password_reset.manage");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  if (!access.activeBranch.roles.includes("admin_pastor")) {
+    return json(403, { ok: false, error: { code: "ADMIN_PASTOR_REQUIRED" } }, requestId, origin);
+  }
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { branch_id?: unknown; reason?: unknown };
+  const reason = typeof payload.reason === "string" ? payload.reason.trim() : "";
+  if (payload.branch_id !== access.activeBranch.branchId || reason.length < 10 || reason.length > 300) {
+    return json(400, { ok: false, error: { code: "INVALID_RESET_REVIEW" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const reset = await env.DB.prepare(\`
+    SELECT req.id, req.target_profile_id, req.branch_id, req.status, req.expires_at,
+           sp.auth_user_id, sp.email
+    FROM staff_password_reset_request req
+    JOIN staff_profile sp ON sp.id = req.target_profile_id
+    WHERE req.id = ? AND req.branch_id = ? LIMIT 1
+  \`).bind(resetId, access.activeBranch.branchId).first<{
+    id: string; target_profile_id: string; branch_id: string; status: string;
+    expires_at: string; auth_user_id: string; email: string;
+  }>();
+  if (!reset || reset.status !== "pending" || reset.expires_at <= now) {
+    return json(409, { ok: false, error: { code: "RESET_REQUEST_NOT_PENDING" } }, requestId, origin);
+  }
+  if (decision === "deny") {
+    const results = await env.DB.batch([
+      env.DB.prepare(\`
+        UPDATE staff_password_reset_request
+        SET status = 'denied', reviewed_by_profile_id = ?, reviewed_at = ?, review_reason = ?
+        WHERE id = ? AND branch_id = ? AND status = 'pending'
+      \`).bind(access.staff.profileId, now, reason, resetId, reset.branch_id),
+      env.DB.prepare(\`
+        INSERT INTO staff_password_reset_audit
+          (id, request_id, branch_id, actor_profile_id, event_type, metadata, created_at)
+        VALUES (?, ?, ?, ?, 'denied', ?, ?)
+      \`).bind(crypto.randomUUID(), resetId, reset.branch_id, access.staff.profileId,
+        JSON.stringify({ reason }), now),
+    ]);
+    if (results.some((result) => !result.success) || (results[0]?.meta?.changes ?? 0) !== 1) {
+      return json(409, { ok: false, error: { code: "RESET_REQUEST_NOT_PENDING" } }, requestId, origin);
+    }
+    return json(200, { ok: true, data: { status: "denied" } }, requestId, origin);
+  }
+
+  const claim = await env.DB.prepare(\`
+    UPDATE staff_password_reset_request SET status = 'processing'
+    WHERE id = ? AND branch_id = ? AND status = 'pending' AND expires_at > ?
+  \`).bind(resetId, reset.branch_id, now).run();
+  if (!claim.success || (claim.meta?.changes ?? 0) !== 1) {
+    return json(409, { ok: false, error: { code: "RESET_REQUEST_NOT_PENDING" } }, requestId, origin);
+  }
+  const temporaryPassword = createTemporaryPassword();
+  try {
+    await updateSupabaseAuthUserPassword(env, reset.auth_user_id, temporaryPassword);
+  } catch {
+    await env.DB.prepare(\`
+      UPDATE staff_password_reset_request SET status = 'pending'
+      WHERE id = ? AND status = 'processing'
+    \`).bind(resetId).run();
+    return json(503, { ok: false, error: { code: "AUTH_PASSWORD_RESET_FAILED" } }, requestId, origin);
+  }
+  const passwordExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  try {
+    const results = await env.DB.batch([
+      env.DB.prepare(\`
+        UPDATE staff_profile
+        SET must_change_password = 1, password_setup_expires_at = ?, password_changed_at = NULL, updated_at = ?
+        WHERE id = ? AND account_status = 'active'
+      \`).bind(passwordExpiresAt, now, reset.target_profile_id),
+      env.DB.prepare(\`
+        UPDATE staff_password_reset_request
+        SET status = 'approved', reviewed_by_profile_id = ?, reviewed_at = ?, review_reason = ?
+        WHERE id = ? AND status = 'processing'
+      \`).bind(access.staff.profileId, now, reason, resetId),
+      env.DB.prepare(\`
+        INSERT INTO staff_password_reset_audit
+          (id, request_id, branch_id, actor_profile_id, event_type, metadata, created_at)
+        VALUES (?, ?, ?, ?, 'approved', ?, ?)
+      \`).bind(crypto.randomUUID(), resetId, reset.branch_id, access.staff.profileId,
+        JSON.stringify({ reason, credential_handoff: "one_time_manual", expires_in_hours: 24 }), now),
+    ]);
+    if (results.some((result) => !result.success) ||
+        (results[0]?.meta?.changes ?? 0) !== 1 || (results[1]?.meta?.changes ?? 0) !== 1) {
+      throw new Error("RESET_APPROVAL_COMMIT_FAILED");
+    }
+  } catch {
+    await env.DB.prepare("UPDATE staff_profile SET account_status = 'inactive', updated_at = ? WHERE id = ?")
+      .bind(now, reset.target_profile_id).run();
+    return json(503, { ok: false, error: { code: "RESET_APPROVAL_COMMIT_FAILED" } }, requestId, origin);
+  }
+  return json(200, {
+    ok: true,
+    data: {
+      status: "approved", email: reset.email, temporary_password: temporaryPassword,
+      temporary_password_sent: false, manual_handoff_required: true,
+      must_change_password: true, password_expires_in_hours: 24,
+    },
+  }, requestId, origin);
+}
+
+async function completeStaffPasswordChange(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
+  const verification = await verifySupabaseAccessToken(request, env);
+  if (verification.state === "unauthenticated") return json(401, { ok: false, error: { code: "UNAUTHENTICATED" } }, requestId, origin);
+  if (verification.state !== "valid") return json(503, { ok: false, error: { code: "AUTH_SERVICE_UNAVAILABLE" } }, requestId, origin);
+  const body = await readJsonBody(request);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: "INVALID_JSON" } }, requestId, origin);
+  const payload = body.value as { password?: unknown };
+  const password = typeof payload.password === "string" ? payload.password : "";
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      Object.keys(payload).some((key) => key !== "password") ||
+      password.length < 12 || password.length > 128 ||
+      !/[a-z]/.test(password) || !/[A-Z]/.test(password) ||
+      !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
+    return json(400, { ok: false, error: { code: "WEAK_PASSWORD", message: "Use 12–128 characters with uppercase and lowercase letters, a number and a symbol." } }, requestId, origin);
+  }
+  const profile = await env.DB.prepare(\`
+    SELECT id, account_status, must_change_password, password_setup_expires_at
+    FROM staff_profile WHERE auth_user_id = ? LIMIT 1
+  \`).bind(verification.user.id).first<{
+    id: string; account_status: string; must_change_password: number; password_setup_expires_at: string | null;
+  }>();
+  if (!profile || profile.account_status !== "active") {
+    return json(403, { ok: false, error: { code: "STAFF_ACCOUNT_INACTIVE" } }, requestId, origin);
+  }
+  if (profile.must_change_password === 1) {
+    const expiry = Date.parse(profile.password_setup_expires_at ?? "");
+    if (!Number.isFinite(expiry) || expiry <= Date.now()) {
+      return json(403, { ok: false, error: { code: "PASSWORD_SETUP_EXPIRED" } }, requestId, origin);
+    }
+  }
+  try {
+    await updateSupabaseAuthUserPassword(env, verification.user.id, password);
+  } catch {
+    return json(503, { ok: false, error: { code: "PASSWORD_CHANGE_FAILED" } }, requestId, origin);
+  }
+  const now = new Date().toISOString();
+  const latestReset = await env.DB.prepare(\`
+    SELECT id FROM staff_password_reset_request
+    WHERE target_profile_id = ? AND status = 'approved'
+    ORDER BY reviewed_at DESC LIMIT 1
+  \`).bind(profile.id).first<{ id: string }>();
+  const statements = [
+    env.DB.prepare(\`
+      UPDATE staff_profile
+      SET must_change_password = 0, password_setup_expires_at = NULL,
+          password_changed_at = ?, updated_at = ?
+      WHERE id = ? AND account_status = 'active'
+    \`).bind(now, now, profile.id),
+  ];
+  if (latestReset) {
+    statements.push(env.DB.prepare(\`
+      INSERT INTO staff_password_reset_audit
+        (id, request_id, branch_id, actor_profile_id, event_type, metadata, created_at)
+      SELECT ?, ?, branch_id, ?, 'reset_completed', '{}', ?
+      FROM staff_password_reset_request WHERE id = ?
+    \`).bind(crypto.randomUUID(), latestReset.id, profile.id, now, latestReset.id));
+    statements.push(env.DB.prepare(\`
+      UPDATE staff_password_reset_request SET status = 'completed', completed_at = ?
+      WHERE id = ? AND status = 'approved'
+    \`).bind(now, latestReset.id));
+  }
+  const results = await env.DB.batch(statements);
+  if (results.some((result) => !result.success) || (results[0]?.meta?.changes ?? 0) !== 1) {
+    return json(503, { ok: false, error: { code: "PASSWORD_CHANGE_CONFIRMATION_FAILED" } }, requestId, origin);
+  }
+  return json(200, { ok: true, data: { password_changed: true, must_change_password: false } }, requestId, origin);
 }
 
 async function createStaffAccount(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
@@ -5174,6 +5456,23 @@ async function updatePrayerRequestStatus(
       catch { return json(400, { ok: false, error: { code: "INVALID_CONTACT_ID" } }, requestId, origin); }
       if (request.method === "GET") return listContactInteractions(request, env, contactId, requestId, origin);
       return createContactInteraction(request, env, contactId, requestId, origin);
+    }
+
+    if (url.pathname === "/api/v1/auth/password-reset-requests" && request.method === "POST") {
+      return requestStaffPasswordReset(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/auth/password/change" && request.method === "POST") {
+      return completeStaffPasswordChange(request, env, requestId, origin);
+    }
+    if (url.pathname === "/api/v1/admin/password-reset-requests" && request.method === "GET") {
+      return listStaffPasswordResetRequests(request, env, requestId, origin);
+    }
+    const passwordResetReviewMatch = url.pathname.match(/^\/api\/v1\/admin\/password-reset-requests\/([^/]+)\/(approve|deny)$/);
+    if (passwordResetReviewMatch && request.method === "POST") {
+      let resetId: string;
+      try { resetId = decodeURIComponent(passwordResetReviewMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_RESET_REQUEST_ID" } }, requestId, origin); }
+      return reviewStaffPasswordReset(request, env, resetId, passwordResetReviewMatch[2] as "approve" | "deny", requestId, origin);
     }
 
     if (url.pathname === "/api/v1/staff/invitations" ||
