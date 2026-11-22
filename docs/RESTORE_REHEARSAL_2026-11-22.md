@@ -47,6 +47,17 @@ Supabase's current documentation says Free-plan projects do not receive automati
 
 A project owner/operator must run a manual logical backup from a trusted workstation using a database connection string kept in a local environment variable (never committed or pasted into chat), then restore that dump to a separate PostgreSQL instance/project. Storage objects and Auth/provider configuration require separate backup/verification; a Postgres dump alone is not a complete Supabase project recovery.
 
+## Automated recovery runners added
+
+Two manual-only GitHub Actions workflows are now committed on this branch:
+
+- [D1 isolated restore rehearsal](../.github/workflows/task7-d1-restore-rehearsal.yml) — exports only `pcg-missions-migration-test`, refuses to import unless the fixed EU scratch database is empty, imports only into `pcg-missions-restore-rehearsal`, and compares the schema inventory plus critical table row counts. It requires the repository Actions secret `CLOUDFLARE_API_TOKEN`.
+- [Supabase logical backup and isolated restore](../.github/workflows/task7-supabase-restore-rehearsal.yml) — uses Supabase CLI-aware role/schema/data dumps, refuses a non-empty public schema on the target, restores only to a separate target endpoint, compares critical CMI row counts, and deletes dump files from the ephemeral runner. It requires the repository Actions secrets `SUPABASE_SOURCE_DB_URL` and `SUPABASE_RESTORE_DB_URL`. The restore URL must belong to a separately created, disposable Supabase project.
+
+Both workflows require an exact typed confirmation string in the GitHub Actions manual-run form. They do not run on pushes or pull requests. They do not use or target the D1 production database. The Supabase workflow will not create a restore project or incur project charges; the project owner must provision the separate target first. Configure secrets in GitHub repository **Settings → Secrets and variables → Actions**. Never put connection strings or tokens in workflow inputs, commits, issues, or chat.
+
+**Execution has not yet occurred.** The workflows are automation prepared for a trusted GitHub-hosted runner; their presence is not restore evidence. The D1 workflow may be run once `CLOUDFLARE_API_TOKEN` is configured. The Supabase workflow additionally requires a fresh target Supabase project and both connection-string secrets.
+
 ## Remaining acceptance criteria
 
 - [ ] Retrieve the completed D1 export in a trusted workstation/CI environment.
