@@ -72,7 +72,7 @@ Query parameters:
 - `branch_id` — required UUID; must be an active branch assigned to the staff member.
 - `limit` — optional integer 1–50; default 25.
 - `offset` — optional integer 0–5000; default 0.
-- `search` — optional first-name search, maximum 80 characters.
+- `search` — optional name, email or normalized phone-number search, maximum 100 characters. Phone matching ignores common display punctuation and whitespace.
 
 Requires `contact.read.scoped`. Results are constrained by the granted scope:
 - `branch`: active contacts within the authorized branch;
