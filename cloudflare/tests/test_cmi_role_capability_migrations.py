@@ -50,12 +50,12 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
 
-    def test_full_migration_chain_reaches_schema_42(self):
+    def test_full_migration_chain_reaches_schema_43(self):
         self.assertEqual(
             self.db.execute(
                 "SELECT schema_version, environment FROM app_meta WHERE id = 1"
             ).fetchone(),
-            (42, "non-production"),
+            (43, "non-production"),
         )
         self.assertEqual(
             self.role_codes(),
@@ -317,7 +317,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            42,
+            43,
         )
 
     def test_worker_authorization_query_enforces_team_leader_membership_for_directory_read(self):
@@ -429,6 +429,66 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             42,
         )
 
+    
+    def test_historical_admin_assignment_import_does_not_consume_bootstrap_or_add_audit(self):
+        now = "2026-11-22T00:00:00.000Z"
+        self.db.execute(
+            "INSERT INTO church(id,name,created_at,updated_at) VALUES(?,?,?,?)",
+            ("import-guard-church", "Import Guard Church", now, now),
+        )
+        self.db.execute(
+            "INSERT INTO branch(id,church_id,name,created_at,updated_at) VALUES(?,?,?,?,?)",
+            ("import-guard-branch", "import-guard-church", "Import Guard Branch", now, now),
+        )
+        for profile_id in ("import-guard-actor", "import-guard-target"):
+            self.db.execute(
+                """INSERT INTO staff_profile
+                   (id,auth_user_id,full_name,account_status,created_at,updated_at)
+                   VALUES(?,?,?,?,?,?)""",
+                (profile_id, f"auth-{profile_id}", profile_id, "active", now, now),
+            )
+        admin_role_id = self.db.execute(
+            "SELECT id FROM role WHERE code = 'admin_pastor'"
+        ).fetchone()[0]
+
+        self.db.execute(
+            "UPDATE data_migration_control SET is_active = 1 WHERE import_key = 'supabase_core_identity'"
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at)
+               VALUES(?,?,?,?,?,?,?)""",
+            ("import-guard-assignment", "import-guard-target", admin_role_id,
+             "import-guard-branch", "import-guard-actor", now, now),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT remaining_slots FROM staff_admin_bootstrap_state WHERE id = 1").fetchone()[0],
+            2,
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM staff_access_audit").fetchone()[0],
+            0,
+        )
+
+        self.db.execute(
+            "UPDATE data_migration_control SET is_active = 0 WHERE import_key = 'supabase_core_identity'"
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at)
+               VALUES(?,?,?,?,?,?,?)""",
+            ("import-guard-live-assignment", "import-guard-actor", admin_role_id,
+             "import-guard-branch", "import-guard-target", now, now),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT remaining_slots FROM staff_admin_bootstrap_state WHERE id = 1").fetchone()[0],
+            1,
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM staff_access_audit").fetchone()[0],
+            1,
+        )
+
     def test_environment_marker_allows_production_but_rejects_other_values(self):
         self.db.execute("UPDATE app_meta SET environment = 'production' WHERE id = 1")
         self.assertEqual(
@@ -443,7 +503,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         isolated.execute("PRAGMA foreign_keys = ON")
         try:
             for migration_file in sorted(MIGRATIONS.glob("[0-9][0-9][0-9][0-9]_*.sql")):
-                if migration_file.name in {"0040_production_environment_marker.sql", "0041_align_live_authorization_catalogue.sql", "0042_worker_route_capability_compatibility.sql"}:
+                if migration_file.name in {"0040_production_environment_marker.sql", "0041_align_live_authorization_catalogue.sql", "0042_worker_route_capability_compatibility.sql", "0043_supabase_identity_import_controls.sql"}:
                     continue
                 isolated.executescript(migration_file.read_text(encoding="utf-8"))
             isolated.execute("UPDATE app_meta SET schema_version = 38 WHERE id = 1")
