@@ -7,7 +7,7 @@ const migration = readFileSync(new URL("../migrations/0046_restore_report_and_ev
 
 test("typed report routes consume the canonical scoped capability catalogue", () => {
   const start = worker.indexOf("async function handleReportOperations(");
-  const end = worker.indexOf("\nasync function ", start + 1);
+  const end = worker.indexOf("\nasync function handleReportOperations", start + 1);
   assert.ok(start >= 0 && end > start);
   const report = worker.slice(start, end);
   assert.match(report, /report\.submit\.scoped/);
@@ -17,7 +17,7 @@ test("typed report routes consume the canonical scoped capability catalogue", ()
 });
 
 test("event closeout routes use active canonical submit and review capabilities", () => {
-  const start = worker.indexOf("async function handleEventOperations(");
+  const start = worker.indexOf("async function handleEventWorkspaceOperations(");
   const end = worker.indexOf("\nasync function ", start + 1);
   assert.ok(start >= 0 && end > start);
   const events = worker.slice(start, end);
