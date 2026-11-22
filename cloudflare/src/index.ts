@@ -3685,7 +3685,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
   }
 
   if(parts.length===5&&parts[4]==="registrations"&&request.method==="GET"){
-    const allowed=await eventAssignmentAllows(env,context,eventId,branchId,now,"register");
+    const allowed=await eventAssignmentAllows(env,context,eventId,branchId,now,"checkin");
     if(!allowed) return json(403,{ok:false,error:{code:"EVENT_REGISTRATION_READ_NOT_AUTHORIZED"}},requestId,origin);
     const rows=await env.DB.prepare(`SELECT er.id,er.event_id,er.branch_id,er.attendee_name_snapshot,er.attendee_phone_snapshot,er.status,er.registered_at,
       (SELECT ec.checked_in_at FROM event_checkin ec WHERE ec.event_id=er.event_id AND ec.registration_id=er.id ORDER BY ec.checked_in_at DESC LIMIT 1) AS checked_in_at
