@@ -45,7 +45,12 @@ Required acceptance:
 
 The Worker has recipient-scoped notification list, unread count, single-read and read-all endpoints. The D1 table enforces a unique idempotency key and references the recipient's staff identity.
 
-Source review of `cloudflare/src/index.ts` found a producer for Admin/Pastor notifications on password-reset requests. It did not find notification inserts in the follow-up assignment/reassignment, event assignment, or report review/resubmission handlers. Therefore the inbox read API is present, but the broader operational trigger-to-recipient lifecycle is not proven and appears incomplete for those workflows.
+Source review confirmed that follow-up task creation and reassignment already write recipient-scoped notifications in the same D1 batch. This branch additionally adds:
+- report review notifications to the report author, atomically batched with the report status update and D1-generated immutable review-history event;
+- event staff assignment notifications to the assigned staff member;
+- event team assignment notifications to active members of the assigned team.
+
+These producers use generic, non-sensitive notification text and do not dispatch SMS, email or push. The remaining gap is positive authenticated real-D1 acceptance of each producer, including exact recipient selection, idempotency, and rollback behavior. Team assignment recipient membership is evaluated at assignment creation time.
 
 Required acceptance and implementation:
 1. Define the exact notification event contract and recipient selection for follow-up assignment/reassignment, event assignment/revocation and report review/return/approval.
