@@ -64,34 +64,6 @@ jobs:
           fi
           echo "Source and target are configured as distinct database endpoints."
 
-      - name: Normalize existing direct URLs to Supabase Session Pooler
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 <<'PY'
-          import os, urllib.parse
-          refs = {'cgwffpxlwgbnlinzwfoj':'eu-west-1', 'mjougnpitlgsuqgtfbrr':'eu-west-1'}
-          for key in ('SUPABASE_SOURCE_DB_URL','SUPABASE_RESTORE_DB_URL'):
-              u = urllib.parse.urlsplit(os.environ[key])
-              host = u.hostname or ''
-              if host.endswith('.pooler.supabase.com') and u.port == 5432:
-                  value = os.environ[key]
-              else:
-                  if not host.startswith('db.') or not host.endswith('.supabase.co'):
-                      raise SystemExit('Unsupported Supabase database endpoint; refusing to guess')
-                  ref = host[3:-len('.supabase.co')]
-                  region = refs.get(ref)
-                  if not region:
-                      raise SystemExit('Unknown Supabase project region; refusing to guess')
-                  user = urllib.parse.unquote(u.username or '')
-                  if user == 'postgres': user = 'postgres.' + ref
-                  if user != 'postgres.' + ref: raise SystemExit('Unexpected database username format')
-                  authority = user + ':' + (u.password or '') + '@aws-0-' + region + '.pooler.supabase.com:5432'
-                  value = urllib.parse.urlunsplit((u.scheme, authority, u.path or '/postgres', u.query, u.fragment))
-              with open(os.environ['GITHUB_ENV'], 'a') as f: f.write(key + '=' + value + '\n')
-          print('Existing source and restore URLs normalized for IPv4-compatible Session Pooler connections.')
-          PY
-
       - name: Install Supabase CLI and PostgreSQL client
         uses: supabase/setup-cli@v3
         with:
@@ -101,6 +73,56 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
+
+      - name: Discover and verify each project's assigned Session Pooler host
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import os, subprocess, urllib.parse
+          refs = {'cgwffpxlwgbnlinzwfoj':'eu-west-1', 'mjougnpitlgsuqgtfbrr':'eu-west-1'}
+          for key in ('SUPABASE_SOURCE_DB_URL','SUPABASE_RESTORE_DB_URL'):
+              u = urllib.parse.urlsplit(os.environ[key])
+              host = u.hostname or ''
+              if host.startswith('db.') and host.endswith('.supabase.co'):
+                  ref = host[3:-len('.supabase.co')]
+              elif host.endswith('.pooler.supabase.com'):
+                  username = urllib.parse.unquote(u.username or '')
+                  ref = username.rsplit('.', 1)[-1] if '.' in username else ''
+              else:
+                  raise SystemExit('Unsupported Supabase endpoint; refusing to guess project identity')
+              region = refs.get(ref)
+              if not region:
+                  raise SystemExit('Unknown Supabase project region; refusing to guess')
+              username = urllib.parse.unquote(u.username or '')
+              if username == 'postgres':
+                  username = 'postgres.' + ref
+              if username != 'postgres.' + ref:
+                  raise SystemExit('Unexpected database username format')
+              if not u.password:
+                  raise SystemExit('Database URL has no password; refusing to continue')
+              verified_url = None
+              for cluster in range(0, 10):
+                  candidate_host = f'aws-{cluster}-{region}.pooler.supabase.com'
+                  authority = username + ':' + u.password + '@' + candidate_host + ':5432'
+                  candidate = urllib.parse.urlunsplit((u.scheme, authority, u.path or '/postgres', u.query, u.fragment))
+                  try:
+                      result = subprocess.run(
+                          ['psql', candidate, '-X', '-v', 'ON_ERROR_STOP=1', '-Atc', 'SELECT 1'],
+                          env={**os.environ, 'PGCONNECT_TIMEOUT':'4'},
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=7, check=False
+                      )
+                  except subprocess.TimeoutExpired:
+                      continue
+                  if result.returncode == 0:
+                      verified_url = candidate
+                      break
+              if not verified_url:
+                  raise SystemExit('No assigned EU Session Pooler host accepted a read-only SELECT 1 for ' + key + '; restore was not started')
+              with open(os.environ['GITHUB_ENV'], 'a') as f:
+                  f.write(key + '=' + verified_url + '\\n')
+              print(key + ': assigned Session Pooler host verified with SELECT 1.')
+          PY
 
       - name: Verify restore target is a fresh empty public schema
         shell: bash
