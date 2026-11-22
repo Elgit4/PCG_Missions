@@ -673,6 +673,11 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
   const verb = method.toUpperCase();
   if (functionName === "staff-session" && suffix === "") return "/api/v1/me";
 
+  if (functionName === "pastoral-operations") {
+    if (suffix === "/prayer/requests/assigned" && verb === "GET") return "/api/v1/pastoral/prayer/assigned";
+    return null;
+  }
+
   if (functionName === "report-operations") {
     if ((suffix === "/reports" || suffix === "/teams" || suffix === "/events") && verb === "GET") return "/api/v1" + suffix;
     if (suffix === "/reports" && verb === "POST") return "/api/v1/reports";
@@ -1117,8 +1122,7 @@ export class CmiApiClient {
       "pastoral-operations",
       "/prayer/requests/assigned",
       {
-        method: "POST",
-        body: {
+        query: {
           branch_id: branchId,
           limit: options.limit ?? 25,
           offset: options.offset ?? 0,
