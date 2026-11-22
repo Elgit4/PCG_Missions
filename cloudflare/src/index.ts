@@ -756,8 +756,22 @@ async function reviewStaffPasswordReset(
       throw new Error("RESET_APPROVAL_COMMIT_FAILED");
     }
   } catch {
-    await env.DB.prepare("UPDATE staff_profile SET account_status = 'inactive', updated_at = ? WHERE id = ?")
-      .bind(now, reset.target_profile_id).run();
+    // Do not expose a temporary credential unless the password gate and audit trail committed.
+    try {
+      await env.DB.batch([
+        env.DB.prepare(`
+          UPDATE staff_profile
+          SET must_change_password = 1, password_setup_expires_at = ?, password_changed_at = NULL, updated_at = ?
+          WHERE id = ? AND account_status = 'active'
+        `).bind(passwordExpiresAt, now, reset.target_profile_id),
+        env.DB.prepare(`
+          UPDATE staff_password_reset_request SET status = 'pending'
+          WHERE id = ? AND status = 'processing'
+        `).bind(resetId),
+      ]);
+    } catch {
+      // The credential is not disclosed; the request remains visible for Admin recovery.
+    }
     return json(503, { ok: false, error: { code: "RESET_APPROVAL_COMMIT_FAILED" } }, requestId, origin);
   }
   return json(200, {
