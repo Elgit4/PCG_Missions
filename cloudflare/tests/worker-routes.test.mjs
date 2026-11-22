@@ -32,7 +32,8 @@ function fakeEnv(options = {}) {
       BETTER_AUTH_SECRET: "integration-test-secret-that-is-long-enough-123456",
       BETTER_AUTH_URL: "https://worker.example",
       BETTER_AUTH_TRUSTED_ORIGINS: "https://preview.example",
-      __TEST_SESSION_RESOLVER: async () => null,
+      __TEST_SESSION_RESOLVER: async (request) => request.headers.has("Cookie")
+        ? { user: { id: AUTH_USER_ID, email: "staff@example.com" } } : null,
       SUPABASE_URL: "https://example.supabase.co",
     },
   };
