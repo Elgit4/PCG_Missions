@@ -34,14 +34,20 @@ function fakeEnvironment(overrides = {}) {
       return statement;
     },
   };
-  return { calls, env: { DB, SUPABASE_URL: "https://example.supabase.co", SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test" } };
+  return { calls, env: {
+    DB,
+    __TEST_SESSION_RESOLVER: async (request) => {
+      if (overrides.authUnavailable) throw new Error("Better Auth session storage unavailable");
+      return request.headers.has("Cookie")
+        ? { user: { id: USER_ID, email: "staff@example.com" } } : null;
+    },
+  } };
 }
 
-test("resolves a verified Supabase identity into active D1 staff, role and capability context", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => Response.json({ id: USER_ID, email: "staff@example.com" }));
+test("resolves a Better Auth cookie session into active D1 staff, role and capability context", async () => {
   const { env, calls } = fakeEnvironment();
   const request = new Request("https://worker.test/api/v1/me", {
-    headers: { Authorization: "Bearer valid-token", "X-Branch-Id": BRANCH_ID },
+    headers: { Cookie: "better-auth.session_token=synthetic-session", "X-Branch-Id": BRANCH_ID },
   });
   const result = await resolveStaffContext(request, env);
   assert.equal(result.state, "authenticated");
@@ -53,10 +59,9 @@ test("resolves a verified Supabase identity into active D1 staff, role and capab
   assert.ok(calls.some((call) => call.sql.includes("FROM staff_role_assignment")));
 });
 
-test("keeps branch workspace data hidden during a valid temporary-password setup", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => Response.json({ id: USER_ID, email: "staff@example.com" }));
+test("keeps branch workspace data hidden during a valid temporary-password setup", async () => {
   const { env } = fakeEnvironment({ profile: { must_change_password: 1, password_setup_expires_at: new Date(Date.now() + 60_000).toISOString() } });
-  const request = new Request("https://worker.test/api/v1/me", { headers: { Authorization: "Bearer valid-token" } });
+  const request = new Request("https://worker.test/api/v1/me", { headers: { Cookie: "better-auth.session_token=synthetic-session" } });
   const result = await resolveStaffContext(request, env);
   assert.equal(result.state, "authenticated");
   assert.equal(result.staff.mustChangePassword, true);
@@ -66,18 +71,16 @@ test("keeps branch workspace data hidden during a valid temporary-password setup
   assert.equal(result.activeBranch, null);
 });
 
-test("returns a distinct expired temporary-password state", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => Response.json({ id: USER_ID, email: "staff@example.com" }));
+test("returns a distinct expired temporary-password state", async () => {
   const { env } = fakeEnvironment({ profile: { must_change_password: 1, password_setup_expires_at: "2020-01-01T00:00:00.000Z" } });
-  const request = new Request("https://worker.test/api/v1/me", { headers: { Authorization: "Bearer valid-token" } });
+  const request = new Request("https://worker.test/api/v1/me", { headers: { Cookie: "better-auth.session_token=synthetic-session" } });
   const result = await resolveStaffContext(request, env);
   assert.deepEqual(result, { state: "password_setup_expired" });
 });
 
-test("fails closed without querying D1 when Supabase Auth is unavailable", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => { throw new Error("upstream offline"); });
-  const { env, calls } = fakeEnvironment();
-  const request = new Request("https://worker.test/api/v1/me", { headers: { Authorization: "Bearer valid-token" } });
+test("fails closed without querying D1 when Better Auth session storage is unavailable", async () => {
+  const { env, calls } = fakeEnvironment({ authUnavailable: true });
+  const request = new Request("https://worker.test/api/v1/me", { headers: { Cookie: "better-auth.session_token=synthetic-session" } });
   const result = await resolveStaffContext(request, env);
   assert.deepEqual(result, { state: "auth_unavailable" });
   assert.equal(calls.length, 0);
