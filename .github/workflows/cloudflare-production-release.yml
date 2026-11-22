@@ -73,10 +73,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
 
-      - name: Apply forward-only schema 44 to production D1
-        run: npx wrangler d1 migrations apply pcg-missions-production --remote --env production
-
-      - name: Apply forward-only schema 44 and guarded production marker 45
+      - name: Apply the forward-only schema migrations through version 45
         run: npx wrangler d1 migrations apply pcg-missions-production --remote --env production
 
       - name: Promote only the verified schema 45 database to production
