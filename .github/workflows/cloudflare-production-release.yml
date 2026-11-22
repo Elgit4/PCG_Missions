@@ -1,6 +1,11 @@
 name: PCG Missions Cloudflare Production Release
 
 on:
+  push:
+    branches:
+      - migration/cloudflare-auth-consolidation
+    paths:
+      - "cloudflare/PRODUCTION_RELEASE_APPROVED"
   workflow_dispatch:
     inputs:
       confirm_production:
@@ -17,7 +22,7 @@ concurrency:
 
 jobs:
   production-release:
-    if: ${{ inputs.confirm_production == 'DEPLOY' }}
+    if: ${{ github.event_name == 'push' || inputs.confirm_production == 'DEPLOY' }}
     runs-on: ubuntu-latest
     environment: production
     defaults:
@@ -145,6 +150,7 @@ jobs:
             .result as $p |
             {
               production_branch: "migration/cloudflare-auth-consolidation",
+              source: ($p.source | .config.production_branch = "migration/cloudflare-auth-consolidation"),
               deployment_configs: {
                 production: ($p.deployment_configs.production |
                   .env_vars |= del(.SUPABASE_URL, .SUPABASE_PUBLISHABLE_KEY) |
