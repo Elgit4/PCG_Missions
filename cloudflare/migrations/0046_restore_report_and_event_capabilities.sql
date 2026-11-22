@@ -4,7 +4,7 @@ CREATE TABLE authorization_policy_v46_guard (ok INTEGER NOT NULL CHECK (ok = 1))
 INSERT INTO authorization_policy_v46_guard (ok)
 SELECT CASE WHEN
   (SELECT schema_version FROM app_meta WHERE id=1)=45
-  AND (SELECT environment FROM app_meta WHERE id=1)='non-production'
+  AND (SELECT environment FROM app_meta WHERE id=1) IN ('non-production','production')
   AND (SELECT COUNT(*) FROM role WHERE code IN ('admin_pastor','coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor'))=6
   AND (SELECT COUNT(*) FROM capability WHERE code IN ('report.read.scoped','report.submit.scoped','report.review.scoped','event.closeout.submit','event.closeout.review'))=5
   AND (SELECT COUNT(*) FROM role_capability)=128
@@ -287,6 +287,6 @@ BEGIN
   ) THEN RAISE(ABORT,'EVENT_CHECKIN_NOT_AUTHORIZED') END;
 END;
 
-UPDATE app_meta SET schema_version=46 WHERE id=1 AND schema_version=45 AND environment='non-production';
+UPDATE app_meta SET schema_version=46 WHERE id=1 AND schema_version=45 AND environment IN ('non-production','production');
 DELETE FROM authorization_policy_v46_guard;
 DROP TABLE authorization_policy_v46_guard;
