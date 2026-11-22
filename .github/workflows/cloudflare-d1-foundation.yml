@@ -39,7 +39,7 @@ jobs:
           cache-dependency-path: cloudflare/package.json
       - name: Install pinned Worker dependencies
         run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
-      - name: Type-check Worker and Supabase Auth integration
+      - name: Type-check Worker and Better Auth integration
         run: npm run typecheck
-      - name: Test Supabase Auth verification and Admin adapter
+      - name: Test Better Auth credential verification and session integration
         run: npm test
