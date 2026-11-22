@@ -155,4 +155,4 @@ jobs:
 
       - name: Remove database dump from ephemeral runner
         if: always()
-        run: rm -f /tmp/pcg-missions-d1-recovery.sql /tmp/pcg-missions-d1-recovery.sha256 /tmp/task7-target-check.json /tmp/task7-source-counts.json /tmp/task7-target-counts.json wrangler.task7-recovery.toml
+        run: rm -f /tmp/pcg-missions-d1-recovery.sql /tmp/pcg-missions-d1-recovery.sha256 /tmp/task7-target-check.json /tmp/task7-source-schema.json /tmp/task7-target-schema.json /tmp/task7-source-counts.json /tmp/task7-target-counts.json /tmp/task7-source-fk.json /tmp/task7-target-fk.json wrangler.task7-recovery.toml
