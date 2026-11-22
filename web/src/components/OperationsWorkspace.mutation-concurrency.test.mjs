@@ -18,7 +18,16 @@ describe("operations mutation concurrency", () => {
     expect(source).toContain("api.closeStaffEventRegistration(branchId, item.id)");
     expect(source).toContain("api.cancelEventDraft(branchId, id)");
     expect(source).toContain("api.cancelCalendarEntry(branchId, id");
-    expect(source).toContain("api.archiveAnnouncementDraft(branchId, id)");
+  });
+
+
+  it("keeps announcement drafts non-archivable until the lifecycle is approved", () => {
+    const start = source.indexOf('{section === "Announcements" && canRead');
+    const end = source.indexOf('{section === "Content" && canRead', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(source.slice(start, end)).not.toContain("deleteRecord");
+    expect(source).not.toContain("archiveAnnouncementDraft");
   });
 
   it("releases every operations lock in finally", () => {
