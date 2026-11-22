@@ -42,5 +42,21 @@ class BetterAuthMigrationTests(unittest.TestCase):
         self.assertIsNotNone(db.execute("SELECT 1 FROM sqlite_schema WHERE type='trigger' AND name='staff_role_assignment_revoke_sessions_after_last_role'").fetchone())
         db.close()
 
+
+    def test_schema_46_forward_migration_accepts_guarded_production_environment(self):
+        db = sqlite3.connect(":memory:")
+        db.execute("PRAGMA foreign_keys = ON")
+        for migration in sorted(MIGRATIONS.glob("*.sql")):
+            if migration.name == "0046_restore_report_and_event_capabilities.sql":
+                db.execute("UPDATE app_meta SET environment='production' WHERE id=1")
+                db.commit()
+            db.executescript(migration.read_text(encoding="utf-8"))
+        self.assertEqual(
+            db.execute("SELECT schema_version,environment FROM app_meta WHERE id=1").fetchone(),
+            (46, "production"),
+        )
+        self.assertEqual(db.execute("PRAGMA foreign_key_check").fetchall(), [])
+        db.close()
+
 if __name__ == "__main__":
     unittest.main()
