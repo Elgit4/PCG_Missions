@@ -1,4 +1,4 @@
-import { verifySupabaseAccessToken, type SupabaseAuthEnvironment } from "./auth.ts";
+import { createAuth, type AuthDatabase, type AuthEnvironment } from "./auth.ts";
 import { authorizeCapability, type AssignableResource, type AuthorizationDecision } from "./authorization.ts";
 
 export interface StaffStatement {
@@ -8,11 +8,11 @@ export interface StaffStatement {
   run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
 }
 
-export interface StaffDatabase {
+export interface StaffDatabase extends AuthDatabase {
   prepare(sql: string): StaffStatement;
 }
 
-export interface StaffEnvironment extends SupabaseAuthEnvironment {
+export interface StaffEnvironment extends AuthEnvironment {
   DB: StaffDatabase;
 }
 
@@ -48,10 +48,14 @@ export async function resolveStaffContext(
   request: Request,
   env: StaffEnvironment,
 ): Promise<StaffContextResult> {
-  const verification = await verifySupabaseAccessToken(request, env);
-  if (verification.state === "unauthenticated") return { state: "unauthenticated" };
-  if (verification.state === "unavailable") return { state: "auth_unavailable" };
-  const user = verification.user;
+  let user: { id: string; email: string };
+  try {
+    const session = await createAuth(env).api.getSession({ headers: request.headers });
+    if (!session?.user?.id) return { state: "unauthenticated" };
+    user = { id: session.user.id, email: session.user.email ?? "" };
+  } catch {
+    return { state: "auth_unavailable" };
+  }
 
   const profile = await env.DB.prepare(`
     SELECT id, auth_user_id, full_name, email, account_status,

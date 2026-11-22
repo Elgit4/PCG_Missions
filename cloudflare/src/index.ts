@@ -1,4 +1,4 @@
-import { createSupabaseAuthUser, deleteSupabaseAuthUser, updateSupabaseAuthUserPassword, verifySupabaseAccessToken } from "./auth.ts";
+import { createAuth, createBetterAuthUser, deleteBetterAuthUser, updateBetterAuthUserPassword } from "./auth.ts";
 import { authorizeRequestCapability, resolveStaffContext, type StaffEnvironment } from "./staff-context.ts";
 
 interface D1PreparedStatement {
@@ -39,7 +39,7 @@ function json(status: number, body: Record<string, unknown>, requestId: string, 
 }
 
 function allowedOrigins(env: Env): Set<string> {
-  const values = (env.APP_ALLOWED_ORIGINS ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+  const values = [env.BETTER_AUTH_URL ?? "", ...(env.BETTER_AUTH_TRUSTED_ORIGINS ?? "").split(","), ...(env.APP_ALLOWED_ORIGINS ?? "").split(",")].map((value) => value.trim()).filter(Boolean);
   const origins = new Set<string>();
   for (const value of values) {
     try {
@@ -65,6 +65,7 @@ function requestOriginAllowed(request: Request, env: Env): boolean {
 function authCorsHeaders(origin: string): Headers {
   return new Headers({
     "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Branch-Id, Idempotency-Key",
     "Access-Control-Max-Age": "600",
@@ -567,14 +568,14 @@ async function requestStaffPasswordReset(request: Request, env: Env, requestId: 
       !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(payload.email.trim())) {
     return json(400, { ok: false, error: { code: "INVALID_RESET_REQUEST" } }, requestId, origin);
   }
-  if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (!env.BETTER_AUTH_SECRET) {
     return json(503, { ok: false, error: { code: "AUTH_SERVICE_UNAVAILABLE" } }, requestId, origin);
   }
   const email = payload.email.trim().toLowerCase();
   const clientIp = request.headers.get("CF-Connecting-IP") ??
     request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ?? "unknown";
-  const ipFingerprint = await sha256Hex(`${env.SUPABASE_SERVICE_ROLE_KEY}:${clientIp}`);
-  const emailFingerprint = await sha256Hex(`${env.SUPABASE_SERVICE_ROLE_KEY}:${email}`);
+  const ipFingerprint = await sha256Hex(`${env.BETTER_AUTH_SECRET}:${clientIp}`);
+  const emailFingerprint = await sha256Hex(`${env.BETTER_AUTH_SECRET}:${email}`);
   const now = new Date();
   const requestedAt = now.toISOString();
   const expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString();
@@ -723,7 +724,7 @@ async function reviewStaffPasswordReset(
   }
   const temporaryPassword = createTemporaryPassword();
   try {
-    await updateSupabaseAuthUserPassword(env, reset.auth_user_id, temporaryPassword);
+    await updateBetterAuthUserPassword(env, reset.auth_user_id, temporaryPassword, true);
   } catch {
     await env.DB.prepare(`
       UPDATE staff_password_reset_request SET status = 'pending'
@@ -785,9 +786,14 @@ async function reviewStaffPasswordReset(
 }
 
 async function completeStaffPasswordChange(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
-  const verification = await verifySupabaseAccessToken(request, env);
-  if (verification.state === "unauthenticated") return json(401, { ok: false, error: { code: "UNAUTHENTICATED" } }, requestId, origin);
-  if (verification.state !== "valid") return json(503, { ok: false, error: { code: "AUTH_SERVICE_UNAVAILABLE" } }, requestId, origin);
+  let authUserId: string;
+  try {
+    const authSession = await createAuth(env).api.getSession({ headers: request.headers });
+    if (!authSession?.user?.id) return json(401, { ok: false, error: { code: "UNAUTHENTICATED" } }, requestId, origin);
+    authUserId = authSession.user.id;
+  } catch {
+    return json(503, { ok: false, error: { code: "AUTH_SERVICE_UNAVAILABLE" } }, requestId, origin);
+  }
   const body = await readJsonBody(request);
   if (!body.ok) return json(body.status, { ok: false, error: { code: "INVALID_JSON" } }, requestId, origin);
   const payload = body.value as { password?: unknown };
@@ -802,7 +808,7 @@ async function completeStaffPasswordChange(request: Request, env: Env, requestId
   const profile = await env.DB.prepare(`
     SELECT id, account_status, must_change_password, password_setup_expires_at
     FROM staff_profile WHERE auth_user_id = ? LIMIT 1
-  `).bind(verification.user.id).first<{
+  `).bind(authUserId).first<{
     id: string; account_status: string; must_change_password: number; password_setup_expires_at: string | null;
   }>();
   if (!profile || profile.account_status !== "active") {
@@ -815,7 +821,7 @@ async function completeStaffPasswordChange(request: Request, env: Env, requestId
     }
   }
   try {
-    await updateSupabaseAuthUserPassword(env, verification.user.id, password);
+    await updateBetterAuthUserPassword(env, authUserId, password, false);
   } catch {
     return json(503, { ok: false, error: { code: "PASSWORD_CHANGE_FAILED" } }, requestId, origin);
   }
@@ -893,7 +899,7 @@ async function createStaffAccount(request: Request, env: Env, requestId: string,
   const temporaryPassword = createTemporaryPassword();
   let authUserId = "";
   try {
-    authUserId = await createSupabaseAuthUser(env, { email, password: temporaryPassword, fullName });
+    authUserId = await createBetterAuthUser(env, { email, password: temporaryPassword, fullName });
   } catch {
     return json(503, { ok: false, error: { code: "STAFF_AUTH_ADMIN_UNAVAILABLE" } }, requestId, origin);
   }
@@ -903,13 +909,8 @@ async function createStaffAccount(request: Request, env: Env, requestId: string,
   const now = new Date();
   const createdAt = now.toISOString();
   const passwordExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
-  const epochNow = now.getTime();
   try {
     const results = await env.DB.batch([
-      env.DB.prepare(`INSERT INTO supabase_auth_identity
-        (id, name, email, emailVerified, image, createdAt, updatedAt, auth_provider)
-        VALUES (?, ?, ?, 1, NULL, ?, ?, 'supabase')`)
-        .bind(authUserId, fullName, email, epochNow, epochNow),
       env.DB.prepare(`INSERT INTO staff_profile
         (id, auth_user_id, full_name, email, account_status, created_at, updated_at,
          must_change_password, password_setup_expires_at, password_changed_at)
@@ -929,7 +930,7 @@ async function createStaffAccount(request: Request, env: Env, requestId: string,
       throw new Error("STAFF_ACCOUNT_PROVISIONING_BATCH_FAILED");
     }
   } catch {
-    try { await deleteSupabaseAuthUser(env, authUserId); } catch { /* No staff profile means the identity cannot access Worker APIs. */ }
+    try { await deleteBetterAuthUser(env, authUserId); } catch { /* No staff profile means the identity cannot access Worker APIs. */ }
     return json(409, { ok: false, error: { code: "STAFF_ACCOUNT_PROVISIONING_FAILED" } }, requestId, origin);
   }
 
@@ -4769,7 +4770,18 @@ export default {
       return new Response(null, { status: 204, headers: authCorsHeaders(origin) });
     }
 
-    // Sign-in, refresh, recovery, and logout stay on the existing Pages-to-Supabase Auth proxy.
+    // Better Auth owns staff login, sessions, sign-out and credential endpoints.
+    if (url.pathname === "/api/auth" || url.pathname.startsWith("/api/auth/")) {
+      if (request.method !== "GET" && request.method !== "POST") {
+        return json(405, { ok: false, error: { code: "METHOD_NOT_ALLOWED" } }, requestId, origin);
+      }
+      try {
+        return withSecurityHeaders(await createAuth(env).handler(request), origin);
+      } catch {
+        return json(503, { ok: false, error: { code: "AUTH_SERVICE_UNAVAILABLE" } }, requestId, origin);
+      }
+    }
+
 
 function hasScopedGrant(
   context: Extract<Awaited<ReturnType<typeof resolveStaffContext>>, { state: "authenticated" }>,

@@ -4,7 +4,7 @@ import worker from "../src/index.ts";
 
 function fakeEnv(options = {}) {
   const calls = [];
-  const row = Object.hasOwn(options, "meta") ? options.meta : { schema_version: 39, environment: "non-production" };
+  const row = Object.hasOwn(options, "meta") ? options.meta : { schema_version: 44, environment: "non-production" };
   const DB = {
     prepare(sql) {
       return {
@@ -25,6 +25,9 @@ function fakeEnv(options = {}) {
     env: {
       DB,
       APP_ENV: "non-production",
+      BETTER_AUTH_SECRET: "integration-test-secret-that-is-long-enough-123456",
+      BETTER_AUTH_URL: "https://worker.example",
+      BETTER_AUTH_TRUSTED_ORIGINS: "https://preview.example",
       APP_ALLOWED_ORIGINS: "https://preview.example, http://localhost:5173",
       SUPABASE_URL: "https://example.supabase.co",
       SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
@@ -99,7 +102,7 @@ test("answers preflight only for configured origins and required headers", async
   assert.equal(calls.length, 0);
 });
 
-test("rejects protected staff context without a bearer token before querying D1", async () => {
+test("rejects protected staff context without a Better Auth cookie before querying D1", async () => {
   const { env, calls } = fakeEnv();
   const response = await worker.fetch(new Request("https://worker.example/api/v1/me"), env);
   const payload = await response.json();
