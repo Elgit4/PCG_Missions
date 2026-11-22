@@ -1371,10 +1371,12 @@ async function listContacts(
   if (/^0\d{9}$/.test(phoneSearch)) phoneSearchCandidates.add("233" + phoneSearch.slice(1));
   if (/^233\d{9}$/.test(phoneSearch)) phoneSearchCandidates.add("0" + phoneSearch.slice(3));
   const phonePatterns = [...phoneSearchCandidates].map((candidate) => "%" + candidate + "%");
-  const phoneMatchSql = phonePatterns.map(() =>
-    "(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone_e164, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') LIKE ? " +
-    "OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone_display, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') LIKE ?)"
-  ).join(" OR ");
+  const phoneMatchSql = phonePatterns.length
+    ? phonePatterns.map(() =>
+      "(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone_e164, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') LIKE ? " +
+      "OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone_display, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') LIKE ?)"
+    ).join(" OR ")
+    : "0 = 1";
   const status = url.searchParams.get("status") ?? "active";
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
