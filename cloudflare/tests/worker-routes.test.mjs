@@ -353,6 +353,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
   let followupTaskStatus = "open";
   let calendarEntryRow = null;
   let announcementRow = null;
+  const contentRows = [];
   let eventRow = { id: "40000000-0000-4000-8000-000000000001", branch_id: BRANCH_ID, title: "Missions Conference", starts_at: "2026-12-01T09:00:00.000Z", ends_at: "2026-12-01T17:00:00.000Z", status: "draft", visibility: "private", registration_state: "closed", capacity: 100 };
   let eventStaffAssignment = null;
   let eventTeamAssignment = null;
@@ -373,6 +374,9 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           if (this.sql.includes("SELECT id FROM team WHERE id=?")) return this.values[0] === OWN_TEAM_ID ? { id: OWN_TEAM_ID } : null;
           if (this.sql.includes("SELECT id,event_id,branch_id,starts_at,ends_at,revoked_at FROM event_staff_assignment")) return eventStaffAssignment;
           if (this.sql.includes("SELECT id,event_id,branch_id,starts_at,ends_at,revoked_at FROM event_team_assignment")) return eventTeamAssignment;
+          if (this.sql.includes("FROM sermon") || this.sql.includes("FROM welcome_message")) {
+            return contentRows.find((row) => row.id === this.values[0] && row.branch_id === this.values[1] && row.created_by === this.values[2]) ?? null;
+          }
           if (this.sql.includes("FROM announcement")) return announcementRow;
           if (this.sql.includes("SELECT id, branch_id, first_name") && this.sql.includes("FROM contact")) {
             return {
@@ -459,6 +463,9 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           if (this.sql.includes("FROM event_team_assignment a")) return { results: eventTeamAssignment ? [eventTeamAssignment] : [] };
           if (this.sql.includes("SELECT DISTINCT sp.auth_user_id,sp.full_name")) return { results: [{ auth_user_id: AUTH_USER_ID, full_name: "Test Staff" }] };
           if (this.sql.includes("SELECT id,name FROM team WHERE branch_id")) return { results: [{ id: OWN_TEAM_ID, name: "Welcome Team" }] };
+          if (this.sql.includes("FROM sermon") || this.sql.includes("FROM welcome_message")) {
+            return { results: contentRows.filter((row) => row.branch_id === this.values[0] && row.created_by === this.values[1]) };
+          }
           if (this.sql.includes("FROM announcement")) return { results: announcementRow ? [announcementRow] : [] };
           if (this.sql.includes("SELECT DISTINCT b.id, b.name, b.timezone")) {
             return { results: [{ id: BRANCH_ID, name: "Main Branch", timezone: "Africa/Accra" }] };
@@ -530,6 +537,14 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           } else if (this.sql.includes("UPDATE calendar_entry") && calendarEntryRow) {
             const [entry_type, title, starts_at, ends_at, , updated_at] = this.values;
             calendarEntryRow = { ...calendarEntryRow, entry_type, title, starts_at, ends_at, updated_at };
+          } else if (this.sql.includes("INSERT INTO sermon")) {
+            const [id, branch_id, title, body, public_slug, created_by, , created_at, updated_at] = this.values;
+            contentRows.push({ id, branch_id, title, body, public_slug, status: "draft", published_at: null, created_by, created_at, updated_at });
+          } else if (this.sql.includes("INSERT INTO welcome_message")) {
+            const [id, branch_id, title, body, display_order, created_by, , created_at, updated_at] = this.values;
+            contentRows.push({ id, branch_id, title, body, display_order, status: "draft", published_at: null, created_by, created_at, updated_at });
+          } else if (this.sql.includes("UPDATE announcement SET status='archived'") && announcementRow) {
+            announcementRow = { ...announcementRow, status: "archived" };
           } else if (this.sql.includes("INSERT INTO announcement")) {
             const [id, branch_id, title, body, created_by, updated_by, created_at, updated_at] = this.values;
             announcementRow = { id, branch_id, title, body, is_public: 0, status: "draft", created_by, created_at, updated_at };
@@ -557,6 +572,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
     calls,
     batches,
     get writes() { return writes; },
+    contentRows,
     env: {
       DB,
       APP_ENV: "non-production",
@@ -1666,4 +1682,77 @@ test("announcement archival rejects anonymous access before querying D1", async 
   assert.equal(response.status, 401);
   assert.equal(payload.error.code, "UNAUTHENTICATED");
   assert.equal(calls.length, 0);
+});
+
+
+test("Admin/Pastor can create and list only their own private sermon drafts in the active branch", async () => {
+  const { env, contentRows } = authorizedDirectoryEnv("admin_pastor", [
+    ["content.manage.draft", "branch"],
+    ["content.manage", "branch"],
+  ]);
+  contentRows.push({
+    id: "81000000-0000-4000-8000-000000000002",
+    branch_id: BRANCH_ID,
+    title: "Another author's sermon",
+    body: "Must not be visible.",
+    public_slug: "another-authors-sermon",
+    status: "draft",
+    published_at: null,
+    created_by: "10000000-0000-4000-8000-000000000099",
+    created_at: "2026-11-22T00:00:00.000Z",
+    updated_at: "2026-11-22T00:00:00.000Z",
+  });
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/content/sermons", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Faith and Service",
+      body: "A private sermon draft.",
+      public_slug: "faith-and-service",
+    }),
+  }), env);
+  const created = await create.json();
+  assert.equal(create.status, 201);
+  assert.equal(created.data.status, "draft");
+  assert.equal(created.data.published_at, null);
+  assert.equal("created_by" in created.data, false);
+
+  const list = await worker.fetch(new Request(
+    "https://worker.example/api/v1/content/sermons?branch_id=" + BRANCH_ID,
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  const listed = await list.json();
+  assert.equal(list.status, 200);
+  assert.equal(listed.data.length, 1);
+  assert.equal(listed.data[0].title, "Faith and Service");
+});
+
+test("Admin/Pastor can archive their own private announcement draft without publishing it", async () => {
+  const { env } = authorizedDirectoryEnv("admin_pastor", [
+    ["announcement.create.scoped", "branch"],
+    ["announcements.manage", "branch"],
+  ]);
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/announcements", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ branch_id: BRANCH_ID, title: "Missions Sunday", body: "Private draft announcement." }),
+  }), env);
+  const created = await create.json();
+  assert.equal(create.status, 201);
+  const archive = await worker.fetch(new Request(
+    "https://worker.example/api/v1/announcements/" + created.data.id + "/archive?branch_id=" + BRANCH_ID,
+    { method: "POST", headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  const archived = await archive.json();
+  assert.equal(archive.status, 200);
+  assert.deepEqual(archived.data, { announcement_id: created.data.id, status: "archived" });
 });
