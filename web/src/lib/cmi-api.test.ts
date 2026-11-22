@@ -1100,7 +1100,8 @@ describe("CmiApiClient", () => {
     const result = await client.cancelEventDraft("branch-abc", "event-123");
     expect(result.data.status).toBe("cancelled");
     const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(String(url)).toBe("https://worker.example.com/api/v1/events/event-123/cancel");
+    expect(url.pathname).toBe("/api/v1/events/event-123/cancel");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
     expect(init.method).toBe("POST");
     expect((init.headers as Headers).get("X-Branch-Id")).toBe("branch-abc");
   });
@@ -1140,7 +1141,8 @@ describe("CmiApiClient", () => {
     const result = await client.removeEventFlyer("branch-abc", "event-123");
     expect(result.data.removed).toBe(true);
     const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(String(url)).toBe("https://worker.example.com/api/v1/events/event-123/flyer/remove");
+    expect(url.pathname).toBe("/api/v1/events/event-123/flyer/remove");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
     expect((init.headers as Headers).get("Authorization")).toBe("Bearer access-token");
     expect((init.headers as Headers).get("X-Branch-Id")).toBe("branch-abc");
   });
