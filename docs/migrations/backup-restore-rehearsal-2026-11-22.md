@@ -14,7 +14,7 @@ All listed databases use EU jurisdiction.
 | `pcg-missions-production` | 43 | 87 | Database resource exists. Its Worker binding and production traffic usage were not verified in this rehearsal. |
 | `pcg-missions-migration-test` | 43 | 87 | Used as the non-production export and Time Travel rehearsal source. |
 | `pcg-missions-dev` | 28 | 82 | Older development database. |
-| `pcg-missions-restore-rehearsal` | — | 0 initially | Newly created isolated EU scratch database; left empty because SQL transfer did not complete. |
+| `pcg-missions-restore-rehearsal` | — | 0 application tables | Newly created isolated EU scratch database. It contains only Cloudflare's internal `_cf_KV` table; no application schema or data was imported. |
 
 The production-named database's existence supersedes older readiness notes saying that no production D1 resource had been provisioned. Existence alone does not prove that a production Worker is bound to it or that it is serving live traffic.
 
