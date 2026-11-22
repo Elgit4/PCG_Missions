@@ -1,144 +1,132 @@
-# PCG Missions — Cloudflare migration status
+# PCG Missions — Cloudflare production status
 
-**Current branch:** `migration/cloudflare-auth-consolidation`  
-**Pull request:** [#102](https://github.com/Elgit4/PCG_Missions/pull/102)  
-**Current tested head:** `5e4ca434ea2d143d3aa400c01a92f7da24753e09`  
-**Release track:** isolated non-production preview only. Production has not been switched.
+**Status date:** 22 November 2026  
+**Production Pages:** [https://pcg-missions.pages.dev](https://pcg-missions.pages.dev)  
+**Production Worker:** `pcg-missions-api-production`  
+**Production D1:** `pcg-missions-production` (`2bbfb04f-9182-427d-b269-d050b8a9403f`)  
+**Production schema:** version **45**, EU jurisdiction  
+**Production release branch:** `migration/cloudflare-auth-consolidation`
 
-## Target architecture
+This document supersedes the historical preview-only migration notes previously stored in this file. Historical Supabase/PostgreSQL migration artifacts remain in the repository for traceability; they are not the live operational database.
 
-- Cloudflare Pages serves the PWA.
-- Cloudflare Pages Functions forwards same-origin `/api/*` requests to the Cloudflare Worker.
-- Cloudflare Worker owns Better Auth, session cookies, authorization and application API routes.
-- Cloudflare D1 is the primary application database.
-- Supabase is retained only for private event-flyer object storage.
-- SMS is intentionally disabled.
+## 1. Live architecture
 
-The legacy Supabase Pages auth proxy and Vercel auth handler have been removed from the migration branch. Public visitor content now uses a read-only D1 projection through `GET /api/v1/public-content`; it no longer calls the Supabase public-content Edge Function.
+- Cloudflare Pages serves the staff PWA and public visitor site.
+- The production Cloudflare Worker owns Better Auth, session cookies, staff authorization and application API routes.
+- Cloudflare D1 is the primary operational database and authorization store.
+- Supabase is retained only for private event-flyer object storage. Supabase Auth and PostgreSQL are not the live staff identity or operational data plane.
+- SMS sending, campaigns and automation are disabled. The production role-capability catalogue has no SMS grants.
 
-## Verified implementation and CI
+Production Pages deployment after the hardening release:
+- Deployment: [70252198-bd66-4cb0-9f54-a0dcb08abf73](https://dash.cloudflare.com/1697f36d4227453d2e25cfb49b347e5f/pages/view/pcg-missions/deployments)
+- Source commit: `de8d324902d59cfa00ea0f6296a215a98bc9611c`
+- Status: successful.
 
-- Frontend typecheck, lint, tests and production build passed: [GitHub Actions run 45048494120](https://github.com/Elgit4/PCG_Missions/actions/runs/45048494120).
-- Worker typecheck, Worker tests and SQLite migration/security tests passed: [GitHub Actions run 45048494087](https://github.com/Elgit4/PCG_Missions/actions/runs/45048494087).
-- The Better Auth Worker bundle built successfully and was uploaded as a GitHub Actions artifact in [preview release run 45048490628](https://github.com/Elgit4/PCG_Missions/actions/runs/45048490628).
-- The Pages preview build for the earlier tested frontend commit succeeded. The latest Pages preview deployment is queued/being processed; this does not change production.
+The production Worker is deployed and receives production traffic. Its `workers.dev` hostname includes the account subdomain `pcg-missions-nonprod`; that hostname label does not mean the script is using the non-production D1 binding. The production script and its production D1 binding are identified by the script/database resources above.
 
-## Isolated EU D1 preview
+## 2. Production database verification
 
-Database: `pcg-missions-migration-test`  
-UUID: `74074d53-1edc-4ad7-83e6-bb3333a6ab4f`  
-Schema: **44**  
-Environment marker: **non-production**  
-Table count: **91**  
-Primary region: **EEUR**
+The last verified production D1 inspection confirmed:
 
-Migration `0044_restore_better_auth_identity.sql` was applied and recorded in the D1 migration ledger. Verification confirms:
+- Environment marker is `production`.
+- Schema version is 45.
+- The migration ledger contains 45 ordered migrations with a consistent version sequence.
+- `PRAGMA foreign_key_check` returned zero violations.
+- Six roles have capability grants: Admin/Pastor, Coordinator, Team Leader, Field Worker, Follow-up Volunteer and Prayer Intercessor.
+- The active capability catalogue contains 89 capabilities.
+- Three staff profiles and three Better Auth user/credential-account records exist.
+- Operational business tables for visitor contacts, follow-up tasks, events, ministry reports and announcements were empty at the time of inspection.
 
-- Three existing staff identities are present in Better Auth's `user` table.
-- Three matching credential accounts were imported from the linked Supabase staff identities by the secret-protected migration job.
-- All three imported password hashes retain the expected bcrypt format; hashes were not written to logs.
-- Credential rows link to all three Better Auth user records.
-- `PRAGMA foreign_key_check` returns zero violations.
+Do not seed synthetic visitors, tasks, events or reports into production. Empty operational tables are expected until the church begins using the live system.
 
-The credential importer validates source and target identity IDs and emails and compares the stored hashes without printing them. The import step passed in preview release run 45048490628.
+The current production Admin/Pastor branch grants include the content-draft capabilities `content.manage.draft` and `content.manage`, plus `announcement.read.scoped`, `announcement.create.scoped` and the D1 trigger's `announcements.manage` requirement. No lower-role content authoring grants are added by this feature repair.
 
-## Source-to-D1 reconciliation
+## 3. Authentication and access model
 
-A count comparison was performed for all 50 public application tables in the Supabase source and the isolated D1 preview. Forty-six table counts match.
+- Better Auth is the staff authentication system.
+- Staff sessions are cookie-based and HttpOnly.
+- Public self-registration is disabled.
+- Administrators provision staff accounts; first-login password replacement and administrator-reviewed recovery are supported.
+- Each request resolves the authenticated staff profile, active role assignments, branch and capability grants server-side.
+- Authorization is enforced in the Worker and repeated in record-scoped SQL predicates where needed.
+- Sensitive prayer and pastoral reads use restricted, audited access paths.
 
-Four differences require explicit treatment:
+The six-role database grants are present, but complete authenticated acceptance for all six roles and every module remains a release gate.
 
-| Table | Supabase source | D1 preview | Interpretation |
-| --- | ---: | ---: | --- |
-| `capability` | 61 | 89 | Expanded Cloudflare capability catalogue |
-| `role_capability` | 65 | 128 | Expanded six-role capability grants |
-| `calendar_entry` | 0 | 1 | Extra non-source preview record; classify before production migration |
-| `staff_access_audit` | 5 | 6 | Additional migration/preview audit record |
+## 4. Release safety and monitoring
 
-The operational business tables for contacts, follow-up tasks, events, event registrations, prayer requests, care records, reports, teams, service areas, public content and their dependent records currently have zero rows in the source and preview. This count comparison is not a substitute for a full row-level reconciliation and production data sign-off.
+The production release workflow includes:
 
-## Restore and production resources
+- Worker type, security and route tests.
+- Production database target verification.
+- Forward-only D1 migration and migration-ledger checks.
+- Pre-release D1 Time Travel bookmark capture.
+- Production Worker deployment and health/auth/CORS checks.
+- Pages production deployment verification.
 
-- `pcg-missions-restore-rehearsal` (`833043cd-896e-4833-b5ae-17d520feba0f`) remains at schema 43 with a non-production marker.
-- `pcg-missions-production` (`2bbfb04f-9182-427d-b269-d050b8a9403f`) also remains at schema 43 with a non-production marker. Its name does not make it an approved production database.
-- The deployed Worker list contains `pcg-missions-api-nonprod`, `pcg-missions-api-preview` and the D1 smoke Worker. There is no `pcg-missions-api-production` Worker yet.
-- The Pages project's configured production branch is `feat/cmi-pcg-missions-final-review-v6`. PR #102 currently targets that branch. Do not merge it or change the production Pages branch until the production Worker, production D1, acceptance checks and rollback plan are ready.
+The production hardening release also added Pages security headers, service-worker cache protections, release documentation and an availability monitor.
 
-## Remaining release blockers
+The availability monitor is scheduled every 15 minutes from the repository default branch `main`. It checks Pages, Worker health/schema marker, same-origin API health, anonymous authorization rejection, Better Auth session endpoint and exact-origin CORS. It can open/update a GitHub incident issue when a check fails. The workflow definition is in place; record a successful scheduled run before treating continuous monitoring as operationally proven.
 
-### 1. Cloudflare Worker deployment permission
+A release-time Time Travel bookmark is not a full disaster-recovery rehearsal. An independent D1 export/import restore rehearsal is still outstanding.
 
-The GitHub Actions token can authenticate and access D1, but the Worker version-upload preflight fails with **“No access to the specified service”** for `pcg-missions-api-preview`. The token needs the Cloudflare account permission **Workers Scripts: Edit** (Worker script write access), in addition to the D1 permission already used by the workflow. Update the token behind the GitHub Actions secret `CLOUDFLARE_API_TOKEN`; never put the token in source control or chat.
+## 5. Feature state and intentional restrictions
 
-The workflow deliberately runs the schema and credential-import steps before this preflight, so the verified credential transfer is not lost when Worker script write access is missing.
+| Area | State |
+|---|---|
+| Authentication and staff sessions | Deployed; real-user acceptance remains outstanding |
+| Staff account provisioning and password lifecycle | Implemented; full lifecycle acceptance remains outstanding |
+| Contacts and interactions | Worker routes and scoped projections implemented; duplicate merge and complete live acceptance remain outstanding |
+| Follow-up | Task creation, assignment, reassignment and status operations implemented; full live acceptance remains outstanding |
+| Teams and service areas | Worker routes and capability enforcement implemented |
+| Events and assignments | Staff operations implemented; complete registration/check-in/closeout acceptance remains outstanding |
+| Calendar | Branch-scoped draft and update operations implemented |
+| Announcements | Private draft operations only; publication and delivery are disabled |
+| Sermons and welcome-message drafts | Cloudflare Worker migration is in progress in [PR #112](https://github.com/Elgit4/PCG_Missions/pull/112); not yet part of the production release |
+| Ministry reports | Typed Worker workflows implemented; full submit/review/resubmit acceptance remains outstanding |
+| Prayer and pastoral care | Restricted audited reads; complete care-management lifecycle is not enabled |
+| Notifications | Inbox/read-state routes implemented; trigger-to-recipient acceptance remains outstanding |
+| Private event-flyer storage | Supabase retained as the only runtime exception; storage workflow needs live acceptance |
+| SMS | Disabled |
+| Public event self-registration | Disabled |
+| Transport | Excluded |
+| Offline capture and sync | Disabled |
+| Public content publication and announcement delivery | Disabled |
 
-### 2. Preview Worker acceptance
+Announcement archival is explicitly outside the approved announcement-draft contract. The interface must not offer an archive/delete control for announcement drafts. Publication, scheduling and delivery remain separate future capabilities requiring their own approval and security controls.
 
-After script write access is available, deploy the exact tested bundle to the preview Worker and verify:
+## 6. Current feature repair
 
-- Worker health and schema version 44.
-- Better Auth sign-in using each existing staff account, session restoration, sign-out and password change.
-- Anonymous access is denied on all protected business routes.
-- All six roles, branch scoping, team/service-area access and sensitive prayer/care boundaries.
-- Staff account provisioning, deactivation/reactivation, password-reset review, reports, events, calendar, announcements, notifications and public visitor content.
-- Event-flyer upload and retrieval still use the approved private storage exception.
+[PR #112 — Fix Cloudflare content draft wiring](https://github.com/Elgit4/PCG_Missions/pull/112) is a separate, non-production branch. It migrates the existing private sermon and welcome-message draft contract to Cloudflare D1 and adds regression coverage. It does not add new capability grants, enable publication, change production data, deploy the Worker or enable SMS.
 
-### 3. Production preparation and cutover
+The implementation preserves:
+- Better Auth cookie sessions.
+- `content.manage.draft` branch-scope authorization.
+- The D1 `content.manage` trigger guard.
+- Creator-only draft listing, detail and editing.
+- Server-controlled draft status and null publication timestamp.
+- No daily-word, digital-tract or church-wide profile authoring.
 
-Before any production switch:
+## 7. Outstanding production acceptance gates
 
-1. Complete row-level source-to-D1 reconciliation, classify the extra preview calendar/audit rows, and rehearse restore from the verified backup.
-2. Prepare a distinct production D1 database with a production environment marker and a separately deployed production Worker with production-only secrets and bindings.
-3. Run the complete authenticated acceptance suite against the production candidate and verify monitoring, backup/restore and rollback.
-4. Change Pages production configuration only after the production Worker and database are proven healthy.
-5. Keep the existing Supabase services available until the Cloudflare production cutover and rollback window are complete. Then retire Supabase Auth, Postgres and Edge Functions; retain only private event-flyer storage.
+1. Complete authenticated browser acceptance for Admin/Pastor and each of the five other roles.
+2. Verify branch isolation, team/assignment scoping, private-field redaction and sensitive prayer/care boundaries.
+3. Exercise the complete Contacts and Follow-up lifecycle, including duplicate review/merge once implemented.
+4. Exercise event registration, capacity, check-in, closeout and private flyer upload/retrieval.
+5. Verify reports, announcements, content drafts and notification trigger-to-recipient behavior end to end.
+6. Observe successful scheduled monitor runs and establish incident ownership.
+7. Complete an independent D1 export/import restore rehearsal and document recovery time and recovery point.
+8. Verify GitHub branch protection, production environment reviewer gates and release permissions.
+9. Approve and document privacy notice, lawful purpose, data retention, incident response and operational ownership before loading real congregant data.
 
-**No production traffic has been switched by this migration work. SMS remains disabled.**
+The Vercel free-plan deployment limit is not a production outage: Cloudflare Pages is the production host. Do not route production traffic back to Vercel to work around that unrelated limit.
 
-## Live verification update — 22 November 2026, 17:30 UTC
+## 8. Safe operating rules
 
-The repository and Cloudflare resources were rechecked after the latest consolidation commit.
+- Never run preview migrations or preview Worker deployments against production resources.
+- Do not use a D1 Time Travel restore on production without an explicitly approved rollback and a freshly verified bookmark.
+- Do not apply historical Supabase/PostgreSQL SQL to D1.
+- Do not place credentials, session cookies, provider secrets or private congregant information in source control or chat.
+- Keep SMS disabled and preserve the private event-flyer storage exception.
+- Keep production data untouched during feature acceptance; use isolated test databases for synthetic data.
 
-- Current branch head: `75d508ad1921e6f5939c30bb6a5fe890ec2a7ba6`.
-- Pages preview build for commit `558b3c869f364522bc75d65d680469b33010711e` completed successfully. Its branch alias is `https://migration-cloudflare-auth-co.pcg-missions.pages.dev`, and its `PCG_MISSIONS_API_ORIGIN` points to the preview Worker.
-- The actual Pages branch alias was shorter than the full Git branch name. `cloudflare/wrangler.toml` was corrected to use the exact alias; commit `75d508a`.
-- The preview Worker configuration was repaired directly: `BETTER_AUTH_URL` and `BETTER_AUTH_TRUSTED_ORIGINS` are now present, with the current Pages alias trusted. Version 30 is deployed to 100% of preview traffic, preserving its existing D1 and secret bindings.
-- Important limitation: versions 28–30 were created by secret changes and therefore retain the prior Worker code. The latest Better Auth bundle has **not** been uploaded. Do not treat the preview Worker as running the current branch source until the next release gate passes.
-
-Latest release workflow: [45049626852](https://github.com/Elgit4/PCG_Missions/actions/runs/45049626852).
-
-Passed:
-- SQLite migration/security validation.
-- Worker typecheck and all Worker tests.
-- Preview bundle build and artifact upload.
-- D1 schema 44 check (no pending migrations).
-- Idempotent source credential import and verification of all three bcrypt hashes.
-
-Failed:
-- The `wrangler versions upload` preflight returned `No access to the specified service` for `pcg-missions-api-preview`.
-- The GitHub Actions token can apply D1 migrations and run the credential importer, but lacks Cloudflare account permission **Workers Scripts Write** (Cloudflare dashboard label: **Workers Scripts: Edit**). The latest Worker bundle was consequently not deployed and the live preview smoke-test step was skipped.
-- The token value is not in source control or logs. The required permission must be added to the token behind GitHub Actions secret `CLOUDFLARE_API_TOKEN`; do not paste the token into chat or commit it.
-
-Current database reconciliation observations:
-- Preview D1 has 92 user tables and schema 44.
-- The preview has one non-source calendar rehearsal row and one additional `role_assigned` audit event with ID `admin-bootstrap-4309d189-455e-4ab6-a66b-1909ee7bd1d4`. The latter refers to the same Admin/Pastor assignment already represented by a source audit row. Both are retained; do not delete audit history or treat preview-only records as production source data.
-- Source and preview core identity counts remain aligned: one church, one branch, three staff profiles, two active role assignments, three Better Auth users, and three credential accounts.
-- The production-named D1 remains schema 43 with `environment=non-production`; its three legacy identity rows are still in `supabase_auth_identity`. The restore-rehearsal D1 also remains schema 43. A schema-44 restore rehearsal is still outstanding.
-
-Production remains unchanged:
-- Pages production branch is `feat/cmi-pcg-missions-final-review-v6`; production Pages variables still contain only the legacy Supabase URL and publishable key.
-- No `pcg-missions-api-production` Worker exists.
-- Production Pages does not yet have `PCG_MISSIONS_API_ORIGIN`.
-- PR #102 remains draft and targets the production Pages branch. Do not merge it or change production routing until the production Worker, D1 schema/data, secret bindings, authenticated acceptance, restore and rollback gates pass.
-
-The only Supabase runtime exception remains private event-flyer storage. SMS remains disabled.
-
-### Additional recovery verification
-
-A Cloudflare D1 Time Travel restore was successfully executed against the isolated schema-44 preview database using its current bookmark. Post-restore verification returned schema 44, three Better Auth users, three credential accounts, three staff profiles, two active role assignments, zero sessions, and zero foreign-key violations. This verifies a schema-44 Time Travel restore path without changing the resulting data. It is **not** a substitute for an independent SQL export/import rehearsal.
-
-Pre-change bookmarks captured for the remaining non-production databases:
-- Production-named D1: `00000020-00000000-0000512b-f4344caaecac97d2846845330d37534f`
-- Restore-rehearsal D1: `00000020-00000000-0000512b-0105c30c1f815711e96f9e43be4d3fbd`
-
-Do not restore either database unless a rollback is deliberately approved and the target bookmark is rechecked first.
