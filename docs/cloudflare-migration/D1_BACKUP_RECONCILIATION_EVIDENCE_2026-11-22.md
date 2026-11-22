@@ -48,7 +48,7 @@ Read-only comparison against Supabase project `cgwffpxlwgbnlinzwfoj` covered 53 
 
 The migration SQL and live D1 contents were compared by exact `role_code + capability_code + scope_mode` tuples:
 
-- All 61 Supabase capability codes exist in migration-test D1; no source capability code is missing.
+- All 61 Supabase capability codes exist in migration-test D1; no source capability code is missing. The source descriptions, sensitivity classifications, and active flags match exactly after normalizing PostgreSQL booleans to SQLite integers.
 - The 65 canonical role/capability/scope grants exactly match the canonical grant set in migration `0041`.
 - The 55 Worker compatibility grants exactly match the explicit allowlist in migration `0042`; no unlisted role or wider scope was found.
 - Eight additional directory grants are present and explicitly constrained: Admin/Pastor has branch-scoped team/area read and management; Coordinator has branch-scoped team/area read; Team Leader has team-scoped team/area read; all other roles have none.
