@@ -3664,9 +3664,9 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
   const {context,event}=operation;
   const now=new Date().toISOString();
 
-  if(parts.length===5&&parts[4]==="staff-registration"&&request.method==="POST"){
+  if(parts.length===6&&parts[4]==="staff-registration"&&request.method==="POST"){
     if(!hasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
-    const action=url.pathname.endsWith("/open")?"open":url.pathname.endsWith("/close")?"close":null;
+    const action=parts[5]==="open"?"open":parts[5]==="close"?"close":null;
     if(!action) return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
     const state=action==="open"?"open":"closed";
     const result=await env.DB.prepare("UPDATE event SET registration_state=?,updated_at=? WHERE id=? AND branch_id=?")
@@ -3735,6 +3735,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     }
     const registration=await env.DB.prepare("SELECT id,event_id,branch_id,attendee_name_snapshot,status FROM event_registration WHERE id=? AND event_id=? AND branch_id=?").bind(registrationId,eventId,branchId).first<Record<string,unknown>>();
     if(!registration) return json(404,{ok:false,error:{code:"REGISTRATION_NOT_FOUND"}},requestId,origin);
+    if(registration.status!=="registered") return json(409,{ok:false,error:{code:checkin?"REGISTRATION_NOT_ACTIVE":"REGISTRATION_NOT_CANCELLABLE"}},requestId,origin);
     const resourceId=crypto.randomUUID();
     const stmts=checkin?[
       env.DB.prepare("INSERT INTO event_checkin(id,event_id,branch_id,registration_id,attendee_name_snapshot,checked_in_at,recorded_by,source,client_request_id) VALUES(?,?,?,?,?,?,?,'staff',?)")
@@ -3779,6 +3780,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
       (SELECT COUNT(*) FROM event_registration WHERE event_id=? AND branch_id=? AND status IN ('registered','attended')) AS registration_count,
       (SELECT COALESCE(SUM(seat_count),0) FROM transport_reservation WHERE event_id=? AND branch_id=? AND status IN ('reserved','boarded')) AS transport_seat_count`).bind(eventId,branchId,eventId,branchId,eventId,branchId).first<Record<string,number>>();
     const existing=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=?").bind(eventId,branchId).first<{id:string;status:string}>();
+    if(existing && existing.status!=="returned") return json(409,{ok:false,error:{code:"CLOSEOUT_ALREADY_SUBMITTED"}},requestId,origin);
     const closeoutId=existing?.id??crypto.randomUUID();
     const write=existing
       ? env.DB.prepare("UPDATE event_closeout SET submitted_by=?,submitted_at=?,reviewed_by=NULL,reviewed_at=NULL,status='submitted',attendee_count=?,registration_count=?,transport_seat_count=?,summary_notes=?,updated_at=? WHERE id=? AND status='returned'")
