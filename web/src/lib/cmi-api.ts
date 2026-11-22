@@ -715,7 +715,7 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     if (/^\/followup\/tasks\/[^/]+\/assign$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
   }
 
-  if (functionName === "public-content") return "/api/public/content";
+  if (functionName === "public-content") return "/api/v1/public-content";
   return null;
 }
 
