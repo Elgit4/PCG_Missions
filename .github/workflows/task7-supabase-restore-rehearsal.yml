@@ -1,6 +1,11 @@
 name: Task 7 — Supabase logical backup and isolated restore
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/task7-supabase-restore-rehearsal.yml
   workflow_dispatch:
     inputs:
       confirm_isolated_restore:
@@ -17,7 +22,7 @@ concurrency:
 
 jobs:
   backup-and-restore:
-    if: ${{ inputs.confirm_isolated_restore == 'RESTORE-TO-ISOLATED-SUPABASE' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.confirm_isolated_restore == 'RESTORE-TO-ISOLATED-SUPABASE') || (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: authorize one-time Task 7 isolated restore rehearsal')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
