@@ -1718,3 +1718,61 @@ test("Admin/Pastor can create and list only their own private sermon drafts in t
   assert.equal(listed.data.length, 1);
   assert.equal(listed.data[0].title, "Faith and Service");
 });
+
+
+test("Coordinator without the draft capability cannot create visitor content", async () => {
+  const { env, calls } = authorizedDirectoryEnv("coordinator");
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/content/welcome-messages", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Welcome",
+      body: "A private welcome message.",
+      display_order: 0,
+    }),
+  }), env);
+  const payload = await response.json();
+  assert.equal(response.status, 403);
+  assert.equal(payload.error.code, "CAPABILITY_DENIED");
+  assert.equal(calls.some((call) => call.kind === "run"), false);
+});
+
+test("Admin/Pastor can create and list private welcome-message drafts in the active branch", async () => {
+  const { env } = authorizedDirectoryEnv("admin_pastor", [
+    ["content.manage.draft", "branch"],
+    ["content.manage", "branch"],
+  ]);
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/content/welcome-messages", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Welcome to PCG Missions",
+      body: "We are glad you are here.",
+      display_order: 2,
+    }),
+  }), env);
+  const created = await create.json();
+  assert.equal(create.status, 201);
+  assert.equal(created.data.status, "draft");
+  assert.equal(created.data.published_at, null);
+  assert.equal(created.data.display_order, 2);
+
+  const list = await worker.fetch(new Request(
+    "https://worker.example/api/v1/content/welcome-messages?branch_id=" + BRANCH_ID,
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  const listed = await list.json();
+  assert.equal(list.status, 200);
+  assert.equal(listed.data.length, 1);
+  assert.equal(listed.data[0].title, "Welcome to PCG Missions");
+});
