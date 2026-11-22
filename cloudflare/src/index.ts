@@ -4056,8 +4056,7 @@ function eventHasScopedGrant(
 
 async function eventAssignmentAllows(env:Env,context:Extract<Awaited<ReturnType<typeof resolveStaffContext>>,{state:"authenticated"}>,eventId:string,branchId:string,now:string,operation:"register"|"checkin"):Promise<boolean>{
   const branchGrant=context.activeBranch?.capabilities.some(c=>
-    (c.code==="events.manage"&&c.scopeMode==="branch") ||
-    (operation==="checkin"&&c.code==="events.checkin"&&c.scopeMode==="branch")
+    c.code==="events.manage"&&c.scopeMode==="branch"
   );
   if(branchGrant) return true;
   const roles=operation==="register"?["owner","organizer"]:["owner","organizer","checkin"];
@@ -4077,10 +4076,7 @@ async function eventAssignmentAllows(env:Env,context:Extract<Awaited<ReturnType<
       AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?) LIMIT 1`)
     .bind(eventId,branchId,context.staff.profileId,...teamRoles,now,now,now,now).first<{allowed:number}>();
   if(team) return true;
-  return !!(operation==="checkin" &&
-    context.activeBranch?.capabilities.some(c=>c.code==="events.checkin"&&c.scopeMode==="assigned") &&
-    (await env.DB.prepare("SELECT 1 FROM event_staff_assignment WHERE event_id=? AND branch_id=? AND staff_auth_user_id=? AND revoked_at IS NULL AND starts_at<=? AND (ends_at IS NULL OR ends_at>?) LIMIT 1")
-      .bind(eventId,branchId,context.staff.userId,now,now).first()));
+  return false;
 }
 async function eventDigest(value:unknown):Promise<Uint8Array>{
   const bytes=new TextEncoder().encode(JSON.stringify(value,Object.keys(value as object).sort()));
@@ -4513,7 +4509,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
   }
 
   if(parts.length===5&&parts[4]==="closeout"&&request.method==="GET"){
-    const canRead=eventHasScopedGrant(context,"events.manage","branch")||eventHasScopedGrant(context,"events.checkin","branch")||eventHasScopedGrant(context,"events.closeout.review","branch");
+    const canRead=eventHasScopedGrant(context,"events.manage","branch")||eventHasScopedGrant(context,"event.closeout.submit","branch")||eventHasScopedGrant(context,"event.closeout.review","branch");
     if(!canRead) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_READ_NOT_AUTHORIZED"}},requestId,origin);
     const closeout=await env.DB.prepare("SELECT id,event_id,branch_id,submitted_by,submitted_at,reviewed_by,reviewed_at,status,attendee_count,registration_count,transport_seat_count,summary_notes FROM event_closeout WHERE event_id=? AND branch_id=?").bind(eventId,branchId).first();
     const history=closeout?await env.DB.prepare("SELECT id,actor_user_id,action,details,created_at FROM event_closeout_event WHERE closeout_id=? ORDER BY created_at ASC").bind((closeout as Record<string,unknown>).id).all():{results:[]};
@@ -4522,7 +4518,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
   }
 
   if(parts.length===6&&parts[4]==="closeout"&&parts[5]==="submit"&&request.method==="POST"){
-    if(!eventHasScopedGrant(context,"events.manage","branch")&&!eventHasScopedGrant(context,"events.checkin","branch")) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_SUBMIT_NOT_AUTHORIZED"}},requestId,origin);
+    if(!eventHasScopedGrant(context,"event.closeout.submit","branch")) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_SUBMIT_NOT_AUTHORIZED"}},requestId,origin);
     const parsed=await readJsonBody(request,4096);
     if(!parsed.ok||!isPlainObject(parsed.value)||Object.keys(parsed.value).some(k=>!["idempotency_key","summary_notes"].includes(k))) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_CLOSEOUT"}},requestId,origin);
     const key=typeof parsed.value.idempotency_key==="string"?parsed.value.idempotency_key.trim():"";
@@ -4558,7 +4554,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
   }
 
   if(parts.length===6&&parts[4]==="closeout"&&parts[5]==="review"&&request.method==="POST"){
-    if(!eventHasScopedGrant(context,"events.closeout.review","branch")) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_REVIEW_NOT_AUTHORIZED"}},requestId,origin);
+    if(!eventHasScopedGrant(context,"event.closeout.review","branch")) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_REVIEW_NOT_AUTHORIZED"}},requestId,origin);
     const parsed=await readJsonBody(request,4096);
     if(!parsed.ok||!isPlainObject(parsed.value)||Object.keys(parsed.value).some(k=>!["idempotency_key","decision","reason"].includes(k))) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_CLOSEOUT_REVIEW"}},requestId,origin);
     const key=typeof parsed.value.idempotency_key==="string"?parsed.value.idempotency_key.trim():"";
@@ -4607,9 +4603,9 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
     if (!context.activeBranch || context.activeBranch.branchId !== branchId) return json(403,{ok:false,error:{code:"BRANCH_NOT_AUTHORIZED"}},requestId,origin);
     const caps = context.activeBranch.capabilities;
-    const canSubmit = caps.some(c=>c.code==="report.submit.own" && c.scopeMode==="self");
-    const canReviewBranch = caps.some(c=>c.code==="report.review.branch" && c.scopeMode==="branch");
-    const canReviewTeam = caps.some(c=>c.code==="report.review.team" && c.scopeMode==="team");
+    const canSubmit = caps.some(c=>c.code==="report.submit.scoped" && c.scopeMode==="self");
+    const canReviewBranch = caps.some(c=>c.code==="report.review.scoped" && c.scopeMode==="branch");
+    const canReviewTeam = caps.some(c=>c.code==="report.review.scoped" && c.scopeMode==="team");
     if (!canSubmit && !canReviewBranch && !canReviewTeam) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     if (url.pathname.endsWith("/teams")) {
       const teams = await reportTeamIds(env,context.staff.profileId,branchId,new Date().toISOString());
@@ -4645,9 +4641,9 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
     if(!context.activeBranch || context.activeBranch.branchId!==branchId) return json(403,{ok:false,error:{code:"BRANCH_NOT_AUTHORIZED"}},requestId,origin);
     const caps=context.activeBranch.capabilities;
-    const own=caps.some(c=>c.code==="report.read.own"&&c.scopeMode==="self");
-    const branch=caps.some(c=>c.code==="report.review.branch"&&c.scopeMode==="branch");
-    const team=caps.some(c=>c.code==="report.review.team"&&c.scopeMode==="team");
+    const own=caps.some(c=>c.code==="report.read.scoped"&&c.scopeMode==="self");
+    const branch=caps.some(c=>c.code==="report.review.scoped"&&c.scopeMode==="branch");
+    const team=caps.some(c=>c.code==="report.review.scoped"&&c.scopeMode==="team");
     if(!own&&!branch&&!team) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     const teamIds=team?await reportTeamIds(env,context.staff.profileId,branchId,new Date().toISOString()):[];
     const where=["branch_id=?"]; const values:unknown[]=[branchId];
@@ -4673,9 +4669,9 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     const row=await env.DB.prepare(`SELECT ${REPORT_COLUMNS} FROM ministry_report WHERE id=? AND branch_id=?`).bind(reportId,branchId).first<Record<string,unknown>>();
     if(!row) return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
     const caps=context.activeBranch.capabilities;
-    const own=caps.some(c=>c.code==="report.read.own"&&c.scopeMode==="self") && row.author_profile_id===context.staff.profileId;
-    const branch=caps.some(c=>c.code==="report.review.branch"&&c.scopeMode==="branch");
-    const team=caps.some(c=>c.code==="report.review.team"&&c.scopeMode==="team");
+    const own=caps.some(c=>c.code==="report.read.scoped"&&c.scopeMode==="self") && row.author_profile_id===context.staff.profileId;
+    const branch=caps.some(c=>c.code==="report.review.scoped"&&c.scopeMode==="branch");
+    const team=caps.some(c=>c.code==="report.review.scoped"&&c.scopeMode==="team");
     const teamIds=team?await reportTeamIds(env,context.staff.profileId,branchId,new Date().toISOString()):[];
     if(!own&&!branch&&!(team&&row.team_id&&teamIds.includes(String(row.team_id)))) return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
     const history=await env.DB.prepare("SELECT id,actor_profile_id,decision,comment,created_at FROM report_review_event WHERE report_id=? ORDER BY created_at ASC").bind(reportId).all();
@@ -4687,7 +4683,7 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     if(!parsed.ok||!isPlainObject(parsed.value)) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_REPORT"}},requestId,origin);
     const input=reportInput(parsed.value);
     if(!input) return json(400,{ok:false,error:{code:"INVALID_REPORT"}},requestId,origin);
-    const access=await authorizeRequestCapability(request,env,"report.submit.own");
+    const access=await authorizeRequestCapability(request,env,"report.submit.scoped");
     if(access.state!=="authorized") return reportForbidden(access,requestId,origin);
     if(access.activeBranch.branchId!==input.branch_id) return json(403,{ok:false,error:{code:"BRANCH_NOT_AUTHORIZED"}},requestId,origin);
     const now=new Date().toISOString();
@@ -4741,8 +4737,8 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     if(!context.activeBranch||context.activeBranch.branchId!==row.branch_id) return json(403,{ok:false,error:{code:"BRANCH_NOT_AUTHORIZED"}},requestId,origin);
     if(row.author_profile_id===context.staff.profileId) return json(403,{ok:false,error:{code:"SELF_REVIEW_FORBIDDEN"}},requestId,origin);
     const caps=context.activeBranch.capabilities;
-    const branch=caps.some(c=>c.code==="report.review.branch"&&c.scopeMode==="branch");
-    const team=caps.some(c=>c.code==="report.review.team"&&c.scopeMode==="team");
+    const branch=caps.some(c=>c.code==="report.review.scoped"&&c.scopeMode==="branch");
+    const team=caps.some(c=>c.code==="report.review.scoped"&&c.scopeMode==="team");
     const teamIds=team?await reportTeamIds(env,context.staff.profileId,String(row.branch_id),new Date().toISOString()):[];
     if(!branch&&!(team&&row.team_id&&teamIds.includes(String(row.team_id)))) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     if(row.status!=="submitted") return json(409,{ok:false,error:{code:"REPORT_NOT_SUBMITTED"}},requestId,origin);
