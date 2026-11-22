@@ -343,6 +343,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
   let writes = 0;
   let followupTaskStatus = "open";
   let calendarEntryRow = null;
+  let announcementRow = null;
 
   const DB = {
     prepare(sql) {
@@ -353,6 +354,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         async first() {
           calls.push({ kind: "first", sql: this.sql, values: this.values });
           if (this.sql.includes("FROM calendar_entry")) return calendarEntryRow;
+          if (this.sql.includes("FROM announcement")) return announcementRow;
           if (this.sql.includes("SELECT id, branch_id, first_name") && this.sql.includes("FROM contact")) {
             return {
               id: CONTACT_ID,
@@ -434,6 +436,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         async all() {
           calls.push({ kind: "all", sql: this.sql, values: this.values });
           if (this.sql.includes("FROM calendar_entry")) return { results: calendarEntryRow ? [calendarEntryRow] : [] };
+          if (this.sql.includes("FROM announcement")) return { results: announcementRow ? [announcementRow] : [] };
           if (this.sql.includes("SELECT DISTINCT b.id, b.name, b.timezone")) {
             return { results: [{ id: BRANCH_ID, name: "Main Branch", timezone: "Africa/Accra" }] };
           }
@@ -494,6 +497,12 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           } else if (this.sql.includes("UPDATE calendar_entry") && calendarEntryRow) {
             const [entry_type, title, starts_at, ends_at, , updated_at] = this.values;
             calendarEntryRow = { ...calendarEntryRow, entry_type, title, starts_at, ends_at, updated_at };
+          } else if (this.sql.includes("INSERT INTO announcement")) {
+            const [id, branch_id, title, body, created_by, updated_by, created_at, updated_at] = this.values;
+            announcementRow = { id, branch_id, title, body, is_public: 0, status: "draft", created_by, created_at, updated_at };
+          } else if (this.sql.includes("UPDATE announcement") && announcementRow) {
+            const [title, body, , updated_at] = this.values;
+            announcementRow = { ...announcementRow, title, body, updated_at };
           }
           return { success: true, meta: { changes: 1 } };
         },
@@ -531,6 +540,89 @@ function authenticatedDirectoryRequest(path) {
     },
   });
 }
+
+test("Admin/Pastor can list, create and update branch announcement drafts through D1", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ id: AUTH_USER_ID, email: "staff@example.com" }),
+  );
+  const fixture = authorizedDirectoryEnv("admin_pastor", [
+    ["announcement.read.scoped", "branch"],
+    ["announcement.create.scoped", "branch"],
+  ]);
+
+  const list = await worker.fetch(
+    authenticatedDirectoryRequest("/api/v1/announcements?branch_id=" + BRANCH_ID),
+    fixture.env,
+  );
+  assert.equal(list.status, 200);
+  assert.deepEqual((await list.json()).data, []);
+
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/announcements", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Sunday service notice",
+      body: "The service begins at 9:00 AM.",
+    }),
+  }), fixture.env);
+  const created = await create.json();
+  assert.equal(create.status, 201);
+  assert.equal(created.data.status, "draft");
+  assert.equal(created.data.is_public, 0);
+  assert.equal(created.data.branch_id, BRANCH_ID);
+  const insert = fixture.calls.find((call) => call.kind === "run" && call.sql.includes("INSERT INTO announcement"));
+  assert.ok(insert);
+  assert.match(insert.sql, /'branch',0,'draft',NULL,NULL/);
+
+  const update = await worker.fetch(new Request(
+    "https://worker.example/api/v1/announcements/" + created.data.id + "?branch_id=" + BRANCH_ID,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: "Bearer verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: "Updated Sunday service notice" }),
+    },
+  ), fixture.env);
+  const updated = await update.json();
+  assert.equal(update.status, 200);
+  assert.equal(updated.data.title, "Updated Sunday service notice");
+  const updateStatement = fixture.calls.find((call) => call.kind === "run" && call.sql.includes("UPDATE announcement"));
+  assert.ok(updateStatement);
+  assert.match(updateStatement.sql, /created_by=\?/);
+  assert.match(updateStatement.sql, /updated_at=\?/);
+});
+
+test("Field Worker cannot create branch announcement drafts", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ id: AUTH_USER_ID, email: "staff@example.com" }),
+  );
+  const fixture = authorizedDirectoryEnv("field_worker");
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/announcements", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Must not be created",
+      body: "This write should be denied.",
+    }),
+  }), fixture.env);
+  const payload = await response.json();
+  assert.equal(response.status, 403);
+  assert.equal(payload.error.code, "CAPABILITY_DENIED");
+  assert.equal(fixture.calls.some((call) => call.kind === "run" && call.sql.includes("announcement")), false);
+});
 
 test("Admin/Pastor can list, create and update branch calendar entries through D1", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
