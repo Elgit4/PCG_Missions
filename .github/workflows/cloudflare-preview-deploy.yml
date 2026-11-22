@@ -66,9 +66,6 @@ jobs:
           fi
           npx wrangler whoami
 
-      - name: Preflight Worker script write permission without changing traffic
-        run: npx wrangler versions upload --env preview --message "PCG Missions Better Auth schema 44 deployment preflight"
-
       # Build once and retain the exact artifact so a Cloudflare-connector
       # deployment can reuse this tested bundle without rebuilding from source.
       - name: Build the Better Auth preview Worker bundle
@@ -85,6 +82,9 @@ jobs:
           path: cloudflare/dist/index.js
           if-no-files-found: error
           retention-days: 2
+
+      - name: Preflight Worker script write permission without changing traffic
+        run: npx wrangler versions upload --env preview --message "PCG Missions Better Auth schema 44 deployment preflight"
 
       # BETTER_AUTH_SECRET was provisioned directly on the isolated preview Worker.
       # Keep it out of GitHub logs and repository configuration.
