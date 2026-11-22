@@ -199,6 +199,30 @@ jobs:
           assert_unauth GET "/api/v1/pastoral/prayer/assigned?limit=10&offset=0"
           echo "All team, service-area, ministry-report, event-lifecycle and prayer-inbox routes reject anonymous access."
  
+      - name: Verify password recovery routes are live and fail closed
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
+          email="pcg-preview-smoke-${GITHUB_RUN_ID}@invalid.example"
+          request_status="$(curl --silent --show-error -o /tmp/password-reset-request.json -w "%{http_code}" -X POST "$url/api/v1/auth/password-reset-requests" -H "Content-Type: application/json" --data "{\\"email\\":\\"$email\\"}")"
+          cat /tmp/password-reset-request.json
+          test "$request_status" = "200"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/password-reset-request.json","utf8")); if(p.ok!==true || typeof p.message!=="string") process.exit(1)'
+          change_status="$(curl --silent --show-error -o /tmp/password-change.json -w "%{http_code}" -X POST "$url/api/v1/auth/password/change" -H "Content-Type: application/json" --data '{}')"
+          cat /tmp/password-change.json
+          test "$change_status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/password-change.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          list_status="$(curl --silent --show-error -o /tmp/password-reset-list.json -w "%{http_code}" "$url/api/v1/admin/password-reset-requests")"
+          cat /tmp/password-reset-list.json
+          test "$list_status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/password-reset-list.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          approve_status="$(curl --silent --show-error -o /tmp/password-reset-approve.json -w "%{http_code}" -X POST "$url/api/v1/admin/password-reset-requests/00000000-0000-4000-8000-000000000001/approve" -H "Content-Type: application/json" --data '{}')"
+          cat /tmp/password-reset-approve.json
+          test "$approve_status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/password-reset-approve.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          echo "Public reset request responds without revealing account existence; password change and admin reset operations reject anonymous access."
+          
       - name: Verify Pages preview was built with the Worker API origin
         shell: bash
         run: |
