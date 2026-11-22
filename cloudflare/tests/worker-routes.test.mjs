@@ -548,6 +548,15 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
       if (statements.some((statement) => statement.sql.includes("UPDATE followup_task"))) {
         followupTaskStatus = "completed";
       }
+      for (const statement of statements) {
+        if (statement.sql.includes("INSERT INTO event_staff_assignment")) {
+          const [id,event_id,branch_id,staff_auth_user_id,assignment_role,assigned_by,starts_at,ends_at,created_at] = statement.values;
+          eventStaffAssignment = { id,event_id,branch_id,staff_auth_user_id,assignment_role,starts_at,ends_at,revoked_at:null,created_at };
+        } else if (statement.sql.includes("INSERT INTO event_team_assignment")) {
+          const [id,event_id,branch_id,team_id,assignment_role,assigned_by,starts_at,ends_at,created_at] = statement.values;
+          eventTeamAssignment = { id,event_id,branch_id,team_id,assignment_role,starts_at,ends_at,revoked_at:null,created_at };
+        }
+      }
       calls.push({ kind: "batch", statements: statements.length });
       return statements.map(() => ({ success: true, meta: { changes: 1 } }));
     },
