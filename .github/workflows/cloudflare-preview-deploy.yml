@@ -93,6 +93,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
 
+      - name: Apply forward-only schema 44 to the isolated EU preview D1
+        run: npx wrangler d1 migrations apply pcg-missions-migration-test --remote --env preview --yes
+
       - name: Import existing staff bcrypt credentials into isolated D1
         env:
           SUPABASE_SOURCE_DB_URL: ${{ secrets.SUPABASE_SOURCE_DB_URL }}
@@ -100,9 +103,6 @@ jobs:
 
       # BETTER_AUTH_SECRET was provisioned directly on the isolated preview Worker.
       # Keep it out of GitHub logs and repository configuration.
-
-      - name: Apply forward-only schema 44 to the isolated EU preview D1
-        run: npx wrangler d1 migrations apply pcg-missions-migration-test --remote --env preview --yes
 
       - name: Deploy Better Auth Worker to preview only
         run: npx wrangler deploy --env preview
