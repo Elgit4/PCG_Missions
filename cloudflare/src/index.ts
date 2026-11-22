@@ -4337,8 +4337,39 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     const statement=env.DB.prepare("INSERT INTO "+table+" (id,event_id,branch_id,"+targetColumn+",assignment_role,assigned_by,starts_at,ends_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)")
       .bind(id,eventId,branchId,targetId,role,context.staff.userId,startsAt,endsAt,now);
     try{
-      const result=await statement.run();
-      if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"ASSIGNMENT_CONFLICT"}},requestId,origin);
+      const statements:D1PreparedStatement[]=[statement];
+      if(assignmentKind==="staff"){
+        statements.push(env.DB.prepare(`
+          INSERT OR IGNORE INTO staff_notification
+            (id,branch_id,recipient_user_id,category,title,body,target_type,target_id,idempotency_key,created_at)
+          SELECT ?,?,sp.auth_user_id,'event_assigned','Event assignment',
+                 'You have been assigned to an event. Open your event workspace for details.',
+                 'event',?,?,?
+          FROM staff_profile sp
+          JOIN event_staff_assignment a ON a.id=? AND a.branch_id=? AND a.staff_auth_user_id=sp.auth_user_id
+          WHERE sp.auth_user_id=? AND sp.account_status='active'
+        `).bind(
+          crypto.randomUUID(),branchId,id,
+          `event-assignment:${id}:${targetId}`,now,
+          id,branchId,targetId
+        ));
+      }else{
+        statements.push(env.DB.prepare(`
+          INSERT OR IGNORE INTO staff_notification
+            (id,branch_id,recipient_user_id,category,title,body,target_type,target_id,idempotency_key,created_at)
+          SELECT lower(hex(randomblob(16))),?,sp.auth_user_id,'event_assigned','Team event assignment',
+                 'Your team has been assigned to an event. Open your event workspace for details.',
+                 'event',?, 'event-team-assignment:' || ? || ':' || sp.auth_user_id, ?
+          FROM staff_team_membership stm
+          JOIN staff_profile sp ON sp.id=stm.staff_profile_id AND sp.account_status='active'
+          JOIN event_team_assignment a ON a.id=? AND a.branch_id=stm.branch_id AND a.team_id=stm.team_id
+          WHERE stm.team_id=? AND stm.branch_id=? AND stm.revoked_at IS NULL
+            AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
+        `).bind(branchId,id,id,now,id,targetId,branchId,now,now));
+      }
+      const results=await env.DB.batch(statements);
+      if(results.some(result=>!result.success)||(results[0]?.meta?.changes??0)!==1)
+        return json(409,{ok:false,error:{code:"ASSIGNMENT_CONFLICT"}},requestId,origin);
     }catch{
       return json(409,{ok:false,error:{code:"ASSIGNMENT_CONFLICT"}},requestId,origin);
     }
