@@ -3985,6 +3985,16 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     return json(200,{ok:true,data:{removed:true}},requestId,origin);
   }
 
+  if(parts.length===5&&parts[4]==="cancel"&&request.method==="POST"){
+    if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    if(event.status==="completed") return json(409,{ok:false,error:{code:"EVENT_ALREADY_COMPLETED"}},requestId,origin);
+    if(event.status==="cancelled") return json(200,{ok:true,data:{event_id:eventId,status:"cancelled"}},requestId,origin);
+    const result=await env.DB.prepare("UPDATE event SET status='cancelled',registration_state='closed',updated_at=? WHERE id=? AND branch_id=? AND status IN ('draft','published')")
+      .bind(now,eventId,branchId).run();
+    if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"EVENT_CANCELLATION_CONFLICT"}},requestId,origin);
+    return json(200,{ok:true,data:{event_id:eventId,status:"cancelled"}},requestId,origin);
+  }
+
   if(parts.length===6&&parts[4]==="staff-registration"&&request.method==="POST"){
     if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     const action=parts[5]==="open"?"open":parts[5]==="close"?"close":null;
