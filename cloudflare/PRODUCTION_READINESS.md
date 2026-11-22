@@ -28,7 +28,10 @@ The latest frontend checks on commit `6359178` passed. Pages deployment `e1d26a7
 The production database currently contains:
 - One church and one active branch.
 - Three Better Auth users linked to three staff profiles and three credential accounts.
-- Two effective role assignments: Admin/Pastor and Team Leader.
+- One effective role assignment: Admin/Pastor on the only active, role-assigned staff profile.
+- One Team Leader assignment remains attached to an inactive staff profile; it is not effective while that profile is inactive.
+- A second active staff profile has no active role assignment, still requires its first password change, and its 24-hour setup window has expired.
+- A third staff profile is inactive and also has an expired first-login setup window.
 - Six approved role definitions and 89 active capability catalogue entries.
 - One active Better Auth session at the time of the audit; no expired sessions were found.
 - No orphaned staff-to-auth identity links in the checked rows.
@@ -67,14 +70,15 @@ The production database currently has one branch and no seeded business records 
 
 ### Still required before declaring the whole product fully production-ready
 
-1. **Authenticated acceptance:** complete a real login, password-change and sign-out walkthrough using intended staff accounts, then verify live Contacts, Follow-up and Staff operations. Run acceptance for all six roles using dedicated test accounts and synthetic fixtures in preview; do not create fake records in production.
-2. **Email delivery:** invitation delivery and password-reset notifications do not yet have a verified production email sender. The safe fallback is an authorized manual one-time credential handoff. Never tell staff an email was sent unless the provider confirms delivery.
-3. **Recovery operations:** run an administrator reset and forced password-change acceptance with an authorized account; verify session revocation and audit history.
-4. **Backup/restore:** a current D1 Time Travel bookmark is available, and Cloudflare's migration command captures a backup after applying migrations. A production restore has not been rehearsed. A preview restore rehearsal is not proof that production recovery works. Establish an independently retained backup and test the recovery procedure before relying on the system for irreplaceable ministry records.
-5. **Privacy and governance:** approve the church's privacy notice, data-controller contact, lawful purposes, retention/deletion schedule, pastoral-record access policy and incident-response contact before importing real visitor or sensitive pastoral information.
-6. **Security review:** complete authenticated negative tests across all six roles, branch isolation, team/assignee scope, sensitive prayer/care access, session expiry and rate limiting. Review MFA requirements and require stronger authentication for high-risk administrative access where supported.
-7. **Monitoring:** keep production Pages/Worker health, authentication-boundary checks and release alerts active. Monitor application HTTP errors separately from Worker runtime exceptions.
-8. **External service retirement:** retain private event media until its Cloudflare replacement (if required) is implemented and migrated. Retire any remaining Supabase or Vercel dependency only after confirming no live code path uses it.
+1. **Staff account reconciliation:** the live audit found only one active staff profile with an effective role assignment (Admin/Pastor). A separate active profile has no active role assignment and has an expired forced-password-change window; the existing Team Leader assignment belongs to an inactive profile. Have the intended staff member request a password reset from the sign-in screen, approve it through the Admin/Pastor Access requests workspace, deliver the one-time credential privately, and confirm the forced password change. Then assign or reinstate only the role that the church has authorized. Do not reactivate the inactive Team Leader profile merely to clear this checklist.
+2. **Authenticated acceptance:** complete a real login, password-change and sign-out walkthrough using intended staff accounts, then verify live Contacts, Follow-up and Staff operations. Run acceptance for all six roles using dedicated test accounts and synthetic fixtures in preview; do not create fake records in production.
+3. **Email delivery:** invitation delivery and password-reset notifications do not yet have a verified production email sender. The safe fallback is an authorized manual one-time credential handoff. Never tell staff an email was sent unless the provider confirms delivery.
+4. **Recovery operations:** run an administrator reset and forced password-change acceptance with an authorized account; verify session revocation and audit history.
+5. **Backup/restore:** a current D1 Time Travel bookmark is available, and Cloudflare's migration command captures a backup after applying migrations. A production restore has not been rehearsed. A preview restore rehearsal is not proof that production recovery works. Establish an independently retained backup and test the recovery procedure before relying on the system for irreplaceable ministry records.
+6. **Privacy and governance:** approve the church's privacy notice, data-controller contact, lawful purposes, retention/deletion schedule, pastoral-record access policy and incident-response contact before importing real visitor or sensitive pastoral information.
+7. **Security review:** complete authenticated negative tests across all six roles, branch isolation, team/assignee scope, sensitive prayer/care access, session expiry and rate limiting. Review MFA requirements and require stronger authentication for high-risk administrative access where supported.
+8. **Monitoring:** keep production Pages/Worker health, authentication-boundary checks and release alerts active. Monitor application HTTP errors separately from Worker runtime exceptions.
+9. **External service retirement:** retain private event media until its Cloudflare replacement (if required) is implemented and migrated. Retire any remaining Supabase or Vercel dependency only after confirming no live code path uses it.
 
 A green deployment, healthy endpoint or populated capability catalogue alone is not sufficient to close these gates.
 
