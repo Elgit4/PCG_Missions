@@ -12,6 +12,7 @@ function makePastoralEnv(options = {}) {
   const grants = options.grants ?? [];
   const recordExists = options.recordExists !== false;
   const assignmentExists = options.assignmentExists !== false;
+  const auditFailure = options.auditFailure === true;
   const batches = [];
   const staff = { id: PROFILE_ID, auth_user_id: AUTH_ID, full_name: "Synthetic Pastoral User", email: "pastoral@example.test", account_status: "active", must_change_password: 0, password_setup_expires_at: null };
   const DB = {
@@ -42,6 +43,9 @@ function makePastoralEnv(options = {}) {
     async batch(statements) {
       batches.push(statements.map((s) => ({ sql: s.sql, values: s.values })));
       return statements.map((s) => {
+        if (auditFailure && (s.sql.includes("INSERT INTO prayer_access_audit") || s.sql.includes("INSERT INTO care_access_audit"))) {
+          return { success: false, meta: { changes: 0 } };
+        }
         if (s.sql.includes("SELECT p.id, p.branch_id, p.request_text")) {
           const allowed = recordExists && (!s.sql.includes("EXISTS (SELECT 1 FROM prayer_assignment") || assignmentExists);
           return { success: true, results: allowed ? [{ id: PRAYER_ID, branch_id: BRANCH_ID, request_text: "Synthetic prayer narrative", status: "assigned", sensitivity: "highly_restricted", expires_at: null, answered_at: null, created_at: "2026-11-20T08:00:00.000Z", updated_at: "2026-11-20T08:00:00.000Z" }] : [] };
@@ -127,5 +131,72 @@ test("oversight read rejects unsupported reason codes before any D1 operation", 
   const r = await worker.fetch(makeRequest("/api/v1/pastoral/care/records/" + CARE_ID + "/read", { branch_id: BRANCH_ID, access_mode: "oversight", reason_code: "curiosity" }), f.env);
   assert.equal(r.status, 400);
   assert.equal((await r.json()).error.code, "OVERSIGHT_REASON_REQUIRED");
+  assert.equal(f.batches.length, 0);
+});
+
+
+test("assigned care read requires a live assignment and writes both access audits", async (t) => {
+  mockAuth(t);
+  const f = makePastoralEnv({
+    roleCode: "field_worker",
+    grants: [["care.record.read.assigned", "assigned"]],
+    assignmentExists: true,
+  });
+  const r = await worker.fetch(makeRequest("/api/v1/pastoral/care/records/" + CARE_ID + "/read", {
+    branch_id: BRANCH_ID,
+    access_mode: "assigned",
+  }), f.env);
+  const p = await r.json();
+  assert.equal(r.status, 200);
+  assert.equal(p.data.record.id, CARE_ID);
+  assert.match(f.batches[0][0].sql, /EXISTS \(SELECT 1 FROM care_assignment/);
+  assert.match(f.batches[0][1].sql, /INSERT INTO sensitive_record_access_audit/);
+  assert.equal(f.batches[0][0].values[3], null);
+});
+
+test("assigned care read does not disclose a record without a live assignment", async (t) => {
+  mockAuth(t);
+  const f = makePastoralEnv({
+    roleCode: "field_worker",
+    grants: [["care.record.read.assigned", "assigned"]],
+    assignmentExists: false,
+  });
+  const r = await worker.fetch(makeRequest("/api/v1/pastoral/care/records/" + CARE_ID + "/read", {
+    branch_id: BRANCH_ID,
+    access_mode: "assigned",
+  }), f.env);
+  assert.equal(r.status, 404);
+  assert.equal((await r.json()).error.code, "PASTORAL_RECORD_NOT_FOUND");
+});
+
+test("sensitive pastoral reads fail closed when append-only audit writes fail", async (t) => {
+  mockAuth(t);
+  const f = makePastoralEnv({
+    roleCode: "admin_pastor",
+    grants: [["care.oversight.read", "oversight"]],
+    auditFailure: true,
+  });
+  const r = await worker.fetch(makeRequest("/api/v1/pastoral/care/records/" + CARE_ID + "/read", {
+    branch_id: BRANCH_ID,
+    access_mode: "oversight",
+    reason_code: "pastoral_review",
+  }), f.env);
+  assert.equal(r.status, 503);
+  assert.equal((await r.json()).error.code, "PASTORAL_READ_AUDIT_FAILED");
+});
+
+test("sensitive pastoral read rejects a mismatched branch before querying records", async (t) => {
+  mockAuth(t);
+  const f = makePastoralEnv({
+    roleCode: "admin_pastor",
+    grants: [["care.oversight.read", "oversight"]],
+  });
+  const r = await worker.fetch(makeRequest("/api/v1/pastoral/care/records/" + CARE_ID + "/read", {
+    branch_id: "30000000-0000-4000-8000-000000000099",
+    access_mode: "oversight",
+    reason_code: "pastoral_review",
+  }), f.env);
+  assert.equal(r.status, 400);
+  assert.equal((await r.json()).error.code, "INVALID_PASTORAL_READ");
   assert.equal(f.batches.length, 0);
 });
