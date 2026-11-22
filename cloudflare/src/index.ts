@@ -3799,7 +3799,7 @@ async function eventReceiptReplay(env:Env,eventId:string,operation:string,key:st
   if(!bytesEqual(receipt.request_digest,digest)) return json(409,{ok:false,error:{code:"IDEMPOTENCY_KEY_REUSED"}},requestId,origin);
   return receipt;
 }
-async function eventFlyerStorageRequest(env:Env,key:string,method:"GET"|"PUT"|"DELETE",body?:ArrayBuffer,contentType?:string):Promise<Response>{
+async function eventFlyerStorageRequest(env:Env,key:string,method:"GET"|"PUT"|"POST"|"DELETE",body?:BodyInit,contentType?:string):Promise<Response>{
   if(!env.SUPABASE_URL||!env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("EVENT_MEDIA_STORAGE_NOT_CONFIGURED");
   const base=new URL(env.SUPABASE_URL);
   if(base.protocol!=="https:") throw new Error("EVENT_MEDIA_STORAGE_URL_INVALID");
@@ -3821,13 +3821,16 @@ async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:
     if(!eventHasScopedGrant(context,"events.read","branch")&&!eventHasScopedGrant(context,"events.manage","branch"))
       return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     if(!event.flyer_key||!event.flyer_content_type) return json(404,{ok:false,error:{code:"EVENT_FLYER_NOT_FOUND"}},requestId,origin);
-    let stored:Response;
-    try{stored=await eventFlyerStorageRequest(env,event.flyer_key,"GET");}
+    let signed:Response;
+    try{signed=await eventFlyerStorageRequest(env,event.flyer_key,"POST",JSON.stringify({expiresIn:900}),"application/json");}
     catch{return json(503,{ok:false,error:{code:"EVENT_MEDIA_STORAGE_UNAVAILABLE"}},requestId,origin);}
-    if(stored.status===404) return json(404,{ok:false,error:{code:"EVENT_FLYER_NOT_FOUND"}},requestId,origin);
-    if(!stored.ok) return json(502,{ok:false,error:{code:"EVENT_FLYER_READ_FAILED"}},requestId,origin);
-    const headers=new Headers({"Content-Type":event.flyer_content_type,"Content-Disposition":"inline","Cache-Control":"private, no-store","X-Content-Type-Options":"nosniff","X-Request-Id":requestId});
-    return new Response(stored.body,{status:200,headers});
+    if(!signed.ok) return json(502,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);
+    const signedPayload=await signed.json() as {signedURL?:unknown};
+    if(typeof signedPayload.signedURL!=="string"||!env.SUPABASE_URL) return json(502,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);
+    const signedUrl=signedPayload.signedURL.startsWith("http")
+      ? signedPayload.signedURL
+      : new URL("/storage/v1"+(signedPayload.signedURL.startsWith("/")?signedPayload.signedURL:"/"+signedPayload.signedURL),env.SUPABASE_URL).toString();
+    return json(200,{ok:true,data:{object_path:event.flyer_key,mime_type:event.flyer_content_type,size_bytes:event.flyer_size??0,signed_url:signedUrl,signed_url_expires_in:900}},requestId,origin);
   }
   if(request.method!=="POST") return json(405,{ok:false,error:{code:"METHOD_NOT_ALLOWED"}},requestId,origin);
   if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
