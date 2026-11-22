@@ -1350,3 +1350,21 @@ test("event registration, check-in and closeout routes reject anonymous access b
   assert.equal(calls.length, 0);
 });
 
+
+test("password change and admin reset endpoints reject anonymous requests before database access", async () => {
+  const { env, calls } = fakeEnv();
+  const change = await worker.fetch(new Request("https://worker.example/api/v1/auth/password/change", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password: "A-strong-New-Password-2026!" }),
+  }), env);
+  const changePayload = await change.json();
+  assert.equal(change.status, 401);
+  assert.equal(changePayload.error.code, "UNAUTHENTICATED");
+
+  const list = await worker.fetch(new Request("https://worker.example/api/v1/admin/password-reset-requests?branch_id=30000000-0000-4000-8000-000000000001"), env);
+  const listPayload = await list.json();
+  assert.equal(list.status, 401);
+  assert.equal(listPayload.error.code, "UNAUTHENTICATED");
+  assert.equal(calls.length, 0);
+});
