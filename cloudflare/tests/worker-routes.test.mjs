@@ -1001,3 +1001,23 @@ test("returns a stable 404 envelope for an unimplemented route", async () => {
   assert.equal(payload.error.code, "ROUTE_NOT_FOUND");
   assert.ok(payload.request_id);
 });
+
+
+test("ministry report routes reject anonymous reads and submissions before touching D1", async () => {
+  const { env, calls } = fakeEnv();
+  const read = await worker.fetch(new Request("https://worker.example/api/v1/reports?branch_id=30000000-0000-4000-8000-000000000001"), env);
+  const readPayload = await read.json();
+  assert.equal(read.status, 401);
+  assert.equal(readPayload.error.code, "UNAUTHENTICATED");
+
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/reports", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Branch-Id": "30000000-0000-4000-8000-000000000001" },
+    body: JSON.stringify({ branch_id: "30000000-0000-4000-8000-000000000001", report_type: "daily_evangelism", period_start: "2026-11-22", period_end: "2026-11-22" }),
+  }), env);
+  const createPayload = await create.json();
+  assert.equal(create.status, 401);
+  assert.equal(createPayload.error.code, "UNAUTHENTICATED");
+  assert.equal(calls.length, 0);
+});
+
