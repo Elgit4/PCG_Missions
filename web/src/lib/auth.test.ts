@@ -238,4 +238,29 @@ describe("PcgAuthClient", () => {
     expect(() => new PcgAuthClient("http://pcg-test.supabase.co", config.key, createMemoryStorage()))
       .toThrow(/HTTPS/);
   });
+  
+  it("sends password-reset requests to the Cloudflare Worker in preview without exposing account existence", async () => {
+    const storage = createMemoryStorage();
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch, true, "https://worker.example.com");
+    await expect(client.requestPasswordReset(" Staff@Example.Test ")).resolves.toBeUndefined();
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://worker.example.com/api/v1/auth/password-reset-requests");
+    expect(new Headers(init.headers).has("Authorization")).toBe(false);
+    expect(JSON.parse(String(init.body))).toEqual({ email: "staff@example.test" });
+  });
+
+  it("changes a temporary password through the Cloudflare Worker in preview", async () => {
+    const storage = createMemoryStorage();
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(sessionPayload()), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, data: { password_changed: true } }), { status: 200 }));
+    const client = new PcgAuthClient(config.url, config.key, storage, fetcher as typeof fetch, true, "https://worker.example.com");
+    await client.signIn("staff@example.test", "temporary-password");
+    await client.completePasswordChange("A-strong-New-Password-2026!");
+    const [url, init] = fetcher.mock.calls[1] as unknown as [string, RequestInit];
+    expect(url).toBe("https://worker.example.com/api/v1/auth/password/change");
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-test");
+    expect(JSON.parse(String(init.body))).toEqual({ password: "A-strong-New-Password-2026!" });
+  });
 });
