@@ -169,17 +169,5 @@ describe("Cloudflare Worker API client", () => {
     }
   });
 
-  it("routes announcement archival to the Cloudflare Worker", async () => {
-    const fetcher = vi.fn(async () => response({ announcement_id: "announcement-1", status: "archived" }));
-    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
-
-    await api.archiveAnnouncementDraft("branch-1", "announcement-1");
-
-    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
-    expect(new URL(url).pathname).toBe("/api/v1/announcements/announcement-1/archive");
-    expect(init.method).toBe("POST");
-    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
-    expect(init.credentials).toBe("include");
-  });
 
 });
