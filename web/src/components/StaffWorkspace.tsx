@@ -849,11 +849,11 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               <label>Full name<input name="full_name" required minLength={2} maxLength={180} autoComplete="name" /></label>
               <label>Login email address<input name="email" type="email" required maxLength={254} autoComplete="email" /><span>Used as the sign-in username. PCG Missions will not send an invitation email.</span></label>
               <label>Role<select name="role_code" defaultValue="field_worker">
-                <option value="coordinator">Coordinator</option><option value="team_leader">Team Leader</option><option value="field_worker">Field Worker</option><option value="follow_up_volunteer">Follow-up Volunteer</option><option value="prayer_intercessor">Prayer Intercessor</option><option value="admin_pastor">Admin / Pastor</option>
+                <option value="coordinator">Coordinator</option><option value="team_leader">Team Leader</option><option value="field_worker">Field Worker</option><option value="follow_up_volunteer">Follow-up Volunteer</option><option value="prayer_intercessor">Prayer Intercessor</option>
               </select></label>
               <label className="cmi-field-wide">Reason for account creation<textarea name="reason" required minLength={10} maxLength={500} rows={3} placeholder="Record the ministry appointment or authorisation (10–500 characters)." /></label>
               <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowStaffForm(false)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Creating account…" : "Create account"}</button></div>
-              <p className="cmi-field-wide cmi-scope-note">No email is sent. The administrator receives a one-time temporary password to share privately with the staff member. It expires after 24 hours and must be replaced at first sign-in. The administrator never sees or chooses the permanent password.</p>
+              <p className="cmi-field-wide cmi-scope-note">No email is sent. The administrator receives a one-time temporary password to share privately with the staff member. It expires after 24 hours and must be replaced at first sign-in. The administrator never sees or chooses the permanent password. Admin/Pastor access is granted separately through the two-person approval process.</p>
             </form>}
             <div className="cmi-task-list">
               {staffMembers.map((member) => <article className="cmi-task-row cmi-staff-directory-row" key={member.id}>
@@ -989,7 +989,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               <div>
                 <p className="cmi-eyebrow">ACCOUNT SECURITY</p>
                 <h3>Password reset requests</h3>
-                <p>Review staff requests and issue a one-time temporary password by email. The staff member must replace it at first sign-in.</p>
+                <p>Review staff requests and issue a one-time temporary password through a private handoff. The staff member must replace it at first sign-in.</p>
               </div>
               <span className="cmi-reset-count">{resetRequests.length} pending</span>
             </div>
@@ -1035,7 +1035,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                       disabled={processingResetId !== null}
                     >
                       <CheckCircle2 size={15} />
-                      {processingResetId === request.id ? "Processing…" : "Approve & email temporary password"}
+                      {processingResetId === request.id ? "Processing…" : "Approve & issue temporary password"}
                     </button>
                   </div>
                 </article>
