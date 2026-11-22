@@ -1363,7 +1363,7 @@ async function listContacts(
   const url = new URL(request.url);
   const search = (url.searchParams.get("search") ?? "").trim().slice(0, 100);
   const searchPattern = search ? "%" + search + "%" : "%%";
-  const phoneSearch = search.replace(/\\D/g, "");
+  const phoneSearch = search.replace(/\D/g, "");
   const phonePattern = phoneSearch ? "%" + phoneSearch + "%" : "";
   const status = url.searchParams.get("status") ?? "active";
   const rawLimit = url.searchParams.get("limit");
