@@ -4097,39 +4097,6 @@ async function handleContentItem(
   return json(200, { ok: true, data: visibleContentDraft(updated) }, requestId, origin);
 }
 
-async function archiveAnnouncementDraft(
-  request: Request,
-  env: Env,
-  announcementId: string,
-  requestId: string,
-  origin?: string,
-): Promise<Response> {
-  const access = await authorizeRequestCapability(request, env, "announcement.create.scoped");
-  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
-  if (!isUuidValue(announcementId)) return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_ID" } }, requestId, origin);
-  const url = new URL(request.url);
-  const branchIds = url.searchParams.getAll("branch_id");
-  if (
-    branchIds.length !== 1 ||
-    [...url.searchParams.keys()].some((key) => key !== "branch_id") ||
-    branchIds[0] !== access.activeBranch.branchId
-  ) return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_QUERY" } }, requestId, origin);
-  const current = await env.DB.prepare(
-    "SELECT id,created_by,updated_at FROM announcement WHERE id=? AND branch_id=? AND status='draft' LIMIT 1",
-  ).bind(announcementId, access.activeBranch.branchId).first<{ id: string; created_by: string; updated_at: string }>();
-  if (!current || current.created_by !== access.staff.userId) {
-    return json(404, { ok: false, error: { code: "ANNOUNCEMENT_NOT_FOUND" } }, requestId, origin);
-  }
-  const now = new Date().toISOString();
-  const result = await env.DB.prepare(
-    "UPDATE announcement SET status='archived',updated_by=?,updated_at=?" +
-    " WHERE id=? AND branch_id=? AND created_by=? AND status='draft' AND updated_at=?",
-  ).bind(access.staff.userId, now, announcementId, access.activeBranch.branchId, access.staff.userId, current.updated_at).run();
-  if (!result.success) return json(500, { ok: false, error: { code: "ANNOUNCEMENT_ARCHIVE_FAILED" } }, requestId, origin);
-  if ((result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "ANNOUNCEMENT_NOT_ARCHIVABLE" } }, requestId, origin);
-  return json(200, { ok: true, data: { announcement_id: announcementId, status: "archived" } }, requestId, origin);
-}
-
 type CalendarEntryRow = {
   id: string;
   branch_id: string;
@@ -5867,13 +5834,6 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
 
     if (url.pathname === "/api/v1/announcements" && (request.method === "GET" || request.method === "POST")) {
       return handleAnnouncementCollection(request, env, requestId, origin);
-    }
-    const announcementArchiveMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)\/archive$/);
-    if (announcementArchiveMatch && request.method === "POST") {
-      let announcementId: string;
-      try { announcementId = decodeURIComponent(announcementArchiveMatch[1]); }
-      catch { return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_ID" } }, requestId, origin); }
-      return archiveAnnouncementDraft(request, env, announcementId, requestId, origin);
     }
     const announcementMatch = url.pathname.match(/^\/api\/v1\/announcements\/([^/]+)$/);
     if (announcementMatch && (request.method === "GET" || request.method === "PATCH")) {
