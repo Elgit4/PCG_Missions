@@ -247,6 +247,20 @@ JOIN capability c ON c.code=g.capability_code
 WHERE 1=1
 ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
 
+
+-- Retain the owner-approved branch-scoped management grants, which are an
+-- explicit D1 policy addition to the live source capability definitions.
+WITH management_grants(role_code,capability_code,scope_mode) AS (
+  VALUES ('admin_pastor','team.manage','branch'),('admin_pastor','area.manage','branch')
+)
+INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at)
+SELECT r.id,c.id,g.scope_mode,strftime('%Y-%m-%dT%H:%M:%fZ','now')
+FROM management_grants g
+JOIN role r ON r.code=g.role_code
+JOIN capability c ON c.code=g.capability_code
+WHERE 1=1
+ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
+
 UPDATE app_meta SET schema_version=41 WHERE id=1 AND schema_version=40 AND environment='non-production';
 DELETE FROM authorization_policy_v41_guard;
 INSERT INTO authorization_policy_v41_guard (ok)
