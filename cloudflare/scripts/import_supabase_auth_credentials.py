@@ -139,8 +139,8 @@ def main() -> int:
         raise RuntimeError("The source connection is not the approved PCG Missions Supabase project.")
 
     meta = d1_query(token, "SELECT schema_version, environment FROM app_meta WHERE id=1")
-    if len(meta) != 1 or meta[0].get("schema_version") != 44 or meta[0].get("environment") != "non-production":
-        raise RuntimeError("Credential import is restricted to schema 44 in the isolated non-production D1 database.")
+    if len(meta) != 1 or meta[0].get("schema_version") != 45 or meta[0].get("environment") != "non-production":
+        raise RuntimeError("Credential import is restricted to schema 45 in the isolated non-production D1 database.")
 
     source_rows = psql_source_rows(source_url)
     target_rows = d1_query(token, 'SELECT id, lower(email) AS email FROM "user" ORDER BY id')
