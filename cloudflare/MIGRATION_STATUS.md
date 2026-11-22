@@ -227,3 +227,10 @@ The verified bundle was deployed to the isolated `pcg-missions-api-preview` Work
 Post-deployment smoke passed: health returned `ok=true`, schema version `43`; the report, event registration/check-in/closeout, prayer inbox, team, and service-area route probes returned the expected anonymous `401 UNAUTHENTICATED` response. Worker typecheck and SQLite foundation checks passed; bundle tests were 47/47.
 
 This proves deployment and anonymous boundary protection only. It does not prove successful authenticated writes, six-role browser acceptance, flyer uploads, staff Auth Admin provisioning, or production readiness.
+
+
+## Staff lifecycle integration update — 2026-11-22
+
+The staff directory read and staff account deactivate/reactivate actions are now routed through the Cloudflare Worker. Frontend tests and the deployed-preview anonymous route probes pass for both status actions.
+
+Still not migrated end-to-end: staff account creation/invitation acceptance and password-reset approval. The Worker invitation acceptance path calls Supabase Auth Admin and requires the Worker secret `SUPABASE_SERVICE_ROLE_KEY`; that secret is not configured. The existing frontend creation/reset flows still target Supabase Edge Functions. Do not mark staff lifecycle complete until the secret is added securely, the invitation/manual-handoff UI is migrated, and authenticated acceptance/reset tests pass.
