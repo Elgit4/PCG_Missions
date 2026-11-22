@@ -1636,3 +1636,34 @@ test("expired temporary-password gate blocks Better Auth credential mutation", a
   assert.equal((await response.json()).error.code, "PASSWORD_SETUP_EXPIRED");
   assert.equal(fixture.batches?.length ?? 0, 0);
 });
+
+
+test("staff role assignment and Admin/Pastor review endpoints enforce their capabilities", async () => {
+  const fixture = authorizedDirectoryEnv("coordinator");
+  const headers = {
+    Cookie: "better-auth.session_token=verified-test-token",
+    "X-Branch-Id": BRANCH_ID,
+    "Content-Type": "application/json",
+  };
+  const assignment = await worker.fetch(new Request("https://worker.example/api/v1/staff/roles", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      target_profile_id: COVERED_STAFF_ID,
+      role_code: "field_worker",
+      starts_at: "2026-11-22T12:00:00.000Z",
+      ends_at: null,
+      reason: "The ministry appointment was approved.",
+    }),
+  }), fixture.env);
+  const elevationList = await worker.fetch(new Request("https://worker.example/api/v1/staff/role-elevations", { headers }), fixture.env);
+  const revocationList = await worker.fetch(new Request("https://worker.example/api/v1/staff/role-revocations", { headers }), fixture.env);
+
+  for (const response of [assignment, elevationList, revocationList]) {
+    const payload = await response.json();
+    assert.equal(response.status, 403);
+    assert.equal(payload.error.code, "CAPABILITY_DENIED");
+  }
+  assert.equal(fixture.batches.length, 0);
+  assert.equal(fixture.writes, 0);
+});
