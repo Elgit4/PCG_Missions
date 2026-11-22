@@ -4041,7 +4041,7 @@ async function handleContentCollection(
     if (!row) return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
     return json(201, { ok: true, data: visibleContentDraft(row) }, requestId, origin);
   } catch (error) {
-    if (/UNIQUE constraint failed:\\s*(sermon\\.public_slug|welcome_message\\.)/i.test(String(error))) {
+    if (String(error).includes("UNIQUE constraint failed: sermon.public_slug")) {
       return json(409, { ok: false, error: { code: "CONTENT_SLUG_CONFLICT" } }, requestId, origin);
     }
     return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
@@ -4084,10 +4084,18 @@ async function handleContentItem(
   const now = new Date().toISOString();
   const values = fields.map(([, value]) => value);
   values.push(access.staff.userId, now, contentId, branchId, access.staff.userId, current.updated_at);
-  const result = await env.DB.prepare(
-    "UPDATE " + table + " SET " + assignments.join(", ") +
-    " WHERE id=? AND branch_id=? AND created_by=? AND status='draft' AND updated_at=?",
-  ).bind(...values).run();
+  let result: Awaited<ReturnType<ReturnType<typeof env.DB.prepare>["run"]>>;
+  try {
+    result = await env.DB.prepare(
+      "UPDATE " + table + " SET " + assignments.join(", ") +
+      " WHERE id=? AND branch_id=? AND created_by=? AND status='draft' AND updated_at=?",
+    ).bind(...values).run();
+  } catch (error) {
+    if (String(error).includes("UNIQUE constraint failed: sermon.public_slug")) {
+      return json(409, { ok: false, error: { code: "CONTENT_SLUG_CONFLICT" } }, requestId, origin);
+    }
+    return json(500, { ok: false, error: { code: "CONTENT_UPDATE_FAILED" } }, requestId, origin);
+  }
   if (!result.success) return json(500, { ok: false, error: { code: "CONTENT_UPDATE_FAILED" } }, requestId, origin);
   if ((result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "CONTENT_NOT_EDITABLE" } }, requestId, origin);
   const updated = await env.DB.prepare(
