@@ -550,8 +550,7 @@ function assertValidTaskReassignment(
 
 function requestErrorDetail(error: unknown): string {
   if (error instanceof Error) {
-    const message = error.message.replace(/[\\r\
-]+/g, " ").slice(0, 140);
+    const message = error.message.replace(/[\r\n]+/g, " ").slice(0, 140);
     return message ? `${error.name}: ${message}` : error.name;
   }
   return "Unknown network error";
