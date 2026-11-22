@@ -86,7 +86,7 @@ async function supabaseAdminRequest(
   });
 }
 
-/** Create an Auth identity only from a server-authorized invitation workflow. */
+/** Create an Auth identity only from a server-authorized Admin provisioning workflow. */
 export async function createSupabaseAuthUser(
   env: SupabaseAuthEnvironment,
   input: { email: string; password: string; fullName: string },
@@ -114,7 +114,7 @@ export async function createSupabaseAuthUser(
   return id;
 }
 
-/** Compensating action for an invitation whose D1 transaction did not commit. */
+/** Compensating action when D1 staff provisioning does not commit. */
 export async function deleteSupabaseAuthUser(
   env: SupabaseAuthEnvironment,
   userId: string,
