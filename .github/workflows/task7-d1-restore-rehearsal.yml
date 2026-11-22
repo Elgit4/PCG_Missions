@@ -89,10 +89,46 @@ jobs:
           sha256sum /tmp/pcg-missions-d1-recovery.sql | tee /tmp/pcg-missions-d1-recovery.sha256
           wc -c /tmp/pcg-missions-d1-recovery.sql
 
+      - name: Rebuild dump in dependency-safe SQLite order
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes sqlite3
+          python3 <<'PY'
+          import sqlite3
+          from pathlib import Path
+          source = Path('/tmp/pcg-missions-d1-recovery.sql').read_text()
+          db = sqlite3.connect(':memory:')
+          db.execute('PRAGMA foreign_keys=OFF')
+          db.executescript(source)
+          # SQLite's dump emits every CREATE TABLE before indexes and triggers,
+          # preventing D1 from seeing dependent schema objects too early.
+          lines = []
+          for line in db.iterdump():
+              stripped = line.strip().upper()
+              if stripped in ('BEGIN TRANSACTION;', 'COMMIT;'):
+                  continue
+              if stripped.startswith('PRAGMA '):
+                  continue
+              if stripped.startswith(('DELETE FROM "SQLITE_SEQUENCE"', 'INSERT INTO "SQLITE_SEQUENCE"')):
+                  continue
+              lines.append(line)
+          output = '\n'.join(lines) + '\n'
+          if 'CREATE TABLE "calendar_series"' not in output:
+              raise SystemExit('Reordered dump is missing calendar_series; refusing import')
+          last_table = output.rfind('CREATE TABLE ')
+          first_index = output.find('CREATE INDEX ')
+          if first_index != -1 and first_index < last_table:
+              raise SystemExit('Indexes were emitted before all table definitions')
+          Path('/tmp/pcg-missions-d1-recovery-ordered.sql').write_text(output)
+          print(f'Reordered SQLite dump: {len(output)} bytes')
+          PY
+          test -s /tmp/pcg-missions-d1-recovery-ordered.sql
+
       - name: Import only into the fixed EU scratch database
         run: |
           set -euo pipefail
-          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --file=/tmp/pcg-missions-d1-recovery.sql --yes
+          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --file=/tmp/pcg-missions-d1-recovery-ordered.sql --yes
 
       - name: Compare exact schema objects, migration ledger, and critical row counts
         run: |
@@ -162,4 +198,4 @@ jobs:
 
       - name: Remove database dump from ephemeral runner
         if: always()
-        run: rm -f /tmp/pcg-missions-d1-recovery.sql /tmp/pcg-missions-d1-recovery.sha256 /tmp/task7-target-check.json /tmp/task7-source-schema.json /tmp/task7-target-schema.json /tmp/task7-source-counts.json /tmp/task7-target-counts.json /tmp/task7-source-migration-ledger.json /tmp/task7-target-migration-ledger.json /tmp/task7-source-fk.json /tmp/task7-target-fk.json wrangler.task7-recovery.toml
+        run: rm -f /tmp/pcg-missions-d1-recovery.sql /tmp/pcg-missions-d1-recovery-ordered.sql /tmp/pcg-missions-d1-recovery.sha256 /tmp/task7-target-check.json /tmp/task7-source-schema.json /tmp/task7-target-schema.json /tmp/task7-source-counts.json /tmp/task7-target-counts.json /tmp/task7-source-migration-ledger.json /tmp/task7-target-migration-ledger.json /tmp/task7-source-fk.json /tmp/task7-target-fk.json wrangler.task7-recovery.toml

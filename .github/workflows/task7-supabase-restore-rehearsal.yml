@@ -50,20 +50,33 @@ jobs:
           fi
           echo "Source and target are configured as distinct database endpoints."
 
-          # GitHub-hosted runners may not have IPv6 egress. Supabase direct
-          # db.<project-ref>.supabase.co endpoints resolve to IPv6 on some
-          # projects; use the IPv4-compatible Session Pooler for dump/restore.
-          for label in SOURCE RESTORE; do
-            if [[ "$label" == "SOURCE" ]]; then url="$SUPABASE_SOURCE_DB_URL"; else url="$SUPABASE_RESTORE_DB_URL"; fi
-            endpoint="$(DB_URL="$url" python -c 'import os,urllib.parse; u=urllib.parse.urlparse(os.environ["DB_URL"]); print((u.hostname or "")+"|"+str(u.port or 5432))')"
-            host="${endpoint%%|*}"
-            port="${endpoint##*|}"
-            if [[ "$host" != *.pooler.supabase.com || "$port" != "5432" ]]; then
-              echo "::error::$label database URL must use the Supabase Session Pooler (pooler hostname, port 5432). Direct db.<project-ref>.supabase.co and Transaction Pooler port 6543 are not supported by this restore rehearsal."
-              echo "::error::In the relevant Supabase project, open Connect, choose Session pooler, copy the URI, replace its password locally, then update the matching GitHub secret."
-              exit 1
-            fi
-          done
+      - name: Normalize existing direct URLs to Supabase Session Pooler
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          import os, urllib.parse
+          refs = {'cgwffpxlwgbnlinzwfoj':'eu-west-1', 'mjougnpitlgsuqgtfbrr':'eu-west-1'}
+          for key in ('SUPABASE_SOURCE_DB_URL','SUPABASE_RESTORE_DB_URL'):
+              u = urllib.parse.urlsplit(os.environ[key])
+              host = u.hostname or ''
+              if host.endswith('.pooler.supabase.com') and u.port == 5432:
+                  value = os.environ[key]
+              else:
+                  if not host.startswith('db.') or not host.endswith('.supabase.co'):
+                      raise SystemExit('Unsupported Supabase database endpoint; refusing to guess')
+                  ref = host[3:-len('.supabase.co')]
+                  region = refs.get(ref)
+                  if not region:
+                      raise SystemExit('Unknown Supabase project region; refusing to guess')
+                  user = urllib.parse.unquote(u.username or '')
+                  if user == 'postgres': user = 'postgres.' + ref
+                  if user != 'postgres.' + ref: raise SystemExit('Unexpected database username format')
+                  authority = user + ':' + (u.password or '') + '@aws-0-' + region + '.pooler.supabase.com:5432'
+                  value = urllib.parse.urlunsplit((u.scheme, authority, u.path or '/postgres', u.query, u.fragment))
+              with open(os.environ['GITHUB_ENV'], 'a') as f: f.write(key + '=' + value + '\n')
+          print('Existing source and restore URLs normalized for IPv4-compatible Session Pooler connections.')
+          PY
 
       - name: Install Supabase CLI and PostgreSQL client
         uses: supabase/setup-cli@v3
