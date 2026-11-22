@@ -193,6 +193,58 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         ]
         self.assertFalse(any(code.startswith("sms.") for code in all_grants))
 
+    def test_worker_compatibility_grants_match_the_explicit_migration_allowlist(self):
+        migration = (MIGRATIONS / "0042_worker_route_capability_compatibility.sql").read_text(encoding="utf-8")
+        start = migration.index("WITH worker_aliases(")
+        end = migration.index("\n)\nINSERT INTO role_capability", start)
+        declared = {
+            (role_code, capability_code, scope_mode)
+            for role_code, capability_code, scope_mode in re.findall(
+                r"\\('([^']+)','([^']+)','([^']+)','[^']+'\\)",
+                migration[start:end],
+            )
+        }
+        self.assertEqual(len(declared), 53, "compatibility allowlist changed; review the policy before updating the test")
+
+        capability_codes = sorted({code for _, code, _ in declared})
+        placeholders = ",".join("?" for _ in capability_codes)
+        actual = {
+            (row[0], row[1], row[2])
+            for row in self.db.execute(
+                f"""
+                SELECT r.code, c.code, rc.scope_mode
+                FROM role_capability rc
+                JOIN role r ON r.id = rc.role_id
+                JOIN capability c ON c.id = rc.capability_id
+                WHERE c.code IN ({placeholders})
+                """,
+                capability_codes,
+            )
+        }
+        self.assertEqual(actual, declared, "Worker aliases must not gain unreviewed roles or wider scopes")
+
+        self.assertFalse(
+            self.db.execute(
+                """
+                SELECT 1 FROM role_capability rc
+                JOIN capability c ON c.id = rc.capability_id
+                WHERE c.code LIKE 'sms.%' LIMIT 1
+                """
+            ).fetchone(),
+            "SMS must remain ungranted while the provider integration is disabled",
+        )
+        self.assertFalse(
+            self.db.execute(
+                """
+                SELECT 1 FROM role_capability rc
+                JOIN capability c ON c.id = rc.capability_id
+                WHERE c.code IN ('prayer.request.read', 'prayer.request.share')
+                LIMIT 1
+                """
+            ).fetchone(),
+            "legacy broad prayer-read/share aliases must not be granted",
+        )
+
     def test_sensitive_pastoral_read_grants_are_minimal_across_all_six_roles(self):
         expected = {
             "admin_pastor": {
