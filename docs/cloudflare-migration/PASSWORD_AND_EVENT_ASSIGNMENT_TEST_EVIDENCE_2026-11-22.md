@@ -45,7 +45,7 @@ At source commit \`757eb1a0cd801b7e18b25861a83178b930e18d36\`:
 - Frontend typecheck, lint, unit tests, and production build: passed.
 - Preview Worker version \`40f2172b-d9ec-488f-89a6-ddbf41e923f2\` receives 100% preview traffic.
 - Existing D1, Supabase Auth, and Worker secret bindings were preserved.
-- The live assignment route probes are being added to the preview smoke workflow so the deployed Worker rejects anonymous workspace, assignment-write, and revocation requests.
+- Live preview smoke probes passed for assignment workspace, staff/team assignment writes, and revocation; all correctly reject anonymous requests.
 
 ## Safety boundary
 
