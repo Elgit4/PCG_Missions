@@ -416,3 +416,24 @@ A read-only comparison was run between the D1 resource named `pcg-missions-produ
 The church, branch, staff-profile identity/status rows match. Staff-role assignments are semantically equivalent after joining the database-specific role IDs to `role.code` (the two assignments are `admin_pastor` and `team_leader`); raw role IDs differ because the role catalogue IDs are database-specific, and timestamp text precision differs. This is a limited identity-baseline comparison, not a full row-content or audit-log reconciliation, and it is not a verified backup.
 
 No D1 rows were written or changed. The resource named `pcg-missions-production` is not yet a production runtime database: its internal environment marker is `non-production`, and no production Worker exists.
+
+
+## 2026-11-22 — Admin-only direct staff provisioning
+
+The staff onboarding requirement is **Admin/Pastor-created accounts only**. Staff self-registration, invitations, invitation emails, invitation acceptance links and invitation tokens are not part of the product.
+
+Implemented on the migration branch:
+- Replaced the Worker invitation issuance/list/revocation/acceptance handlers with a direct POST /api/v1/staff/accounts provisioning operation.
+- The operation requires both the branch-scoped staff.account.manage and staff.role.assign capabilities and explicitly requires the active admin_pastor role.
+- It creates a Supabase Auth identity server-side, mirrors the identity into the non-production D1 identity table, creates the staff profile and role assignment, and writes an append-only account-created audit record as one D1 batch.
+- A cryptographically random temporary password is returned once to the Admin for secure manual handoff. No email is sent. The new profile has must_change_password=1 and a 24-hour password-setup expiry.
+- If the D1 provisioning batch fails after Auth creation, the Worker attempts a compensating deletion of the Auth identity.
+- Legacy Worker invitation endpoints now return HTTP 410 STAFF_INVITATIONS_DISABLED.
+- The frontend API adapter maps Admin staff creation to the Worker endpoint when the Worker API is configured.
+- Added regression tests for anonymous provisioning denial and permanent retirement of invitation acceptance.
+
+Security and acceptance boundaries:
+- The Worker requires the server-only SUPABASE_SERVICE_ROLE_KEY; if it is absent, provisioning fails closed with STAFF_AUTH_ADMIN_UNAVAILABLE. Do not put this key in browser configuration or source control.
+- Admin/Pastor assignment is intentionally not accepted through this ordinary create-account route; it remains subject to the existing dual-control Admin/Pastor elevation workflow.
+- Password change and Admin-approved reset operations still require Worker migration and authenticated acceptance. The shared preview currently blocks credential mutations because it shares the live Supabase Auth tenant.
+- The source changes are committed but are not yet CI-verified or deployed. No production Auth identities or D1 records were created.
