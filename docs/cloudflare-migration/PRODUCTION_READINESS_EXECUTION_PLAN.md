@@ -71,7 +71,7 @@ Read-only comparison against Supabase covered 53 shared tables. **49 of 53 table
 
 Authorization differences have been semantically decomposed:
 
-- All 61 Supabase capability codes are present in migration-test D1.
+- All 61 Supabase capability codes are present in migration-test D1; descriptions, sensitivity classifications, and active flags match the Supabase source.
 - All 65 canonical role/capability/scope grants match the canonical grant list in migration `0041`.
 - All 55 Worker compatibility grants match the explicit allowlist in migration `0042`; no extra role or broader scope was found.
 - Eight additional directory grants are explicit and least-privilege: Admin/Pastor receives branch-scoped team/area read and management; Coordinator receives branch-scoped team/area read; Team Leader receives team-scoped team/area read; other roles receive none.
