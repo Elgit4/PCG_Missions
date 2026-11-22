@@ -42,10 +42,10 @@ jobs:
             echo "::error::Source and restore connection strings must be different."
             exit 1
           fi
-          source_host="$(python -c 'import os,urllib.parse; print(urllib.parse.urlparse(os.environ["SUPABASE_SOURCE_DB_URL"]).hostname or "")')"
-          target_host="$(python -c 'import os,urllib.parse; print(urllib.parse.urlparse(os.environ["SUPABASE_RESTORE_DB_URL"]).hostname or "")')"
-          if [[ -z "$source_host" || -z "$target_host" || "$source_host" == "$target_host" ]]; then
-            echo "::error::Could not prove that source and restore endpoints are separate hosts. Use two distinct project connection strings."
+          source_identity="$(python -c 'import os,urllib.parse; u=urllib.parse.urlparse(os.environ["SUPABASE_SOURCE_DB_URL"]); print((u.hostname or "")+"|"+(u.username or ""))')"
+          target_identity="$(python -c 'import os,urllib.parse; u=urllib.parse.urlparse(os.environ["SUPABASE_RESTORE_DB_URL"]); print((u.hostname or "")+"|"+(u.username or ""))')"
+          if [[ "$source_identity" == "|" || "$target_identity" == "|" || "$source_identity" == "$target_identity" ]]; then
+            echo "::error::Could not prove that source and restore endpoints are distinct. Use connection strings from two different Supabase projects."
             exit 1
           fi
           echo "Source and target are configured as distinct database endpoints."
@@ -54,6 +54,11 @@ jobs:
         uses: supabase/setup-cli@v3
         with:
           version: 3.0.0
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes postgresql-client
 
       - name: Verify restore target is a fresh empty public schema
         shell: bash
