@@ -1,0 +1,3 @@
+PCG Missions production cutover approval marker.
+
+This one-time marker triggers the guarded Cloudflare production release workflow. The workflow validates schema, credentials, Better Auth, storage-secret availability, Pages configuration, and production smoke checks before declaring the release complete.
