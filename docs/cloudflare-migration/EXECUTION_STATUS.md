@@ -407,3 +407,12 @@ This proves deployment and anonymous boundary protection only. It does not prove
 The staff directory read and staff account deactivate/reactivate actions are now routed through the Cloudflare Worker. Frontend tests and the deployed-preview anonymous route probes pass for both status actions.
 
 Still not migrated end-to-end: staff account creation/invitation acceptance and password-reset approval. The Worker invitation acceptance path calls Supabase Auth Admin and requires the Worker secret `SUPABASE_SERVICE_ROLE_KEY`; that secret is not configured. The existing frontend creation/reset flows still target Supabase Edge Functions. Do not mark staff lifecycle complete until the secret is added securely, the invitation/manual-handoff UI is migrated, and authenticated acceptance/reset tests pass.
+
+
+## Read-only D1 identity comparison — 2026-11-22
+
+A read-only comparison was run between the D1 resource named `pcg-missions-production` and `pcg-missions-migration-test`. Both databases report `app_meta.environment='non-production'` and schema version 43. Their core identity row counts match: 1 church, 1 branch, 3 staff profiles, and 2 staff-role assignments; contacts, follow-up tasks, events, and prayer requests are all 0 in both.
+
+The church, branch, staff-profile identity/status rows match. Staff-role assignments are semantically equivalent after joining the database-specific role IDs to `role.code` (the two assignments are `admin_pastor` and `team_leader`); raw role IDs differ because the role catalogue IDs are database-specific, and timestamp text precision differs. This is a limited identity-baseline comparison, not a full row-content or audit-log reconciliation, and it is not a verified backup.
+
+No D1 rows were written or changed. The resource named `pcg-missions-production` is not yet a production runtime database: its internal environment marker is `non-production`, and no production Worker exists.
