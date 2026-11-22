@@ -79,6 +79,13 @@ jobs:
       - name: Apply forward-only schema 44 and guarded production marker 45
         run: npx wrangler d1 migrations apply pcg-missions-production --remote --env production
 
+      - name: Promote only the verified schema 45 database to production
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute pcg-missions-production --remote --env production --command "UPDATE app_meta SET environment='production' WHERE id=1 AND schema_version=45 AND environment='non-production'"
+          npx wrangler d1 execute pcg-missions-production --remote --env production --command "SELECT CASE WHEN schema_version=45 AND environment='production' THEN 'PRODUCTION_D1_READY' ELSE 'PRODUCTION_D1_NOT_READY' END AS release_gate FROM app_meta WHERE id=1" --json > /tmp/pcg-production-meta.json
+          node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/pcg-production-meta.json","utf8"));const rows=x[0]?.results||x.result?.[0]?.results||[];if(!rows.some(r=>r.release_gate==="PRODUCTION_D1_READY"))process.exit(1)'
+
       - name: Import and verify existing staff bcrypt credentials in production D1
         env:
           SUPABASE_SOURCE_DB_URL: ${{ secrets.SUPABASE_SOURCE_DB_URL }}
