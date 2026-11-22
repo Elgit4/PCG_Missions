@@ -305,7 +305,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
                         (profile_id, other_branch_id),
                     ).fetchone()
                 )
-                self.assertEqual(self.grants(role_code) & sensitive, expected[role_code])
+                self.assertEqual({grant for grant in self.grants(role_code) if grant[0] in sensitive}, expected[role_code])
 
     def test_worker_authorization_sql_allows_team_area_management_only_for_admin_pastor(self):
         now = "2026-11-21T12:00:00.000Z"
