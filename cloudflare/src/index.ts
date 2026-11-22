@@ -965,16 +965,13 @@ async function listStaffDirectory(
       JOIN role r ON r.id = sra.role_id AND r.is_active = 1
       WHERE sra.staff_profile_id = sp.id
         AND sra.branch_id = ?
-        AND sra.revoked_at IS NULL
-        AND sra.starts_at <= ?
-        AND (sra.ends_at IS NULL OR sra.ends_at > ?)
     )
       AND (? = '' OR sp.full_name LIKE ?)
     ORDER BY sp.full_name COLLATE NOCASE
     LIMIT ? OFFSET ?
   `).bind(
     access.activeBranch.branchId, now, now,
-    access.activeBranch.branchId, now, now,
+    access.activeBranch.branchId,
     search, search ? `%${search}%` : "",
     limit, offset,
   ).all<{
