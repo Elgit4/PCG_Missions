@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { CmiApiClient, CmiApiError } from "./cmi-api";
+import { CmiApiClient } from "./cmi-api";
 
 function response(data: unknown, status = 200) {
   return new Response(JSON.stringify({ data, request_id: "cloudflare-test" }), {
