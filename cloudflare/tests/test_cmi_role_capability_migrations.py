@@ -116,10 +116,10 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         event_id = "acceptance-event"
         self.db.execute(
             """INSERT INTO event
-               (id,branch_id,title,starts_at,ends_at,timezone,registration_state,visibility,status,created_by,created_at,updated_at)
+               (id,branch_id,title,starts_at,ends_at,timezone,registration_state,visibility,status,created_by,last_modified_by,created_at,updated_at)
                VALUES(?,?,?,'2026-11-30T10:00:00.000Z','2026-11-30T11:00:00.000Z',
-                      'Africa/Accra','open','staff','published',?,?,?)""",
-            (event_id, branch_id, "Acceptance Event", admin_user, now, now),
+                      'Africa/Accra','open','staff','published',?,?,?,?)""",
+            (event_id, branch_id, "Acceptance Event", admin_user, admin_user, now, now),
         )
         self.db.execute(
             """INSERT INTO event_staff_assignment
