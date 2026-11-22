@@ -141,7 +141,7 @@ jobs:
               raise SystemExit('Source SQLite snapshot is missing calendar_series; refusing import')
           if not table_statements or not data_statements:
               raise SystemExit('SQLite snapshot is missing table definitions or data; refusing import')
-          output = '\n'.join(table_statements + data_statements + schema_objects) + '\n'
+          output = 'PRAGMA defer_foreign_keys = true;\n' + '\n'.join(table_statements + data_statements + schema_objects) + '\n'
           first_insert = output.find('INSERT INTO ')
           last_table = output.rfind('CREATE TABLE ')
           first_index = min([p for p in (output.find('CREATE INDEX '), output.find('CREATE UNIQUE INDEX '), output.find('CREATE TRIGGER '), output.find('CREATE VIEW ')) if p >= 0], default=-1)
