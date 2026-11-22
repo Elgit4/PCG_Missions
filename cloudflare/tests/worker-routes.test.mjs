@@ -1670,3 +1670,51 @@ test("content draft routes reject anonymous access before querying D1", async ()
   assert.equal(calls.length, 0);
 });
 
+
+
+test("Admin/Pastor can create and list only their own private sermon drafts in the active branch", async () => {
+  const { env, contentRows } = authorizedDirectoryEnv("admin_pastor", [
+    ["content.manage.draft", "branch"],
+    ["content.manage", "branch"],
+  ]);
+  contentRows.push({
+    id: "81000000-0000-4000-8000-000000000002",
+    branch_id: BRANCH_ID,
+    title: "Another author's sermon",
+    body: "Must not be visible.",
+    public_slug: "another-authors-sermon",
+    status: "draft",
+    published_at: null,
+    created_by: "10000000-0000-4000-8000-000000000099",
+    created_at: "2026-11-22T00:00:00.000Z",
+    updated_at: "2026-11-22T00:00:00.000Z",
+  });
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/content/sermons", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Faith and Service",
+      body: "A private sermon draft.",
+      public_slug: "faith-and-service",
+    }),
+  }), env);
+  const created = await create.json();
+  assert.equal(create.status, 201);
+  assert.equal(created.data.status, "draft");
+  assert.equal(created.data.published_at, null);
+  assert.equal("created_by" in created.data, false);
+
+  const list = await worker.fetch(new Request(
+    "https://worker.example/api/v1/content/sermons?branch_id=" + BRANCH_ID,
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  const listed = await list.json();
+  assert.equal(list.status, 200);
+  assert.equal(listed.data.length, 1);
+  assert.equal(listed.data[0].title, "Faith and Service");
+});
