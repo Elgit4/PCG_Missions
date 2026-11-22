@@ -3602,6 +3602,232 @@ function reportForbidden(access: Awaited<ReturnType<typeof authorizeRequestCapab
   return mapCapabilityFailure(access.state, requestId, origin);
 }
 
+
+async function eventOperationContext(request: Request, env: Env, branchId: string, eventId: string, requestId: string, origin?: string) {
+  const context=await resolveStaffContext(request,env);
+  if(context.state!=="authenticated") return {response:mapCapabilityFailure(context.state,requestId,origin)} as const;
+  if(!context.activeBranch||context.activeBranch.branchId!==branchId) return {response:json(403,{ok:false,error:{code:"BRANCH_NOT_AUTHORIZED"}},requestId,origin)} as const;
+  const event=await env.DB.prepare("SELECT id,branch_id,status,registration_state,capacity FROM event WHERE id=? AND branch_id=?").bind(eventId,branchId).first<Record<string,unknown>>();
+  if(!event) return {response:json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin)} as const;
+  return {context,event} as const;
+}
+async function eventAssignmentAllows(env:Env,context:Extract<Awaited<ReturnType<typeof resolveStaffContext>>,{state:"authenticated"}>,eventId:string,branchId:string,now:string,operation:"register"|"checkin"):Promise<boolean>{
+  const branchGrant=context.activeBranch?.capabilities.some(c=>
+    (c.code==="events.manage"&&c.scopeMode==="branch") ||
+    (operation==="checkin"&&c.code==="events.checkin"&&c.scopeMode==="branch")
+  );
+  if(branchGrant) return true;
+  const roles=operation==="register"?["owner","organizer"]:["owner","organizer","checkin"];
+  const staffMarks=roles.map(()=>"?").join(",");
+  const staff=await env.DB.prepare(`SELECT 1 AS allowed FROM event_staff_assignment
+    WHERE event_id=? AND branch_id=? AND staff_auth_user_id=? AND assignment_role IN (${staffMarks})
+      AND revoked_at IS NULL AND starts_at<=? AND (ends_at IS NULL OR ends_at>?) LIMIT 1`)
+    .bind(eventId,branchId,context.staff.userId,...roles,now,now).first<{allowed:number}>();
+  if(staff) return true;
+  const teamRoles=operation==="register"?["organizer","ushering"]:["organizer","ushering"];
+  const teamMarks=teamRoles.map(()=>"?").join(",");
+  const team=await env.DB.prepare(`SELECT 1 AS allowed FROM event_team_assignment eta
+    JOIN staff_team_membership stm ON stm.team_id=eta.team_id AND stm.branch_id=eta.branch_id
+    WHERE eta.event_id=? AND eta.branch_id=? AND stm.staff_profile_id=?
+      AND eta.assignment_role IN (${teamMarks}) AND eta.revoked_at IS NULL AND stm.revoked_at IS NULL
+      AND eta.starts_at<=? AND (eta.ends_at IS NULL OR eta.ends_at>?)
+      AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?) LIMIT 1`)
+    .bind(eventId,branchId,context.staff.profileId,...teamRoles,now,now,now,now).first<{allowed:number}>();
+  if(team) return true;
+  return operation==="checkin" &&
+    context.activeBranch?.capabilities.some(c=>c.code==="events.checkin"&&c.scopeMode==="assigned") &&
+    !!(await env.DB.prepare("SELECT 1 FROM event_staff_assignment WHERE event_id=? AND branch_id=? AND staff_auth_user_id=? AND revoked_at IS NULL AND starts_at<=? AND (ends_at IS NULL OR ends_at>?) LIMIT 1")
+      .bind(eventId,branchId,context.staff.userId,now,now).first());
+}
+async function eventDigest(value:unknown):Promise<Uint8Array>{
+  const bytes=new TextEncoder().encode(JSON.stringify(value,Object.keys(value as object).sort()));
+  return new Uint8Array(await crypto.subtle.digest("SHA-256",bytes));
+}
+function bytesEqual(a:unknown,b:Uint8Array):boolean{
+  if(!(a instanceof Uint8Array)||a.byteLength!==b.byteLength) return false;
+  return a.every((v,i)=>v===b[i]);
+}
+async function eventReceiptReplay(env:Env,eventId:string,operation:string,key:string,digest:Uint8Array,requestId:string,origin?:string){
+  const receipt=await env.DB.prepare("SELECT resource_type,resource_id,response_status,request_digest FROM event_idempotency_receipt WHERE event_id=? AND operation=? AND idempotency_key=?")
+    .bind(eventId,operation,key).first<{resource_type:string;resource_id:string;response_status:number;request_digest:Uint8Array}>();
+  if(!receipt) return null;
+  if(!bytesEqual(receipt.request_digest,digest)) return json(409,{ok:false,error:{code:"IDEMPOTENCY_KEY_REUSED"}},requestId,origin);
+  return receipt;
+}
+async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
+  const url=new URL(request.url), parts=url.pathname.split("/").filter(Boolean);
+  const branchId=request.headers.get("x-branch-id")??url.searchParams.get("branch_id")??"";
+  const eventId=parts[3]??"";
+  if(!isUuidValue(branchId)||!isUuidValue(eventId)) return json(400,{ok:false,error:{code:"INVALID_EVENT_SCOPE"}},requestId,origin);
+  const operation=await eventOperationContext(request,env,branchId,eventId,requestId,origin);
+  if("response" in operation) return operation.response;
+  const {context,event}=operation;
+  const now=new Date().toISOString();
+
+  if(parts.length===5&&parts[4]==="staff-registration"&&request.method==="POST"){
+    if(!hasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    const action=url.pathname.endsWith("/open")?"open":url.pathname.endsWith("/close")?"close":null;
+    if(!action) return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
+    const state=action==="open"?"open":"closed";
+    const result=await env.DB.prepare("UPDATE event SET registration_state=?,updated_at=? WHERE id=? AND branch_id=?")
+      .bind(state,now,eventId,branchId).run();
+    if((result.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+    return json(200,{data:{...event,registration_state:state,updated_at:now}},requestId,origin);
+  }
+
+  if(parts.length===5&&parts[4]==="registrations"&&request.method==="GET"){
+    const allowed=await eventAssignmentAllows(env,context,eventId,branchId,now,"register");
+    if(!allowed) return json(403,{ok:false,error:{code:"EVENT_REGISTRATION_READ_NOT_AUTHORIZED"}},requestId,origin);
+    const rows=await env.DB.prepare(`SELECT er.id,er.event_id,er.branch_id,er.attendee_name_snapshot,er.attendee_phone_snapshot,er.status,er.registered_at,
+      (SELECT ec.checked_in_at FROM event_checkin ec WHERE ec.event_id=er.event_id AND ec.registration_id=er.id ORDER BY ec.checked_in_at DESC LIMIT 1) AS checked_in_at
+      FROM event_registration er WHERE er.event_id=? AND er.branch_id=? ORDER BY er.registered_at DESC,er.id DESC`).bind(eventId,branchId).all();
+    const active=await env.DB.prepare("SELECT COUNT(*) AS total FROM event_registration WHERE event_id=? AND branch_id=? AND status IN ('registered','attended')").bind(eventId,branchId).first<{total:number}>();
+    return json(200,{data:{registrations:rows.results??[],active_count:active?.total??0}},requestId,origin);
+  }
+
+  if(parts.length===5&&parts[4]==="registrations"&&request.method==="POST"){
+    const allowed=await eventAssignmentAllows(env,context,eventId,branchId,now,"register");
+    if(!allowed) return json(403,{ok:false,error:{code:"EVENT_REGISTRATION_NOT_AUTHORIZED"}},requestId,origin);
+    const parsed=await readJsonBody(request,4096);
+    if(!parsed.ok||!isPlainObject(parsed.value)||Object.keys(parsed.value).some(k=>!["idempotency_key","attendee_name","attendee_phone"].includes(k))) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_REGISTRATION"}},requestId,origin);
+    const key=typeof parsed.value.idempotency_key==="string"?parsed.value.idempotency_key.trim():"";
+    const name=typeof parsed.value.attendee_name==="string"?parsed.value.attendee_name.trim():"";
+    const phone=parsed.value.attendee_phone===null?null:typeof parsed.value.attendee_phone==="string"?parsed.value.attendee_phone.trim():null;
+    if(key.length<8||key.length>128||name.length<2||name.length>180||(phone!==null&&!/^\+[1-9]\d{7,14}$/.test(phone))) return json(400,{ok:false,error:{code:"INVALID_REGISTRATION"}},requestId,origin);
+    const digest=await eventDigest({attendee_name:name,attendee_phone:phone});
+    const replay=await eventReceiptReplay(env,eventId,"staff_registration",key,digest,requestId,origin);
+    if(replay instanceof Response) return replay;
+    if(replay){
+      const registration=await env.DB.prepare("SELECT id,event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,status,registered_at FROM event_registration WHERE id=?").bind(replay.resource_id).first();
+      return json(200,{data:{registration,replayed:true,response_status:replay.response_status}},requestId,origin);
+    }
+    const id=crypto.randomUUID();
+    const statements=[
+      env.DB.prepare(`INSERT INTO event_registration(id,event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,registration_source,status,registered_at,client_request_id,created_by)
+        VALUES(?,?,?,?,?,'staff','registered',?,?,?)`).bind(id,eventId,branchId,name,phone,now,key,context.staff.userId),
+      env.DB.prepare(`INSERT INTO event_idempotency_receipt(id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES(?,?,?,'staff_registration','staff',?,?,1,?,'event_registration',?,201,?)`).bind(crypto.randomUUID(),eventId,branchId,context.staff.userId,key,digest,id,now),
+    ];
+    try{const results=await env.DB.batch(statements);if(results.some(x=>!x.success)) throw new Error("EVENT_REGISTRATION_WRITE_FAILED");}
+    catch(error){const msg=error instanceof Error?error.message:"";if(msg.includes("EVENT_REGISTRATION_CLOSED"))return json(409,{ok:false,error:{code:"EVENT_REGISTRATION_CLOSED"}},requestId,origin);if(msg.includes("EVENT_CAPACITY_REACHED"))return json(409,{ok:false,error:{code:"EVENT_CAPACITY_REACHED"}},requestId,origin);if(msg.includes("UNIQUE"))return json(409,{ok:false,error:{code:"REGISTRATION_ALREADY_EXISTS"}},requestId,origin);throw error;}
+    const registration=await env.DB.prepare("SELECT id,event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,status,registered_at FROM event_registration WHERE id=?").bind(id).first();
+    return json(201,{data:{registration,replayed:false,response_status:201}},requestId,origin);
+  }
+
+  const registrationIndex=parts.indexOf("registrations");
+  const registrationId=registrationIndex>=0?parts[registrationIndex+1]:"";
+  const cancel=registrationIndex>=0&&parts[registrationIndex+2]==="cancel";
+  const checkin=registrationIndex>=0&&parts[registrationIndex+2]==="check-in";
+  if((cancel||checkin)&&request.method==="POST"&&isUuidValue(registrationId)){
+    const allowed=await eventAssignmentAllows(env,context,eventId,branchId,now,checkin?"checkin":"register");
+    if(!allowed) return json(403,{ok:false,error:{code:checkin?"EVENT_CHECKIN_NOT_AUTHORIZED":"EVENT_REGISTRATION_NOT_AUTHORIZED"}},requestId,origin);
+    const parsed=await readJsonBody(request,2048);
+    if(!parsed.ok||!isPlainObject(parsed.value)||Object.keys(parsed.value).some(k=>k!=="idempotency_key")) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_EVENT_OPERATION"}},requestId,origin);
+    const key=typeof parsed.value.idempotency_key==="string"?parsed.value.idempotency_key.trim():"";
+    if(key.length<8||key.length>128) return json(400,{ok:false,error:{code:"INVALID_IDEMPOTENCY_KEY"}},requestId,origin);
+    const op=checkin?"event_checkin":"registration_cancel";
+    const digest=await eventDigest({registration_id:registrationId,operation:op});
+    const replay=await eventReceiptReplay(env,eventId,op,key,digest,requestId,origin);
+    if(replay instanceof Response) return replay;
+    if(replay){
+      const resource=checkin?await env.DB.prepare("SELECT id,event_id,branch_id,registration_id,attendee_name_snapshot,checked_in_at,recorded_by,source FROM event_checkin WHERE id=?").bind(replay.resource_id).first():await env.DB.prepare("SELECT id,event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,status,registered_at FROM event_registration WHERE id=?").bind(replay.resource_id).first();
+      return json(200,{data:checkin?{checkin:resource,replayed:true,response_status:replay.response_status}:{registration:resource,replayed:true,response_status:replay.response_status}},requestId,origin);
+    }
+    const registration=await env.DB.prepare("SELECT id,event_id,branch_id,attendee_name_snapshot,status FROM event_registration WHERE id=? AND event_id=? AND branch_id=?").bind(registrationId,eventId,branchId).first<Record<string,unknown>>();
+    if(!registration) return json(404,{ok:false,error:{code:"REGISTRATION_NOT_FOUND"}},requestId,origin);
+    const resourceId=crypto.randomUUID();
+    const stmts=checkin?[
+      env.DB.prepare("INSERT INTO event_checkin(id,event_id,branch_id,registration_id,attendee_name_snapshot,checked_in_at,recorded_by,source,client_request_id) VALUES(?,?,?,?,?,?,?,'staff',?)")
+        .bind(resourceId,eventId,branchId,registrationId,registration.attendee_name_snapshot,now,context.staff.userId,key),
+      env.DB.prepare("UPDATE event_registration SET status='attended' WHERE id=? AND status='registered'").bind(registrationId),
+      env.DB.prepare(`INSERT INTO event_idempotency_receipt(id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES(?,?,?,'event_checkin','staff',?,?,1,?,'event_checkin',?,201,?)`).bind(crypto.randomUUID(),eventId,branchId,context.staff.userId,key,digest,resourceId,now),
+    ]:[
+      env.DB.prepare("UPDATE event_registration SET status='cancelled',cancelled_by=?,cancelled_at=?,cancellation_request_key=? WHERE id=? AND status='registered'")
+        .bind(context.staff.userId,now,key,registrationId),
+      env.DB.prepare(`INSERT INTO event_idempotency_receipt(id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES(?,?,?,'registration_cancel','staff',?,?,1,?,'event_registration',?,200,?)`).bind(crypto.randomUUID(),eventId,branchId,context.staff.userId,key,digest,registrationId,now),
+    ];
+    try{const results=await env.DB.batch(stmts);if(results.some(x=>!x.success))throw new Error("EVENT_OPERATION_WRITE_FAILED");}
+    catch(error){const msg=error instanceof Error?error.message:"";if(msg.includes("EVENT_CHECKIN_NOT_AUTHORIZED"))return json(403,{ok:false,error:{code:"EVENT_CHECKIN_NOT_AUTHORIZED"}},requestId,origin);if(msg.includes("UNIQUE"))return json(409,{ok:false,error:{code:checkin?"ALREADY_CHECKED_IN":"REGISTRATION_ALREADY_CANCELLED"}},requestId,origin);throw error;}
+    const resource=checkin?await env.DB.prepare("SELECT id,event_id,branch_id,registration_id,attendee_name_snapshot,checked_in_at,recorded_by,source FROM event_checkin WHERE id=?").bind(resourceId).first():await env.DB.prepare("SELECT id,event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,status,registered_at FROM event_registration WHERE id=?").bind(registrationId).first();
+    return json(checkin?201:200,{data:checkin?{checkin:resource,replayed:false,response_status:201}:{registration:resource,replayed:false,response_status:200}},requestId,origin);
+  }
+
+  if(parts.length===5&&parts[4]==="closeout"&&request.method==="GET"){
+    const canRead=hasScopedGrant(context,"events.manage","branch")||hasScopedGrant(context,"events.checkin","branch")||hasScopedGrant(context,"events.closeout.review","branch");
+    if(!canRead) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_READ_NOT_AUTHORIZED"}},requestId,origin);
+    const closeout=await env.DB.prepare("SELECT id,event_id,branch_id,submitted_by,submitted_at,reviewed_by,reviewed_at,status,attendee_count,registration_count,transport_seat_count,summary_notes FROM event_closeout WHERE event_id=? AND branch_id=?").bind(eventId,branchId).first();
+    const history=closeout?await env.DB.prepare("SELECT id,actor_user_id,action,details,created_at FROM event_closeout_event WHERE closeout_id=? ORDER BY created_at ASC").bind((closeout as Record<string,unknown>).id).all():{results:[]};
+    const parsedHistory=(history.results??[]).map((row:Record<string,unknown>)=>({...row,details:typeof row.details==="string"?JSON.parse(row.details):row.details}));
+    return json(200,{data:{closeout,history:parsedHistory}},requestId,origin);
+  }
+
+  if(parts.length===6&&parts[4]==="closeout"&&parts[5]==="submit"&&request.method==="POST"){
+    if(!hasScopedGrant(context,"events.manage","branch")&&!hasScopedGrant(context,"events.checkin","branch")) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_SUBMIT_NOT_AUTHORIZED"}},requestId,origin);
+    const parsed=await readJsonBody(request,4096);
+    if(!parsed.ok||!isPlainObject(parsed.value)||Object.keys(parsed.value).some(k=>!["idempotency_key","summary_notes"].includes(k))) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_CLOSEOUT"}},requestId,origin);
+    const key=typeof parsed.value.idempotency_key==="string"?parsed.value.idempotency_key.trim():"";
+    const notes=parsed.value.summary_notes===null?null:typeof parsed.value.summary_notes==="string"?parsed.value.summary_notes.trim():null;
+    if(key.length<8||key.length>128||(notes!==null&&notes.length>2000)) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT"}},requestId,origin);
+    const digest=await eventDigest({summary_notes:notes});
+    const replay=await eventReceiptReplay(env,eventId,"closeout_submit",key,digest,requestId,origin);
+    if(replay instanceof Response) return replay;
+    if(replay){const closeout=await env.DB.prepare("SELECT * FROM event_closeout WHERE id=?").bind(replay.resource_id).first();return json(200,{data:{closeout,replayed:true,response_status:replay.response_status}},requestId,origin);}
+    const counts=await env.DB.prepare(`SELECT
+      (SELECT COUNT(*) FROM event_checkin WHERE event_id=? AND branch_id=?) AS attendee_count,
+      (SELECT COUNT(*) FROM event_registration WHERE event_id=? AND branch_id=? AND status IN ('registered','attended')) AS registration_count,
+      (SELECT COALESCE(SUM(seat_count),0) FROM transport_reservation WHERE event_id=? AND branch_id=? AND status IN ('reserved','boarded')) AS transport_seat_count`).bind(eventId,branchId,eventId,branchId,eventId,branchId).first<Record<string,number>>();
+    const existing=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=?").bind(eventId,branchId).first<{id:string;status:string}>();
+    const closeoutId=existing?.id??crypto.randomUUID();
+    const write=existing
+      ? env.DB.prepare("UPDATE event_closeout SET submitted_by=?,submitted_at=?,reviewed_by=NULL,reviewed_at=NULL,status='submitted',attendee_count=?,registration_count=?,transport_seat_count=?,summary_notes=?,updated_at=? WHERE id=? AND status='returned'")
+        .bind(context.staff.userId,now,counts?.attendee_count??0,counts?.registration_count??0,counts?.transport_seat_count??0,notes,now,closeoutId)
+      : env.DB.prepare("INSERT INTO event_closeout(id,event_id,branch_id,submitted_by,submitted_at,status,attendee_count,registration_count,transport_seat_count,summary_notes,created_at,updated_at) VALUES(?,?,?,?,?,'submitted',?,?,?,?,?,?)")
+        .bind(closeoutId,eventId,branchId,context.staff.userId,now,counts?.attendee_count??0,counts?.registration_count??0,counts?.transport_seat_count??0,notes,now,now);
+    const statements=[
+      write,
+      env.DB.prepare("INSERT INTO event_closeout_event(id,closeout_id,actor_user_id,action,details,created_at) VALUES(?,?,?,'submitted',?,?)")
+        .bind(crypto.randomUUID(),closeoutId,context.staff.userId,JSON.stringify({attendee_count:counts?.attendee_count??0,registration_count:counts?.registration_count??0,transport_seat_count:counts?.transport_seat_count??0}),now),
+      env.DB.prepare(`INSERT INTO event_idempotency_receipt(id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+        VALUES(?,?,?,'closeout_submit','staff',?,?,1,?,'event_closeout',?,201,?)`).bind(crypto.randomUUID(),eventId,branchId,context.staff.userId,key,digest,closeoutId,now),
+    ];
+    try{const results=await env.DB.batch(statements);if(results.some(x=>!x.success))throw new Error("CLOSEOUT_SUBMIT_FAILED");}
+    catch(error){const msg=error instanceof Error?error.message:"";if(msg.includes("UNIQUE"))return json(409,{ok:false,error:{code:"CLOSEOUT_ALREADY_SUBMITTED"}},requestId,origin);if(msg.includes("EVENT_CLOSEOUT"))return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_SUBMIT_NOT_AUTHORIZED"}},requestId,origin);throw error;}
+    const closeout=await env.DB.prepare("SELECT * FROM event_closeout WHERE id=?").bind(closeoutId).first();
+    return json(201,{data:{closeout,replayed:false,response_status:201}},requestId,origin);
+  }
+
+  if(parts.length===6&&parts[4]==="closeout"&&parts[5]==="review"&&request.method==="POST"){
+    if(!hasScopedGrant(context,"events.closeout.review","branch")) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_REVIEW_NOT_AUTHORIZED"}},requestId,origin);
+    const parsed=await readJsonBody(request,4096);
+    if(!parsed.ok||!isPlainObject(parsed.value)||Object.keys(parsed.value).some(k=>!["idempotency_key","decision","reason"].includes(k))) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_CLOSEOUT_REVIEW"}},requestId,origin);
+    const key=typeof parsed.value.idempotency_key==="string"?parsed.value.idempotency_key.trim():"";
+    const decision=parsed.value.decision;
+    const reason=parsed.value.reason===null?null:typeof parsed.value.reason==="string"?parsed.value.reason.trim():null;
+    if(key.length<8||key.length>128||!["approved","returned"].includes(String(decision))||(decision==="returned"&&(!reason||reason.length<10))||(reason!==null&&reason.length>2000)) return json(400,{ok:false,error:{code:"INVALID_CLOSEOUT_REVIEW"}},requestId,origin);
+    const closeout=await env.DB.prepare("SELECT id,status FROM event_closeout WHERE event_id=? AND branch_id=?").bind(eventId,branchId).first<{id:string;status:string}>();
+    if(!closeout) return json(404,{ok:false,error:{code:"CLOSEOUT_NOT_FOUND"}},requestId,origin);
+    if(closeout.status!=="submitted") return json(409,{ok:false,error:{code:"CLOSEOUT_NOT_SUBMITTED"}},requestId,origin);
+    const digest=await eventDigest({decision,reason});
+    const replay=await eventReceiptReplay(env,eventId,"closeout_review",key,digest,requestId,origin);
+    if(replay instanceof Response) return replay;
+    if(replay){const record=await env.DB.prepare("SELECT * FROM event_closeout WHERE id=?").bind(closeout.id).first();return json(200,{data:{closeout:record,replayed:true,response_status:replay.response_status}},requestId,origin);}
+    const action=decision==="approved"?"approved":"returned";
+    const update=env.DB.prepare("UPDATE event_closeout SET status=?,reviewed_by=?,reviewed_at=?,updated_at=? WHERE id=? AND status='submitted'")
+      .bind(decision,context.staff.userId,now,now,closeout.id);
+    const audit=env.DB.prepare("INSERT INTO event_closeout_event(id,closeout_id,actor_user_id,action,details,created_at) VALUES(?,?,?,?,?,?)")
+      .bind(crypto.randomUUID(),closeout.id,context.staff.userId,action,JSON.stringify({reason}),now);
+    const receipt=env.DB.prepare(`INSERT INTO event_idempotency_receipt(id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
+      VALUES(?,?,?,'closeout_review','staff',?,?,1,?,'event_closeout',?,200,?)`).bind(crypto.randomUUID(),eventId,branchId,context.staff.userId,key,digest,closeout.id,now);
+    try{const results=await env.DB.batch([update,audit,receipt]);if(results.some(x=>!x.success))throw new Error("CLOSEOUT_REVIEW_FAILED");}
+    catch(error){const msg=error instanceof Error?error.message:"";if(msg.includes("EVENT_CLOSEOUT_EVENT_NOT_AUTHORIZED"))return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_REVIEW_NOT_AUTHORIZED"}},requestId,origin);throw error;}
+    const record=await env.DB.prepare("SELECT * FROM event_closeout WHERE id=?").bind(closeout.id).first();
+    return json(200,{data:{closeout:record,replayed:false,response_status:200}},requestId,origin);
+  }
+  return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
+}
+
 async function handleReportOperations(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
   const url = new URL(request.url);
   const parts = url.pathname.split("/").filter(Boolean);
@@ -4429,6 +4655,10 @@ async function updatePrayerRequestStatus(
 }
 
 
+
+    if (url.pathname.startsWith("/api/v1/events/") && (request.method === "GET" || request.method === "POST")) {
+      return handleEventWorkspaceOperations(request, env, requestId, origin);
+    }
 
     if (url.pathname.startsWith("/api/v1/reports") && ["GET","POST"].includes(request.method)) {
       return handleReportOperations(request, env, requestId, origin);
