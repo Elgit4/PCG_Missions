@@ -180,3 +180,35 @@ Before production cutover:
 The GitHub Vercel status check currently reports a build-rate-limit failure; the Cloudflare D1 Foundation and CMI web CI runs above passed. This Vercel status is separate from the Worker authorization test results.
 
 SMS/Arkesel remains intentionally disabled. Existing production application data, production Pages routing and live Supabase grants remain untouched.
+
+
+## 2026-11-22 implementation update — report, event, and prayer API slice
+
+Implemented on `feat/cloudflare-d1-migration-foundation`:
+
+- Cloudflare Worker ministry-report endpoints: scoped list/detail/history, team and event options, submit, review, and resubmit.
+- Cloudflare Worker event-workspace endpoints: staff registration open/close, registration roster and creation, cancellation, check-in, and closeout read/submit/review. Idempotency receipts and database authorization triggers remain part of the write path.
+- Frontend API routing for typed ministry reports, event registration/check-in/closeout, and the assigned prayer inbox now targets the Cloudflare Worker when the Worker API base URL is configured.
+- Assigned prayer inbox now accepts pagination and returns the frontend's expected `data.requests/total/limit/offset` envelope.
+- Preview workflow schema assertions were corrected to the live non-production D1 schema version 43 (the previous 39/40 assertions were stale).
+
+Validation recorded for the implementation commit:
+- Worker TypeScript typecheck: passed.
+- SQLite foundation checks: passed.
+- Worker bundle tests: 47 passed, 0 failed.
+- Worker bundle dry-run build: passed.
+- Preview health smoke: returned `ok=true`, `environment=non-production`, `schema_version=43`.
+- Frontend typecheck, lint, tests, and production build: passed.
+- Cloudflare Pages check: passed.
+
+**Important boundary:** these checks validate the source bundle and the existing preview health endpoint. They do not prove that this new Worker bundle has been deployed to preview, nor do they constitute authenticated six-role browser acceptance or production cutover.
+
+Still blocked:
+- Event flyer object storage: Cloudflare reports R2 is not enabled for the account; bucket creation requires activation in the Cloudflare Dashboard.
+- Staff Auth Admin lifecycle: the Worker-only Supabase service-role secret is not available in the Worker environment. Do not substitute the publishable key.
+- Production Worker: no production Worker is deployed or bound to a verified production D1 database.
+- Backup: no independently verified Supabase backup/export and restore test is recorded.
+- Acceptance: six-role browser acceptance with real staff identities and branch-scoped records is outstanding.
+- Cutover: reconcile the production-named D1 database against the migration-test D1 and Supabase data, then complete audit/data reconciliation, rollback checks, and explicit release approval before changing production Pages routing.
+
+No production Worker deployment, production Pages routing change, production D1 write, or SMS send was performed in this implementation slice.
