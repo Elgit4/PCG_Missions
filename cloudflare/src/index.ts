@@ -1110,7 +1110,7 @@ async function listContacts(
     age_range: string | null; preferred_language: string | null;
     contact_status: string; created_at: string; updated_at: string;
   }>();
-  return json(200, { ok: true, data: (rows.results ?? []).map((row) => ({ ...row, is_public: false })) }, requestId, origin);
+  return json(200, { ok: true, data: rows.results ?? [] }, requestId, origin);
 }
 
 async function createContact(
@@ -3105,7 +3105,7 @@ async function handleTeamMembershipOrCoverageMutation(
         SELECT id, team_id, staff_profile_id, membership_role, starts_at, ends_at, created_at
         FROM staff_team_membership WHERE id = ? LIMIT 1
       `).bind(childId).first<Record<string, unknown>>();
-      return json(200, { ok: true, data: { ...updated, is_public: false } }, requestId, origin);
+      return json(200, { ok: true, data: updated }, requestId, origin);
     }
 
     if (teamMemberRevoke) {
@@ -3483,7 +3483,7 @@ async function handleAnnouncementCollection(request: Request, env: Env, requestI
       ORDER BY updated_at DESC, id DESC
       LIMIT ? OFFSET ?
     `).bind(branchId, limit, offset).all<AnnouncementDraftRow>();
-    return json(200, { ok: true, data: rows.results ?? [] }, requestId, origin);
+    return json(200, { ok: true, data: (rows.results ?? []).map((row) => ({ ...row, is_public: false })) }, requestId, origin);
   }
 
   const body = await readJsonBody(request, 24_000);
@@ -3562,7 +3562,7 @@ async function handleAnnouncementItem(request: Request, env: Env, announcementId
   const updated = await env.DB.prepare(`SELECT ${ANNOUNCEMENT_DRAFT_COLUMNS} FROM announcement WHERE id=? AND branch_id=?`)
     .bind(announcementId, branchId).first<AnnouncementDraftRow>();
   if (!updated) return json(404, { ok: false, error: { code: "ANNOUNCEMENT_NOT_FOUND" } }, requestId, origin);
-  return json(200, { ok: true, data: updated }, requestId, origin);
+  return json(200, { ok: true, data: { ...updated, is_public: false } }, requestId, origin);
 }
 
 type CalendarEntryRow = {
