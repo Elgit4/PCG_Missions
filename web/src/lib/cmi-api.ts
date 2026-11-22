@@ -738,6 +738,9 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
 
   if (functionName === "staff-auth") {
     if (suffix === "/admin/staff" && verb === "POST") return "/api/v1/staff/accounts";
+    if (suffix === "/admin/password-reset-requests" && verb === "GET") return "/api/v1/admin/password-reset-requests";
+    const resetReview = suffix.match(/^\\/admin\\/password-reset-requests\\/([^/]+)\\/(approve|deny)$/);
+    if (resetReview && verb === "POST") return `/api/v1/admin/password-reset-requests/${resetReview[1]}/${resetReview[2]}`;
     return null;
   }
 
