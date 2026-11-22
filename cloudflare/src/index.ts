@@ -4349,7 +4349,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
           JOIN event_staff_assignment a ON a.id=? AND a.branch_id=? AND a.staff_auth_user_id=sp.auth_user_id
           WHERE sp.auth_user_id=? AND sp.account_status='active'
         `).bind(
-          crypto.randomUUID(),branchId,id,
+          crypto.randomUUID(),branchId,eventId,
           `event-assignment:${id}:${targetId}`,now,
           id,branchId,targetId
         ));
@@ -4365,7 +4365,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
           JOIN event_team_assignment a ON a.id=? AND a.branch_id=stm.branch_id AND a.team_id=stm.team_id
           WHERE stm.team_id=? AND stm.branch_id=? AND stm.revoked_at IS NULL
             AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?)
-        `).bind(branchId,id,id,now,id,targetId,branchId,now,now));
+        `).bind(branchId,eventId,id,now,id,targetId,branchId,now,now));
       }
       const results=await env.DB.batch(statements);
       if(results.some(result=>!result.success)||(results[0]?.meta?.changes??0)!==1)
