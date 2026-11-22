@@ -543,6 +543,17 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           } else if (this.sql.includes("INSERT INTO welcome_message")) {
             const [id, branch_id, title, body, display_order, created_by, , created_at, updated_at] = this.values;
             contentRows.push({ id, branch_id, title, body, display_order, status: "draft", published_at: null, created_by, created_at, updated_at });
+          } else if (this.sql.startsWith("UPDATE sermon SET") || this.sql.startsWith("UPDATE welcome_message SET")) {
+            const table = this.sql.startsWith("UPDATE sermon SET") ? "sermon" : "welcome_message";
+            const setClause = this.sql.split(" SET ")[1].split(" WHERE ")[0];
+            const columns = setClause.split(", ").map((part) => part.split("=")[0]);
+            const rowId = this.values[this.values.length - 4];
+            const row = contentRows.find((item) => item.id === rowId && item.created_by === this.values[this.values.length - 2]);
+            if (row) {
+              columns.slice(0, -2).forEach((column, index) => { row[column] = this.values[index]; });
+              row.updated_by = this.values[columns.length - 2];
+              row.updated_at = this.values[columns.length - 1];
+            }
           } else if (this.sql.includes("INSERT INTO announcement")) {
             const [id, branch_id, title, body, created_by, updated_by, created_at, updated_at] = this.values;
             announcementRow = { id, branch_id, title, body, is_public: 0, status: "draft", created_by, created_at, updated_at };
@@ -1717,6 +1728,28 @@ test("Admin/Pastor can create and list only their own private sermon drafts in t
   assert.equal(list.status, 200);
   assert.equal(listed.data.length, 1);
   assert.equal(listed.data[0].title, "Faith and Service");
+
+  const update = await worker.fetch(new Request(
+    "https://worker.example/api/v1/content/sermons/" + created.data.id + "?branch_id=" + BRANCH_ID,
+    {
+      method: "PATCH",
+      headers: {
+        Cookie: "better-auth.session_token=verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: "Faithful Service" }),
+    },
+  ), env);
+  const updated = await update.json();
+  assert.equal(update.status, 200);
+  assert.equal(updated.data.title, "Faithful Service");
+
+  const otherAuthor = await worker.fetch(new Request(
+    "https://worker.example/api/v1/content/sermons/81000000-0000-4000-8000-000000000002?branch_id=" + BRANCH_ID,
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  assert.equal(otherAuthor.status, 404);
 });
 
 
