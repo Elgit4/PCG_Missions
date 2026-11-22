@@ -157,7 +157,22 @@ jobs:
           assert_unauth PATCH "/api/v1/areas/$area?branch_id=$branch" '{"is_active":false}'
           assert_unauth POST "/api/v1/areas/$area/coverage?branch_id=$branch" "{\"staff_profile_id\":\"$staff\"}"
           assert_unauth POST "/api/v1/areas/$area/coverage/$coverage/revoke?branch_id=$branch"
-          echo "All team and service-area mutation routes reject anonymous access."
+          event="40000000-0000-4000-8000-000000000001"
+          registration="50000000-0000-4000-8000-000000000001"
+          assert_unauth GET "/api/v1/reports?branch_id=$branch"
+          assert_unauth POST "/api/v1/reports?branch_id=$branch" '{"branch_id":"00000000-0000-4000-8000-000000000001","report_type":"daily_evangelism","period_start":"2026-11-22","period_end":"2026-11-22"}'
+          assert_unauth GET "/api/v1/reports/teams?branch_id=$branch"
+          assert_unauth GET "/api/v1/reports/events?branch_id=$branch"
+          assert_unauth GET "/api/v1/events/$event/registrations?branch_id=$branch"
+          assert_unauth POST "/api/v1/events/$event/registrations?branch_id=$branch" '{"idempotency_key":"registration-key-123","attendee_name":"Preview attendee","attendee_phone":null}'
+          assert_unauth POST "/api/v1/events/$event/registrations/$registration/check-in?branch_id=$branch" '{"idempotency_key":"checkin-key-123"}'
+          assert_unauth POST "/api/v1/events/$event/registrations/$registration/cancel?branch_id=$branch" '{"idempotency_key":"cancel-key-123"}'
+          assert_unauth GET "/api/v1/events/$event/closeout?branch_id=$branch"
+          assert_unauth POST "/api/v1/events/$event/closeout/submit?branch_id=$branch" '{"idempotency_key":"closeout-key-123","summary_notes":null}'
+          assert_unauth POST "/api/v1/events/$event/closeout/review?branch_id=$branch" '{"idempotency_key":"review-key-123","decision":"approved","reason":null}'
+          assert_unauth POST "/api/v1/events/$event/staff-registration/open?branch_id=$branch"
+          assert_unauth GET "/api/v1/pastoral/prayer/assigned?limit=10&offset=0"
+          echo "All team, service-area, ministry-report, event-lifecycle and prayer-inbox routes reject anonymous access."
  
       - name: Verify Pages preview was built with the Worker API origin
         shell: bash
