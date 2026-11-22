@@ -2096,3 +2096,17 @@ html[data-theme="dark"] .activity-panel { background-image: none !important; }
 .cmi-feedback-dismiss { display: grid; place-items: center; flex: none; width: 34px; height: 34px; border: 0; border-radius: 9px; background: transparent; color: var(--cmi-muted); cursor: pointer; }
 .cmi-feedback-dismiss:hover { background: rgb(0 0 0 / 5%); color: var(--cmi-text); }
 
+
+
+/* Branch-scoped staff role administration */
+.cmi-staff-role-management { display: grid; gap: 0.7rem; margin-top: 0.7rem; }
+.cmi-staff-role-list { display: grid; gap: 0.4rem; }
+.cmi-staff-role-item { display: flex; align-items: center; justify-content: space-between; gap: 0.7rem; padding: 0.5rem 0.65rem; border: 1px solid var(--cmi-border, #dfe4ea); border-radius: 9px; background: var(--cmi-surface-muted, #f8fafc); font-size: 0.82rem; }
+.cmi-staff-role-approvals { display: grid; gap: 0.8rem; margin-top: 1rem; }
+.cmi-staff-role-approvals > .cmi-task-row { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 0.7rem; padding: 0.9rem; border: 1px solid var(--cmi-border, #dfe4ea); border-radius: 12px; }
+.cmi-staff-role-approvals label { display: grid; gap: 0.4rem; font-size: 0.85rem; font-weight: 600; }
+.cmi-staff-role-approvals textarea { width: 100%; min-height: 64px; resize: vertical; }
+@media (max-width: 620px) {
+  .cmi-staff-role-item { align-items: flex-start; flex-direction: column; }
+  .cmi-staff-role-item .cmi-button { width: 100%; }
+}
