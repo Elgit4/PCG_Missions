@@ -1,169 +1,151 @@
 # PCG Missions Cloudflare production-readiness plan
 
-**Official frontend:** https://pcg-missions.pages.dev/  
-**Target application backend:** Cloudflare Workers  
-**Target application database:** Cloudflare D1, EU jurisdiction  
-**Identity provider:** Existing Supabase Auth  
-**Status:** In progress; production cutover is blocked.
+**Status:** Non-production implementation and synthetic verification are substantially complete. Production cutover remains blocked by restore, full data-integrity, authenticated acceptance, and rollback gates.
 
-This document is an execution checklist, not a claim that the listed work is complete.
+## Architecture and safety rules
 
-## Non-negotiable architecture
+- Official frontend: Cloudflare Pages project `pcg-missions`.
+- Target application API: Cloudflare Workers.
+- Target application database: Cloudflare D1 in EU jurisdiction.
+- Identity provider: existing Supabase Auth project `cgwffpxlwgbnlinzwfoj`.
+- Preserve all six roles: `admin_pastor`, `coordinator`, `team_leader`, `field_worker`, `follow_up_volunteer`, and `prayer_intercessor`.
+- Do not introduce a second credential/session system or store password hashes, tokens, refresh tokens, or browser sessions in D1.
+- SMS/Arkesel remains disabled and must not be enabled as part of this migration.
+- Do not change official Pages production routing, import production data, or activate a production Worker until all release gates pass.
 
-- Keep the existing Cloudflare Pages project `pcg-missions` as the only official frontend.
-- Use Cloudflare Workers for application APIs and D1 for application data.
-- Retain the existing Supabase Auth project and all existing Auth user identities.
-- Remove Better Auth from the target architecture. Do not create a second credential/session system.
-- Store no password hashes, access tokens, refresh tokens or browser sessions in D1.
-- Preserve all six roles: `admin_pastor`, `coordinator`, `team_leader`, `field_worker`, `follow_up_volunteer`, `prayer_intercessor`.
-- Do not enable SMS/Arkesel as part of this migration.
-- Do not switch production Pages variables or production API routing until acceptance gates pass.
+## Current verified state — 22 November 2026
 
-## Current verified blockers — 21 November 2026
+### Non-production deployment
 
-The migration now has a deployed non-production Worker and a Pages preview wired to it. This is a working preview integration, not a production cutover.
+- Preview Worker: `pcg-missions-api-preview`.
+- Active preview version: **27**, ID `51ad049f-c48d-4cc9-8718-910c39ea0393`, with 100% of preview traffic.
+- Preview environment marker: `APP_ENV=non-production`.
+- D1 binding: `pcg-missions-migration-test`, ID `74074d53-1edc-4ad7-83e6-bb3333a6ab4f`, EU jurisdiction, schema version 43.
+- The existing Supabase URL and publishable key bindings are present. `SUPABASE_SERVICE_ROLE_KEY` is a Worker-only `secret_text` binding; its value is not in source or browser code.
+- Event flyer files use the private Supabase Storage bucket `pcg-missions-event-media`; do not introduce R2 for this approved design.
+- The production-named D1 `pcg-missions-production` is still marked `environment=non-production`. It is not a production runtime database.
+- No `pcg-missions-api-production` Worker is serving application traffic.
 
-1. The preview Worker `pcg-missions-api-preview` is deployed on workers.dev and bound to the isolated EU D1 rehearsal database. Its runtime smoke checks pass for health/schema, anonymous-auth rejection, CORS and the team/service-area route families.
-2. The Pages preview branch `feat/cloudflare-d1-migration-foundation` embeds the Worker API origin through `web/wrangler.toml` `[env.preview.vars]`. `[env.production.vars]` explicitly leaves `VITE_CMI_WORKER_API_URL` empty. The official production branch and production backend remain unchanged.
-3. Frontend API routing now uses the Worker for staff session context, contact listing, contact-note reads/creation, follow-up task listing, staff directory, notifications, and complete team/service-area CRUD including membership and coverage. Other operations continue to use the existing Supabase Edge Function path; this is an intentional transitional boundary.
-4. Full route parity remains incomplete. Reports, pastoral request lifecycle, event flyer storage, and some prayer, event and staff-account workflows still require migration and authenticated acceptance. The active Supabase project does not currently expose all of the legacy Edge Function slugs referenced by the frontend.
-5. The preview Worker was uploaded through the connected Cloudflare account because GitHub Actions still injects an empty `CLOUDFLARE_API_TOKEN`. The bundle/build/smoke workflow now runs independently; the credential-based deployment workflow is manual-only. Future automatic GitHub-to-Cloudflare deployments still need the secret scope corrected.
-6. The Worker bundle currently has no `SUPABASE_SERVICE_ROLE_KEY` secret. Supabase Auth user administration/invitation provisioning must remain on the existing trusted Supabase path until that Worker-only secret is provisioned and tested.
-7. The EU D1 database `pcg-missions-migration-test` remains a rehearsal only: schema version 39, 86 application tables, 63 active capabilities, 73 active role-capability grants, 3 staff profiles, 2 role assignments, 3 Supabase identity references, and 6 staff-access audit rows. `PRAGMA foreign_key_check` returns no violations. This does not establish source-to-destination data parity or production readiness.
-8. Deterministic, repeatable import/export and reconciliation, backup/restore rehearsal, six-role authenticated browser acceptance, monitoring, rollback and production D1 provisioning remain incomplete.
-9. The official Pages project still uses production branch `feat/cmi-pcg-missions-final-review-v6`. Production Pages configuration, Supabase Auth identities, Supabase data and production routing remain unchanged.
+### Worker-backed application workflows
 
-## Latest non-production authorization and Worker verification — 21 November 2026
+The migration branch contains Worker routes and frontend adapters for:
 
-- D1 rehearsal migrations 0038 and 0039 are now applied; the active schema version is 39. The Admin/Pastor role has branch-level team/service-area management, Coordinator has branch-level directory-read access, and Team Leader has team-scoped directory-read access. The three other roles receive no team/service-area directory grants.
-- Worker directory queries now enforce those read scopes in SQL. Team Leaders see only their own active team and areas with active coverage associated with members of that team. Staff names remain separately protected by `staff.directory.read`.
-- Preview Worker v5 (`c7eff623-511d-446b-a427-7e4589813f49`) is deployed to the non-production Worker and points only to the EU rehearsal D1 database. The post-deployment smoke run [44946876309](https://github.com/Elgit4/PCG_Missions/actions/runs/44946876309) passed health/schema 39, unauthenticated route and mutation rejection, CORS and Pages bundle checks.
-- CI evidence: [D1 Foundation 44946503388](https://github.com/Elgit4/PCG_Missions/actions/runs/44946503388) passed; [CMI web CI 44946503429](https://github.com/Elgit4/PCG_Missions/actions/runs/44946503429) passed frontend type-check, lint, tests and build.
-- This does not satisfy the authenticated six-role acceptance gate. It also does not resolve the source-to-D1 audit-row reconciliation, missing Worker service-role secret, incomplete API parity, repeatable import/restore/rollback rehearsal or production cutover gates.
+- Supabase Auth token verification and branch-scoped staff/role/capability context.
+- Contacts, contact notes, interactions, and follow-up task workflows.
+- Team and service-area directory and administration.
+- Staff directory and Admin/Pastor staff account administration.
+- Internal notifications and recipient read state.
+- Typed ministry reports, review, and resubmission.
+- Event lifecycle, registration, cancellation, check-in, closeout, and private flyer operations.
+- Event staff/team assignment, assignment validation, and revocation.
+- Assigned prayer inbox and sensitive pastoral/prayer read handlers.
+- Calendar and announcement draft operations.
+- Staff password-reset requests, Admin/Pastor approval/denial, one-time temporary-password handoff, 24-hour expiry, and forced password-change lifecycle.
 
-## Preview request-boundary and runtime route tests — 21 November 2026
+Sensitive pastoral reads require an allowed reason code for oversight, enforce active assignment for assigned reads, write metadata-only append-only access audits, and fail closed when the audit write fails. Narrative content is not copied into audit metadata.
 
-- Audited direct browser business-write paths after the shared-Supabase preview guard was introduced. The multipart event-flyer uploader was not using the common request path; it now fails closed in preview before the network request. A regression test asserts no fetch occurs.
-- The normal CMI API adapter blocks every unsupported non-GET operation in preview before falling back to the shared Supabase business backend. The remaining separate password-reset/password-change routes are Auth lifecycle operations on the shared tenant; they are not safe as test-only actions against the preview.
-- Added mocked HTTP route tests covering Team Leader own-team/own-coverage filtering, no staff identity leakage, Coordinator branch directory read without management, and Admin/Pastor team creation plus transactional audit.
-- Latest checks: [Preview Worker Bundle 44947383145](https://github.com/Elgit4/PCG_Missions/actions/runs/44947383145), [D1 Foundation 44947387152](https://github.com/Elgit4/PCG_Missions/actions/runs/44947387152), and [CMI web CI 44947387140](https://github.com/Elgit4/PCG_Missions/actions/runs/44947387140) all passed. The Worker route suite passed 30 tests; the SQLite migration-contract suite passed 64 tests.
-- Pages preview deployment `ccbc064e-1bc5-4d75-89ed-fd29443f85c4` from source commit `25975f7b10b33dfe6528d379427cfc588b61ec02` succeeded and updated the preview alias. This still does not replace real authenticated six-role acceptance or the data reconciliation/restore/rollback gates.
+### Automated verification
 
-## Contact detail and interaction API parity progress — 21 November 2026
+At test commit `b1b156528ef56c2656b78fba054c736c81515c97`:
 
-- The preview frontend now routes branch-scoped contact detail reads and contact-interaction creation through the Worker. The contact projection redacts phone/email unless `contacts.contact_details.read` is granted. Interaction writes require `contacts.interaction.create`, the active branch and an authorized contact scope, then insert and read back from the rehearsal D1.
-- Runtime HTTP tests cover Coordinator contact-detail redaction, branch-required denial, authorized Coordinator interaction creation, and Prayer Intercessor write denial with no D1 mutation.
-- Latest CI at head `9c714aedb0963975d559f45e9a9b22dc47a04b98`: 34 Worker tests, 64 D1 migration tests, and 166 frontend tests across 28 files all passed. Lint, type-check, frontend build and preview live-smoke also passed.
-- Preview Worker v10 (`0e8f3c94-c68f-476e-924b-f6cd5844116f`) is active at 100%. The preview Pages alias remains on successful deployment `7d77425e-fd10-48be-9ff0-4f5a7cc24ddd`, source commit `fa9f76dd7461563c83dd17f42875d817dc152046`, which includes the latest frontend route mappings.
-- Remaining API gaps include contact edits/assignment, interaction listing, follow-up task writes, ministry reports/reviews, event/calendar operations, pastoral/prayer lifecycle and private flyer storage. The preview guard continues to block unsupported business writes to the shared Supabase project.
+- Cloudflare D1 Foundation passed, including **73 Python migration/security tests** and Worker typecheck.
+- CMI web CI passed frontend typecheck, lint, tests, and production build.
+- Preview Worker bundle and live route-boundary probes passed, including password recovery, event assignment, and sensitive pastoral read boundaries.
+- Worker route, Auth, password workflow, event assignment, and sensitive-read test suites passed.
+- Synthetic tests use controlled fixtures and mocked Auth/D1 adapters; no real staff account passwords or live account state are mutated.
 
-## Shared Supabase Auth preview safeguard — 21 November 2026
+The current PR head may contain documentation-only commits after this test commit. Re-run the full CI suite for any subsequent application-code changes.
 
-- Preview Pages uses the existing live Supabase Auth tenant, not a separate test tenant. The frontend now blocks password-reset initiation, recovery-link completion and forced password changes whenever `VITE_CMI_PREVIEW_MODE=true`, before any request is sent. This protects actual staff credentials during preview testing.
-- Normal sign-in and session refresh remain enabled. Staff whose profile requires a password change must complete it through the official portal and then sign in to the preview again.
-- Tests verified the credential-changing methods fail locally with `PREVIEW_AUTH_MUTATION_DISABLED` and no fetch. The latest frontend suite passed 164 tests across 28 files, with lint, type-check and production build successful.
-- Latest Pages preview deployment `56769943-379f-4262-8cad-10ce9f273dc0` completed successfully for source commit `9c27fb87dfdca25f09fd1623782c19c5bf4f3314` and owns the preview alias. Production Pages remains on its existing production branch.
-- This is an application-level safeguard, not an Auth tenant boundary. The preview must not be used for live password resets or credential changes. A separate Supabase Auth staging tenant remains a stronger future isolation option if full isolated user acceptance is required.
+These checks are not a substitute for authenticated browser acceptance using controlled staff sessions.
 
-## Workstream A — Identity and session security
+## Data and authorization reconciliation
 
-- Implemented request-scoped Supabase access-token verification in the Worker using Supabase's authenticated user endpoint; do not replace this with local JWT decoding.
-- Implemented resolution from the verified Auth UUID to a D1 staff profile and branch/role/capability context.
-- Enforce active profile, active branch assignment, current role, capability, resource scope and record ownership on protected Worker routes.
-- Invalid/missing tokens and Auth upstream failures fail closed. Deployed preview smoke verifies anonymous staff-context and team/area route rejection.
-- Removed Better Auth from the current Worker runtime and package dependencies. Historical migration artifacts are retained only as migration history.
-- Implemented the Supabase Auth Admin create/compensation adapter in source. The preview Worker still needs the server-only `SUPABASE_SERVICE_ROLE_KEY` secret before Worker-side invitation provisioning can be enabled.
-- Preserve administrator-provisioned accounts, no public self-signup, first-login password change, 24-hour temporary-password expiry and administrator-assisted reset semantics.
-- Keep service-role credentials exclusively in Worker secrets. Never return or log them.
-- Extend authenticated integration coverage for expired/revoked tokens, inactive staff, missing profile, branch mismatch, revoked/expired role assignments, Auth outage, duplicate invitation acceptance and compensation failures.
+Read-only comparison against Supabase covered 53 shared tables. **49 of 53 table counts match** across Supabase, migration-test D1, and production-named D1. Four tables differ:
 
-## Workstream B — Database and data correctness
+| Table | Supabase | Migration-test D1 | Production-named D1 |
+|---|---:|---:|---:|
+| `public.capability` | 61 | 89 | 107 |
+| `public.role_capability` | 65 | 128 | 128 |
+| `public.calendar_entry` | 0 | 1 | 0 |
+| `public.staff_access_audit` | 5 | 6 | 5 |
 
-- Reconcile every source migration and the existing D1 migration ledger; do not equate migration counts with feature parity.
-- Map all 29 Supabase source migrations, including the 12 outstanding features, to ordered SQLite-compatible D1 migrations.
-- Verify constraints, indexes, triggers, foreign keys, unique keys, timestamps, JSON semantics and transaction boundaries.
-- Reconcile the production capability catalogue and role grants by exact capability/role/scope, not totals alone.
-- Build a repeatable export/import process with deterministic IDs and audit behavior.
-- Compare source and destination counts, key relationships and representative records.
-- Run `PRAGMA foreign_key_check`, migration replay from empty state, upgrade replay from the staged baseline, and restore/re-import tests.
-- Keep the Supabase source unchanged until a separate production migration approval.
+Authorization differences have been semantically decomposed:
 
-## Workstream C — Complete backend parity
+- All 61 Supabase capability codes are present in migration-test D1.
+- All 65 canonical role/capability/scope grants match the canonical grant list in migration `0041`.
+- All 55 Worker compatibility grants match the explicit allowlist in migration `0042`; no extra role or broader scope was found.
+- Eight additional directory grants are explicit and least-privilege: Admin/Pastor receives branch-scoped team/area read and management; Coordinator receives branch-scoped team/area read; Team Leader receives team-scoped team/area read; other roles receive none.
+- The production-named D1 has 18 additional inactive capability rows with no role grants. Retain them until a separately reviewed cleanup decision; do not treat them as active permissions.
+- No role has an `sms.*` grant. Legacy broad `prayer.request.read` and `prayer.request.share` capabilities have no role grants.
+- The migration-test D1 has one additional rehearsal calendar entry and one additional staff-access audit event. Preserve both; do not delete them to force count parity.
 
-Port and verify every required operation currently provided by Supabase Edge Functions and PostgreSQL RPCs. Maintain a route-to-handler-to-capability matrix.
+Church, branch, staff-profile, password-reset-request, and password-reset-audit identities/counts were checked. Staff-role assignments were compared semantically by assignment ID, Auth identity, role code, branch, and revocation state.
 
-Required modules and current state:
-- staff authentication lifecycle and account administration — Supabase Auth remains active; Worker-side Auth Admin invitation provisioning is blocked on the Worker-only service-role secret;
-- contacts, notes, interactions and follow-up tasks — Worker preview supports contact listing, contact-note list/create and follow-up task reads; contact writes/interactions and task writes remain on the existing Supabase path;
-- pastoral care and assigned prayer inbox — partial Worker route handlers exist, but the frontend adapter and full lifecycle parity are outstanding;
-- teams and service areas — branch-scoped Worker preview supports list/create/update, team membership role/add/revoke and service-area coverage add/revoke; authenticated write acceptance remains outstanding;
-- typed ministry reports, review and resubmission — not yet ported to Worker;
-- internal notifications and recipient-scoped read state — Worker preview route mapping is implemented;
-- public content, announcements and content operations — existing Pages/Supabase routes remain in use pending Worker parity;
-- calendar and event management — existing Pages/Supabase routes remain in use pending Worker parity;
-- event staff assignment, registration, cancellation, check-in and closeout — Worker parity outstanding;
-- event flyer upload, metadata and private delivery — R2 integration and Worker handlers outstanding;
-- audit logging and first-admin bootstrap — D1 audit foundations exist; complete production acceptance remains outstanding.
+**Still incomplete:** full row-by-row business-data/reference reconciliation and a successful foreign-key integrity check. The Cloudflare API foreign-key check previously returned `SQLITE_AUTH`; it remains unverified.
 
-Do not expose a route until its authorization, validation, rate limiting, idempotency, error handling and tests are in place.
+Detailed evidence: `D1_BACKUP_RECONCILIATION_EVIDENCE_2026-11-22.md`.
 
-## Workstream D — Frontend integration
+## Backup and restore status
 
-- Inventory every frontend call to Supabase Edge Functions and database APIs.
-- Introduce an environment-configured API base URL with distinct preview and production values.
-- Keep the existing Pages `/api/auth` proxy for the supported Supabase Auth flows until each route has a verified replacement or an explicitly approved retained Auth-only responsibility.
-- Connect preview frontend only to the non-production Worker and D1 database.
-- Preserve current UI behavior, role-specific navigation, loading/error states and responsive layouts.
-- Verify no production build contains non-production endpoints, secrets or test data.
+- D1 SQL exports completed for both existing D1 databases; Time Travel bookmarks were captured.
+- A fresh migration-test export was generated for a restore rehearsal.
+- The signed R2 export URL could not be fetched because outbound requests to the R2 export host are blocked in the current execution environment. D1 import requires uploading the SQL file.
+- A disposable EU D1 was created for the rehearsal and deleted after the transfer limitation was confirmed. No import was started; neither existing D1 database was modified.
+- Export completion is not a restore test.
+- An independently retained Supabase source backup and verified restore path are also outstanding. Available Supabase project tools do not expose a backup-download/restore workflow.
 
-## Workstream E — Cloudflare infrastructure and operations
+A runner with access to the signed R2 URL and Cloudflare D1 import API is required to complete the restore rehearsal.
 
-- Keep existing non-production resources intact while testing.
-- Provision production D1 with EU jurisdiction only after approval and documented schema compatibility.
-- Configure production Worker bindings and secrets separately from preview.
-- Use R2 for private event flyers only after the account feature and access policies are approved and configured.
-- Configure rate limits, request size limits, security headers, origin allowlists, structured redacted logs and health checks.
-- Add monitoring for Worker exceptions, D1 failures, Auth upstream failures and latency.
-- Evaluate Workers Paid using measured CPU and request requirements; do not upgrade without an approved cost estimate.
-- Document D1 export, restore and rollback procedures.
+## Release gates
 
-## Workstream F — Required release gates
+### Gate 1 — Non-production build and route safety
 
-### Gate 1: Non-production build
-- Clean install, lint, typecheck, unit tests and Worker tests pass.
-- All D1 migrations replay successfully from an empty database.
-- All Worker routes have automated authorization and validation tests.
+<badge color="success">Passed at test commit b1b1565</badge>
 
-### Gate 2: Data rehearsal
-- Backup/export is verified.
-- Import is repeatable and produces deterministic counts.
-- Foreign-key and integrity checks pass.
-- All six roles and branch/resource boundaries are tested.
+- D1 migration chain replays to schema 43.
+- Worker typecheck and route/auth/security tests pass.
+- Frontend typecheck, lint, unit tests, and production build pass.
+- Preview route-boundary probes pass.
 
-### Gate 3: Frontend acceptance
-- Preview Pages is connected only to preview Worker/D1.
-- Sign-in, refresh, logout, password change and administrator reset request flows work.
-- Desktop and mobile workflows pass for all six roles.
-- No production data is written by preview.
+### Gate 2 — Data and recovery
 
-### Gate 4: Production authorization
-Requires separate explicit approval for:
-- creating paid resources or upgrading plans;
-- creating production D1/Worker/R2 resources;
-- importing production data;
-- changing official Pages production variables or API routing;
-- retiring any Supabase business-data services.
+<badge color="warning">In progress</badge>
 
-### Gate 5: Cutover and rollback
-- Take and verify final source backup.
-- Perform final controlled data synchronization.
-- Switch official Pages to the production Worker only after all previous gates pass.
-- Verify critical workflows and monitor errors.
-- Keep the original Supabase application data available for the agreed rollback period.
-- Do not delete Supabase Auth; it remains the identity provider.
+- Complete row-by-row reconciliation and foreign-key verification.
+- Import the D1 SQL export into a disposable EU D1 and verify schema, data, constraints, and key references.
+- Produce an independently retained Supabase backup and verify its restore path.
+- Preserve and explain the extra rehearsal calendar and audit rows; no blind cleanup.
 
-## Definition of production ready
+### Gate 3 — Authenticated role acceptance
 
-The application is production ready on Cloudflare only when the official Pages frontend uses the production Worker, the Worker uses the production EU D1 database, Supabase Auth remains the sole identity authority, all required business operations and six-role authorization tests pass, private files are correctly protected, data reconciliation and backup/restore are verified, monitoring is active, and a tested rollback procedure exists.
+<badge color="warning">Synthetic tests passed; browser acceptance outstanding</badge>
 
-A successful D1 schema replay alone is not production readiness.
+- Run controlled authenticated browser workflows for all six roles.
+- Verify branch/team/assigned record boundaries, account lifecycle, reports, event assignments, notifications, and sensitive pastoral reads.
+- Do not use live staff credentials for synthetic tests or change existing staff passwords as part of preview acceptance.
+
+### Gate 4 — Production provisioning
+
+<badge color="warning">Not started</badge>
+
+- Provision a separate production Worker and verify production-only D1, secret bindings, allowed origins, logging, monitoring, and alerting.
+- Verify the production D1 has the approved schema and data before it is bound to production.
+- Keep the production-named D1's `non-production` marker unchanged until its use is explicitly approved.
+
+### Gate 5 — Cutover and rollback
+
+<badge color="warning">Not started</badge>
+
+- Complete and rehearse a rollback using verified backups.
+- Take a final source backup and perform controlled data synchronization.
+- Obtain explicit release approval before changing official Pages production configuration/routing.
+- Keep Supabase Auth as the identity provider and preserve the original source data for the agreed rollback period.
+
+## Production safety boundary
+
+- Official Pages production remains on `feat/cmi-pcg-missions-final-review-v6`.
+- No production Worker is serving application traffic.
+- The production-named D1 remains marked `environment=non-production`.
+- No production Pages routing change, production data import, destructive reconciliation, or SMS send has been performed.
+
+Production readiness means the official Pages frontend uses a separately configured production Worker and EU D1, all required workflows and six-role authorization tests pass, data reconciliation and backup/restore are verified, monitoring is active, and rollback has been rehearsed. A successful schema replay or preview deployment alone is not production readiness.
