@@ -1575,7 +1575,7 @@ test("public password reset is non-enumerating and records only eligible active 
   assert.equal(writes.length, 2);
   assert.match(writes[0].sql, /INSERT INTO staff_password_reset_request/);
   assert.match(writes[1].sql, /INSERT INTO staff_password_reset_audit/);
-  assert.equal(writes.some((write) => JSON.stringify(write.values).includes("STAFF@EXAMPLE.TEST")), false);
+  assert.equal(writes.some((write) => JSON.stringify(write.values ?? []).includes("STAFF@EXAMPLE.TEST")), false);
 });
 
 test("password change clears the forced-change gate only after Supabase Auth succeeds", async (t) => {
