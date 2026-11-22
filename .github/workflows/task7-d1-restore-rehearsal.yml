@@ -186,9 +186,9 @@ jobs:
           ordered_data = [statement for name in ordered_tables for statement in data_by_table[name]]
           if not ordered_schema or not ordered_data:
               raise SystemExit('SQLite snapshot is missing table definitions or data; refusing import')
-          output = 'PRAGMA defer_foreign_keys = true;\\n' + '\\n'.join(ordered_schema + ordered_data + schema_objects) + '\\n'
+          output = 'PRAGMA defer_foreign_keys = true;\n' + '\n'.join(ordered_schema + ordered_data + schema_objects) + '\n'
           Path('/tmp/pcg-missions-d1-recovery-ordered.sql').write_text(output)
-          print(f'Reordered SQLite dump: {len(output)} bytes; {len(table_statements)} tables, {len(data_statements)} data statements, {len(schema_objects)} indexes/triggers/views')
+          print(f'Reordered SQLite dump: {len(output)} bytes; {len(table_statements)} tables, {len(ordered_data)} data statements, {len(schema_objects)} indexes/triggers/views')
           PY
           test -s /tmp/pcg-missions-d1-recovery-ordered.sql
 
@@ -198,7 +198,7 @@ jobs:
           set -euo pipefail
           import_url="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/833043cd-896e-4833-b5ae-17d520feba0f/import"
           dump_file="/tmp/pcg-missions-d1-recovery-ordered.sql"
-          printf '\\n-- Task 7 restore rehearsal run %s\\n' "$GITHUB_RUN_ID" >> "$dump_file"
+          printf '\n-- Task 7 restore rehearsal run %s\n' "$GITHUB_RUN_ID" >> "$dump_file"
           headers_file="/tmp/task7-d1-upload-headers.txt"
           etag="$(md5sum "$dump_file" | awk '{print $1}')"
 
