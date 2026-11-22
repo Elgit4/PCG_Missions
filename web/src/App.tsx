@@ -11,35 +11,16 @@ const PublicVisitorSite = lazy(async () => {
   const module = await import("./components/PublicVisitorSite");
   return { default: module.PublicVisitorSite };
 });
-import { PcgAuthClient } from "./lib/auth";
-import { CMI_PREVIEW_MODE, CMI_WORKER_API_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./lib/supabase-config";
+import { AuthClientError, PcgAuthClient } from "./lib/auth";
 import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
 import { ThemeToggle } from "./lib/theme";
 import { formatApplicationError } from "./lib/error-messages";
 import { hasSingleWorkspaceBranch } from "./lib/workspace-context";
 
 function StaffApp() {
-  const supabaseUrl = SUPABASE_URL;
-  const publishableKey = SUPABASE_PUBLISHABLE_KEY;
-  const configurationError = !supabaseUrl || !publishableKey
-    ? "This portal is not connected to its secure sign-in service. Contact a church administrator."
-    : "";
-
-  const auth = useMemo(() => {
-    if (!supabaseUrl || !publishableKey) return null;
-    try {
-      return new PcgAuthClient(supabaseUrl, publishableKey, undefined, undefined, CMI_PREVIEW_MODE, CMI_WORKER_API_URL);
-    } catch {
-      return null;
-    }
-  }, [supabaseUrl, publishableKey]);
-
-  const api = useMemo(() => auth
-    ? new CmiApiClient(
-      { supabaseUrl, publishableKey },
-      () => auth.getAccessToken(),
-    )
-    : null, [auth, supabaseUrl, publishableKey]);
+  const configurationError = "";
+  const auth = useMemo(() => new PcgAuthClient(), []);
+  const api = useMemo(() => new CmiApiClient(), []);
 
   const [view, setView] = useState<StaffAuthView>("sign-in");
   const [staffSession, setStaffSession] = useState<StaffSession | null>(null);
@@ -49,7 +30,7 @@ function StaffApp() {
   const [notice, setNotice] = useState("");
   const [workspaceRetryAvailable, setWorkspaceRetryAvailable] = useState(false);
 
-  const messageFor = useCallback((cause: unknown): string => formatApplicationError(cause, "We could not complete the sign-in request. Please try again."), []);
+  const messageFor = useCallback((cause: unknown): string => cause instanceof AuthClientError ? cause.message : formatApplicationError(cause, "We could not complete the sign-in request. Please try again."), []);
 
   const clearAuthentication = useCallback(async () => {
     try {
@@ -72,9 +53,7 @@ function StaffApp() {
     if (next.must_change_password) {
       setStaffSession(next);
       setView("change-password");
-      setNotice(CMI_PREVIEW_MODE
-        ? "This preview uses the live staff identity system. Complete the required password change on the official PCG Missions portal, then sign in here again."
-        : "");
+      setNotice("");
       return;
     }
     if (!next.branches.length) {

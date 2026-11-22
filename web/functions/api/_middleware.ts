@@ -59,7 +59,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
     const cookieHeaders = typeof upstream.headers.getSetCookie === "function"
       ? upstream.headers.getSetCookie()
       : (upstream.headers.get("set-cookie") ? [upstream.headers.get("set-cookie")] : []);
-    if (cookieHeaders.length) responseHeaders.set("Set-Cookie", cookieHeaders.join(", "));
+    for (const cookie of cookieHeaders) responseHeaders.append("Set-Cookie", cookie);
     responseHeaders.set("Cache-Control", "no-store, max-age=0");
     responseHeaders.set("X-Content-Type-Options", "nosniff");
     responseHeaders.set("X-Request-ID", requestId);

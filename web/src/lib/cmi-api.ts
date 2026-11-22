@@ -1,4 +1,3 @@
-import { CMI_PREVIEW_MODE, CMI_WORKER_API_URL, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./supabase-config";
 
 /**
  * PCG Missions CMI v2.1 browser API adapter.
@@ -7,13 +6,7 @@ import { CMI_PREVIEW_MODE, CMI_WORKER_API_URL, SUPABASE_PUBLISHABLE_KEY, SUPABAS
  * All business authorization is performed by the Edge Functions; this adapter
  * never talks directly to Postgres or carries service-role/provider secrets.
  */
-export interface CmiApiConfig {
-  supabaseUrl: string;
-  publishableKey: string;
-  workerApiUrl?: string;
-  /** Prevents unsupported business writes from falling back to the shared Supabase project in preview. */
-  previewMode?: boolean;
-}
+export interface CmiApiConfig { apiUrl?: string; }
 export type AccessTokenProvider = () => Promise<string | null>;
 export interface ApiEnvelope<T> {
   data: T;
@@ -553,54 +546,6 @@ function assertValidTaskReassignment(
   }
 }
 
-function xhrRequest(url: string | URL, init: RequestInit): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    if (typeof XMLHttpRequest === "undefined") {
-      reject(new TypeError("XMLHttpRequest is unavailable in this browser."));
-      return;
-    }
-    const request = new XMLHttpRequest();
-    request.open(init.method ?? "GET", String(url), true);
-    request.timeout = 15000;
-    new Headers(init.headers).forEach((value, key) => request.setRequestHeader(key, value));
-    request.onload = () => {
-      try {
-        if (request.status === 0) {
-          reject(new TypeError("XMLHttpRequest completed without an HTTP response."));
-          return;
-        }
-        const responseHeaders = new Headers();
-        // XHR exposes response headers separated by CRLF. Split on actual
-        // line breaks, not the literal characters "\\r" and "\\n".
-        for (const line of request.getAllResponseHeaders().split(/\r?\n/)) {
-          const separator = line.indexOf(":");
-          if (separator <= 0) continue;
-          const name = line.slice(0, separator).trim();
-          const value = line.slice(separator + 1).trim();
-          if (!name) continue;
-          try {
-            responseHeaders.append(name, value);
-          } catch {
-            // Ignore browser-restricted response headers; preserve status/body.
-          }
-        }
-        resolve(new Response(request.responseText, {
-          status: request.status,
-          statusText: request.statusText,
-          headers: responseHeaders,
-        }));
-      } catch (error) {
-        reject(error instanceof Error ? error : new TypeError("Unable to read the XHR response."));
-      }
-    };
-    request.onerror = () => reject(new TypeError("XMLHttpRequest network error."));
-    request.ontimeout = () => reject(new TypeError("XMLHttpRequest timed out."));
-    request.onabort = () => reject(new TypeError("XMLHttpRequest was aborted."));
-    if (init.body === undefined || init.body === null) request.send();
-    else request.send(init.body as XMLHttpRequestBodyInit);
-  });
-}
-
 function requestErrorDetail(error: unknown): string {
   if (error instanceof Error) {
     const message = error.message.replace(/[\\r\\n]+/g, " ").slice(0, 140);
@@ -768,63 +713,23 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     if (/^\/followup\/tasks\/[^/]+\/assign$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
   }
 
+  if (functionName === "public-content") return "/api/public/content";
   return null;
 }
 
 export class CmiApiClient {
   private readonly baseUrl: string;
-  private readonly workerApiBaseUrl: string | null;
-  private readonly previewMode: boolean;
 
   constructor(
-    private readonly config: CmiApiConfig,
-    private readonly getAccessToken: AccessTokenProvider,
+    config: CmiApiConfig = {},
+    _getAccessToken: AccessTokenProvider = async () => null,
     private readonly fetcher: typeof fetch = fetch,
   ) {
-    const supabaseUrl = normalizeBaseUrl(config.supabaseUrl);
-    if (!supabaseUrl || !config.publishableKey.trim()) {
-      throw new Error("PCG Missions API configuration is incomplete.");
-    }
-    const parsedUrl = new URL(supabaseUrl);
-    if (parsedUrl.protocol !== "https:" && parsedUrl.hostname !== "localhost" && parsedUrl.hostname !== "127.0.0.1") {
-      throw new Error("The Supabase URL must use HTTPS outside local development.");
-    }
-    this.baseUrl = `${supabaseUrl}/functions/v1`;
-    this.previewMode = config.previewMode ?? CMI_PREVIEW_MODE;
-    const workerApiUrl = normalizeBaseUrl(config.workerApiUrl ?? CMI_WORKER_API_URL);
-    if (workerApiUrl) {
-      const workerUrl = new URL(workerApiUrl);
-      if (workerUrl.protocol !== "https:" && workerUrl.hostname !== "localhost" && workerUrl.hostname !== "127.0.0.1") {
-        throw new Error("The Cloudflare Worker API URL must use HTTPS outside local development.");
-      }
-      this.workerApiBaseUrl = workerApiUrl;
-    } else {
-      this.workerApiBaseUrl = null;
-    }
-  }
-
-  private async sendWithBrowserFallback(url: string | URL, init: RequestInit): Promise<Response> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    let fetchError: unknown;
-    try {
-      return await this.fetcher(url, { ...init, signal: controller.signal });
-    } catch (error) {
-      fetchError = error;
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    // Do not let a browser fetch hang the staff portal indefinitely.
-    try {
-      return await xhrRequest(url, init);
-    } catch (xhrError) {
-      throw new CmiApiError(
-        0,
-        "NETWORK_ERROR",
-        `Browser request failed or timed out. Fetch: ${requestErrorDetail(fetchError)}; XMLHttpRequest: ${requestErrorDetail(xhrError)}.`,
-        null,
-      );
+    const configured = normalizeBaseUrl(config.apiUrl ?? "");
+    this.baseUrl = configured || (typeof window !== "undefined" ? window.location.origin : "http://localhost");
+    const parsed = new URL(this.baseUrl);
+    if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+      throw new Error("The PCG Missions API URL must use HTTPS outside local development.");
     }
   }
 
@@ -833,78 +738,44 @@ export class CmiApiClient {
     path: string,
     options: CmiRequestOptions = {},
   ): Promise<ApiEnvelope<T>> {
-    const authenticated = options.authenticated !== false;
-    const token = authenticated ? await this.getAccessToken() : null;
-    if (authenticated && !token) {
-      throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
-    }
-    const suffix = path ? (path.startsWith("/") ? path : `/${path}`) : "";
+    const suffix = path ? (path.startsWith("/") ? path : "/" + path) : "";
     const method = (options.method ?? "GET").toUpperCase();
     const workerPath = workerApiPath(functionName, suffix, method);
-    const workerFollowupListRequest = functionName === "staff-operations" && suffix === "/followup/tasks" && method === "GET";
-    const workerAssignedPrayerRequest = functionName === "pastoral-operations" && suffix === "/prayer/requests/assigned" && method === "GET";
-    const useWorkerApi = this.workerApiBaseUrl !== null && workerPath !== null;
-    if (this.previewMode && this.workerApiBaseUrl !== null && !useWorkerApi && method !== "GET") {
-      throw new CmiApiError(
-        503,
-        "PREVIEW_OPERATION_NOT_MIGRATED",
-        "This write operation is not available in the Cloudflare preview yet. No data was changed.",
-        null,
-      );
+    if (!workerPath) {
+      throw new CmiApiError(501, "CLOUDFLARE_ROUTE_NOT_MIGRATED",
+        "This operation has no Cloudflare Worker route yet. No request was sent to another service.", null);
     }
-    const useSameOriginSessionProxy = !useWorkerApi && functionName === "staff-session" &&
-      typeof window !== "undefined" &&
-      window.location.hostname !== "localhost" &&
-      window.location.hostname !== "127.0.0.1";
-    const url = useWorkerApi
-      ? new URL(workerPath!, this.workerApiBaseUrl!)
-      : useSameOriginSessionProxy
-        ? new URL("/api/auth?resource=staff-session", window.location.origin)
-        : new URL(`${this.baseUrl}/${functionName}${suffix}`);
+
+    const url = new URL(workerPath, this.baseUrl);
     for (const [key, value] of Object.entries(options.query ?? {})) {
-      if (useWorkerApi && (workerFollowupListRequest || workerAssignedPrayerRequest) && key === "branch_id") continue;
       if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
     }
+
     const headers = new Headers({ Accept: "application/json" });
-    if (!useWorkerApi) headers.set("apikey", this.config.publishableKey);
-    if (token) headers.set("Authorization", `Bearer ${token}`);
     if (options.idempotencyKey) headers.set("Idempotency-Key", options.idempotencyKey);
     const bodyBranchId = options.body && typeof options.body === "object" && "branch_id" in options.body
       ? (options.body as { branch_id?: unknown }).branch_id
       : undefined;
     const branchId = options.query?.branch_id ?? bodyBranchId;
-    if (branchId !== undefined && branchId !== null && branchId !== "") {
-      headers.set("X-Branch-Id", String(branchId));
-    }
+    if (branchId !== undefined && branchId !== null && branchId !== "") headers.set("X-Branch-Id", String(branchId));
     if (options.body !== undefined) headers.set("Content-Type", "application/json");
 
-    const requestInit: RequestInit = {
-      method: options.method ?? "GET",
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      cache: "no-store",
-    };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     let response: Response;
     try {
-      response = await this.sendWithBrowserFallback(url, requestInit);
-    } catch (proxyError) {
-      if (!useSameOriginSessionProxy) throw proxyError;
-      // Keep session lookup available through the project's own HTTPS endpoint
-      // if the same-origin Vercel path is unavailable to this browser.
-      const directUrl = new URL(`${this.baseUrl}/${functionName}${suffix}`);
-      for (const [key, value] of Object.entries(options.query ?? {})) {
-        if (value !== undefined && value !== "") directUrl.searchParams.set(key, String(value));
-      }
-      try {
-        response = await this.sendWithBrowserFallback(directUrl, requestInit);
-      } catch (directError) {
-        throw new CmiApiError(
-          0,
-          "NETWORK_ERROR",
-          `Unable to reach PCG Missions. Proxy: ${requestErrorDetail(proxyError)}; Supabase: ${requestErrorDetail(directError)}.`,
-          null,
-        );
-      }
+      response = await this.fetcher(url.toString(), {
+        method,
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        credentials: "include",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+    } catch (error) {
+      throw new CmiApiError(0, "NETWORK_ERROR", requestErrorDetail(error), null);
+    } finally {
+      clearTimeout(timeout);
     }
 
     const payload = parseJson(await response.text()) as (ApiEnvelope<T> & ApiErrorBody) | null;
@@ -1547,10 +1418,5 @@ export class CmiApiClient {
 }
 
 export function createConfiguredCmiApiClient(getAccessToken: AccessTokenProvider): CmiApiClient {
-  const supabaseUrl = SUPABASE_URL;
-  const publishableKey = SUPABASE_PUBLISHABLE_KEY;
-  if (!supabaseUrl || !publishableKey) {
-    throw new Error("The Supabase browser connection is not configured.");
-  }
-  return new CmiApiClient({ supabaseUrl, publishableKey }, getAccessToken);
+  return new CmiApiClient({}, getAccessToken);
 }
