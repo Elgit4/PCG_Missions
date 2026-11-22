@@ -1,7 +1,7 @@
 -- Align the D1 authorization catalogue to the live six-role CMI policy.
--- Canonical codes are copied from Supabase; explicit Worker aliases retain the
--- route contract while mirroring only the same role and scope. SMS remains ungranted.
--- Team/area read is the previously approved extra directory projection policy.
+-- Canonical codes are copied from Supabase; explicit Worker aliases mirror the
+-- same role and scope. SMS remains ungranted. Directory-read additions are
+-- the approved Admin/Coordinator branch and Team Leader team read scopes.
 
 CREATE TABLE authorization_policy_v41_guard (ok INTEGER NOT NULL CHECK (ok = 1));
 INSERT INTO authorization_policy_v41_guard (ok)
@@ -10,15 +10,15 @@ SELECT CASE WHEN
   AND (SELECT COUNT(*) FROM capability WHERE code IN ('team.read','area.read')) = 2
 THEN 1 ELSE 0 END;
 
--- Preserve stable D1 role IDs because staff-role assignments reference them.
-UPDATE role SET name='Admin / Pastor', description='Combined church administration and pastoral leadership role.', is_active=1, created_at='2026-11-10T13:45:38.429931+00:00' WHERE code='admin_pastor';
-UPDATE role SET name='Coordinator', description='Coordinates operational follow-up and ministry workflows.', is_active=1, created_at='2026-11-10T13:45:38.429931+00:00' WHERE code='coordinator';
-UPDATE role SET name='Field Worker', description='Captures contacts and performs assigned field follow-up.', is_active=1, created_at='2026-11-10T13:45:38.429931+00:00' WHERE code='field_worker';
-UPDATE role SET name='Follow-up Volunteer', description='Completes assigned follow-up activities.', is_active=1, created_at='2026-11-10T13:45:38.429931+00:00' WHERE code='follow_up_volunteer';
-UPDATE role SET name='Prayer Intercessor', description='Works only with prayer requests assigned to the intercessor.', is_active=1, created_at='2026-11-10T13:45:38.429931+00:00' WHERE code='prayer_intercessor';
-UPDATE role SET name='Team Leader', description='Leads an explicitly assigned ministry team.', is_active=1, created_at='2026-11-10T13:45:38.429931+00:00' WHERE code='team_leader';
+-- Keep the existing D1 role IDs: staff assignments use them as foreign keys.
+UPDATE role SET name='Admin / Pastor',description='Combined church administration and pastoral leadership role.',is_active=1,created_at='2026-11-10T13:45:38.429931+00:00' WHERE code='admin_pastor';
+UPDATE role SET name='Coordinator',description='Coordinates operational follow-up and ministry workflows.',is_active=1,created_at='2026-11-10T13:45:38.429931+00:00' WHERE code='coordinator';
+UPDATE role SET name='Field Worker',description='Captures contacts and performs assigned field follow-up.',is_active=1,created_at='2026-11-10T13:45:38.429931+00:00' WHERE code='field_worker';
+UPDATE role SET name='Follow-up Volunteer',description='Completes assigned follow-up activities.',is_active=1,created_at='2026-11-10T13:45:38.429931+00:00' WHERE code='follow_up_volunteer';
+UPDATE role SET name='Prayer Intercessor',description='Works only with prayer requests assigned to the intercessor.',is_active=1,created_at='2026-11-10T13:45:38.429931+00:00' WHERE code='prayer_intercessor';
+UPDATE role SET name='Team Leader',description='Leads an explicitly assigned ministry team.',is_active=1,created_at='2026-11-10T13:45:38.429931+00:00' WHERE code='team_leader';
 
--- Upsert the canonical source catalogue without changing existing D1 IDs.
+-- Canonical capability catalogue from live Supabase (IDs retained by code on D1).
 INSERT INTO capability (id,code,description,sensitivity,is_active,created_at) VALUES
   ('8df2a7c9-b68c-4694-a5de-44ebbdf3a21d','access.capability.manage','Maintain capability grants and policy configuration.','highly_restricted',1,'2026-11-11T22:14:19.495104+00:00'),
   ('a6139fa5-700e-4a19-bf8f-4058f4637684','access.role.assign','Assign or revoke one of the six predefined staff roles.','highly_restricted',1,'2026-11-11T22:14:19.495104+00:00'),
@@ -80,153 +80,175 @@ INSERT INTO capability (id,code,description,sensitivity,is_active,created_at) VA
   ('919931d3-0209-4ee6-975b-9a3dbb7d7cc8','staff.account.manage','Manage existing staff account status and approved recovery.','restricted',1,'2026-11-11T22:14:19.495104+00:00'),
   ('6bdaf8f5-2716-4cb0-b3f8-147bf3ce282b','staff.directory.read','Read the minimum branch staff directory projection.','ordinary',1,'2026-11-11T22:14:19.495104+00:00'),
   ('8d12c88c-02bc-4bda-8b6b-69434fa2e38b','staff.password_reset.manage','Review staff password-reset requests and issue one-time temporary passwords by email.','restricted',1,'2026-11-11T22:14:28.714977+00:00'),
-  ('1eb41791-e285-453f-9793-6142c37f4d2e','team.manage','Manage teams and team memberships.','ordinary',1,'2026-11-11T22:14:19.495104+00:00')
-ON CONFLICT(code) DO UPDATE SET description=excluded.description, sensitivity=excluded.sensitivity, is_active=excluded.is_active, created_at=excluded.created_at;
-
--- The UI/Worker directory projection adds read-only grants not present in the source catalogue.
-INSERT INTO capability (id,code,description,sensitivity,is_active,created_at) VALUES
+  ('1eb41791-e285-453f-9793-6142c37f4d2e','team.manage','Manage teams and team memberships.','ordinary',1,'2026-11-11T22:14:19.495104+00:00'),
   ('cap-team-read','team.read','Read teams and permitted membership summary within scope.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now')),
   ('cap-area-read','area.read','Read service areas and coverage summary within branch scope.','restricted',1,strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-ON CONFLICT(code) DO UPDATE SET description=excluded.description, sensitivity=excluded.sensitivity, is_active=1;
+ON CONFLICT(code) DO UPDATE SET description=excluded.description,sensitivity=excluded.sensitivity,is_active=excluded.is_active,created_at=excluded.created_at;
 
--- Remove the stale broad grant matrix before rebuilding exact canonical and compatibility grants.
+-- Drop the stale broad Worker seed grants before rebuilding the exact policy.
 DELETE FROM role_capability;
 
--- Canonical role-capability grants copied row-for-row from the live source.
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='access.role.assign' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='announcement.create.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='announcement.read.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='calendar.manage.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='calendar.read.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'oversight','2026-11-11T22:14:48.09663+00:00' FROM role r JOIN capability c ON c.code='care.oversight.read' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.assign.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.capture.create' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.identity.capture' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.identity.read.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.identity.update.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.interaction.record' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.note.create' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.note.read.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.read.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.update.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='content.manage.draft' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='event.manage.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='event.read.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.assign.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.create' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.read.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.update.scoped' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'oversight','2026-11-11T22:14:48.09663+00:00' FROM role r JOIN capability c ON c.code='prayer.oversight.read' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='staff.account.manage' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='staff.directory.read' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='staff.password_reset.manage' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.assign.scoped' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.capture.create' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.interaction.record' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.note.create' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.note.read.scoped' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.read.scoped' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.update.scoped' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.assign.scoped' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.create' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.read.scoped' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.update.scoped' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.capture.create' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.interaction.record' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.note.create' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.note.read.scoped' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.read.scoped' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.update.scoped' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.create' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.read.scoped' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.update.scoped' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.interaction.record' WHERE r.code='follow_up_volunteer' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.note.create' WHERE r.code='follow_up_volunteer' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.note.read.scoped' WHERE r.code='follow_up_volunteer' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.read.scoped' WHERE r.code='follow_up_volunteer' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.read.scoped' WHERE r.code='follow_up_volunteer' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.update.scoped' WHERE r.code='follow_up_volunteer' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:48.09663+00:00' FROM role r JOIN capability c ON c.code='prayer.request.read.assigned' WHERE r.code='prayer_intercessor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.assign.scoped' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.capture.create' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.interaction.record' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.note.create' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.note.read.scoped' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.read.scoped' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contact.update.scoped' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.assign.scoped' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.create' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.read.scoped' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.task.update.scoped' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
+-- Canonical grants exactly match the live Supabase role/scope matrix.
+WITH source_grants(role_code,capability_code,scope_mode,created_at) AS (
+  VALUES
+    ('admin_pastor','access.role.assign','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','announcement.create.scoped','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','announcement.read.scoped','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','calendar.manage.scoped','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','calendar.read.scoped','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','care.oversight.read','oversight','2026-11-11T22:14:48.09663+00:00'),
+    ('admin_pastor','contact.assign.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contact.capture.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contact.identity.capture','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contact.identity.read.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contact.identity.update.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contact.interaction.record','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contact.note.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contact.note.read.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contact.read.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contact.update.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','content.manage.draft','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','event.manage.scoped','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','event.read.scoped','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','followup.task.assign.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','followup.task.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','followup.task.read.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','followup.task.update.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','prayer.oversight.read','oversight','2026-11-11T22:14:48.09663+00:00'),
+    ('admin_pastor','staff.account.manage','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','staff.directory.read','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','staff.password_reset.manage','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contact.assign.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contact.capture.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contact.interaction.record','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contact.note.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contact.note.read.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contact.read.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contact.update.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','followup.task.assign.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','followup.task.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','followup.task.read.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','followup.task.update.scoped','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','contact.capture.create','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','contact.interaction.record','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','contact.note.create','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','contact.note.read.scoped','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','contact.read.scoped','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','contact.update.scoped','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','followup.task.create','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','followup.task.read.scoped','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','followup.task.update.scoped','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('follow_up_volunteer','contact.interaction.record','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('follow_up_volunteer','contact.note.create','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('follow_up_volunteer','contact.note.read.scoped','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('follow_up_volunteer','contact.read.scoped','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('follow_up_volunteer','followup.task.read.scoped','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('follow_up_volunteer','followup.task.update.scoped','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('prayer_intercessor','prayer.request.read.assigned','assigned','2026-11-11T22:14:48.09663+00:00'),
+    ('team_leader','contact.assign.scoped','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','contact.capture.create','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','contact.interaction.record','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','contact.note.create','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','contact.note.read.scoped','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','contact.read.scoped','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','contact.update.scoped','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','followup.task.assign.scoped','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','followup.task.create','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','followup.task.read.scoped','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','followup.task.update.scoped','team','2026-11-11T22:14:28.714977+00:00')
+)
+INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at)
+SELECT r.id,c.id,g.scope_mode,g.created_at
+FROM source_grants g
+JOIN role r ON r.code=g.role_code
+JOIN capability c ON c.code=g.capability_code
+WHERE 1=1
+ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
 
--- Legacy Worker route names are explicit aliases of the canonical source grant.
--- The alias inherits the exact same role, branch and scope. No broad fallback grants.
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='staff.role.assign' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='staff.role.approve' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='announcements.manage' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='announcements.read' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='calendar.manage' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='calendar.read' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.assign' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.create' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.contact_details.read' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.private_fields.read' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.private_fields.update' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.interaction.create' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.note.create' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.read' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.update' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='content.manage' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='events.manage' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-12T22:02:04.108677+00:00' FROM role r JOIN capability c ON c.code='events.read' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.assign' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.create' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.read' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.update' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.assign' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.create' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.interaction.create' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.note.create' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.read' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.update' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.assign' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.create' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.read' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.update' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.create' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.interaction.create' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.note.create' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.read' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.update' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.create' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.read' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.update' WHERE r.code='field_worker' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.interaction.create' WHERE r.code='follow_up_volunteer' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.note.create' WHERE r.code='follow_up_volunteer' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.read' WHERE r.code='follow_up_volunteer' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.read' WHERE r.code='follow_up_volunteer' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'assigned','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.update' WHERE r.code='follow_up_volunteer' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.assign' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.create' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.interaction.create' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.note.create' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.read' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='contacts.update' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.assign' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.create' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.read' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team','2026-11-11T22:14:28.714977+00:00' FROM role r JOIN capability c ON c.code='followup.update' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
+-- Existing Worker route names mirror canonical role grants without changing scope.
+WITH worker_aliases(role_code,capability_code,scope_mode,created_at) AS (
+  VALUES
+    ('admin_pastor','staff.role.assign','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','staff.role.approve','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','announcements.manage','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','announcements.read','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','calendar.manage','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','calendar.read','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','contacts.assign','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contacts.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contacts.contact_details.read','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contacts.private_fields.read','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contacts.private_fields.update','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contacts.interaction.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contacts.note.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contacts.read','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','contacts.update','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','content.manage','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','events.manage','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','events.read','branch','2026-11-12T22:02:04.108677+00:00'),
+    ('admin_pastor','followup.assign','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','followup.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','followup.read','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('admin_pastor','followup.update','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contacts.assign','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contacts.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contacts.interaction.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contacts.note.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contacts.read','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','contacts.update','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','followup.assign','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','followup.create','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','followup.read','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('coordinator','followup.update','branch','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','contacts.create','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','contacts.interaction.create','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','contacts.note.create','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','contacts.read','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','contacts.update','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','followup.create','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','followup.read','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('field_worker','followup.update','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('follow_up_volunteer','contacts.interaction.create','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('follow_up_volunteer','contacts.note.create','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('follow_up_volunteer','contacts.read','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('follow_up_volunteer','followup.read','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('follow_up_volunteer','followup.update','assigned','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','contacts.assign','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','contacts.create','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','contacts.interaction.create','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','contacts.note.create','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','contacts.read','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','contacts.update','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','followup.assign','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','followup.create','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','followup.read','team','2026-11-11T22:14:28.714977+00:00'),
+    ('team_leader','followup.update','team','2026-11-11T22:14:28.714977+00:00')
+)
+INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at)
+SELECT r.id,c.id,g.scope_mode,g.created_at
+FROM worker_aliases g
+JOIN role r ON r.code=g.role_code
+JOIN capability c ON c.code=g.capability_code
+WHERE 1=1
+ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
 
--- Approved directory read scopes: Admin/Pastor and Coordinator at branch scope;
--- Team Leaders only through their active leader membership; the Worker also checks membership in SQL.
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM role r JOIN capability c ON c.code='team.read' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM role r JOIN capability c ON c.code='area.read' WHERE r.code='admin_pastor' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM role r JOIN capability c ON c.code='team.read' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'branch',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM role r JOIN capability c ON c.code='area.read' WHERE r.code='coordinator' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM role r JOIN capability c ON c.code='team.read' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
-INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at) SELECT r.id,c.id,'team',strftime('%Y-%m-%dT%H:%M:%fZ','now') FROM role r JOIN capability c ON c.code='area.read' WHERE r.code='team_leader' ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
+-- Explicit directory-read scope: Admin/Pastor + Coordinator at branch level;
+-- Team Leaders at team level only. Handler SQL still verifies active membership.
+WITH directory_grants(role_code,capability_code,scope_mode) AS (
+  VALUES ('admin_pastor','team.read','branch'),('admin_pastor','area.read','branch'),
+         ('coordinator','team.read','branch'),('coordinator','area.read','branch'),
+         ('team_leader','team.read','team'),('team_leader','area.read','team')
+)
+INSERT INTO role_capability (role_id,capability_id,scope_mode,created_at)
+SELECT r.id,c.id,g.scope_mode,strftime('%Y-%m-%dT%H:%M:%fZ','now')
+FROM directory_grants g
+JOIN role r ON r.code=g.role_code
+JOIN capability c ON c.code=g.capability_code
+WHERE 1=1
+ON CONFLICT(role_id,capability_id,scope_mode) DO NOTHING;
 
 UPDATE app_meta SET schema_version=41 WHERE id=1 AND schema_version=40 AND environment='non-production';
+DELETE FROM authorization_policy_v41_guard;
 INSERT INTO authorization_policy_v41_guard (ok)
 SELECT CASE WHEN (SELECT schema_version FROM app_meta WHERE id=1)=41 THEN 1 ELSE 0 END;
 DROP TABLE authorization_policy_v41_guard;
