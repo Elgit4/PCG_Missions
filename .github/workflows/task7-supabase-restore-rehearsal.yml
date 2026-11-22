@@ -74,7 +74,7 @@ jobs:
                   if user != 'postgres.' + ref: raise SystemExit('Unexpected database username format')
                   authority = user + ':' + (u.password or '') + '@aws-0-' + region + '.pooler.supabase.com:5432'
                   value = urllib.parse.urlunsplit((u.scheme, authority, u.path or '/postgres', u.query, u.fragment))
-              with open(os.environ['GITHUB_ENV'], 'a') as f: f.write(key + '=' + value + '\\n')
+              with open(os.environ['GITHUB_ENV'], 'a') as f: f.write(key + '=' + value + '\n')
           print('Existing source and restore URLs normalized for IPv4-compatible Session Pooler connections.')
           PY
 
