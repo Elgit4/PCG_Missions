@@ -1540,6 +1540,8 @@ test("Admin/Pastor denial records a reason and does not mutate the Supabase Auth
 test("public password reset is non-enumerating and records only eligible active staff requests", async () => {
   const unknown = fakeEnv();
   const known = fakeEnv();
+  unknown.env.SUPABASE_SERVICE_ROLE_KEY = "server-only-synthetic-secret";
+  known.env.SUPABASE_SERVICE_ROLE_KEY = "server-only-synthetic-secret";
   const originalPrepare = known.env.DB.prepare.bind(known.env.DB);
   const writes = [];
   const originalBatch = known.env.DB.batch.bind(known.env.DB);
@@ -1575,6 +1577,7 @@ test("public password reset is non-enumerating and records only eligible active 
 
 test("password change clears the forced-change gate only after Supabase Auth succeeds", async (t) => {
   const fixture = fakeEnv();
+  fixture.env.SUPABASE_SERVICE_ROLE_KEY = "server-only-synthetic-secret";
   const originalPrepare = fixture.env.DB.prepare.bind(fixture.env.DB);
   const batches = [];
   fixture.env.DB.prepare = (sql) => {
@@ -1591,7 +1594,7 @@ test("password change clears the forced-change gate only after Supabase Auth suc
   };
   fixture.env.DB.batch = async (statements) => {
     batches.push(statements.map((statement) => ({ sql: statement.sql, values: statement.values })));
-    return [{ success: true, meta: { changes: 1 } }];
+    return statements.map(() => ({ success: true, meta: { changes: 1 } }));
   };
   const authCalls = [];
   t.mock.method(globalThis, "fetch", async (url, init) => {
