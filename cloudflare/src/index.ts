@@ -3775,8 +3775,7 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     if(!parsed.ok||!isPlainObject(parsed.value)) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_REPORT_CORRECTION"}},requestId,origin);
     const correction=reportInput(parsed.value,true);
     if(!correction) return json(400,{ok:false,error:{code:"INVALID_REPORT_CORRECTION"}},requestId,origin);
-    const row=await env.DB.prepare("SELECT id,branch_id,author_profile_id,status FROM ministry_report WHERE id=?").bind(reportIdForSubmit).first<Record<string,unknown>>();
-    if(!row||row.author_profile_id!== (await resolveStaffContext(request,env)).state /* sentinel */) {}
+    const row=await env.DB.prepare(`SELECT id,branch_id,author_profile_id,status,${REPORT_FIELDS.join(",")} FROM ministry_report WHERE id=?`).bind(reportIdForSubmit).first<Record<string,unknown>>();
     const context=await resolveStaffContext(request,env);
     if(context.state!=="authenticated") return mapCapabilityFailure(context.state,requestId,origin);
     if(!row||row.author_profile_id!==context.staff.profileId) return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
@@ -3784,7 +3783,7 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     if(row.status!=="returned") return json(409,{ok:false,error:{code:"REPORT_NOT_RETURNED"}},requestId,origin);
     const now=new Date().toISOString();
     const sets=[...REPORT_FIELDS.map(k=>`${k}=?`),"status='submitted'","submitted_at=?","last_action_id=?","last_action_by=?","last_action_decision='resubmitted'","last_action_comment=NULL","last_action_at=?","updated_at=?","updated_by=?"];
-    const values=[...REPORT_FIELDS.map(k=>correction[k]??null),now,crypto.randomUUID(),context.staff.userId,now,now,context.staff.userId,reportIdForSubmit];
+    const values=[...REPORT_FIELDS.map(k=>correction[k]===undefined?row[k]:correction[k]),now,crypto.randomUUID(),context.staff.userId,now,now,context.staff.userId,reportIdForSubmit];
     const updated=await env.DB.prepare(`UPDATE ministry_report SET ${sets.join(",")} WHERE id=? AND status='returned' AND author_profile_id=?`).bind(...values,context.staff.profileId).run();
     if((updated.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"REPORT_NOT_RETURNED"}},requestId,origin);
     const report=await env.DB.prepare(`SELECT ${REPORT_COLUMNS} FROM ministry_report WHERE id=?`).bind(reportIdForSubmit).first();
