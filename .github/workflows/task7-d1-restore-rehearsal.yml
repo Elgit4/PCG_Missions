@@ -103,6 +103,8 @@ jobs:
           npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "$SCHEMA_SQL" > /tmp/task7-target-schema.json
           npx wrangler d1 execute pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --json --command "$COUNTS_SQL" > /tmp/task7-source-counts.json
           npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "$COUNTS_SQL" > /tmp/task7-target-counts.json
+          npx wrangler d1 execute pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --json --command "SELECT name, applied_at FROM d1_migrations ORDER BY name" > /tmp/task7-source-migration-ledger.json
+          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "SELECT name, applied_at FROM d1_migrations ORDER BY name" > /tmp/task7-target-migration-ledger.json
           npx wrangler d1 execute pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --json --command "PRAGMA foreign_key_check;" > /tmp/task7-source-fk.json
           npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "PRAGMA foreign_key_check;" > /tmp/task7-target-fk.json
           node --input-type=module <<'NODE'
@@ -134,6 +136,11 @@ jobs:
             if (rows.length !== 16) throw new Error(`Expected 16 count rows (including the D1 migration ledger) in ${path}; got ${rows.length}`);
             return rows.map(x => [String(x.item), Number(x.row_count)]).sort((a,b) => a[0].localeCompare(b[0]));
           }
+          const sourceLedger = canonical('/tmp/task7-source-migration-ledger.json', ['name','applied_at']);
+          const targetLedger = canonical('/tmp/task7-target-migration-ledger.json', ['name','applied_at']);
+          if (sourceLedger.length !== 43 || JSON.stringify(sourceLedger) !== JSON.stringify(targetLedger)) {
+            throw new Error('Exact D1 migration-ledger entries do not match the 43-migration source baseline.');
+          }
           const sourceCounts = countRows('/tmp/task7-source-counts.json');
           const targetCounts = countRows('/tmp/task7-target-counts.json');
           if (JSON.stringify(sourceCounts) !== JSON.stringify(targetCounts)) {
@@ -149,10 +156,10 @@ jobs:
             console.error({sourceFk, targetFk});
             throw new Error('Foreign-key check returned violations on source or restored database.');
           }
-          console.log(`D1 restore verification passed: ${sourceSchema.length} exact schema objects match; 15 critical table counts including the migration ledger match; foreign_key_check is clean on both databases.`);
+          console.log(`D1 restore verification passed: ${sourceSchema.length} exact schema objects match; 15 critical table counts and all 43 exact migration-ledger entries match; foreign_key_check is clean on both databases.`);
           console.log(sourceCounts);
           NODE
 
       - name: Remove database dump from ephemeral runner
         if: always()
-        run: rm -f /tmp/pcg-missions-d1-recovery.sql /tmp/pcg-missions-d1-recovery.sha256 /tmp/task7-target-check.json /tmp/task7-source-schema.json /tmp/task7-target-schema.json /tmp/task7-source-counts.json /tmp/task7-target-counts.json /tmp/task7-source-fk.json /tmp/task7-target-fk.json wrangler.task7-recovery.toml
+        run: rm -f /tmp/pcg-missions-d1-recovery.sql /tmp/pcg-missions-d1-recovery.sha256 /tmp/task7-target-check.json /tmp/task7-source-schema.json /tmp/task7-target-schema.json /tmp/task7-source-counts.json /tmp/task7-target-counts.json /tmp/task7-source-migration-ledger.json /tmp/task7-target-migration-ledger.json /tmp/task7-source-fk.json /tmp/task7-target-fk.json wrangler.task7-recovery.toml
