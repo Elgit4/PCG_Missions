@@ -1480,15 +1480,7 @@ test("non-admin staff cannot manage event assignment workspace or create assignm
 });
 
 
-test("Admin/Pastor approval performs server-side Auth reset and returns a one-time credential without storing it", async (t) => {
-  const authCalls = [];
-  t.mock.method(globalThis, "fetch", async (url, init) => {
-    authCalls.push({ url: String(url), method: init?.method ?? "GET", body: init?.body ?? null });
-    if (String(url).endsWith("/auth/v1/user")) {
-      return Response.json({ id: AUTH_USER_ID, email: "admin@example.test" });
-    }
-    return new Response(null, { status: 200 });
-  });
+test("Admin/Pastor approval rotates the D1 credential, revokes sessions and returns a one-time password", async () => {
   const fixture = authorizedDirectoryEnv("admin_pastor", [["staff.password_reset.manage", "branch"]]);
   const resetId = "90000000-0000-4000-8000-000000000002";
   const response = await worker.fetch(new Request(
@@ -1511,23 +1503,16 @@ test("Admin/Pastor approval performs server-side Auth reset and returns a one-ti
   assert.match(payload.data.temporary_password, /[a-z]/);
   assert.match(payload.data.temporary_password, /[0-9]/);
 
-  assert.equal(authCalls.length, 2);
-  assert.equal(authCalls[1].url, "https://example.supabase.co/auth/v1/admin/users/10000000-0000-4000-8000-000000000002");
-  assert.equal(authCalls[1].method, "PUT");
-  assert.deepEqual(JSON.parse(authCalls[1].body), { password: payload.data.temporary_password });
-  assert.equal(fixture.batches.length, 1);
-  assert.match(fixture.batches[0][0].sql, /UPDATE staff_profile/);
-  assert.match(fixture.batches[0][1].sql, /UPDATE staff_password_reset_request/);
-  assert.match(fixture.batches[0][2].sql, /INSERT INTO staff_password_reset_audit/);
+  assert.equal(fixture.batches.length, 2);
+  assert.match(fixture.batches[0][0].sql, /UPDATE account SET password=/);
+  assert.match(fixture.batches[0][1].sql, /DELETE FROM session/);
+  assert.match(fixture.batches[1][0].sql, /UPDATE staff_profile/);
+  assert.match(fixture.batches[1][1].sql, /UPDATE staff_password_reset_request/);
+  assert.match(fixture.batches[1][2].sql, /INSERT INTO staff_password_reset_audit/);
   assert.equal(JSON.stringify(fixture.batches).includes(payload.data.temporary_password), false);
 });
 
-test("Admin/Pastor denial records a reason and does not mutate the Supabase Auth password", async (t) => {
-  const authCalls = [];
-  t.mock.method(globalThis, "fetch", async (url) => {
-    authCalls.push(String(url));
-    return Response.json({ id: AUTH_USER_ID, email: "admin@example.test" });
-  });
+test("Admin/Pastor denial records a reason without changing the D1 credential", async () => {
   const fixture = authorizedDirectoryEnv("admin_pastor", [["staff.password_reset.manage", "branch"]]);
   const resetId = "90000000-0000-4000-8000-000000000002";
   const response = await worker.fetch(new Request(
@@ -1540,8 +1525,8 @@ test("Admin/Pastor denial records a reason and does not mutate the Supabase Auth
   ), fixture.env);
   assert.equal(response.status, 200);
   assert.deepEqual((await response.json()).data, { status: "denied" });
-  assert.deepEqual(authCalls, ["https://example.supabase.co/auth/v1/user"]);
   assert.equal(fixture.batches.length, 1);
+  assert.equal(fixture.batches.flat().some((statement) => /UPDATE account SET password=/.test(statement.sql)), false);
   assert.match(fixture.batches[0][0].sql, /status = 'denied'/);
   assert.match(fixture.batches[0][1].sql, /INSERT INTO staff_password_reset_audit/);
   assert.match(fixture.batches[0][1].values.join(" "), /The request could not be independently verified/);
@@ -1589,7 +1574,7 @@ test("public password reset is non-enumerating and records only eligible active 
   assert.equal(writes.some((write) => JSON.stringify(write.values ?? []).includes("STAFF@EXAMPLE.TEST")), false);
 });
 
-test("password change clears the forced-change gate only after Supabase Auth succeeds", async (t) => {
+test("password change rotates the D1 credential before clearing the forced-change gate", async () => {
   const fixture = fakeEnv();
   fixture.env.SUPABASE_SERVICE_ROLE_KEY = "server-only-synthetic-secret";
   const originalPrepare = fixture.env.DB.prepare.bind(fixture.env.DB);
@@ -1611,14 +1596,6 @@ test("password change clears the forced-change gate only after Supabase Auth suc
     batches.push(statements.map((statement) => ({ sql: statement.sql, values: statement.values })));
     return statements.map(() => ({ success: true, meta: { changes: 1 } }));
   };
-  const authCalls = [];
-  t.mock.method(globalThis, "fetch", async (url, init) => {
-    authCalls.push({ url: String(url), method: init?.method ?? "GET", body: init?.body ?? null });
-    if (String(url).endsWith("/auth/v1/user")) {
-      return Response.json({ id: AUTH_USER_ID, email: "staff@example.test" });
-    }
-    return new Response(null, { status: 200 });
-  });
   const response = await worker.fetch(new Request("https://worker.example/api/v1/auth/password/change", {
     method: "POST",
     headers: { Cookie: "better-auth.session_token=synthetic-staff-token", "Content-Type": "application/json" },
@@ -1628,14 +1605,12 @@ test("password change clears the forced-change gate only after Supabase Auth suc
   assert.equal(response.status, 200);
   assert.equal(payload.data.password_changed, true);
   assert.equal(payload.data.must_change_password, false);
-  assert.equal(authCalls.length, 2);
-  assert.equal(authCalls[1].method, "PUT");
-  assert.equal(authCalls[1].url, "https://example.supabase.co/auth/v1/admin/users/" + AUTH_USER_ID);
-  assert.equal(batches.length, 1);
-  assert.match(batches[0][0].sql, /SET must_change_password = 0/);
+  assert.equal(batches.length, 2);
+  assert.match(batches[0][0].sql, /UPDATE account SET password=/);
+  assert.match(batches[1][0].sql, /SET must_change_password = 0/);
 });
 
-test("expired temporary-password gate blocks Auth password mutation", async (t) => {
+test("expired temporary-password gate blocks Better Auth credential mutation", async () => {
   const fixture = fakeEnv();
   const originalPrepare = fixture.env.DB.prepare.bind(fixture.env.DB);
   fixture.env.DB.prepare = (sql) => {
@@ -1650,12 +1625,6 @@ test("expired temporary-password gate blocks Auth password mutation", async (t) 
     }
     return statement;
   };
-  let authMutationCount = 0;
-  t.mock.method(globalThis, "fetch", async (url) => {
-    if (String(url).endsWith("/auth/v1/user")) return Response.json({ id: AUTH_USER_ID, email: "staff@example.test" });
-    authMutationCount += 1;
-    return new Response(null, { status: 200 });
-  });
   const response = await worker.fetch(new Request("https://worker.example/api/v1/auth/password/change", {
     method: "POST",
     headers: { Cookie: "better-auth.session_token=synthetic-staff-token", "Content-Type": "application/json" },
@@ -1663,5 +1632,5 @@ test("expired temporary-password gate blocks Auth password mutation", async (t) 
   }), fixture.env);
   assert.equal(response.status, 403);
   assert.equal((await response.json()).error.code, "PASSWORD_SETUP_EXPIRED");
-  assert.equal(authMutationCount, 0);
+  assert.equal(fixture.batches?.length ?? 0, 0);
 });
