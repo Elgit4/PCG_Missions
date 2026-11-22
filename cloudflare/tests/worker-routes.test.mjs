@@ -1547,6 +1547,7 @@ test("public password reset is non-enumerating and records only eligible active 
   const originalBatch = known.env.DB.batch.bind(known.env.DB);
   known.env.DB.prepare = (sql) => {
     const statement = originalPrepare(sql);
+    statement.sql = sql;
     if (sql.includes("SELECT sp.id AS profile_id, sra.branch_id")) {
       statement.first = async () => ({ profile_id: "20000000-0000-4000-8000-000000000002", branch_id: "30000000-0000-4000-8000-000000000001" });
     }
@@ -1584,6 +1585,7 @@ test("password change clears the forced-change gate only after Supabase Auth suc
   const batches = [];
   fixture.env.DB.prepare = (sql) => {
     const statement = originalPrepare(sql);
+    statement.sql = sql;
     if (sql.includes("SELECT id, account_status, must_change_password, password_setup_expires_at")) {
       statement.first = async () => ({
         id: "20000000-0000-4000-8000-000000000002",
