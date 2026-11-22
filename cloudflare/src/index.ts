@@ -551,7 +551,7 @@ function createTemporaryPassword(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(36));
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
-  return `Pm!${btoa(binary).replace(/\\+/g, "-").replace(/\\//g, "_").replace(/=+$/g, "")}`;
+  return `Pm!${btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "")}`;
 }
 
 async function createStaffAccount(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
