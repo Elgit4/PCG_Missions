@@ -1398,25 +1398,6 @@ test("password change and admin reset endpoints reject anonymous requests before
   assert.equal(calls.length, 0);
 });
 
-test("password lifecycle endpoints reject anonymous callers before D1 access", async () => {
-  const { env, calls } = fakeEnv();
-  const change = await worker.fetch(new Request("https://worker.example/api/v1/auth/password/change", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  }), env);
-  const changePayload = await change.json();
-  assert.equal(change.status, 401);
-  assert.equal(changePayload.error.code, "UNAUTHENTICATED");
-
-  const requests = await worker.fetch(new Request("https://worker.example/api/v1/admin/password-reset-requests"), env);
-  const requestsPayload = await requests.json();
-  assert.equal(requests.status, 401);
-  assert.equal(requestsPayload.error.code, "UNAUTHENTICATED");
-  assert.equal(calls.length, 0);
-});
-
-
 test("Admin/Pastor can load event assignment workspace, assign staff and teams, and revoke assignments", async (t) => {
   t.mock.method(globalThis, "fetch", async () =>
     Response.json({ id: AUTH_USER_ID, email: "staff@example.com" }),
@@ -1553,4 +1534,116 @@ test("Admin/Pastor denial records a reason and does not mutate the Supabase Auth
   assert.match(fixture.batches[0][0].sql, /status = 'denied'/);
   assert.match(fixture.batches[0][1].sql, /INSERT INTO staff_password_reset_audit/);
   assert.match(fixture.batches[0][1].values.join(" "), /The request could not be independently verified/);
+});
+
+
+test("public password reset is non-enumerating and records only eligible active staff requests", async () => {
+  const unknown = fakeEnv();
+  const known = fakeEnv();
+  const originalPrepare = known.env.DB.prepare.bind(known.env.DB);
+  const writes = [];
+  const originalBatch = known.env.DB.batch.bind(known.env.DB);
+  known.env.DB.prepare = (sql) => {
+    const statement = originalPrepare(sql);
+    if (sql.includes("SELECT sp.id AS profile_id, sra.branch_id")) {
+      statement.first = async () => ({ profile_id: "20000000-0000-4000-8000-000000000002", branch_id: "30000000-0000-4000-8000-000000000001" });
+    }
+    return statement;
+  };
+  known.env.DB.batch = async (statements) => {
+    writes.push(...statements.map((statement) => ({ sql: statement.sql, values: statement.values })));
+    return originalBatch(statements);
+  };
+  const send = (env, email) => worker.fetch(new Request("https://worker.example/api/v1/auth/password-reset-requests", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2.10" },
+    body: JSON.stringify({ email }),
+  }), env);
+  const unknownResponse = await send(unknown.env, "unknown@example.test");
+  const knownResponse = await send(known.env, " STAFF@EXAMPLE.TEST ");
+  const unknownBody = await unknownResponse.json();
+  const knownBody = await knownResponse.json();
+  assert.equal(unknownResponse.status, 200);
+  assert.equal(knownResponse.status, 200);
+  assert.deepEqual(knownBody, unknownBody);
+  assert.equal(JSON.stringify(knownBody).includes("staff@example.test"), false);
+  assert.equal(writes.length, 2);
+  assert.match(writes[0].sql, /INSERT INTO staff_password_reset_request/);
+  assert.match(writes[1].sql, /INSERT INTO staff_password_reset_audit/);
+  assert.equal(writes.some((write) => JSON.stringify(write.values).includes("STAFF@EXAMPLE.TEST")), false);
+});
+
+test("password change clears the forced-change gate only after Supabase Auth succeeds", async (t) => {
+  const fixture = fakeEnv();
+  const originalPrepare = fixture.env.DB.prepare.bind(fixture.env.DB);
+  const batches = [];
+  fixture.env.DB.prepare = (sql) => {
+    const statement = originalPrepare(sql);
+    if (sql.includes("SELECT id, account_status, must_change_password, password_setup_expires_at")) {
+      statement.first = async () => ({
+        id: "20000000-0000-4000-8000-000000000002",
+        account_status: "active",
+        must_change_password: 1,
+        password_setup_expires_at: "2099-01-01T00:00:00.000Z",
+      });
+    }
+    return statement;
+  };
+  fixture.env.DB.batch = async (statements) => {
+    batches.push(statements.map((statement) => ({ sql: statement.sql, values: statement.values })));
+    return [{ success: true, meta: { changes: 1 } }];
+  };
+  const authCalls = [];
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    authCalls.push({ url: String(url), method: init?.method ?? "GET", body: init?.body ?? null });
+    if (String(url).endsWith("/auth/v1/user")) {
+      return Response.json({ id: AUTH_USER_ID, email: "staff@example.test" });
+    }
+    return new Response(null, { status: 200 });
+  });
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/auth/password/change", {
+    method: "POST",
+    headers: { Authorization: "Bearer synthetic-staff-token", "Content-Type": "application/json" },
+    body: JSON.stringify({ password: "A-strong-New-Password-2026!" }),
+  }), fixture.env);
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.password_changed, true);
+  assert.equal(payload.data.must_change_password, false);
+  assert.equal(authCalls.length, 2);
+  assert.equal(authCalls[1].method, "PUT");
+  assert.deepEqual(JSON.parse(authCalls[1].body), { password: "A-strong-New-Password-2026!" });
+  assert.equal(batches.length, 1);
+  assert.match(batches[0][0].sql, /SET must_change_password = 0/);
+});
+
+test("expired temporary-password gate blocks Auth password mutation", async (t) => {
+  const fixture = fakeEnv();
+  const originalPrepare = fixture.env.DB.prepare.bind(fixture.env.DB);
+  fixture.env.DB.prepare = (sql) => {
+    const statement = originalPrepare(sql);
+    if (sql.includes("SELECT id, account_status, must_change_password, password_setup_expires_at")) {
+      statement.first = async () => ({
+        id: "20000000-0000-4000-8000-000000000002",
+        account_status: "active",
+        must_change_password: 1,
+        password_setup_expires_at: "2000-01-01T00:00:00.000Z",
+      });
+    }
+    return statement;
+  };
+  let authMutationCount = 0;
+  t.mock.method(globalThis, "fetch", async (url) => {
+    if (String(url).endsWith("/auth/v1/user")) return Response.json({ id: AUTH_USER_ID, email: "staff@example.test" });
+    authMutationCount += 1;
+    return new Response(null, { status: 200 });
+  });
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/auth/password/change", {
+    method: "POST",
+    headers: { Authorization: "Bearer synthetic-staff-token", "Content-Type": "application/json" },
+    body: JSON.stringify({ password: "A-strong-New-Password-2026!" }),
+  }), fixture.env);
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error.code, "PASSWORD_SETUP_EXPIRED");
+  assert.equal(authMutationCount, 0);
 });
