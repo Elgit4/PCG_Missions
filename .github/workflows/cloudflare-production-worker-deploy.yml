@@ -1,0 +1,210 @@
+name: Cloudflare Production Worker Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: Select migration/cloudflare-auth-consolidation above, then type DEPLOY-PRODUCTION to authorize a guarded production Worker release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcg-missions-cloudflare-production-worker
+  cancel-in-progress: false
+
+jobs:
+  production-worker:
+    name: Validate, migrate and deploy the production Worker
+    if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      WORKER_URL: https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev
+      PAGES_URL: https://pcg-missions.pages.dev
+
+    steps:
+      - name: Check out the reviewed production branch
+        uses: actions/checkout@v4
+        with:
+          ref: migration/cloudflare-auth-consolidation
+          fetch-depth: 0
+
+      - name: Set up Node.js and Python
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Require exact production confirmation and Cloudflare credential
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirm_production }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/migration/cloudflare-auth-consolidation"
+          test "$CONFIRMATION" = "DEPLOY-PRODUCTION"
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          npx --yes wrangler@4.46.0 whoami
+
+      - name: Install pinned Worker dependencies
+        run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
+
+      - name: Run migration, security, type and Worker tests
+        working-directory: .
+        run: |
+          python -m unittest discover -s cloudflare/tests -p "test_*.py" -v
+          cd cloudflare
+          npm run typecheck
+          npm test
+
+      - name: Verify exact production D1 target and environment before mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "SELECT schema_version, environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT MIN(id) FROM d1_migrations) AS first_migration_id, (SELECT MAX(id) FROM d1_migrations) AS latest_migration_id, (SELECT SUM(id) FROM d1_migrations) AS migration_id_sum FROM app_meta WHERE id = 1" > /tmp/pcg-d1-before.json
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const root = JSON.parse(fs.readFileSync("/tmp/pcg-d1-before.json", "utf8"));
+          const candidates = [];
+          function walk(value) {
+            if (!value || typeof value !== "object") return;
+            if (Array.isArray(value)) return value.forEach(walk);
+            if (Object.hasOwn(value, "schema_version")) candidates.push(value);
+            Object.values(value).forEach(walk);
+          }
+          walk(root);
+          const row = candidates[0];
+          if (!row || row.environment !== "production" ||
+              Number(row.schema_version) < 45 ||
+              Number(row.schema_version) !== Number(row.latest_migration_id) ||
+              Number(row.migration_count) !== Number(row.schema_version) ||
+              Number(row.first_migration_id) !== 1 ||
+              Number(row.migration_id_sum) !== Number(row.schema_version) * (Number(row.schema_version) + 1) / 2) {
+            throw new Error("Production D1 marker/schema/migration ledger mismatch; refusing deployment.");
+          }
+          console.log(JSON.stringify({
+            environment: row.environment,
+            schema_version: row.schema_version,
+            latest_migration_id: row.latest_migration_id
+          }));
+          NODE
+
+      - name: Verify existing production Worker secrets without exposing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler secret list --env production > /tmp/pcg-production-secrets.json
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const value = JSON.parse(fs.readFileSync("/tmp/pcg-production-secrets.json", "utf8"));
+          const names = new Set((Array.isArray(value) ? value : value.result ?? []).map(item => item.name));
+          for (const required of ["BETTER_AUTH_SECRET", "SUPABASE_SERVICE_ROLE_KEY"]) {
+            if (!names.has(required)) throw new Error("Required production Worker secret is missing: " + required);
+          }
+          console.log("Required production Worker secret names are present; secret values were not read or printed.");
+          NODE
+
+      - name: Build exact production Worker bundle before touching D1
+        run: |
+          rm -rf dist
+          npx wrangler deploy --env production --dry-run --outdir dist
+          test -s dist/index.js
+          node --check dist/index.js
+
+      - name: Record the pre-release production D1 Time Travel bookmark
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 time-travel info pcg-missions-production --env production --json > /tmp/pcg-production-bookmark.json
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const value = JSON.parse(fs.readFileSync("/tmp/pcg-production-bookmark.json", "utf8"));
+          const text = JSON.stringify(value);
+          if (!text.includes("bookmark")) throw new Error("Cloudflare did not return a production D1 bookmark.");
+          console.log("Pre-release D1 bookmark captured. It is retained as a workflow artifact; no restore was requested.");
+          NODE
+
+      - name: Apply only pending forward-only production migrations
+        run: npx wrangler d1 migrations apply pcg-missions-production --remote --env production
+
+      - name: Verify production schema and migration ledger after migration
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "SELECT schema_version, environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT MIN(id) FROM d1_migrations) AS first_migration_id, (SELECT MAX(id) FROM d1_migrations) AS latest_migration_id, (SELECT SUM(id) FROM d1_migrations) AS migration_id_sum FROM app_meta WHERE id = 1" > /tmp/pcg-d1-after.json
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const root = JSON.parse(fs.readFileSync("/tmp/pcg-d1-after.json", "utf8"));
+          const candidates = [];
+          function walk(value) {
+            if (!value || typeof value !== "object") return;
+            if (Array.isArray(value)) return value.forEach(walk);
+            if (Object.hasOwn(value, "schema_version")) candidates.push(value);
+            Object.values(value).forEach(walk);
+          }
+          walk(root);
+          const row = candidates[0];
+          if (!row || row.environment !== "production" ||
+              Number(row.schema_version) < 45 ||
+              Number(row.schema_version) !== Number(row.latest_migration_id) ||
+              Number(row.migration_count) !== Number(row.schema_version) ||
+              Number(row.first_migration_id) !== 1 ||
+              Number(row.migration_id_sum) !== Number(row.schema_version) * (Number(row.schema_version) + 1) / 2) {
+            throw new Error("Post-migration production marker/schema/ledger mismatch.");
+          }
+          console.log(JSON.stringify({
+            environment: row.environment,
+            schema_version: row.schema_version,
+            latest_migration_id: row.latest_migration_id
+          }));
+          NODE
+
+      - name: Deploy reviewed Worker code to production
+        run: npx wrangler deploy --env production
+
+      - name: Verify direct Worker and same-origin Pages production endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          direct_health="$(curl --retry 5 --retry-delay 3 --retry-all-errors --fail --silent --show-error --max-time 30 "$WORKER_URL/health")"
+          printf '%s\n' "$direct_health"
+          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||!Number.isInteger(p.schema_version)||p.schema_version<45)process.exit(1)' "$direct_health"
+
+          for base in "$WORKER_URL" "$PAGES_URL"; do
+            status="$(curl --silent --show-error --output /tmp/pcg-me.json --write-out "%{http_code}" --max-time 20 "$base/api/v1/me")"
+            test "$status" = "401"
+            node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/pcg-me.json","utf8"));if(p.error?.code!=="UNAUTHENTICATED")process.exit(1)'
+          done
+
+          session_status="$(curl --silent --show-error --output /tmp/pcg-session.json --write-out "%{http_code}" --max-time 20 "$PAGES_URL/api/auth/get-session")"
+          test "$session_status" = "200"
+
+          api_health="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error --max-time 20 "$PAGES_URL/api/v1/health")"
+          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||!Number.isInteger(p.schema_version)||p.schema_version<45)process.exit(1)' "$api_health"
+
+          cors_status="$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 20 -X OPTIONS "$WORKER_URL/api/auth/sign-in/email" -H "Origin: https://pcg-missions.pages.dev" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type")"
+          test "$cors_status" = "204"
+          echo "Production Worker, same-origin Pages proxy, anonymous authorization boundary, Better Auth session endpoint and CORS checks passed."
+
+      - name: Retain production release evidence and D1 bookmark
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pcg-missions-production-worker-release-${{ github.run_id }}
+          path: |
+            /tmp/pcg-production-bookmark.json
+            /tmp/pcg-d1-before.json
+            /tmp/pcg-d1-after.json
+          if-no-files-found: warn
+          retention-days: 90
