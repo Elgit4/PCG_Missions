@@ -1080,7 +1080,7 @@ describe("CmiApiClient", () => {
 
   it("routes preview event-flyer uploads through the authenticated Worker", async () => {
     const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ ok: true, data: { event_id: "event-123", flyer_url: "/api/v1/events/event-123/flyer", content_type: "image/png", size: 20 }, request_id: "worker-flyer-1" }),
+      JSON.stringify({ ok: true, data: { object_path: "events/branch-abc/event-123/flyer.png", mime_type: "image/png", size_bytes: 20, signed_url: "https://project.supabase.co/storage/v1/object/sign/pcg-missions-event-media/events/branch-abc/event-123/flyer.png?token=abc", signed_url_expires_in: 900 }, request_id: "worker-flyer-1" }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     ));
     const client = new CmiApiClient(
@@ -1091,7 +1091,7 @@ describe("CmiApiClient", () => {
     const file = new Blob(["01234567890123456789"], { type: "image/png" }) as File;
 
     const result = await client.uploadEventFlyer("branch-abc", "event-123", file);
-    expect(result.data.flyer_url).toBe("/api/v1/events/event-123/flyer");
+    expect(result.data.signed_url).toContain("/storage/v1/object/sign/pcg-missions-event-media/");
     expect(fetcher).toHaveBeenCalledTimes(1);
     const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
     expect(String(url)).toBe("https://worker.example.com/api/v1/events/event-123/flyer");
