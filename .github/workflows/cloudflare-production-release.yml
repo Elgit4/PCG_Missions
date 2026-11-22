@@ -59,12 +59,10 @@ jobs:
         shell: bash
         env:
           SUPABASE_SOURCE_DB_URL: ${{ secrets.SUPABASE_SOURCE_DB_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
           test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "::error::CLOUDFLARE_API_TOKEN is missing"; exit 1; }
           test -n "${SUPABASE_SOURCE_DB_URL:-}" || { echo "::error::SUPABASE_SOURCE_DB_URL is missing"; exit 1; }
-          test -n "${SUPABASE_SERVICE_ROLE_KEY:-}" || { echo "::error::SUPABASE_SERVICE_ROLE_KEY is required to preserve the private event-flyer storage exception"; exit 1; }
           npx wrangler whoami
 
       - name: Build exact production Worker bundle
@@ -104,10 +102,11 @@ jobs:
           if ! printf '%s' "$secrets_json" | jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' >/dev/null; then
             openssl rand -hex 32 | npx wrangler secret put BETTER_AUTH_SECRET --env production >/dev/null
           fi
-          printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --env production >/dev/null
+          if [[ -n "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
+            printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" | npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --env production >/dev/null
+          fi
           secrets_json="$(npx wrangler secret list --env production)"
           printf '%s' "$secrets_json" | jq -e 'any(.[]; .name == "BETTER_AUTH_SECRET")' >/dev/null
-          printf '%s' "$secrets_json" | jq -e 'any(.[]; .name == "SUPABASE_SERVICE_ROLE_KEY")' >/dev/null
 
       - name: Deploy production Better Auth and D1 Worker
         run: npx wrangler deploy --env production
@@ -127,6 +126,16 @@ jobs:
           test "$session_status" = "200"
           cors="$(curl -sS -o /dev/null -w "%{http_code}" -X OPTIONS "$url/api/auth/sign-in/email" -H "Origin: https://pcg-missions.pages.dev" -H "Access-Control-Request-Method: POST")"
           test "$cors" = "204"
+
+      - name: Verify private event-flyer storage secret before live Pages cutover
+        shell: bash
+        run: |
+          set -euo pipefail
+          secrets_json="$(npx wrangler secret list --env production)"
+          if ! printf '%s' "$secrets_json" | jq -e 'any(.[]; .name == "SUPABASE_SERVICE_ROLE_KEY")' >/dev/null; then
+            echo "::error title=Event flyer storage key missing::The production Better Auth Worker is deployed and healthy, but Pages cutover is held until the existing Supabase service-role key is securely provisioned as the production Worker secret SUPABASE_SERVICE_ROLE_KEY. The event-flyer storage exception must remain functional."
+            exit 1
+          fi
 
       - name: Switch Pages production to Cloudflare API and reviewed release branch
         shell: bash
