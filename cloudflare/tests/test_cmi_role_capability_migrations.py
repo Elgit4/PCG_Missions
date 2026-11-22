@@ -204,7 +204,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
                 migration[start:end],
             )
         }
-        self.assertEqual(len(declared), 53, "compatibility allowlist changed; review the policy before updating the test")
+        self.assertEqual(len(declared), 55, "compatibility allowlist changed; review the policy before updating the test")
 
         capability_codes = sorted({code for _, code, _ in declared})
         placeholders = ",".join("?" for _ in capability_codes)
