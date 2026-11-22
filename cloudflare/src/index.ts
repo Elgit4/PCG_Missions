@@ -4326,9 +4326,12 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
       const team=await env.DB.prepare("SELECT id FROM team WHERE id=? AND branch_id=? AND is_active=1 LIMIT 1").bind(targetId,branchId).first();
       if(!team) return json(422,{ok:false,error:{code:"TEAM_NOT_ASSIGNABLE"}},requestId,origin);
     }
-    const id=crypto.randomUUID();
     const table=assignmentKind==="staff"?"event_staff_assignment":"event_team_assignment";
     const targetColumn=assignmentKind==="staff"?"staff_auth_user_id":"team_id";
+    const overlapping=await env.DB.prepare("SELECT id FROM "+table+" WHERE event_id=? AND branch_id=? AND "+targetColumn+"=? AND assignment_role=? AND revoked_at IS NULL AND starts_at<? AND (ends_at IS NULL OR ends_at>?) LIMIT 1")
+      .bind(eventId,branchId,targetId,role,endsAt,startsAt).first();
+    if(overlapping) return json(409,{ok:false,error:{code:"ASSIGNMENT_CONFLICT"}},requestId,origin);
+    const id=crypto.randomUUID();
     const statement=env.DB.prepare("INSERT INTO "+table+" (id,event_id,branch_id,"+targetColumn+",assignment_role,assigned_by,starts_at,ends_at,created_at) VALUES(?,?,?,?,?,?,?,?,?)")
       .bind(id,eventId,branchId,targetId,role,context.staff.userId,startsAt,endsAt,now);
     try{
