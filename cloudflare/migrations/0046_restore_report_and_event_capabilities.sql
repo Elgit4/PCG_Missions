@@ -170,6 +170,38 @@ BEGIN
     THEN RAISE(ABORT,'REPORT_ACTION_INVALID') END;
 END;
 
+DROP TRIGGER event_closeout_authorize_insert;
+CREATE TRIGGER event_closeout_authorize_insert
+BEFORE INSERT ON event_closeout
+BEGIN
+ SELECT CASE WHEN NOT EXISTS (
+  SELECT 1 FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='event.closeout.submit' AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.submitted_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.submitted_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.submitted_at)
+ ) THEN RAISE(ABORT,'EVENT_CLOSEOUT_SUBMIT_NOT_AUTHORIZED') END;
+END;
+
+CREATE TRIGGER event_closeout_review_authorize_update
+BEFORE UPDATE OF status ON event_closeout
+WHEN OLD.status IN ('submitted','returned') AND NEW.status IN ('approved','returned')
+BEGIN
+ SELECT CASE WHEN NEW.reviewed_by IS NULL OR NEW.reviewed_at IS NULL OR NOT EXISTS (
+  SELECT 1 FROM staff_profile actor
+  JOIN staff_role_assignment ra ON ra.staff_profile_id=actor.id AND ra.branch_id=NEW.branch_id
+  JOIN role r ON r.id=ra.role_id AND r.is_active=1
+  JOIN role_capability rc ON rc.role_id=r.id
+  JOIN capability c ON c.id=rc.capability_id AND c.code='event.closeout.review' AND c.is_active=1
+  WHERE actor.auth_user_id=NEW.reviewed_by AND actor.account_status='active'
+   AND ra.revoked_at IS NULL AND ra.starts_at<=NEW.reviewed_at
+   AND (ra.ends_at IS NULL OR ra.ends_at>NEW.reviewed_at)
+ ) THEN RAISE(ABORT,'EVENT_CLOSEOUT_REVIEW_NOT_AUTHORIZED') END;
+END;
+
 DROP TRIGGER event_closeout_event_authorize_insert;
 CREATE TRIGGER event_closeout_event_authorize_insert
 BEFORE INSERT ON event_closeout_event
