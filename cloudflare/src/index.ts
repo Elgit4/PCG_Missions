@@ -3611,6 +3611,15 @@ async function eventOperationContext(request: Request, env: Env, branchId: strin
   if(!event) return {response:json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin)} as const;
   return {context,event} as const;
 }
+
+function eventHasScopedGrant(
+  context: Extract<Awaited<ReturnType<typeof resolveStaffContext>>, {state:"authenticated"}>,
+  code: string,
+  scopeMode: string,
+): boolean {
+  return !!context.activeBranch?.capabilities.some(grant => grant.code===code && grant.scopeMode===scopeMode);
+}
+
 async function eventAssignmentAllows(env:Env,context:Extract<Awaited<ReturnType<typeof resolveStaffContext>>,{state:"authenticated"}>,eventId:string,branchId:string,now:string,operation:"register"|"checkin"):Promise<boolean>{
   const branchGrant=context.activeBranch?.capabilities.some(c=>
     (c.code==="events.manage"&&c.scopeMode==="branch") ||
@@ -3634,10 +3643,10 @@ async function eventAssignmentAllows(env:Env,context:Extract<Awaited<ReturnType<
       AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?) LIMIT 1`)
     .bind(eventId,branchId,context.staff.profileId,...teamRoles,now,now,now,now).first<{allowed:number}>();
   if(team) return true;
-  return operation==="checkin" &&
+  return !!(operation==="checkin" &&
     context.activeBranch?.capabilities.some(c=>c.code==="events.checkin"&&c.scopeMode==="assigned") &&
-    !!(await env.DB.prepare("SELECT 1 FROM event_staff_assignment WHERE event_id=? AND branch_id=? AND staff_auth_user_id=? AND revoked_at IS NULL AND starts_at<=? AND (ends_at IS NULL OR ends_at>?) LIMIT 1")
-      .bind(eventId,branchId,context.staff.userId,now,now).first());
+    (await env.DB.prepare("SELECT 1 FROM event_staff_assignment WHERE event_id=? AND branch_id=? AND staff_auth_user_id=? AND revoked_at IS NULL AND starts_at<=? AND (ends_at IS NULL OR ends_at>?) LIMIT 1")
+      .bind(eventId,branchId,context.staff.userId,now,now).first()));
 }
 async function eventDigest(value:unknown):Promise<Uint8Array>{
   const bytes=new TextEncoder().encode(JSON.stringify(value,Object.keys(value as object).sort()));
@@ -3660,12 +3669,12 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
   const eventId=parts[3]??"";
   if(!isUuidValue(branchId)||!isUuidValue(eventId)) return json(400,{ok:false,error:{code:"INVALID_EVENT_SCOPE"}},requestId,origin);
   const operation=await eventOperationContext(request,env,branchId,eventId,requestId,origin);
-  if("response" in operation) return operation.response;
+  if("response" in operation && operation.response) return operation.response;
   const {context,event}=operation;
   const now=new Date().toISOString();
 
   if(parts.length===6&&parts[4]==="staff-registration"&&request.method==="POST"){
-    if(!hasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
+    if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     const action=parts[5]==="open"?"open":parts[5]==="close"?"close":null;
     if(!action) return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
     const state=action==="open"?"open":"closed";
@@ -3756,7 +3765,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
   }
 
   if(parts.length===5&&parts[4]==="closeout"&&request.method==="GET"){
-    const canRead=hasScopedGrant(context,"events.manage","branch")||hasScopedGrant(context,"events.checkin","branch")||hasScopedGrant(context,"events.closeout.review","branch");
+    const canRead=eventHasScopedGrant(context,"events.manage","branch")||eventHasScopedGrant(context,"events.checkin","branch")||eventHasScopedGrant(context,"events.closeout.review","branch");
     if(!canRead) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_READ_NOT_AUTHORIZED"}},requestId,origin);
     const closeout=await env.DB.prepare("SELECT id,event_id,branch_id,submitted_by,submitted_at,reviewed_by,reviewed_at,status,attendee_count,registration_count,transport_seat_count,summary_notes FROM event_closeout WHERE event_id=? AND branch_id=?").bind(eventId,branchId).first();
     const history=closeout?await env.DB.prepare("SELECT id,actor_user_id,action,details,created_at FROM event_closeout_event WHERE closeout_id=? ORDER BY created_at ASC").bind((closeout as Record<string,unknown>).id).all():{results:[]};
@@ -3765,7 +3774,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
   }
 
   if(parts.length===6&&parts[4]==="closeout"&&parts[5]==="submit"&&request.method==="POST"){
-    if(!hasScopedGrant(context,"events.manage","branch")&&!hasScopedGrant(context,"events.checkin","branch")) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_SUBMIT_NOT_AUTHORIZED"}},requestId,origin);
+    if(!eventHasScopedGrant(context,"events.manage","branch")&&!eventHasScopedGrant(context,"events.checkin","branch")) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_SUBMIT_NOT_AUTHORIZED"}},requestId,origin);
     const parsed=await readJsonBody(request,4096);
     if(!parsed.ok||!isPlainObject(parsed.value)||Object.keys(parsed.value).some(k=>!["idempotency_key","summary_notes"].includes(k))) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_CLOSEOUT"}},requestId,origin);
     const key=typeof parsed.value.idempotency_key==="string"?parsed.value.idempotency_key.trim():"";
@@ -3801,7 +3810,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
   }
 
   if(parts.length===6&&parts[4]==="closeout"&&parts[5]==="review"&&request.method==="POST"){
-    if(!hasScopedGrant(context,"events.closeout.review","branch")) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_REVIEW_NOT_AUTHORIZED"}},requestId,origin);
+    if(!eventHasScopedGrant(context,"events.closeout.review","branch")) return json(403,{ok:false,error:{code:"EVENT_CLOSEOUT_REVIEW_NOT_AUTHORIZED"}},requestId,origin);
     const parsed=await readJsonBody(request,4096);
     if(!parsed.ok||!isPlainObject(parsed.value)||Object.keys(parsed.value).some(k=>!["idempotency_key","decision","reason"].includes(k))) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_CLOSEOUT_REVIEW"}},requestId,origin);
     const key=typeof parsed.value.idempotency_key==="string"?parsed.value.idempotency_key.trim():"";
