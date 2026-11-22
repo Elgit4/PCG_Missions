@@ -3913,7 +3913,12 @@ async function handleEventCollection(request:Request,env:Env,requestId:string,or
   if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
   const parsed=await readJsonBody(request,12*1024);
   if(!parsed.ok||!isPlainObject(parsed.value)) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_EVENT"}},requestId,origin);
-  const fields=validEventFields(parsed.value,false);
+  const payload={...parsed.value};
+  if("branch_id" in payload){
+    if(payload.branch_id!==branchId) return json(403,{ok:false,error:{code:"BRANCH_NOT_AUTHORIZED"}},requestId,origin);
+    delete payload.branch_id;
+  }
+  const fields=validEventFields(payload,false);
   if(!fields.ok) return json(400,{ok:false,error:{code:"INVALID_EVENT"}},requestId,origin);
   const value=fields.values;
   if(Date.parse(String(value.ends_at))<=Date.parse(String(value.starts_at))) return json(400,{ok:false,error:{code:"INVALID_EVENT_TIME_RANGE"}},requestId,origin);
