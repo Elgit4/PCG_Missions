@@ -5,3 +5,5 @@ This one-time marker triggers the guarded Cloudflare production release workflow
 Release retry: Pages configuration was applied and is verified before frontend deployment.
 
 Retry: production Pages deployment now validates public endpoints rather than the restricted token API.
+
+Final retry: Pages frontend deployment is triggered by the configured Git integration from the reviewed web release commit.
