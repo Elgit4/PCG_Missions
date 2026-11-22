@@ -531,7 +531,7 @@ export interface TaskUpdateInput {
   status?: FollowUpTask["status"];
 }
 export interface CmiRequestOptions {
-  method?: "GET" | "POST" | "PATCH";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   /** Branch scope sent as trusted request context, independently of route query parameters. */
   branchId?: string;
   query?: Record<string, string | number | undefined>;
