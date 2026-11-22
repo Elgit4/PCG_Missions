@@ -7,9 +7,10 @@
 - Official frontend: Cloudflare Pages project `pcg-missions`.
 - Target application API: Cloudflare Workers.
 - Target application database: Cloudflare D1 in EU jurisdiction.
-- Identity provider: existing Supabase Auth project `cgwffpxlwgbnlinzwfoj`.
+- Identity provider target: Better Auth hosted in Cloudflare Workers with D1-backed credentials and server-side sessions. Supabase Auth is retained only as a source until the credential cutover is verified.
 - Preserve all six roles: `admin_pastor`, `coordinator`, `team_leader`, `field_worker`, `follow_up_volunteer`, and `prayer_intercessor`.
-- Do not introduce a second credential/session system or store password hashes, tokens, refresh tokens, or browser sessions in D1.
+- Store only bcrypt password hashes and Better Auth server-side session records in D1; never store plaintext passwords or Supabase access/refresh tokens. Browser sessions use HttpOnly, Secure cookies.
+- Supabase Storage remains the sole planned Supabase runtime exception for private event flyers.
 - SMS/Arkesel remains disabled and must not be enabled as part of this migration.
 - Do not change official Pages production routing, import production data, or activate a production Worker until all release gates pass.
 
@@ -149,3 +150,18 @@ A runner with access to the signed R2 URL and Cloudflare D1 import API is requir
 - No production Pages routing change, production data import, destructive reconciliation, or SMS send has been performed.
 
 Production readiness means the official Pages frontend uses a separately configured production Worker and EU D1, all required workflows and six-role authorization tests pass, data reconciliation and backup/restore are verified, monitoring is active, and rollback has been rehearsed. A successful schema replay or preview deployment alone is not production readiness.
+
+
+## Better Auth consolidation update — 22 November 2026
+
+The new branch `migration/cloudflare-auth-consolidation` supersedes the earlier Supabase-Auth Worker design for the target architecture. It adds forward-only D1 migration `0044_restore_better_auth_identity.sql`, restoring the Better Auth user/account/session/verification/rate-limit tables while preserving the existing identity UUIDs. The Worker now implements D1 credential provisioning, password rotation and cookie-backed staff-session resolution. The frontend routes auth and business API calls through the Pages same-origin Worker gateway.
+
+**Automated validation passed on commit `71854b4ce78941adb531833d6879f2c7d9bd6bab`:**
+- Cloudflare D1 Foundation run [45039540425](https://github.com/Elgit4/PCG_Missions/actions/runs/45039540425): Python/SQLite migration and security suite, Worker type-check, and all 76 Worker tests passed.
+- CMI web CI run [45039540483](https://github.com/Elgit4/PCG_Missions/actions/runs/45039540483): frontend type-check, lint, unit tests and production asset build passed.
+
+**Preview deployment is not yet complete.** Release run [45039791431](https://github.com/Elgit4/PCG_Missions/actions/runs/45039791431) passed the SQLite, Worker type-check and 76-test gates, but stopped while attempting to write a Better Auth secret because the GitHub Actions Cloudflare token does not have Workers Scripts Write permission. The secret has since been provisioned directly on the isolated preview Worker using the connected Cloudflare account. The release workflow must be rerun after the existing GitHub Actions token receives Workers Scripts Write.
+
+Until that rerun succeeds, the deployed preview remains on the older schema-43 Worker/version 27 and the preview D1 migration ledger remains at 43. Migration 0044 has not been applied. No credential hashes have been copied into D1 and no real-user login has been accepted on Better Auth yet. Production Pages, production routing, the production-named D1, source Supabase Auth/DB/Edge Functions, Vercel, and SMS remain untouched.
+
+The preview/source baseline is still three active staff profiles with three linked, confirmed source Auth identities and two active role assignments. The three existing bcrypt password hashes need to be imported through the controlled, non-logged credential migration path after schema 44 is active; no hash values are committed to Git or emitted in workflow logs.
