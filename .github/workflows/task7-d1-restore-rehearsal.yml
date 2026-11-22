@@ -178,7 +178,15 @@ jobs:
             --data-binary @"$dump_file" \
             --dump-header "$headers_file" \
             --output /dev/null
-          upload_etag="$(grep -i '^etag:' "$headers_file" | tail -n 1 | cut -d' ' -f2 | tr -d '\r"')"
+          upload_etag="$(python3 - "$headers_file" <<'PY'
+          import sys
+          lines = open(sys.argv[1], encoding='latin-1').read().splitlines()
+          values = [line.split(':', 1)[1].strip().strip('"') for line in lines if line.lower().startswith('etag:')]
+          print(values[-1] if values else '')
+          PY
+          )"
+          echo "Local dump MD5: $etag"
+          echo "R2 upload ETag: $upload_etag"
           if [[ "$upload_etag" != "$etag" ]]; then
             echo "::error::D1 upload ETag did not match the SQL dump; ingestion was not started."
             exit 1
