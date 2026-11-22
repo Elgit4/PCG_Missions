@@ -1021,3 +1021,35 @@ test("ministry report routes reject anonymous reads and submissions before touch
   assert.equal(calls.length, 0);
 });
 
+
+
+test("event registration, check-in and closeout routes reject anonymous access before D1 writes", async () => {
+  const { env, calls } = fakeEnv();
+  const branch = "30000000-0000-4000-8000-000000000001";
+  const event = "40000000-0000-4000-8000-000000000001";
+  const registration = "50000000-0000-4000-8000-000000000001";
+  const requests = [
+    new Request(`https://worker.example/api/v1/events/${event}/registrations?branch_id=${branch}`),
+    new Request(`https://worker.example/api/v1/events/${event}/registrations`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Branch-Id": branch },
+      body: JSON.stringify({ idempotency_key: "registration-key-123", attendee_name: "Test Attendee", attendee_phone: null }),
+    }),
+    new Request(`https://worker.example/api/v1/events/${event}/registrations/${registration}/check-in`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Branch-Id": branch },
+      body: JSON.stringify({ idempotency_key: "checkin-key-123" }),
+    }),
+    new Request(`https://worker.example/api/v1/events/${event}/closeout?branch_id=${branch}`),
+    new Request(`https://worker.example/api/v1/events/${event}/closeout/submit`, {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Branch-Id": branch },
+      body: JSON.stringify({ idempotency_key: "closeout-key-123", summary_notes: null }),
+    }),
+  ];
+  for (const request of requests) {
+    const response = await worker.fetch(request, env);
+    const payload = await response.json();
+    assert.equal(response.status, 401);
+    assert.equal(payload.error.code, "UNAUTHENTICATED");
+  }
+  assert.equal(calls.length, 0);
+});
+
