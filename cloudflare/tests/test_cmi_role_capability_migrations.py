@@ -40,12 +40,12 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
 
-    def test_full_migration_chain_reaches_schema_40(self):
+    def test_full_migration_chain_reaches_schema_41(self):
         self.assertEqual(
             self.db.execute(
                 "SELECT schema_version, environment FROM app_meta WHERE id = 1"
             ).fetchone(),
-            (40, "non-production"),
+            (41, "non-production"),
         )
         self.assertEqual(
             self.role_codes(),
@@ -91,6 +91,94 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
                 {grant for grant in self.grants(role_code) if grant[0] in ("team.manage", "area.manage")},
                 {("team.manage", "branch"), ("area.manage", "branch")} if role_code == "admin_pastor" else set(),
             )
+
+
+    def test_live_source_grants_and_worker_aliases_are_least_privilege(self):
+        expected_counts = {
+            "admin_pastor": 51,
+            "coordinator": 23,
+            "field_worker": 17,
+            "follow_up_volunteer": 11,
+            "prayer_intercessor": 1,
+            "team_leader": 23,
+        }
+        actual_counts = {
+            row[0]: row[1]
+            for row in self.db.execute(
+                """
+                SELECT r.code, COUNT(*)
+                FROM role_capability rc
+                JOIN role r ON r.id = rc.role_id
+                JOIN capability c ON c.id = rc.capability_id
+                WHERE r.is_active = 1 AND c.is_active = 1
+                GROUP BY r.code
+                """
+            )
+        }
+        self.assertEqual(actual_counts, expected_counts)
+        self.assertEqual(sum(actual_counts.values()), 126)
+
+        admin = self.grants("admin_pastor")
+        coordinator = self.grants("coordinator")
+        field_worker = self.grants("field_worker")
+        follow_up = self.grants("follow_up_volunteer")
+        prayer = self.grants("prayer_intercessor")
+        team_leader = self.grants("team_leader")
+
+        # The frontend's canonical capabilities and Worker compatibility names
+        # must carry the same role/scope from the live CMI grant matrix.
+        self.assertIn(("contact.read.scoped", "branch"), admin)
+        self.assertIn(("contacts.read", "branch"), admin)
+        self.assertIn(("contact.read.scoped", "branch"), coordinator)
+        self.assertIn(("contacts.read", "branch"), coordinator)
+        self.assertIn(("contact.read.scoped", "assigned"), field_worker)
+        self.assertIn(("contacts.read", "assigned"), field_worker)
+        self.assertIn(("contact.read.scoped", "assigned"), follow_up)
+        self.assertIn(("contacts.read", "assigned"), follow_up)
+        self.assertIn(("contact.read.scoped", "team"), team_leader)
+        self.assertIn(("contacts.read", "team"), team_leader)
+
+        # Contact identity/private details remain Admin/Pastor-only.
+        for grants in (coordinator, field_worker, follow_up, team_leader, prayer):
+            self.assertFalse(
+                grants
+                & {
+                    ("contact.identity.read.scoped", "branch"),
+                    ("contacts.contact_details.read", "branch"),
+                    ("contacts.private_fields.read", "branch"),
+                }
+            )
+
+        # Staff governance and account security stay Admin/Pastor-only.
+        self.assertIn(("access.role.assign", "branch"), admin)
+        self.assertIn(("staff.role.assign", "branch"), admin)
+        self.assertIn(("staff.role.approve", "branch"), admin)
+        self.assertIn(("staff.account.manage", "branch"), admin)
+        for grants in (coordinator, field_worker, follow_up, prayer, team_leader):
+            self.assertFalse(
+                {
+                    ("staff.role.assign", "branch"),
+                    ("staff.role.approve", "branch"),
+                    ("staff.account.manage", "branch"),
+                    ("staff.directory.read", "branch"),
+                } & grants
+            )
+
+        # Intercessors receive only the assigned-request source capability.
+        self.assertEqual(prayer, {("prayer.request.read.assigned", "assigned")})
+        self.assertFalse(any(code.startswith("prayer.") for code, _ in prayer))
+        # No staff role receives an SMS dispatch/configuration grant.
+        all_grants = [
+            row[0]
+            for row in self.db.execute(
+                """
+                SELECT c.code
+                FROM role_capability rc
+                JOIN capability c ON c.id = rc.capability_id
+                """
+            )
+        ]
+        self.assertFalse(any(code.startswith("sms.") for code in all_grants))
 
     def test_worker_authorization_sql_allows_team_area_management_only_for_admin_pastor(self):
         now = "2026-11-21T12:00:00.000Z"
@@ -342,7 +430,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         isolated.execute("PRAGMA foreign_keys = ON")
         try:
             for migration_file in sorted(MIGRATIONS.glob("[0-9][0-9][0-9][0-9]_*.sql")):
-                if migration_file.name == "0040_production_environment_marker.sql":
+                if migration_file.name in {"0040_production_environment_marker.sql", "0041_align_live_authorization_catalogue.sql"}:
                     continue
                 isolated.executescript(migration_file.read_text(encoding="utf-8"))
             isolated.execute("UPDATE app_meta SET schema_version = 38 WHERE id = 1")
