@@ -29,8 +29,11 @@ function fakeEnv(options = {}) {
       BETTER_AUTH_URL: "https://worker.example",
       BETTER_AUTH_TRUSTED_ORIGINS: "https://preview.example",
       APP_ALLOWED_ORIGINS: "https://preview.example, http://localhost:5173",
+      BETTER_AUTH_SECRET: "integration-test-secret-that-is-long-enough-123456",
+      BETTER_AUTH_URL: "https://worker.example",
+      BETTER_AUTH_TRUSTED_ORIGINS: "https://preview.example",
+      __TEST_SESSION_RESOLVER: async () => null,
       SUPABASE_URL: "https://example.supabase.co",
-      SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
     },
   };
 }
@@ -42,7 +45,7 @@ test("health reports the migrated non-production D1 schema and request ID", asyn
   assert.equal(response.status, 200);
   assert.equal(payload.ok, true);
   assert.equal(payload.environment, "non-production");
-  assert.equal(payload.schema_version, 39);
+  assert.equal(payload.schema_version, 44);
   assert.ok(payload.request_id);
   assert.equal(calls.length, 1);
   assert.match(response.headers.get("Cache-Control"), /no-store/);
@@ -50,7 +53,7 @@ test("health reports the migrated non-production D1 schema and request ID", asyn
 });
 
 test("health fails closed if D1 is marked as production", async () => {
-  const { env } = fakeEnv({ meta: { schema_version: 39, environment: "production" } });
+  const { env } = fakeEnv({ meta: { schema_version: 44, environment: "production" } });
   const response = await worker.fetch(new Request("https://worker.example/health"), env);
   const payload = await response.json();
   assert.equal(response.status, 503);
@@ -58,13 +61,13 @@ test("health fails closed if D1 is marked as production", async () => {
 });
 
 test("health accepts a production D1 marker only for a production Worker environment", async () => {
-  const { env } = fakeEnv({ meta: { schema_version: 39, environment: "production" } });
+  const { env } = fakeEnv({ meta: { schema_version: 44, environment: "production" } });
   env.APP_ENV = "production";
   const response = await worker.fetch(new Request("https://worker.example/health"), env);
   const payload = await response.json();
   assert.equal(response.status, 200);
   assert.equal(payload.environment, "production");
-  assert.equal(payload.schema_version, 39);
+  assert.equal(payload.schema_version, 44);
 });
 
 test("health fails closed when the D1 metadata row is missing", async () => {
@@ -557,8 +560,13 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
       DB,
       APP_ENV: "non-production",
       APP_ALLOWED_ORIGINS: "https://preview.example, http://localhost:5173",
+      BETTER_AUTH_SECRET: "integration-test-secret-that-is-long-enough-123456",
+      BETTER_AUTH_URL: "https://worker.example",
+      BETTER_AUTH_TRUSTED_ORIGINS: "https://preview.example",
+      __TEST_SESSION_RESOLVER: async (request) => request.headers.has("Cookie")
+        ? { user: { id: AUTH_USER_ID, email: "staff@example.com" } }
+        : null,
       SUPABASE_URL: "https://example.supabase.co",
-      SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
       SUPABASE_SERVICE_ROLE_KEY: "server-only-synthetic-secret",
     },
   };
@@ -567,7 +575,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
 function authenticatedDirectoryRequest(path) {
   return new Request("https://worker.example" + path, {
     headers: {
-      Authorization: "Bearer verified-test-token",
+      Cookie: "better-auth.session_token=verified-test-token",
       "X-Branch-Id": BRANCH_ID,
     },
   });
@@ -592,7 +600,7 @@ test("Admin/Pastor can list, create and update branch announcement drafts throug
   const create = await worker.fetch(new Request("https://worker.example/api/v1/announcements", {
     method: "POST",
     headers: {
-      Authorization: "Bearer verified-test-token",
+      Cookie: "better-auth.session_token=verified-test-token",
       "X-Branch-Id": BRANCH_ID,
       "Content-Type": "application/json",
     },
@@ -616,7 +624,7 @@ test("Admin/Pastor can list, create and update branch announcement drafts throug
     {
       method: "PATCH",
       headers: {
-        Authorization: "Bearer verified-test-token",
+        Cookie: "better-auth.session_token=verified-test-token",
         "X-Branch-Id": BRANCH_ID,
         "Content-Type": "application/json",
       },
@@ -640,7 +648,7 @@ test("Field Worker cannot create branch announcement drafts", async (t) => {
   const response = await worker.fetch(new Request("https://worker.example/api/v1/announcements", {
     method: "POST",
     headers: {
-      Authorization: "Bearer verified-test-token",
+      Cookie: "better-auth.session_token=verified-test-token",
       "X-Branch-Id": BRANCH_ID,
       "Content-Type": "application/json",
     },
@@ -678,7 +686,7 @@ test("Admin/Pastor can list, create and update branch calendar entries through D
   const create = await worker.fetch(new Request("https://worker.example/api/v1/calendar/entries", {
     method: "POST",
     headers: {
-      Authorization: "Bearer verified-test-token",
+      Cookie: "better-auth.session_token=verified-test-token",
       "X-Branch-Id": BRANCH_ID,
       "Content-Type": "application/json",
     },
@@ -703,7 +711,7 @@ test("Admin/Pastor can list, create and update branch calendar entries through D
     {
       method: "PATCH",
       headers: {
-        Authorization: "Bearer verified-test-token",
+        Cookie: "better-auth.session_token=verified-test-token",
         "X-Branch-Id": BRANCH_ID,
         "Content-Type": "application/json",
       },
@@ -727,7 +735,7 @@ test("non-admin roles cannot manage branch calendar entries", async (t) => {
   const response = await worker.fetch(new Request("https://worker.example/api/v1/calendar/entries", {
     method: "POST",
     headers: {
-      Authorization: "Bearer verified-test-token",
+      Cookie: "better-auth.session_token=verified-test-token",
       "X-Branch-Id": BRANCH_ID,
       "Content-Type": "application/json",
     },
@@ -860,7 +868,7 @@ test("all five non-admin roles are denied team and service-area management route
       const response = await worker.fetch(new Request("https://worker.example" + mutation.path, {
         method: "POST",
         headers: {
-          Authorization: "Bearer verified-test-token",
+          Cookie: "better-auth.session_token=verified-test-token",
           "X-Branch-Id": BRANCH_ID,
           "Content-Type": "application/json",
         },
@@ -903,7 +911,7 @@ test("Coordinator can read the branch directory and staff names, but cannot mana
 
   const createResponse = await worker.fetch(new Request("https://worker.example/api/v1/teams", {
     method: "POST",
-    headers: { Authorization: "Bearer verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+    headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
     body: JSON.stringify({ branch_id: BRANCH_ID, name: "Must Not Create", description: null }),
   }), fixture.env);
   const createPayload = await createResponse.json();
@@ -921,7 +929,7 @@ test("Admin/Pastor with branch management grant can create a team and writes aud
   const fixture = authorizedDirectoryEnv("admin_pastor");
   const response = await worker.fetch(new Request("https://worker.example/api/v1/teams", {
     method: "POST",
-    headers: { Authorization: "Bearer verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+    headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
     body: JSON.stringify({ branch_id: BRANCH_ID, name: "New Team", description: "Managed by Admin/Pastor" }),
   }), fixture.env);
   const payload = await response.json();
@@ -945,7 +953,7 @@ test("Coordinator updates a scoped contact and receives the redacted D1 projecti
     {
       method: "PATCH",
       headers: {
-        Authorization: "Bearer verified-test-token",
+        Cookie: "better-auth.session_token=verified-test-token",
         "X-Branch-Id": BRANCH_ID,
         "Content-Type": "application/json",
       },
@@ -979,7 +987,7 @@ test("Field Worker without contact-update capability cannot edit a contact", asy
     {
       method: "PATCH",
       headers: {
-        Authorization: "Bearer verified-test-token",
+        Cookie: "better-auth.session_token=verified-test-token",
         "X-Branch-Id": BRANCH_ID,
         "Content-Type": "application/json",
       },
@@ -1006,7 +1014,7 @@ test("Field Worker creates a visitor contact through the idempotent D1 capture r
   const response = await worker.fetch(new Request("https://worker.example/api/v1/contacts", {
     method: "POST",
     headers: {
-      Authorization: "Bearer verified-test-token",
+      Cookie: "better-auth.session_token=verified-test-token",
       "X-Branch-Id": BRANCH_ID,
       "Idempotency-Key": "capture-request-123456",
       "Content-Type": "application/json",
@@ -1064,7 +1072,7 @@ test("Coordinator lists scoped contact interaction history from D1", async (t) =
     "https://worker.example/api/v1/contacts/" + CONTACT_ID + "/interactions",
     {
       headers: {
-        Authorization: "Bearer verified-test-token",
+        Cookie: "better-auth.session_token=verified-test-token",
         "X-Branch-Id": BRANCH_ID,
       },
     },
@@ -1095,7 +1103,7 @@ test("Prayer Intercessor cannot read visitor contact interaction history", async
     "https://worker.example/api/v1/contacts/" + CONTACT_ID + "/interactions",
     {
       headers: {
-        Authorization: "Bearer verified-test-token",
+        Cookie: "better-auth.session_token=verified-test-token",
         "X-Branch-Id": BRANCH_ID,
       },
     },
@@ -1122,7 +1130,7 @@ test("Coordinator can record a scoped contact interaction through the D1 Worker"
     {
       method: "POST",
       headers: {
-        Authorization: "Bearer verified-test-token",
+        Cookie: "better-auth.session_token=verified-test-token",
         "X-Branch-Id": BRANCH_ID,
         "Content-Type": "application/json",
       },
@@ -1156,7 +1164,7 @@ test("Prayer Intercessor cannot write visitor contact interactions", async (t) =
     {
       method: "POST",
       headers: {
-        Authorization: "Bearer verified-test-token",
+        Cookie: "better-auth.session_token=verified-test-token",
         "X-Branch-Id": BRANCH_ID,
         "Content-Type": "application/json",
       },
@@ -1191,7 +1199,7 @@ test("Admin/Pastor can create an idempotent branch-scoped follow-up task assigne
   const response = await worker.fetch(new Request("https://worker.example/api/v1/followup/tasks", {
     method: "POST",
     headers: {
-      Authorization: "Bearer verified-test-token",
+      Cookie: "better-auth.session_token=verified-test-token",
       "X-Branch-Id": BRANCH_ID,
       "Idempotency-Key": "request-key-123456",
       "Content-Type": "application/json",
@@ -1233,7 +1241,7 @@ test("Admin/Pastor can update a follow-up task and receive the full updated reco
     {
       method: "PATCH",
       headers: {
-        Authorization: "Bearer verified-test-token",
+        Cookie: "better-auth.session_token=verified-test-token",
         "X-Branch-Id": BRANCH_ID,
         "Content-Type": "application/json",
       },
@@ -1261,7 +1269,7 @@ test("Prayer Intercessor cannot update follow-up tasks without the follow-up upd
     {
       method: "PATCH",
       headers: {
-        Authorization: "Bearer verified-test-token",
+        Cookie: "better-auth.session_token=verified-test-token",
         "X-Branch-Id": BRANCH_ID,
         "Content-Type": "application/json",
       },
@@ -1283,7 +1291,7 @@ test("contact detail reads fail closed when no active branch is selected", async
   });
   const fixture = authorizedDirectoryEnv("coordinator");
   const response = await worker.fetch(new Request("https://worker.example/api/v1/contacts/" + CONTACT_ID, {
-    headers: { Authorization: "Bearer verified-test-token" },
+    headers: { Cookie: "better-auth.session_token=verified-test-token" },
   }), fixture.env);
   const payload = await response.json();
 
@@ -1420,7 +1428,7 @@ test("Admin/Pastor can load event assignment workspace, assign staff and teams, 
     "https://worker.example/api/v1/events/" + eventId + "/staff-assignments?branch_id=" + BRANCH_ID,
     {
       method: "POST",
-      headers: { Authorization: "Bearer verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+      headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
       body: JSON.stringify({ staff_auth_user_id: AUTH_USER_ID, assignment_role: "checkin", starts_at: staffStart, ends_at: staffEnd }),
     },
   ), fixture.env);
@@ -1434,7 +1442,7 @@ test("Admin/Pastor can load event assignment workspace, assign staff and teams, 
     "https://worker.example/api/v1/events/" + eventId + "/team-assignments?branch_id=" + BRANCH_ID,
     {
       method: "POST",
-      headers: { Authorization: "Bearer verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+      headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
       body: JSON.stringify({ team_id: OWN_TEAM_ID, assignment_role: "ushering", starts_at: staffStart, ends_at: staffEnd }),
     },
   ), fixture.env);
@@ -1445,7 +1453,7 @@ test("Admin/Pastor can load event assignment workspace, assign staff and teams, 
 
   const revoke = await worker.fetch(new Request(
     "https://worker.example/api/v1/events/" + eventId + "/staff-assignments/" + staffBody.data.id + "/revoke?branch_id=" + BRANCH_ID,
-    { method: "POST", headers: { Authorization: "Bearer verified-test-token", "X-Branch-Id": BRANCH_ID } },
+    { method: "POST", headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
   ), fixture.env);
   assert.equal(revoke.status, 200);
   const revokeBody = await revoke.json();
@@ -1463,7 +1471,7 @@ test("non-admin staff cannot manage event assignment workspace or create assignm
     "https://worker.example/api/v1/events/" + eventId + "/team-assignments?branch_id=" + BRANCH_ID,
     {
       method: "POST",
-      headers: { Authorization: "Bearer verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+      headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
       body: JSON.stringify({ team_id: OWN_TEAM_ID, assignment_role: "ushering", starts_at: "2026-12-01T10:00:00.000Z" }),
     },
   ), fixture.env);
@@ -1487,7 +1495,7 @@ test("Admin/Pastor approval performs server-side Auth reset and returns a one-ti
     "https://worker.example/api/v1/admin/password-reset-requests/" + resetId + "/approve",
     {
       method: "POST",
-      headers: { Authorization: "Bearer synthetic-admin-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+      headers: { Cookie: "better-auth.session_token=synthetic-admin-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
       body: JSON.stringify({ branch_id: BRANCH_ID, reason: "Verified the staff member through a direct call" }),
     },
   ), fixture.env);
@@ -1526,7 +1534,7 @@ test("Admin/Pastor denial records a reason and does not mutate the Supabase Auth
     "https://worker.example/api/v1/admin/password-reset-requests/" + resetId + "/deny",
     {
       method: "POST",
-      headers: { Authorization: "Bearer synthetic-admin-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+      headers: { Cookie: "better-auth.session_token=synthetic-admin-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
       body: JSON.stringify({ branch_id: BRANCH_ID, reason: "The request could not be independently verified" }),
     },
   ), fixture.env);
@@ -1613,7 +1621,7 @@ test("password change clears the forced-change gate only after Supabase Auth suc
   });
   const response = await worker.fetch(new Request("https://worker.example/api/v1/auth/password/change", {
     method: "POST",
-    headers: { Authorization: "Bearer synthetic-staff-token", "Content-Type": "application/json" },
+    headers: { Cookie: "better-auth.session_token=synthetic-staff-token", "Content-Type": "application/json" },
     body: JSON.stringify({ password: "A-strong-New-Password-2026!" }),
   }), fixture.env);
   const payload = await response.json();
@@ -1650,7 +1658,7 @@ test("expired temporary-password gate blocks Auth password mutation", async (t) 
   });
   const response = await worker.fetch(new Request("https://worker.example/api/v1/auth/password/change", {
     method: "POST",
-    headers: { Authorization: "Bearer synthetic-staff-token", "Content-Type": "application/json" },
+    headers: { Cookie: "better-auth.session_token=synthetic-staff-token", "Content-Type": "application/json" },
     body: JSON.stringify({ password: "A-strong-New-Password-2026!" }),
   }), fixture.env);
   assert.equal(response.status, 403);

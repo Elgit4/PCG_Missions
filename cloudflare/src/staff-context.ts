@@ -1,4 +1,4 @@
-import { createAuth, type AuthDatabase, type AuthEnvironment } from "./auth.ts";
+import { getAuthSession, type AuthDatabase, type AuthEnvironment } from "./auth.ts";
 import { authorizeCapability, type AssignableResource, type AuthorizationDecision } from "./authorization.ts";
 
 export interface StaffStatement {
@@ -50,7 +50,7 @@ export async function resolveStaffContext(
 ): Promise<StaffContextResult> {
   let user: { id: string; email: string };
   try {
-    const session = await createAuth(env).api.getSession({ headers: request.headers });
+    const session = await getAuthSession(env, request);
     if (!session?.user?.id) return { state: "unauthenticated" };
     user = { id: session.user.id, email: session.user.email ?? "" };
   } catch {

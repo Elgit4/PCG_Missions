@@ -532,7 +532,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         ).fetchall()
         self.assertEqual(after, before)
         self.assertEqual(
-            self.db.execute("SELECT undefined").fetchone()[0],
+            self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
             44,
         )
 
@@ -641,7 +641,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         ).fetchall()
         self.assertEqual(after, before)
         self.assertEqual(
-            self.db.execute("SELECT undefined").fetchone()[0],
+            self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
             44,
         )
 

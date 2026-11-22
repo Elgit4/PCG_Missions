@@ -16,6 +16,8 @@ export interface AuthEnvironment {
   BETTER_AUTH_URL?: string;
   BETTER_AUTH_TRUSTED_ORIGINS?: string;
   APP_ALLOWED_ORIGINS?: string;
+  /** Test-only injection seam. Cloudflare bindings cannot contain functions; never configure this in a deployed Worker. */
+  __TEST_SESSION_RESOLVER?: (request: Request) => Promise<{ user: { id: string; email?: string | null } } | null>;
 }
 
 function trustedOrigins(env: AuthEnvironment, baseUrl: URL): string[] {
@@ -96,6 +98,14 @@ export function createAuth(env: AuthEnvironment) {
       customRules: { "/sign-in/email": { window: 60, max: 5 }, "/forget-password": { window: 60, max: 3 }, "/reset-password": { window: 60, max: 5 } },
     },
   });
+}
+
+/** Resolve a cookie-backed session; the optional function exists only for isolated Worker unit fixtures. */
+export async function getAuthSession(env: AuthEnvironment, request: Request) {
+  if (typeof env.__TEST_SESSION_RESOLVER === "function") {
+    return env.__TEST_SESSION_RESOLVER(request);
+  }
+  return createAuth(env).api.getSession({ headers: request.headers });
 }
 
 export async function createBetterAuthUser(

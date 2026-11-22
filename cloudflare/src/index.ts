@@ -1,4 +1,4 @@
-import { createAuth, createBetterAuthUser, deleteBetterAuthUser, updateBetterAuthUserPassword } from "./auth.ts";
+import { createAuth, getAuthSession, createBetterAuthUser, deleteBetterAuthUser, updateBetterAuthUserPassword } from "./auth.ts";
 import { authorizeRequestCapability, resolveStaffContext, type StaffEnvironment } from "./staff-context.ts";
 
 interface D1PreparedStatement {
@@ -788,7 +788,7 @@ async function reviewStaffPasswordReset(
 async function completeStaffPasswordChange(request: Request, env: Env, requestId: string, origin?: string): Promise<Response> {
   let authUserId: string;
   try {
-    const authSession = await createAuth(env).api.getSession({ headers: request.headers });
+    const authSession = await getAuthSession(env, request);
     if (!authSession?.user?.id) return json(401, { ok: false, error: { code: "UNAUTHENTICATED" } }, requestId, origin);
     authUserId = authSession.user.id;
   } catch {
