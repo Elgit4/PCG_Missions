@@ -63,6 +63,7 @@ These are review artifacts, not approved migrations or a production schema.
 | 04 | [Application Architecture & UI/UX](docs/04_APPLICATION_ARCHITECTURE_AND_UI_UX.md) | Staff/public app structure and UX |
 | 05 | [Implementation & Deployment Plan](docs/05_IMPLEMENTATION_AND_DEPLOYMENT_PLAN.md) | Delivery phases and release gates |
 | 06 | [CMI Follow-up Internal User Guide](docs/CMI_FOLLOW_UP_APP_GUIDE.md) | Staff operating guide |
+| 07 | [Task 7 Recovery Rehearsal](docs/RESTORE_REHEARSAL_2026-11-22.md) | Verified backup/restore evidence and remaining recovery actions |
 | — | [Full documentation index](docs/README.md) | Reading order and legacy artifact register |
 | — | [Repository audit report](docs/REPOSITORY_AUDIT_REPORT.md) | Consistency findings, verification limits and remaining release gates |
 
