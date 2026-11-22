@@ -187,7 +187,8 @@ jobs:
             --upload-file "$dump_file" \
             --dump-header "$headers_file" \
             --output "$upload_body_file" \
-            --write-out '%{http_code}' > "$upload_status_file" 2> "$upload_error_file"
+            --write-out '%{http_code}' > "$upload_status_file" 2> "$upload_error_file" \
+            "$upload_url"
           curl_exit=$?
           set -e
           upload_status="$(cat "$upload_status_file" 2>/dev/null || true)"
