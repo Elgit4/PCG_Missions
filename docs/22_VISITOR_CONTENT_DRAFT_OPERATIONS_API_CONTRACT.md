@@ -129,16 +129,11 @@ Only `title`, `body` and `display_order` can change. Creator, branch, status and
 - No endpoint accepts `status`, `published_at`, `created_by`, `is_public`, `publish_at`, `church_id` or other lifecycle/identity fields.
 - No publish capability is used or activated.
 - Draft text must be rendered as plain text or through a separately reviewed safe Markdown renderer. Do not inject stored body text as raw HTML.
-- The public-content Edge Function remains a separate read-only surface and must continue to return only explicitly published, allowlisted rows.
+- The Cloudflare public-content Worker projection remains a separate read-only surface and returns only explicitly published, allowlisted rows.
 - Publishing content requires the separately defined `content.publish` capability, an approved authorization matrix and a dedicated audited workflow.
 
 ## 6. Verification
 
-The Cloudflare Worker route suite covers anonymous rejection, branch-scoped authorization, creator-only list/create behavior and private draft state. The original Deno validation suite remains historical reference material.
-- branch UUID and bounded pagination;
-- sermon title/body/slug limits and slug grammar;
-- welcome-message title/body/display-order limits;
-- rejection of publication, identity and global-scope fields;
-- strict patch allowlists and duplicate/unknown query parameters.
+The Cloudflare Worker route suite verifies anonymous rejection, branch-scoped authorization, creator-only draft listing and private sermon creation. The frontend API client suite verifies that sermon and welcome-message draft requests use the same-origin Worker with Better Auth cookies and branch headers. The Worker typecheck and D1 foundation workflow are required checks for changes to this implementation.
 
-CI type-checks the Edge Function and executes the validation tests alongside the existing CMI Deno and isolated local database suites. No SQL migration or hosted Supabase change is included.
+No SQL migration or capability grant is introduced by this implementation. Production writes remain restricted to the existing Admin/Pastor branch grants.
