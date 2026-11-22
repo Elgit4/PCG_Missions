@@ -8,6 +8,7 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   X,
 } from "lucide-react";
 import {
@@ -73,6 +74,7 @@ export function OperationsWorkspace({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [flyerPreview, setFlyerPreview] = useState("");
@@ -174,6 +176,29 @@ export function OperationsWorkspace({
       else setError(errorMessage(cause));
     } finally {
       setPublishingId(null);
+    }
+  };
+
+  const deleteRecord = async (id: string, title: string) => {
+    if (!canManage || saving || deletingId) return;
+    const action = section === "Announcements" ? "archive" : section === "Events" ? "cancel" : "cancel";
+    const confirmed = window.confirm(`Delete “${title}”? This will ${action} the record and preserve its audit history. This action cannot be undone here.`);
+    if (!confirmed) return;
+    setDeletingId(id);
+    setError("");
+    setNotice("");
+    try {
+      if (section === "Events") await api.cancelEventDraft(branchId, id);
+      else if (section === "Calendar") await api.cancelCalendarEntry(branchId, id, "Removed by an authorized branch administrator.");
+      else if (section === "Announcements") await api.archiveAnnouncementDraft(branchId, id);
+      else return;
+      setNotice(section === "Announcements" ? "Announcement archived." : section === "Events" ? "Event cancelled and removed from active drafts." : "Calendar entry cancelled and removed from the active calendar.");
+      await loadRecords();
+    } catch (cause) {
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -382,6 +407,7 @@ export function OperationsWorkspace({
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.starts_at, timeZone)} – {formatBranchDate(item.ends_at, timeZone)}{item.location ? " · " + item.location : ""}</p><small>{shortText(item.description ?? "No description added.")}</small></div>
                 <span className="cmi-task-status status-open">Private draft</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+                {canManage && <button type="button" className="cmi-button cmi-button-danger" onClick={() => void deleteRecord(item.id,item.title)} disabled={deletingId!==null} aria-label={"Delete " + item.title}>{deletingId===item.id ? "Deleting…" : <><Trash2 size={14} />Delete</>}</button>}
               </article>
             ))}
             {!events.length && <p className="cmi-detail-muted">No event drafts are visible in this branch.</p>}
@@ -396,6 +422,7 @@ export function OperationsWorkspace({
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{item.entry_type.replaceAll("_", " ")} · {formatBranchDate(item.starts_at, timeZone)} – {formatBranchDate(item.ends_at, timeZone)}</p></div>
                 <span className="cmi-task-status status-open">Scheduled</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+                {canManage && <button type="button" className="cmi-button cmi-button-danger" onClick={() => void deleteRecord(item.id,item.title)} disabled={deletingId!==null} aria-label={"Delete " + item.title}>{deletingId===item.id ? "Deleting…" : <><Trash2 size={14} />Delete</>}</button>}
               </article>
             ))}
             {!entries.length && <p className="cmi-detail-muted">No calendar entries are visible in this branch.</p>}
@@ -410,7 +437,8 @@ export function OperationsWorkspace({
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.updated_at, timeZone)} · {shortText(item.body)}</p></div>
                 <span className={"cmi-task-status " + (item.status === "published" ? "status-completed" : item.status === "archived" ? "status-cancelled" : "status-open")}>{item.status === "published" ? "Published" : item.status === "scheduled" ? "Scheduled" : item.status === "archived" ? "Archived" : "Draft"}</span>
                 {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
-                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-primary" onClick={() => void publishAnnouncement(item.id)} disabled={publishingId !== null}>{publishingId === item.id ? "Publishing…" : "Publish & notify"}</button>}
+                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-primary" onClick={() => void publishAnnouncement(item.id)} disabled={publishingId !== null || deletingId!==null}>{publishingId === item.id ? "Publishing…" : "Publish & notify"}</button>}
+                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-danger" onClick={() => void deleteRecord(item.id,item.title)} disabled={deletingId!==null} aria-label={"Delete " + item.title}>{deletingId===item.id ? "Deleting…" : <><Trash2 size={14} />Delete</>}</button>}
               </article>
             ))}
             {!announcements.length && <p className="cmi-detail-muted">No announcement drafts are visible in this branch.</p>}
