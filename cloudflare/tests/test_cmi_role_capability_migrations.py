@@ -200,7 +200,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         declared = {
             (role_code, capability_code, scope_mode)
             for role_code, capability_code, scope_mode in re.findall(
-                r"\\('([^']+)','([^']+)','([^']+)','[^']+'\\)",
+                r"\('([^']+)','([^']+)','([^']+)','[^']+'\)",
                 migration[start:end],
             )
         }
