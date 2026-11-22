@@ -18,6 +18,7 @@ import time
 import urllib.error
 import urllib.request
 import uuid
+import urllib.parse
 
 ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "1697f36d4227453d2e25cfb49b347e5f")
 DATABASE_ID = os.environ.get("PCG_MISSIONS_PREVIEW_D1_ID", "74074d53-1edc-4ad7-83e6-bb3333a6ab4f")
@@ -47,6 +48,46 @@ def parse_source_rows(output: str) -> list[tuple[str, str, str]]:
     return rows
 
 
+def resolve_source_connection(database_url: str) -> str:
+    parsed = urllib.parse.urlsplit(database_url)
+    host = parsed.hostname or ""
+    username = urllib.parse.unquote(parsed.username or "")
+    password = urllib.parse.unquote(parsed.password or "")
+    if host.startswith("db.") and host.endswith(".supabase.co"):
+        project_ref = host[3:-len(".supabase.co")]
+    elif host.endswith(".pooler.supabase.com"):
+        project_ref = username.rsplit(".", 1)[-1] if "." in username else ""
+    else:
+        raise RuntimeError("Unsupported Supabase source endpoint; refusing to guess its region.")
+    if project_ref != "cgwffpxlwgbnlinzwfoj":
+        raise RuntimeError("The source connection is not the approved PCG Missions Supabase project.")
+    if username == "postgres":
+        username = "postgres." + project_ref
+    if username != "postgres." + project_ref or not password:
+        raise RuntimeError("The source connection username/password format is invalid.")
+    for cluster in range(10):
+        pooler_host = f"aws-{cluster}-eu-west-1.pooler.supabase.com"
+        authority = (
+            urllib.parse.quote(username, safe="") + ":" +
+            urllib.parse.quote(password, safe="") + "@" + pooler_host + ":5432"
+        )
+        candidate = urllib.parse.urlunsplit((
+            parsed.scheme or "postgresql", authority, parsed.path or "/postgres",
+            parsed.query, parsed.fragment,
+        ))
+        try:
+            probe = subprocess.run(
+                ["psql", candidate, "-X", "-v", "ON_ERROR_STOP=1", "-Atc", "SELECT 1"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=8, check=False,
+                env={**os.environ, "PGCONNECT_TIMEOUT": "5"},
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            continue
+        if probe.returncode == 0:
+            return candidate
+    raise RuntimeError("No assigned EU Supabase Session Pooler host accepted a read-only connection.")
+
+
 def psql_source_rows(database_url: str) -> list[tuple[str, str, str]]:
     sql = """
       SELECT u.id::text, lower(u.email), u.encrypted_password
@@ -55,16 +96,16 @@ def psql_source_rows(database_url: str) -> list[tuple[str, str, str]]:
       WHERE sp.auth_user_id IS NOT NULL
       ORDER BY u.id
     """
+    source_url = resolve_source_connection(database_url)
     try:
         completed = subprocess.run(
-            ["psql", database_url, "-X", "-v", "ON_ERROR_STOP=1", "-At", "-F", "\t", "-c", sql],
+            ["psql", source_url, "-X", "-v", "ON_ERROR_STOP=1", "-At", "-F", "\t", "-c", sql],
             check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=90,
             env={**os.environ, "PGCONNECT_TIMEOUT": "15"},
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
         raise RuntimeError("Could not securely read linked staff credentials from the Supabase source.") from None
     return parse_source_rows(completed.stdout)
-
 
 def d1_query(token: str, sql: str, params: list[str] | None = None) -> list[dict]:
     body = {"sql": sql}
