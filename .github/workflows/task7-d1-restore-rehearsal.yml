@@ -1,6 +1,11 @@
 name: Task 7 — Isolated D1 restore rehearsal
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/task7-d1-restore-rehearsal.yml
   workflow_dispatch:
     inputs:
       confirm_non_production_restore:
@@ -17,7 +22,7 @@ concurrency:
 
 jobs:
   d1-export-import-verify:
-    if: ${{ inputs.confirm_non_production_restore == 'RESTORE-TO-SCRATCH' }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.confirm_non_production_restore == 'RESTORE-TO-SCRATCH') || (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: authorize one-time Task 7 isolated restore rehearsal')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
