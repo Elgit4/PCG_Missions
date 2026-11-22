@@ -84,7 +84,7 @@ jobs:
       - name: Export migration-test database to ephemeral runner disk
         run: |
           set -euo pipefail
-          npx wrangler d1 export pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --output=/tmp/pcg-missions-d1-recovery.sql --skip-confirmation
+          npx wrangler d1 export pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --output=/tmp/pcg-missions-d1-recovery.sql
           test -s /tmp/pcg-missions-d1-recovery.sql
           sha256sum /tmp/pcg-missions-d1-recovery.sql | tee /tmp/pcg-missions-d1-recovery.sha256
           wc -c /tmp/pcg-missions-d1-recovery.sql
