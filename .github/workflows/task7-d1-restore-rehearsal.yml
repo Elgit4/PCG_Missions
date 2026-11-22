@@ -22,7 +22,6 @@ concurrency:
 
 jobs:
   d1-export-import-verify:
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.confirm_non_production_restore == 'RESTORE-TO-SCRATCH') || (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: authorize one-time Task 7 isolated restore rehearsal')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
@@ -33,6 +32,16 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate restore authorization
+        env:
+          TASK7_CONFIRMATION: ${{ inputs.confirm_non_production_restore }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$TASK7_CONFIRMATION" != "RESTORE-TO-SCRATCH" ]]; then
+            echo "::error::Manual runs require the exact confirmation RESTORE-TO-SCRATCH."
+            exit 1
+          fi
 
       - name: Require Cloudflare credential
         run: |
