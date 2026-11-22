@@ -117,25 +117,40 @@ jobs:
           db.executescript(source)
           # SQLite's dump emits every CREATE TABLE before indexes and triggers,
           # preventing D1 from seeing dependent schema objects too early.
-          lines = []
-          for line in db.iterdump():
-              stripped = line.strip().upper()
-              if stripped in ('BEGIN TRANSACTION;', 'COMMIT;'):
+          table_statements = []
+          data_statements = []
+          schema_objects = []
+          for statement in db.iterdump():
+              stripped = statement.strip()
+              upper = stripped.upper()
+              if upper in ('BEGIN TRANSACTION;', 'COMMIT;'):
                   continue
-              if stripped.startswith('PRAGMA '):
+              if upper.startswith('PRAGMA '):
                   continue
-              if stripped.startswith(('DELETE FROM "SQLITE_SEQUENCE"', 'INSERT INTO "SQLITE_SEQUENCE"')):
+              if upper.startswith(('DELETE FROM "SQLITE_SEQUENCE"', 'INSERT INTO "SQLITE_SEQUENCE"')):
                   continue
-              lines.append(line)
-          output = '\n'.join(lines) + '\n'
+              if upper.startswith('CREATE TABLE '):
+                  table_statements.append(stripped)
+              elif upper.startswith('INSERT INTO '):
+                  data_statements.append(stripped)
+              elif upper.startswith(('CREATE INDEX ', 'CREATE UNIQUE INDEX ', 'CREATE TRIGGER ', 'CREATE VIEW ')):
+                  schema_objects.append(stripped)
+              else:
+                  raise SystemExit('Unexpected SQLite dump statement; refusing import: ' + upper.splitlines()[0][:100])
           if db.execute("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='calendar_series'").fetchone() is None:
-              raise SystemExit('Reordered dump is missing calendar_series; refusing import')
+              raise SystemExit('Source SQLite snapshot is missing calendar_series; refusing import')
+          if not table_statements or not data_statements:
+              raise SystemExit('SQLite snapshot is missing table definitions or data; refusing import')
+          output = 'PRAGMA defer_foreign_keys = true;\n' + '\n'.join(table_statements + data_statements + schema_objects) + '\n'
+          first_insert = output.find('INSERT INTO ')
           last_table = output.rfind('CREATE TABLE ')
-          first_index = output.find('CREATE INDEX ')
-          if first_index != -1 and first_index < last_table:
-              raise SystemExit('Indexes were emitted before all table definitions')
+          first_index = min([p for p in (output.find('CREATE INDEX '), output.find('CREATE UNIQUE INDEX '), output.find('CREATE TRIGGER '), output.find('CREATE VIEW ')) if p >= 0], default=-1)
+          if first_insert >= 0 and first_insert < last_table:
+              raise SystemExit('Data statements appear before all table definitions')
+          if first_index >= 0 and first_index < output.rfind('INSERT INTO '):
+              raise SystemExit('Indexes, triggers, or views appear before all data statements')
           Path('/tmp/pcg-missions-d1-recovery-ordered.sql').write_text(output)
-          print(f'Reordered SQLite dump: {len(output)} bytes')
+          print(f'Reordered SQLite dump: {len(output)} bytes; {len(table_statements)} tables, {len(data_statements)} data statements, {len(schema_objects)} indexes/triggers/views')
           PY
           test -s /tmp/pcg-missions-d1-recovery-ordered.sql
 
