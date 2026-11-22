@@ -68,6 +68,8 @@ function StaffApp() {
 
   useEffect(() => {
     let current = true;
+    let bootstrapExpired = false;
+    let timeoutId: number | undefined;
     const initialize = async () => {
       try {
         if (!auth || !api) {
@@ -75,17 +77,18 @@ function StaffApp() {
           return;
         }
         const recovery = await auth.restoreRecoveryFromUrl();
-        if (!current) return;
+        if (!current || bootstrapExpired) return;
         if (recovery) {
           setView("recovery");
           setNotice("Your recovery link is ready. Choose a new password to finish resetting your account.");
           return;
         }
         const session = await auth.getSession();
-        if (!session) return;
+        if (!current || bootstrapExpired || !session) return;
         await loadStaffSession();
+        if (!current || bootstrapExpired) return;
       } catch (cause) {
-        if (!current) return;
+        if (!current || bootstrapExpired) return;
         setError(messageFor(cause));
         if (cause instanceof CmiApiError && cause.status === 401) {
           await clearAuthentication();
@@ -96,8 +99,29 @@ function StaffApp() {
         if (current) setInitializing(false);
       }
     };
-    void initialize();
-    return () => { current = false; };
+    const initialization = initialize();
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        bootstrapExpired = true;
+        reject(new AuthClientError(
+          0,
+          "AUTH_BOOTSTRAP_TIMEOUT",
+          "The sign-in service is taking too long to respond. You can still use the sign-in form below; please try signing in.",
+        ));
+      }, 7000);
+    });
+    void Promise.race([initialization, timeout]).catch((cause) => {
+      if (!current) return;
+      setError(messageFor(cause));
+      setWorkspaceRetryAvailable(false);
+      setInitializing(false);
+    }).finally(() => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    });
+    return () => {
+      current = false;
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
   }, [auth, api, configurationError, loadStaffSession, messageFor, clearAuthentication]);
 
   const handleSignIn = async (email: string, password: string) => {
