@@ -50,12 +50,12 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
 
-    def test_full_migration_chain_reaches_schema_45(self):
+    def test_full_migration_chain_reaches_schema_46(self):
         self.assertEqual(
             self.db.execute(
                 "SELECT schema_version, environment FROM app_meta WHERE id = 1"
             ).fetchone(),
-            (45, "non-production"),
+            (46, "non-production"),
         )
         self.assertEqual(
             self.role_codes(),
@@ -105,12 +105,12 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
 
     def test_live_source_grants_and_worker_aliases_are_least_privilege(self):
         expected_counts = {
-            "admin_pastor": 53,
-            "coordinator": 23,
-            "field_worker": 17,
-            "follow_up_volunteer": 11,
+            "admin_pastor": 56,
+            "coordinator": 25,
+            "field_worker": 19,
+            "follow_up_volunteer": 13,
             "prayer_intercessor": 1,
-            "team_leader": 23,
+            "team_leader": 26,
         }
         actual_counts = {
             row[0]: row[1]
@@ -126,7 +126,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
         self.assertEqual(actual_counts, expected_counts)
-        self.assertEqual(sum(actual_counts.values()), 128)
+        self.assertEqual(sum(actual_counts.values()), 140)
         self.assertEqual(
             self.db.execute("SELECT COUNT(*) FROM capability WHERE is_active = 1").fetchone()[0],
             89,
@@ -533,7 +533,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            45,
+            46,
         )
 
     def test_worker_authorization_query_enforces_team_leader_membership_for_directory_read(self):
@@ -726,7 +726,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         isolated.execute("PRAGMA foreign_keys = ON")
         try:
             for migration_file in sorted(MIGRATIONS.glob("[0-9][0-9][0-9][0-9]_*.sql")):
-                if migration_file.name in {"0040_production_environment_marker.sql", "0041_align_live_authorization_catalogue.sql", "0042_worker_route_capability_compatibility.sql", "0043_supabase_identity_import_controls.sql"}:
+                if migration_file.name in {"0040_production_environment_marker.sql", "0041_align_live_authorization_catalogue.sql", "0042_worker_route_capability_compatibility.sql", "0043_supabase_identity_import_controls.sql", "0044_restore_better_auth_identity.sql", "0045_promote_production_environment.sql", "0046_restore_report_and_event_capabilities.sql"}:
                     continue
                 isolated.executescript(migration_file.read_text(encoding="utf-8"))
             isolated.execute("UPDATE app_meta SET schema_version = 38 WHERE id = 1")
