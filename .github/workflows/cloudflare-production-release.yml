@@ -1,18 +1,12 @@
 name: PCG Missions Cloudflare Production Release
 
 on:
-  push:
-    branches:
-      - migration/cloudflare-auth-consolidation
-    paths:
-      - "cloudflare/src/**"
-      - "cloudflare/migrations/**"
-      - "cloudflare/scripts/**"
-      - "cloudflare/tests/**"
-      - "cloudflare/package.json"
-      - "cloudflare/wrangler.toml"
-      - ".github/workflows/cloudflare-production-release.yml"
   workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: Type DEPLOY to authorize the production D1 migration and Pages cutover
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -23,7 +17,9 @@ concurrency:
 
 jobs:
   production-release:
+    if: ${{ inputs.confirm_production == 'DEPLOY' }}
     runs-on: ubuntu-latest
+    environment: production
     defaults:
       run:
         working-directory: cloudflare
@@ -80,11 +76,8 @@ jobs:
       - name: Apply forward-only schema 44 to production D1
         run: npx wrangler d1 migrations apply pcg-missions-production --remote --env production
 
-      - name: Mark production D1 environment explicitly
-        run: |
-          npx wrangler d1 execute pcg-missions-production --remote --env production --command "UPDATE app_meta SET environment='production' WHERE id=1 AND schema_version=44"
-          npx wrangler d1 execute pcg-missions-production --remote --env production --command "SELECT CASE WHEN schema_version=44 AND environment='production' THEN 'PRODUCTION_D1_READY' ELSE 'PRODUCTION_D1_NOT_READY' END AS release_gate FROM app_meta WHERE id=1" --json > /tmp/pcg-production-meta.json
-          node -e 'const fs=require("fs");const x=JSON.parse(fs.readFileSync("/tmp/pcg-production-meta.json","utf8"));const rows=x[0]?.results||x.result?.[0]?.results||[];if(!rows.some(r=>r.release_gate==="PRODUCTION_D1_READY"))process.exit(1)'
+      - name: Apply forward-only schema 44 and guarded production marker 45
+        run: npx wrangler d1 migrations apply pcg-missions-production --remote --env production
 
       - name: Import and verify existing staff bcrypt credentials in production D1
         env:
@@ -119,7 +112,7 @@ jobs:
           url="https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev"
           health="$(curl --retry 5 --retry-delay 3 --retry-all-errors --fail --silent --show-error "$url/health")"
           echo "$health"
-          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==44)process.exit(1)' "$health"
+          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==45)process.exit(1)' "$health"
           me_status="$(curl --silent --show-error -o /tmp/pcg-me.json -w "%{http_code}" "$url/api/v1/me")"
           test "$me_status" = "401"
           node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/pcg-me.json","utf8"));if(p.error?.code!=="UNAUTHENTICATED")process.exit(1)'
@@ -150,6 +143,7 @@ jobs:
               production_branch: "migration/cloudflare-auth-consolidation",
               deployment_configs: {
                 production: ($p.deployment_configs.production |
+                  .env_vars |= del(.SUPABASE_URL, .SUPABASE_PUBLISHABLE_KEY) |
                   .env_vars.PCG_MISSIONS_API_ORIGIN = {
                     type: "plain_text",
                     value: "https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev"
@@ -158,6 +152,14 @@ jobs:
             }')"
           updated="$(curl --fail --silent --show-error -X PATCH "$api" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" --data "$payload")"
           printf '%s' "$updated" | jq -e '.success == true and .result.production_branch == "migration/cloudflare-auth-consolidation" and .result.deployment_configs.production.env_vars.PCG_MISSIONS_API_ORIGIN.value == "https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev"'
+
+      - name: Build and deploy reviewed frontend to production Pages
+        working-directory: web
+        run: |
+          npm install --no-package-lock --no-audit --no-fund
+          npm run build
+          test -s dist/index.html
+          npx wrangler pages deploy dist --project-name pcg-missions --branch migration/cloudflare-auth-consolidation
 
       - name: Wait for production Pages deployment and verify public app
         shell: bash
@@ -174,4 +176,7 @@ jobs:
           done
           test "$ready" = "1"
           curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error https://pcg-missions.pages.dev/ >/dev/null
+          curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error https://pcg-missions.pages.dev/api/v1/health | tee /tmp/pages-api-health.json
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/pages-api-health.json","utf8"));if(p.ok!==true||p.environment!=="production"||p.schema_version!==45)process.exit(1)'
+          curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error https://pcg-missions.pages.dev/api/auth/get-session >/dev/null
           echo "PCG Missions production Pages and Better Auth Worker passed release smoke checks."
