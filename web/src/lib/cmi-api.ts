@@ -713,6 +713,11 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     return null;
   }
 
+  if (functionName === "staff-auth") {
+    if (suffix === "/admin/staff" && verb === "POST") return "/api/v1/staff/accounts";
+    return null;
+  }
+
   if (functionName === "staff-access-operations") {
     const statusMatch = suffix.match(/^\/staff\/([^/]+)\/accounts\/(deactivate|reactivate)$/);
     if (statusMatch && verb === "POST") return `/api/v1/staff/${statusMatch[1]}/${statusMatch[2]}`;
@@ -1012,7 +1017,8 @@ export class CmiApiClient {
       staff_profile_id: string;
       email: string;
       role_code: StaffAccountCreateInput["role_code"];
-      invitation_email_sent: false;
+      account_created: true;
+      email_sent: false;
       must_change_password: true;
       temporary_password: string;
       manual_handoff_required: true;
