@@ -4084,7 +4084,7 @@ async function handleContentItem(
   const now = new Date().toISOString();
   const values = fields.map(([, value]) => value);
   values.push(access.staff.userId, now, contentId, branchId, access.staff.userId, current.updated_at);
-  let result: Awaited<ReturnType<ReturnType<typeof env.DB.prepare>["run"]>>;
+  let result: { success: boolean; meta?: { changes?: number } };
   try {
     result = await env.DB.prepare(
       "UPDATE " + table + " SET " + assignments.join(", ") +
