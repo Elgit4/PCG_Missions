@@ -1,13 +1,14 @@
 
 /**
- * PCG Missions CMI v2.1 browser API adapter.
+ * PCG Missions browser API adapter.
  *
- * Browser clients use a publishable key and a Supabase Auth access token only.
- * All business authorization is performed by the Edge Functions; this adapter
- * never talks directly to Postgres or carries service-role/provider secrets.
+ * Browser requests use the same-origin Cloudflare Pages gateway and HttpOnly
+ * Better Auth cookies. The Worker enforces D1 role/capability authorization.
+ * The browser never receives Supabase Auth tokens or service-role credentials;
+ * Supabase is retained server-side only for private event-flyer storage.
  */
 export interface CmiApiConfig { apiUrl?: string; }
-export type AccessTokenProvider = () => Promise<string | null>;
+/** @deprecated Retained only for constructor compatibility; Cloudflare auth uses HttpOnly cookies. */\nexport type AccessTokenProvider = () => Promise<string | null>;
 export interface ApiEnvelope<T> {
   data: T;
   request_id: string;
@@ -722,7 +723,7 @@ export class CmiApiClient {
 
   constructor(
     config: CmiApiConfig = {},
-    _getAccessToken: AccessTokenProvider = async () => null,
+    /** @deprecated No bearer token is sent; the Worker authenticates the HttpOnly session cookie. */\n    _getAccessToken: AccessTokenProvider = async () => null,
     private readonly fetcher: typeof fetch = fetch,
   ) {
     const configured = normalizeBaseUrl(config.apiUrl ?? "");
