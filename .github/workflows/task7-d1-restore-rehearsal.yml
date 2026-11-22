@@ -116,8 +116,10 @@ jobs:
           output = '\\n'.join(lines) + '\\n'
           if 'CREATE TABLE "calendar_series"' not in output:
               raise SystemExit('Reordered dump is missing calendar_series; refusing import')
-          if output.index('CREATE TABLE "calendar_series"') > output.index('CREATE TABLE "calendar_entry"'):
-              raise SystemExit('Dependency ordering check failed for calendar_series/calendar_entry')
+          last_table = output.rfind('CREATE TABLE ')
+          first_index = output.find('CREATE INDEX ')
+          if first_index != -1 and first_index < last_table:
+              raise SystemExit('Indexes were emitted before all table definitions')
           Path('/tmp/pcg-missions-d1-recovery-ordered.sql').write_text(output)
           print(f'Reordered SQLite dump: {len(output)} bytes')
           PY
