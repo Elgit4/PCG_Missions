@@ -151,10 +151,7 @@ export function PublicVisitorSite() {
 
   useEffect(() => {
     const controller = new AbortController();
-    const client = createPublicContentClient({
-      supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? "",
-      publishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "",
-    });
+    const client = createPublicContentClient();
 
     setLoading(true);
     setLoadError("");
