@@ -573,21 +573,21 @@ async function requestStaffPasswordReset(request: Request, env: Env, requestId: 
   const email = payload.email.trim().toLowerCase();
   const clientIp = request.headers.get("CF-Connecting-IP") ??
     request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ?? "unknown";
-  const ipFingerprint = await sha256Hex(\`\${env.SUPABASE_SERVICE_ROLE_KEY}:\${clientIp}\`);
-  const emailFingerprint = await sha256Hex(\`\${env.SUPABASE_SERVICE_ROLE_KEY}:\${email}\`);
+  const ipFingerprint = await sha256Hex(`${env.SUPABASE_SERVICE_ROLE_KEY}:${clientIp}`);
+  const emailFingerprint = await sha256Hex(`${env.SUPABASE_SERVICE_ROLE_KEY}:${email}`);
   const now = new Date();
   const requestedAt = now.toISOString();
   const expiresAt = new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString();
-  const recent = await env.DB.prepare(\`
+  const recent = await env.DB.prepare(`
     SELECT COUNT(*) AS count FROM staff_password_reset_request
     WHERE ip_fingerprint = ? AND requested_at > ?
-  \`).bind(ipFingerprint, new Date(now.getTime() - 15 * 60 * 1000).toISOString())
+  `).bind(ipFingerprint, new Date(now.getTime() - 15 * 60 * 1000).toISOString())
     .first<{ count: number }>();
   if ((recent?.count ?? 0) >= 5) {
     return json(429, { ok: false, error: { code: "RESET_REQUEST_RATE_LIMITED", message: "Too many requests. Try again later." } }, requestId, origin);
   }
 
-  const target = await env.DB.prepare(\`
+  const target = await env.DB.prepare(`
     SELECT sp.id AS profile_id, sra.branch_id
     FROM staff_profile sp
     JOIN staff_role_assignment sra ON sra.staff_profile_id = sp.id
@@ -596,42 +596,42 @@ async function requestStaffPasswordReset(request: Request, env: Env, requestId: 
       AND sra.revoked_at IS NULL AND sra.starts_at <= ?
       AND (sra.ends_at IS NULL OR sra.ends_at > ?)
     ORDER BY sra.starts_at DESC LIMIT 1
-  \`).bind(email, requestedAt, requestedAt)
+  `).bind(email, requestedAt, requestedAt)
     .first<{ profile_id: string; branch_id: string }>();
 
   // Keep the response identical for unknown, inactive, and valid staff addresses.
   if (!target) return json(200, { ok: true, message: "If this address belongs to an active staff account, an administrator will review the request." }, requestId, origin);
 
   const requestIdValue = crypto.randomUUID();
-  const adminRows = await env.DB.prepare(\`
+  const adminRows = await env.DB.prepare(`
     SELECT DISTINCT sp.auth_user_id
     FROM staff_role_assignment sra
     JOIN staff_profile sp ON sp.id = sra.staff_profile_id AND sp.account_status = 'active'
     JOIN role r ON r.id = sra.role_id AND r.code = 'admin_pastor' AND r.is_active = 1
     WHERE sra.branch_id = ? AND sra.revoked_at IS NULL
       AND sra.starts_at <= ? AND (sra.ends_at IS NULL OR sra.ends_at > ?)
-  \`).bind(target.branch_id, requestedAt, requestedAt).all<{ auth_user_id: string }>();
+  `).bind(target.branch_id, requestedAt, requestedAt).all<{ auth_user_id: string }>();
 
   const statements = [
-    env.DB.prepare(\`
+    env.DB.prepare(`
       INSERT INTO staff_password_reset_request
         (id, target_profile_id, branch_id, email_normalized, email_fingerprint, ip_fingerprint,
          status, requested_at, expires_at)
       VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-    \`).bind(requestIdValue, target.profile_id, target.branch_id, email, emailFingerprint, ipFingerprint, requestedAt, expiresAt),
-    env.DB.prepare(\`
+    `).bind(requestIdValue, target.profile_id, target.branch_id, email, emailFingerprint, ipFingerprint, requestedAt, expiresAt),
+    env.DB.prepare(`
       INSERT INTO staff_password_reset_audit
         (id, request_id, branch_id, actor_profile_id, event_type, metadata, created_at)
       VALUES (?, ?, ?, NULL, 'requested', '{}', ?)
-    \`).bind(crypto.randomUUID(), requestIdValue, target.branch_id, requestedAt),
+    `).bind(crypto.randomUUID(), requestIdValue, target.branch_id, requestedAt),
   ];
   for (const admin of adminRows.results ?? []) {
-    statements.push(env.DB.prepare(\`
+    statements.push(env.DB.prepare(`
       INSERT INTO staff_notification
         (id, branch_id, recipient_user_id, category, title, body, target_type, target_id, idempotency_key, created_at)
       VALUES (?, ?, ?, 'system', 'Password reset request', 'A staff member has requested a password reset. Review it in Access requests.', NULL, NULL, ?, ?)
-    \`).bind(crypto.randomUUID(), target.branch_id, admin.auth_user_id,
-      \`password-reset:\${requestIdValue}:\${admin.auth_user_id}\`, requestedAt));
+    `).bind(crypto.randomUUID(), target.branch_id, admin.auth_user_id,
+      `password-reset:${requestIdValue}:${admin.auth_user_id}`, requestedAt));
   }
   try {
     const results = await env.DB.batch(statements);
@@ -649,7 +649,7 @@ async function listStaffPasswordResetRequests(request: Request, env: Env, reques
     return json(403, { ok: false, error: { code: "ADMIN_PASTOR_REQUIRED" } }, requestId, origin);
   }
   const now = new Date().toISOString();
-  const rows = await env.DB.prepare(\`
+  const rows = await env.DB.prepare(`
     SELECT req.id, req.email_normalized AS email, sp.full_name, req.requested_at,
            req.expires_at, req.status
     FROM staff_password_reset_request req
@@ -657,7 +657,7 @@ async function listStaffPasswordResetRequests(request: Request, env: Env, reques
     WHERE req.branch_id = ? AND req.status IN ('pending','processing')
       AND req.expires_at > ?
     ORDER BY req.requested_at ASC LIMIT 100
-  \`).bind(access.activeBranch.branchId, now).all<{
+  `).bind(access.activeBranch.branchId, now).all<{
     id: string; email: string; full_name: string; requested_at: string;
     expires_at: string; status: "pending" | "processing";
   }>();
@@ -681,13 +681,13 @@ async function reviewStaffPasswordReset(
     return json(400, { ok: false, error: { code: "INVALID_RESET_REVIEW" } }, requestId, origin);
   }
   const now = new Date().toISOString();
-  const reset = await env.DB.prepare(\`
+  const reset = await env.DB.prepare(`
     SELECT req.id, req.target_profile_id, req.branch_id, req.status, req.expires_at,
            sp.auth_user_id, sp.email
     FROM staff_password_reset_request req
     JOIN staff_profile sp ON sp.id = req.target_profile_id
     WHERE req.id = ? AND req.branch_id = ? LIMIT 1
-  \`).bind(resetId, access.activeBranch.branchId).first<{
+  `).bind(resetId, access.activeBranch.branchId).first<{
     id: string; target_profile_id: string; branch_id: string; status: string;
     expires_at: string; auth_user_id: string; email: string;
   }>();
@@ -696,16 +696,16 @@ async function reviewStaffPasswordReset(
   }
   if (decision === "deny") {
     const results = await env.DB.batch([
-      env.DB.prepare(\`
+      env.DB.prepare(`
         UPDATE staff_password_reset_request
         SET status = 'denied', reviewed_by_profile_id = ?, reviewed_at = ?, review_reason = ?
         WHERE id = ? AND branch_id = ? AND status = 'pending'
-      \`).bind(access.staff.profileId, now, reason, resetId, reset.branch_id),
-      env.DB.prepare(\`
+      `).bind(access.staff.profileId, now, reason, resetId, reset.branch_id),
+      env.DB.prepare(`
         INSERT INTO staff_password_reset_audit
           (id, request_id, branch_id, actor_profile_id, event_type, metadata, created_at)
         VALUES (?, ?, ?, ?, 'denied', ?, ?)
-      \`).bind(crypto.randomUUID(), resetId, reset.branch_id, access.staff.profileId,
+      `).bind(crypto.randomUUID(), resetId, reset.branch_id, access.staff.profileId,
         JSON.stringify({ reason }), now),
     ]);
     if (results.some((result) => !result.success) || (results[0]?.meta?.changes ?? 0) !== 1) {
@@ -714,10 +714,10 @@ async function reviewStaffPasswordReset(
     return json(200, { ok: true, data: { status: "denied" } }, requestId, origin);
   }
 
-  const claim = await env.DB.prepare(\`
+  const claim = await env.DB.prepare(`
     UPDATE staff_password_reset_request SET status = 'processing'
     WHERE id = ? AND branch_id = ? AND status = 'pending' AND expires_at > ?
-  \`).bind(resetId, reset.branch_id, now).run();
+  `).bind(resetId, reset.branch_id, now).run();
   if (!claim.success || (claim.meta?.changes ?? 0) !== 1) {
     return json(409, { ok: false, error: { code: "RESET_REQUEST_NOT_PENDING" } }, requestId, origin);
   }
@@ -725,30 +725,30 @@ async function reviewStaffPasswordReset(
   try {
     await updateSupabaseAuthUserPassword(env, reset.auth_user_id, temporaryPassword);
   } catch {
-    await env.DB.prepare(\`
+    await env.DB.prepare(`
       UPDATE staff_password_reset_request SET status = 'pending'
       WHERE id = ? AND status = 'processing'
-    \`).bind(resetId).run();
+    `).bind(resetId).run();
     return json(503, { ok: false, error: { code: "AUTH_PASSWORD_RESET_FAILED" } }, requestId, origin);
   }
   const passwordExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   try {
     const results = await env.DB.batch([
-      env.DB.prepare(\`
+      env.DB.prepare(`
         UPDATE staff_profile
         SET must_change_password = 1, password_setup_expires_at = ?, password_changed_at = NULL, updated_at = ?
         WHERE id = ? AND account_status = 'active'
-      \`).bind(passwordExpiresAt, now, reset.target_profile_id),
-      env.DB.prepare(\`
+      `).bind(passwordExpiresAt, now, reset.target_profile_id),
+      env.DB.prepare(`
         UPDATE staff_password_reset_request
         SET status = 'approved', reviewed_by_profile_id = ?, reviewed_at = ?, review_reason = ?
         WHERE id = ? AND status = 'processing'
-      \`).bind(access.staff.profileId, now, reason, resetId),
-      env.DB.prepare(\`
+      `).bind(access.staff.profileId, now, reason, resetId),
+      env.DB.prepare(`
         INSERT INTO staff_password_reset_audit
           (id, request_id, branch_id, actor_profile_id, event_type, metadata, created_at)
         VALUES (?, ?, ?, ?, 'approved', ?, ?)
-      \`).bind(crypto.randomUUID(), resetId, reset.branch_id, access.staff.profileId,
+      `).bind(crypto.randomUUID(), resetId, reset.branch_id, access.staff.profileId,
         JSON.stringify({ reason, credential_handoff: "one_time_manual", expires_in_hours: 24 }), now),
     ]);
     if (results.some((result) => !result.success) ||
@@ -785,10 +785,10 @@ async function completeStaffPasswordChange(request: Request, env: Env, requestId
       !/[0-9]/.test(password) || !/[^A-Za-z0-9]/.test(password)) {
     return json(400, { ok: false, error: { code: "WEAK_PASSWORD", message: "Use 12–128 characters with uppercase and lowercase letters, a number and a symbol." } }, requestId, origin);
   }
-  const profile = await env.DB.prepare(\`
+  const profile = await env.DB.prepare(`
     SELECT id, account_status, must_change_password, password_setup_expires_at
     FROM staff_profile WHERE auth_user_id = ? LIMIT 1
-  \`).bind(verification.user.id).first<{
+  `).bind(verification.user.id).first<{
     id: string; account_status: string; must_change_password: number; password_setup_expires_at: string | null;
   }>();
   if (!profile || profile.account_status !== "active") {
@@ -806,30 +806,30 @@ async function completeStaffPasswordChange(request: Request, env: Env, requestId
     return json(503, { ok: false, error: { code: "PASSWORD_CHANGE_FAILED" } }, requestId, origin);
   }
   const now = new Date().toISOString();
-  const latestReset = await env.DB.prepare(\`
+  const latestReset = await env.DB.prepare(`
     SELECT id FROM staff_password_reset_request
     WHERE target_profile_id = ? AND status = 'approved'
     ORDER BY reviewed_at DESC LIMIT 1
-  \`).bind(profile.id).first<{ id: string }>();
+  `).bind(profile.id).first<{ id: string }>();
   const statements = [
-    env.DB.prepare(\`
+    env.DB.prepare(`
       UPDATE staff_profile
       SET must_change_password = 0, password_setup_expires_at = NULL,
           password_changed_at = ?, updated_at = ?
       WHERE id = ? AND account_status = 'active'
-    \`).bind(now, now, profile.id),
+    `).bind(now, now, profile.id),
   ];
   if (latestReset) {
-    statements.push(env.DB.prepare(\`
+    statements.push(env.DB.prepare(`
       INSERT INTO staff_password_reset_audit
         (id, request_id, branch_id, actor_profile_id, event_type, metadata, created_at)
       SELECT ?, ?, branch_id, ?, 'reset_completed', '{}', ?
       FROM staff_password_reset_request WHERE id = ?
-    \`).bind(crypto.randomUUID(), latestReset.id, profile.id, now, latestReset.id));
-    statements.push(env.DB.prepare(\`
+    `).bind(crypto.randomUUID(), latestReset.id, profile.id, now, latestReset.id));
+    statements.push(env.DB.prepare(`
       UPDATE staff_password_reset_request SET status = 'completed', completed_at = ?
       WHERE id = ? AND status = 'approved'
-    \`).bind(now, latestReset.id));
+    `).bind(now, latestReset.id));
   }
   const results = await env.DB.batch(statements);
   if (results.some((result) => !result.success) || (results[0]?.meta?.changes ?? 0) !== 1) {
