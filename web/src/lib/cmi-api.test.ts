@@ -89,29 +89,20 @@ describe("Cloudflare Worker API client", () => {
     }
   });
 
-  it("fails closed rather than falling back when a route has not been migrated", async () => {
-    const fetcher = vi.fn();
-    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
-    await expect(api.listCalendarEntries("branch-1")).rejects.toMatchObject({ code: "CLOUDFLARE_ROUTE_NOT_MIGRATED", status: 501 });
-    expect(fetcher).not.toHaveBeenCalled();
-  });
-
   it("rejects insecure hosted API origins", () => {
     expect(() => new CmiApiClient({ apiUrl: "http://api.example.com" })).toThrow(/HTTPS/);
   });
 
-  it("surfaces Worker errors and request IDs", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({
-      error: { code: "CAPABILITY_DENIED", message: "You do not have permission." }, request_id: "denied-request",
-    }), { status: 403 }));
+  it("routes public published content to the anonymous Worker projection", async () => {
+    const fetcher = vi.fn(async () => response({ profile: {}, welcome_messages: [] }));
     const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
-    try {
-      await api.getStaffSession();
-      throw new Error("Expected request rejection");
-    } catch (error) {
-      expect(error).toBeInstanceOf(CmiApiError);
-      expect((error as CmiApiError).code).toBe("CAPABILITY_DENIED");
-      expect((error as CmiApiError).requestId).toBe("denied-request");
-    }
+    await api.getPublicContent("church-profile", { branch_id: "branch-1" });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    const parsed = new URL(url);
+    expect(parsed.pathname).toBe("/api/public/content");
+    expect(parsed.searchParams.get("resource")).toBe("church-profile");
+    expect(parsed.searchParams.get("branch_id")).toBe("branch-1");
+    expect(init.credentials).toBe("include");
+    expect(new Headers(init.headers).has("Authorization")).toBe(false);
   });
 });

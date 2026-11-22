@@ -2,13 +2,13 @@ import { betterAuth } from "better-auth";
 import { compare as bcryptCompare, hash as bcryptHash } from "bcryptjs";
 
 export interface AuthStatement {
-  bind(...values: unknown[]): any;
+  bind(...values: unknown[]): AuthStatement;
   first<T = Record<string, unknown>>(): Promise<T | null>;
   run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
 }
 export interface AuthDatabase {
   prepare(sql: string): AuthStatement;
-  batch(statements: any[]): Promise<Array<{ success: boolean; meta?: { changes?: number } }>>;
+  batch(statements: AuthStatement[]): Promise<Array<{ success: boolean; meta?: { changes?: number } }>>;
 }
 export interface AuthEnvironment {
   DB: AuthDatabase;

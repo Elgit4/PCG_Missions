@@ -7,6 +7,7 @@ on:
   push:
     branches:
       - feat/cloudflare-d1-migration-foundation
+      - migration/cloudflare-auth-consolidation
     paths:
       - ".github/workflows/pcg-missions-availability-monitor.yml"
 
@@ -41,7 +42,7 @@ jobs:
           url="https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
           body="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error --max-time 20 "$url/health")"
           echo "$body"
-          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="non-production" || p.schema_version!==43) { console.error("Preview Worker health/schema mismatch"); process.exit(1); }' "$body"
+          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="non-production" || p.schema_version!==44) { console.error("Preview Worker health/schema mismatch"); process.exit(1); }' "$body"
 
       - name: Check authentication boundary remains closed
         shell: bash
