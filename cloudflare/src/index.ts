@@ -1,5 +1,6 @@
 import { createAuth, getAuthSession, createBetterAuthUser, deleteBetterAuthUser, updateBetterAuthUserPassword } from "./auth.ts";
 import { authorizeRequestCapability, resolveStaffContext, type StaffEnvironment } from "./staff-context.ts";
+import { readPublicContent, PublicContentRequestError } from "./public-content.ts";
 
 interface D1PreparedStatement {
   bind(...values: unknown[]): D1PreparedStatement;
@@ -4768,6 +4769,20 @@ export default {
     if (request.method === "OPTIONS") {
       if (!origin) return new Response(null, { status: 204 });
       return new Response(null, { status: 204, headers: authCorsHeaders(origin) });
+    }
+
+    if (url.pathname === "/api/v1/public-content") {
+      if (request.method !== "GET") {
+        return json(405, { ok: false, error: { code: "METHOD_NOT_ALLOWED" } }, requestId, origin);
+      }
+      try {
+        return json(200, { data: await readPublicContent(env.DB, url) }, requestId, origin);
+      } catch (error) {
+        if (error instanceof PublicContentRequestError) {
+          return json(error.status, { error: { code: "PUBLIC_CONTENT_REQUEST_INVALID", message: error.message } }, requestId, origin);
+        }
+        return json(503, { error: { code: "PUBLIC_CONTENT_UNAVAILABLE", message: "Public information is temporarily unavailable." } }, requestId, origin);
+      }
     }
 
     // Better Auth owns staff login, sessions, sign-out and credential endpoints.
