@@ -3854,6 +3854,15 @@ async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:
   try{stored=await eventFlyerStorageRequest(env,key,"PUT",bytes,type);}
   catch{return json(503,{ok:false,error:{code:"EVENT_MEDIA_STORAGE_UNAVAILABLE"}},requestId,origin);}
   if(!stored.ok) return json(502,{ok:false,error:{code:"EVENT_FLYER_UPLOAD_FAILED"}},requestId,origin);
+  let signed:Response;
+  try{signed=await eventFlyerStorageRequest(env,key,"POST",JSON.stringify({expiresIn:900}),"application/json");}
+  catch{await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);return json(503,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
+  if(!signed.ok){await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);return json(502,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
+  const signedPayload=await signed.json() as {signedURL?:unknown};
+  if(typeof signedPayload.signedURL!=="string"||!env.SUPABASE_URL){await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);return json(502,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
+  const signedUrl=signedPayload.signedURL.startsWith("http")
+    ? signedPayload.signedURL
+    : new URL("/storage/v1"+(signedPayload.signedURL.startsWith("/")?signedPayload.signedURL:"/"+signedPayload.signedURL),env.SUPABASE_URL).toString();
   const now=new Date().toISOString();
   const updated=await env.DB.prepare("UPDATE event SET flyer_key=?,flyer_content_type=?,flyer_size=?,flyer_updated_at=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
     .bind(key,type,file.size,now,now,eventId,branchId).run();
@@ -3862,7 +3871,7 @@ async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:
     return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
   }
   if(event.flyer_key) await eventFlyerStorageRequest(env,event.flyer_key,"DELETE").catch(()=>undefined);
-  return json(200,{ok:true,data:{event_id:eventId,flyer_url:"/api/v1/events/"+eventId+"/flyer",content_type:type,size:file.size}},requestId,origin);
+  return json(200,{ok:true,data:{object_path:key,mime_type:type,size_bytes:file.size,signed_url:signedUrl,signed_url_expires_in:900}},requestId,origin);
 }
 
 async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
