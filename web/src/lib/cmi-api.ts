@@ -726,11 +726,11 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
 
   if (functionName === "staff-role-operations") {
     if (suffix === "/staff/roles" && verb === "POST") return "/api/v1/staff/roles";
-    if (/^\\/staff\\/roles\\/[^/]+$/.test(suffix) && verb === "DELETE") return "/api/v1" + suffix;
+    if (/^\/staff\/roles\/[^/]+$/.test(suffix) && verb === "DELETE") return "/api/v1" + suffix;
     if ((suffix === "/staff/role-elevations" || suffix === "/staff/role-revocations") && (verb === "GET" || verb === "POST")) {
       return "/api/v1" + suffix;
     }
-    if (/^\\/staff\\/role-(elevations|revocations)\\/[^/]+\\/(approve|reject)$/.test(suffix) && verb === "POST") {
+    if (/^\/staff\/role-(elevations|revocations)\/[^/]+\/(approve|reject)$/.test(suffix) && verb === "POST") {
       return "/api/v1" + suffix;
     }
     return null;
