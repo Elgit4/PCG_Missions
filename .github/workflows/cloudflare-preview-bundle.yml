@@ -249,6 +249,23 @@ jobs:
           status="$(curl --silent --show-error -o /tmp/event-assignment-revoke.json -w "%{http_code}" -X POST "$url/api/v1/events/$event/staff-assignments/50000000-0000-4000-8000-000000000001/revoke?branch_id=$branch")"
           check_unauthenticated "Assignment revocation" "$status" /tmp/event-assignment-revoke.json
           echo "Event assignment workspace, staff/team assignment writes, and revocation reject anonymous access."
+      - name: Verify sensitive pastoral read routes on the deployed preview Worker
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
+          branch="30000000-0000-4000-8000-000000000001"
+          prayer="40000000-0000-4000-8000-000000000001"
+          care="50000000-0000-4000-8000-000000000001"
+          status="$(curl --silent --show-error -o /tmp/prayer-read-anon.json -w "%{http_code}" -X POST "$url/api/v1/pastoral/prayer/requests/$prayer/read" -H "Content-Type: application/json" --data "{\"branch_id\":\"$branch\",\"access_mode\":\"oversight\",\"reason_code\":\"safeguarding_concern\"}")"
+          cat /tmp/prayer-read-anon.json
+          test "$status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/prayer-read-anon.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          status="$(curl --silent --show-error -o /tmp/care-read-anon.json -w "%{http_code}" -X POST "$url/api/v1/pastoral/care/records/$care/read" -H "Content-Type: application/json" --data "{\"branch_id\":\"$branch\",\"access_mode\":\"oversight\",\"reason_code\":\"continuity_of_care\"}")"
+          cat /tmp/care-read-anon.json
+          test "$status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/care-read-anon.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          echo "Sensitive prayer and care narrative routes reject anonymous callers before D1 reads."
       - name: Verify Pages preview was built with the Worker API origin
         shell: bash
         run: |
