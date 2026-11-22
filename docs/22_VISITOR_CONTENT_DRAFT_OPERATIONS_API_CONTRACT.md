@@ -69,7 +69,7 @@ Allowed JSON fields:
 
 - Title: 2–180 characters (the D1 table constraint).
 - Body: 1–30,000 characters.
-- Slug: 1–120 characters, lowercase alphanumeric segments separated by single hyphens.
+- Slug: 2–120 characters, lowercase alphanumeric segments separated by single hyphens.
 - Unknown fields are rejected.
 - Server sets `created_by`, `status='draft'` and `published_at=null`.
 - Duplicate slug conflicts return 409.
