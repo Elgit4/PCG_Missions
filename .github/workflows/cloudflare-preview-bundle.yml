@@ -108,13 +108,24 @@ jobs:
             test "$status" = "401"
             node -e 'const p=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)' "/tmp/$route.json"
           done
-          headers="$(curl --silent --show-error -D - -o /dev/null -X OPTIONS "$url/api/v1/contacts" \
-            -H "Origin: https://feat-cloudflare-d1-migration.pcg-missions.pages.dev" \
-            -H "Access-Control-Request-Method: POST" \
-            -H "Access-Control-Request-Headers: authorization,content-type,x-branch-id,idempotency-key")"
-          printf '%s\\n' "$headers"
-          grep -qi "access-control-allow-origin: https://feat-cloudflare-d1-migration.pcg-missions.pages.dev" <<< "$headers"
-          grep -qi "idempotency-key" <<< "$headers"
+          node --input-type=module <<'NODE'
+          const origin = "https://feat-cloudflare-d1-migration.pcg-missions.pages.dev";
+          const workerUrl = "https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev";
+          const response = await fetch(`${workerUrl}/api/v1/contacts`, {
+            method: "OPTIONS",
+            headers: {
+              Origin: origin,
+              "Access-Control-Request-Method": "POST",
+              "Access-Control-Request-Headers": "authorization,content-type,x-branch-id,idempotency-key",
+            },
+          });
+          const headers = Object.fromEntries(response.headers.entries());
+          console.log(JSON.stringify({ status: response.status, headers }));
+          if (response.status !== 204 || headers["access-control-allow-origin"] !== origin ||
+              !headers["access-control-allow-headers"]?.toLowerCase().includes("idempotency-key")) {
+            throw new Error("Preview Worker CORS preflight did not return the configured origin and request headers.");
+          }
+          NODE
 
       - name: Verify team and service-area mutation routes are live and protected
         shell: bash
