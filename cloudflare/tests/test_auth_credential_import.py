@@ -18,6 +18,15 @@ class CredentialImportTests(unittest.TestCase):
         self.assertEqual(parsed[0][1], "staff@example.test")
         self.assertEqual(len(parsed[0][2]), 60)
 
+    def test_credential_import_requires_schema_46_nonproduction(self):
+        MODULE.require_preview_schema([{"schema_version": 46, "environment": "non-production"}])
+
+    def test_credential_import_rejects_schema_45_and_production(self):
+        with self.assertRaises(RuntimeError):
+            MODULE.require_preview_schema([{"schema_version": 45, "environment": "non-production"}])
+        with self.assertRaises(RuntimeError):
+            MODULE.require_preview_schema([{"schema_version": 46, "environment": "production"}])
+
     def test_rejects_non_bcrypt_hashes(self):
         row = "10000000-0000-4000-8000-000000000001\tstaff@example.test\tplaintext"
         with self.assertRaises(ValueError):
