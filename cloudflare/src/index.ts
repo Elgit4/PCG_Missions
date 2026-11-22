@@ -5424,48 +5424,48 @@ async function readSensitivePrayerRequest(request: Request, env: Env, prayerRequ
     return json(403, { ok: false, error: { code: "PASTORAL_READ_NOT_AUTHORIZED" } }, requestId, origin);
   }
   const now = new Date().toISOString();
-  const assignmentClause = accessMode === "assigned" ? \`
+  const assignmentClause = accessMode === "assigned" ? `
     AND EXISTS (SELECT 1 FROM prayer_assignment pa
       WHERE pa.prayer_request_id = p.id AND pa.branch_id = p.branch_id
         AND pa.intercessor_user_id = ? AND pa.revoked_at IS NULL
         AND pa.starts_at <= ? AND (pa.ends_at IS NULL OR pa.ends_at > ?))
-  \` : "";
+  ` : "";
   const assignmentValues = accessMode === "assigned" ? [context.staff.userId, now, now] : [];
   let batch;
   try {
     batch = await env.DB.batch([
-      env.DB.prepare(\`
+      env.DB.prepare(`
         INSERT INTO prayer_access_audit
           (id, prayer_request_id, branch_id, actor_user_id, action, reason, request_id, safe_metadata, accessed_at)
         SELECT ?, p.id, p.branch_id, ?, ?, ?, ?, json_object('access_mode', ?), ?
         FROM prayer_request p
         WHERE p.id = ? AND p.branch_id = ? AND (p.expires_at IS NULL OR p.expires_at > ?)
           \${assignmentClause}
-      \`).bind(
+      `).bind(
         crypto.randomUUID(), context.staff.userId, accessMode === "oversight" ? "oversight" : "read",
         accessMode === "oversight" ? reasonCode : null, requestId, accessMode, now,
         prayerRequestId, context.activeBranch.branchId, now, ...assignmentValues,
       ),
-      env.DB.prepare(\`
+      env.DB.prepare(`
         INSERT INTO sensitive_record_access_audit
           (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, share_reference, created_at)
         SELECT ?, p.branch_id, ?, 'prayer_request', p.id, 'read', ?, NULL, ?
         FROM prayer_request p
         WHERE p.id = ? AND p.branch_id = ? AND (p.expires_at IS NULL OR p.expires_at > ?)
           \${assignmentClause}
-      \`).bind(
+      `).bind(
         crypto.randomUUID(), context.staff.profileId,
         accessMode === "oversight" ? "oversight:" + reasonCode : "assigned_prayer_read",
         now, prayerRequestId, context.activeBranch.branchId, now, ...assignmentValues,
       ),
-      env.DB.prepare(\`
+      env.DB.prepare(`
         SELECT p.id, p.branch_id, p.request_text, p.status, p.sensitivity,
                p.expires_at, p.answered_at, p.created_at, p.updated_at
         FROM prayer_request p
         WHERE p.id = ? AND p.branch_id = ? AND (p.expires_at IS NULL OR p.expires_at > ?)
           \${assignmentClause}
         LIMIT 1
-      \`).bind(prayerRequestId, context.activeBranch.branchId, now, ...assignmentValues),
+      `).bind(prayerRequestId, context.activeBranch.branchId, now, ...assignmentValues),
     ]);
   } catch {
     return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
@@ -5505,46 +5505,46 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
     return json(403, { ok: false, error: { code: "PASTORAL_READ_NOT_AUTHORIZED" } }, requestId, origin);
   }
   const now = new Date().toISOString();
-  const assignmentClause = accessMode === "assigned" ? \`
+  const assignmentClause = accessMode === "assigned" ? `
     AND EXISTS (SELECT 1 FROM care_assignment ca
       WHERE ca.care_record_id = cr.id AND ca.branch_id = cr.branch_id
         AND ca.assignee_user_id = ? AND ca.revoked_at IS NULL
         AND ca.starts_at <= ? AND (ca.ends_at IS NULL OR ca.ends_at > ?))
-  \` : "";
+  ` : "";
   const assignmentValues = accessMode === "assigned" ? [context.staff.userId, now, now] : [];
   let batch;
   try {
     batch = await env.DB.batch([
-      env.DB.prepare(\`
+      env.DB.prepare(`
         INSERT INTO care_access_audit
           (id, care_record_id, branch_id, actor_user_id, action, reason, request_id, safe_metadata, accessed_at)
         SELECT ?, cr.id, cr.branch_id, ?, ?, ?, ?, json_object('access_mode', ?), ?
         FROM care_record cr WHERE cr.id = ? AND cr.branch_id = ? \${assignmentClause}
-      \`).bind(
+      `).bind(
         crypto.randomUUID(), context.staff.userId, accessMode === "oversight" ? "oversight" : "read",
         accessMode === "oversight" ? reasonCode : null, requestId, accessMode, now,
         careRecordId, context.activeBranch.branchId, ...assignmentValues,
       ),
-      env.DB.prepare(\`
+      env.DB.prepare(`
         INSERT INTO sensitive_record_access_audit
           (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, share_reference, created_at)
         SELECT ?, cr.branch_id, ?, 'pastoral_case', cr.id, 'read', ?, NULL, ?
         FROM care_record cr WHERE cr.id = ? AND cr.branch_id = ? \${assignmentClause}
-      \`).bind(
+      `).bind(
         crypto.randomUUID(), context.staff.profileId,
         accessMode === "oversight" ? "oversight:" + reasonCode : "assigned_care_read",
         now, careRecordId, context.activeBranch.branchId, ...assignmentValues,
       ),
-      env.DB.prepare(\`
+      env.DB.prepare(`
         SELECT cr.id, cr.branch_id, cr.status, cr.reviewed_at, cr.created_at, cr.updated_at
         FROM care_record cr WHERE cr.id = ? AND cr.branch_id = ? \${assignmentClause} LIMIT 1
-      \`).bind(careRecordId, context.activeBranch.branchId, ...assignmentValues),
-      env.DB.prepare(\`
+      `).bind(careRecordId, context.activeBranch.branchId, ...assignmentValues),
+      env.DB.prepare(`
         SELECT ci.id, ci.interaction_type, ci.outcome_code, ci.restricted_note, ci.occurred_at
         FROM care_interaction ci JOIN care_record cr ON cr.id = ci.care_record_id
         WHERE ci.care_record_id = ? AND cr.branch_id = ?
         ORDER BY ci.occurred_at DESC, ci.id DESC LIMIT 100
-      \`).bind(careRecordId, context.activeBranch.branchId),
+      `).bind(careRecordId, context.activeBranch.branchId),
     ]);
   } catch {
     return json(503, { ok: false, error: { code: "PASTORAL_READ_AUDIT_FAILED" } }, requestId, origin);
