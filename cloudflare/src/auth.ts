@@ -1,146 +1,138 @@
-export interface SupabaseAuthEnvironment {
-  DB: {
-    prepare(sql: string): {
-      bind(...values: unknown[]): {
-        first<T = Record<string, unknown>>(): Promise<T | null>;
-      };
-    };
-  };
-  SUPABASE_URL?: string;
-  SUPABASE_PUBLISHABLE_KEY?: string;
-  SUPABASE_SERVICE_ROLE_KEY?: string;
+import { betterAuth } from "better-auth";
+import { compare as bcryptCompare, hash as bcryptHash } from "bcryptjs";
+
+export interface AuthStatement {
+  bind(...values: unknown[]): any;
+  first<T = Record<string, unknown>>(): Promise<T | null>;
+  run(): Promise<{ success: boolean; meta?: { changes?: number } }>;
+}
+export interface AuthDatabase {
+  prepare(sql: string): AuthStatement;
+  batch(statements: any[]): Promise<Array<{ success: boolean; meta?: { changes?: number } }>>;
+}
+export interface AuthEnvironment {
+  DB: AuthDatabase;
+  BETTER_AUTH_SECRET?: string;
+  BETTER_AUTH_URL?: string;
+  BETTER_AUTH_TRUSTED_ORIGINS?: string;
+  APP_ALLOWED_ORIGINS?: string;
 }
 
-export interface SupabaseAuthUser {
-  id: string;
-  email: string;
-}
-
-/** Validate the caller's access token against Supabase Auth. Never trust JWT claims
- * decoded locally: the Auth service is the identity authority. */
-export type SupabaseTokenVerification =
-  | { state: "valid"; user: SupabaseAuthUser }
-  | { state: "unauthenticated" }
-  | { state: "unavailable" };
-
-export async function verifySupabaseAccessToken(
-  request: Request,
-  env: SupabaseAuthEnvironment,
-): Promise<SupabaseTokenVerification> {
-  const authorization = request.headers.get("Authorization") ?? "";
-  const match = authorization.match(/^Bearer\s+([A-Za-z0-9._~-]+)$/i);
-  if (!match) return { state: "unauthenticated" };
-  if (!env.SUPABASE_URL || !env.SUPABASE_PUBLISHABLE_KEY) return { state: "unavailable" };
-
-  let base: URL;
-  try {
-    base = new URL(env.SUPABASE_URL);
-    if (base.protocol !== "https:" && base.hostname !== "localhost") return { state: "unavailable" };
-  } catch {
-    return { state: "unavailable" };
+function trustedOrigins(env: AuthEnvironment, baseUrl: URL): string[] {
+  const configured = [env.BETTER_AUTH_TRUSTED_ORIGINS ?? "", env.APP_ALLOWED_ORIGINS ?? ""]
+    .flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean);
+  const origins = new Set([baseUrl.origin]);
+  for (const value of configured) {
+    const parsed = new URL(value);
+    if (parsed.origin !== value.replace(/\/$/, "")) throw new Error("AUTH_TRUSTED_ORIGIN_MUST_BE_AN_ORIGIN");
+    origins.add(parsed.origin);
   }
+  return [...origins];
+}
 
-  try {
-    const response = await fetch(new URL("/auth/v1/user", base), {
-      method: "GET",
-      headers: {
-        apikey: env.SUPABASE_PUBLISHABLE_KEY,
-        Authorization: `Bearer ${match[1]}`,
-        Accept: "application/json",
+export function verifyLegacyBcryptPassword(password: string, hash: string): Promise<boolean> {
+  if (!/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(hash)) return Promise.resolve(false);
+  const compatibleHash = hash.startsWith("$2y$") ? "$2b$" + hash.slice(4) : hash;
+  return bcryptCompare(password, compatibleHash);
+}
+
+/** Build Better Auth per request so the instance always uses the current Cloudflare D1 binding. */
+export function createAuth(env: AuthEnvironment) {
+  if (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32) throw new Error("BETTER_AUTH_SECRET_MISSING_OR_TOO_SHORT");
+  if (!env.BETTER_AUTH_URL) throw new Error("BETTER_AUTH_URL_NOT_CONFIGURED");
+  const baseUrl = new URL(env.BETTER_AUTH_URL);
+  if (baseUrl.protocol !== "https:" && baseUrl.hostname !== "localhost") throw new Error("BETTER_AUTH_URL_MUST_USE_HTTPS");
+  const secureCookies = baseUrl.protocol === "https:";
+
+  return betterAuth({
+    appName: "PCG Missions",
+    baseURL: baseUrl.origin,
+    basePath: "/api/auth",
+    secret: env.BETTER_AUTH_SECRET,
+    database: env.DB as never,
+    trustedOrigins: trustedOrigins(env, baseUrl),
+    databaseHooks: {
+      session: {
+        create: {
+          before: async (session) => {
+            const staff = await env.DB.prepare(
+              "SELECT sp.id FROM staff_profile sp WHERE sp.auth_user_id = ? AND sp.account_status = 'active' " +
+              "AND EXISTS (SELECT 1 FROM staff_role_assignment sra JOIN role r ON r.id = sra.role_id AND r.is_active = 1 " +
+              "JOIN branch b ON b.id = sra.branch_id AND b.is_active = 1 WHERE sra.staff_profile_id = sp.id " +
+              "AND sra.revoked_at IS NULL AND sra.starts_at <= strftime('%Y-%m-%dT%H:%M:%fZ','now') " +
+              "AND (sra.ends_at IS NULL OR sra.ends_at > strftime('%Y-%m-%dT%H:%M:%fZ','now'))) LIMIT 1"
+            ).bind(session.userId).first<{ id: string }>();
+            if (!staff) return false;
+            return { data: session };
+          },
+        },
       },
-      signal: AbortSignal.timeout(8000),
-    });
-    if (response.status === 401 || response.status === 403) return { state: "unauthenticated" };
-    if (!response.ok) return { state: "unavailable" };
-    const user = await response.json() as { id?: unknown; email?: unknown };
-    if (typeof user.id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(user.id)) {
-      return { state: "unavailable" };
-    }
-    return { state: "valid", user: { id: user.id, email: typeof user.email === "string" ? user.email : "" } };
-  } catch {
-    return { state: "unavailable" };
-  }
-}
-async function supabaseAdminRequest(
-  env: SupabaseAuthEnvironment,
-  path: string,
-  init: RequestInit,
-): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
-    throw new Error("SUPABASE_ADMIN_AUTH_NOT_CONFIGURED");
-  }
-  const base = new URL(env.SUPABASE_URL);
-  if (base.protocol !== "https:" && base.hostname !== "localhost") {
-    throw new Error("SUPABASE_URL_MUST_USE_HTTPS");
-  }
-  return fetch(new URL(path, base), {
-    ...init,
-    headers: {
-      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-      ...init.headers,
     },
-    signal: AbortSignal.timeout(10000),
+    emailAndPassword: {
+      enabled: true,
+      disableSignUp: true,
+      autoSignIn: false,
+      requireEmailVerification: false,
+      minPasswordLength: 12,
+      maxPasswordLength: 128,
+      password: {
+        hash: async (password) => bcryptHash(password, 12),
+        verify: async ({ password, hash }) => verifyLegacyBcryptPassword(password, hash),
+      },
+      // PCG Missions uses its audited Admin/Pastor-approved reset-request flow.
+      sendResetPassword: async () => { throw new Error("ADMIN_APPROVED_PASSWORD_RESET_REQUIRED"); },
+    },
+    session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: false } },
+    advanced: {
+      useSecureCookies: secureCookies,
+      defaultCookieAttributes: { httpOnly: true, secure: secureCookies, sameSite: "lax", path: "/" },
+      ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] },
+    },
+    rateLimit: {
+      enabled: true,
+      storage: "database",
+      window: 60,
+      max: 30,
+      customRules: { "/sign-in/email": { window: 60, max: 5 }, "/forget-password": { window: 60, max: 3 }, "/reset-password": { window: 60, max: 5 } },
+    },
   });
 }
 
-/** Create an Auth identity only from a server-authorized Admin provisioning workflow. */
-export async function createSupabaseAuthUser(
-  env: SupabaseAuthEnvironment,
+export async function createBetterAuthUser(
+  env: AuthEnvironment,
   input: { email: string; password: string; fullName: string },
 ): Promise<string> {
-  const response = await supabaseAdminRequest(env, "/auth/v1/admin/users", {
-    method: "POST",
-    body: JSON.stringify({
-      email: input.email,
-      password: input.password,
-      email_confirm: true,
-      user_metadata: { full_name: input.fullName },
-    }),
-  });
-  const payload = await response.json().catch(() => ({})) as {
-    id?: unknown;
-    user?: { id?: unknown };
-    msg?: string;
-    message?: string;
-  };
-  const id = typeof payload.id === "string" ? payload.id :
-    typeof payload.user?.id === "string" ? payload.user.id : null;
-  if (!response.ok || !id) {
-    throw new Error(`SUPABASE_AUTH_USER_CREATE_FAILED:${response.status}`);
-  }
-  return id;
+  const userId = crypto.randomUUID();
+  const now = Date.now();
+  const email = input.email.trim().toLowerCase();
+  const passwordHash = await bcryptHash(input.password, 12);
+  const results = await env.DB.batch([
+    env.DB.prepare('INSERT INTO "user" (id,name,email,emailVerified,image,createdAt,updatedAt) VALUES (?,?,?,1,NULL,?,?)')
+      .bind(userId, input.fullName.trim(), email, now, now),
+    env.DB.prepare("INSERT INTO account (id,accountId,providerId,userId,password,createdAt,updatedAt) VALUES (?,?,'credential',?,?,?,?)")
+      .bind(crypto.randomUUID(), userId, userId, passwordHash, now, now),
+  ]);
+  if (results.some((result) => !result.success || (result.meta?.changes ?? 0) !== 1)) throw new Error("BETTER_AUTH_USER_CREATE_FAILED");
+  return userId;
 }
 
-/** Compensating action when D1 staff provisioning does not commit. */
-export async function deleteSupabaseAuthUser(
-  env: SupabaseAuthEnvironment,
-  userId: string,
-): Promise<void> {
-  const response = await supabaseAdminRequest(
-    env,
-    `/auth/v1/admin/users/${encodeURIComponent(userId)}`,
-    { method: "DELETE" },
-  );
-  if (!response.ok && response.status !== 404) {
-    throw new Error(`SUPABASE_AUTH_USER_DELETE_FAILED:${response.status}`);
-  }
+export async function deleteBetterAuthUser(env: AuthEnvironment, userId: string): Promise<void> {
+  const result = await env.DB.prepare('DELETE FROM "user" WHERE id = ?').bind(userId).run();
+  if (!result.success) throw new Error("BETTER_AUTH_USER_DELETE_FAILED");
 }
 
-/** Update a Supabase Auth user's password from a Worker-authorized staff workflow. */
-export async function updateSupabaseAuthUserPassword(
-  env: SupabaseAuthEnvironment,
+export async function updateBetterAuthUserPassword(
+  env: AuthEnvironment,
   userId: string,
   password: string,
+  revokeSessions = true,
 ): Promise<void> {
-  const response = await supabaseAdminRequest(
-    env,
-    `/auth/v1/admin/users/${encodeURIComponent(userId)}`,
-    { method: "PUT", body: JSON.stringify({ password }) },
-  );
-  if (!response.ok) {
-    throw new Error(`SUPABASE_AUTH_PASSWORD_UPDATE_FAILED:${response.status}`);
-  }
+  const passwordHash = await bcryptHash(password, 12);
+  const statements = [
+    env.DB.prepare("UPDATE account SET password=?,updatedAt=? WHERE userId=? AND providerId='credential'")
+      .bind(passwordHash, Date.now(), userId),
+  ];
+  if (revokeSessions) statements.push(env.DB.prepare("DELETE FROM session WHERE userId=?").bind(userId));
+  const results = await env.DB.batch(statements);
+  if (results.some((result) => !result.success) || (results[0]?.meta?.changes ?? 0) !== 1) throw new Error("BETTER_AUTH_PASSWORD_UPDATE_FAILED");
 }

@@ -1,137 +1,69 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import {
-  createSupabaseAuthUser,
-  deleteSupabaseAuthUser,
-  updateSupabaseAuthUserPassword,
-  verifySupabaseAccessToken,
-} from "../src/auth.ts";
+import { createBetterAuthUser, deleteBetterAuthUser, updateBetterAuthUserPassword, verifyLegacyBcryptPassword } from "../src/auth.ts";
 
-const USER_ID = "3c4f4f8d-7d3b-4a9c-8f1a-5a5f4a4b7c21";
-const BASE_ENV = {
-  DB: { prepare: () => ({ bind: () => ({ first: async () => null }) }) },
-  SUPABASE_URL: "https://example.supabase.co",
-  SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
-  SUPABASE_SERVICE_ROLE_KEY: "server-only-service-role-secret",
-};
+function fakeDatabase() {
+  const statements = [];
+  const DB = {
+    prepare(sql) {
+      const statement = { sql, values: [], bind(...values) { this.values = values; return this; },
+        async first() { return null; }, async run() { return { success: true, meta: { changes: 1 } }; } };
+      statements.push(statement);
+      return statement;
+    },
+    async batch(items) { return items.map(() => ({ success: true, meta: { changes: 1 } })); },
+  };
+  return { DB, statements };
+}
 
-test("missing bearer token is rejected without contacting Supabase", async (t) => {
-  const fetchMock = t.mock.method(globalThis, "fetch", async () => Response.json({}));
-  const result = await verifySupabaseAccessToken(new Request("https://worker.test/api/v1/me"), BASE_ENV);
-  assert.deepEqual(result, { state: "unauthenticated" });
-  assert.equal(fetchMock.mock.callCount(), 0);
-});
-
-test("uses the identity returned by Supabase Auth", async (t) => {
-  let receivedUrl = "";
-  let receivedInit;
-  t.mock.method(globalThis, "fetch", async (url, init) => {
-    receivedUrl = String(url);
-    receivedInit = init;
-    return Response.json({ id: USER_ID, email: "staff@example.com" });
+test("Better Auth creates a D1 user and credential without an external Auth API", async () => {
+  const { DB, statements } = fakeDatabase();
+  const id = await createBetterAuthUser({ DB }, {
+    email: " Staff@Example.Test ", password: "A-Strong-Temporary-Password-2026!", fullName: "Staff Member",
   });
-  const request = new Request("https://worker.test/api/v1/me", {
-    headers: { Authorization: "Bearer valid-access-token" },
-  });
-  const result = await verifySupabaseAccessToken(request, BASE_ENV);
-  assert.deepEqual(result, { state: "valid", user: { id: USER_ID, email: "staff@example.com" } });
-  assert.equal(receivedUrl, "https://example.supabase.co/auth/v1/user");
-  assert.equal(receivedInit.headers.apikey, "sb_publishable_test");
-  assert.equal(receivedInit.headers.Authorization, "Bearer valid-access-token");
+  assert.match(id, /^[0-9a-f-]{36}$/i);
+  assert.equal(statements.length, 2);
+  assert.match(statements[0].sql, /INSERT INTO "user"/);
+  assert.equal(statements[0].values[2], "staff@example.test");
+  assert.match(statements[1].sql, /INSERT INTO account/);
+  assert.match(statements[1].values[3], /^\$2[aby]\$12\$/);
 });
 
-test("401 from Supabase rejects expired or revoked tokens", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => new Response(null, { status: 401 }));
-  const result = await verifySupabaseAccessToken(
-    new Request("https://worker.test", { headers: { Authorization: "Bearer expired-token" } }),
-    BASE_ENV,
-  );
-  assert.deepEqual(result, { state: "unauthenticated" });
+test("Better Auth verifies imported bcrypt password hashes", async () => {
+  const { hash } = await import("bcryptjs");
+  const password = "Legacy-Staff-Password-2026!";
+  const hashValue = await hash(password, 10);
+  assert.ok(await verifyLegacyBcryptPassword(password, hashValue));
+  assert.equal(await verifyLegacyBcryptPassword("wrong-password", hashValue), false);
+  assert.equal(await verifyLegacyBcryptPassword(password, "not-a-bcrypt-hash"), false);
 });
 
-test("upstream 5xx fails closed as an authentication-service outage", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => new Response(null, { status: 503 }));
-  const result = await verifySupabaseAccessToken(
-    new Request("https://worker.test", { headers: { Authorization: "Bearer token" } }),
-    BASE_ENV,
-  );
-  assert.deepEqual(result, { state: "unavailable" });
+test("Admin-approved password reset rotates a credential and revokes existing sessions", async () => {
+  const { DB, statements } = fakeDatabase();
+  await updateBetterAuthUserPassword({ DB }, "staff-user-id", "New-Strong-Password-2026!", true);
+  assert.equal(statements.length, 2);
+  assert.match(statements[0].sql, /UPDATE account SET password/);
+  assert.match(statements[1].sql, /DELETE FROM session WHERE userId/);
+  assert.equal(statements[1].values[0], "staff-user-id");
 });
 
-test("network failure fails closed", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => { throw new Error("network unavailable"); });
-  const result = await verifySupabaseAccessToken(
-    new Request("https://worker.test", { headers: { Authorization: "Bearer token" } }),
-    BASE_ENV,
-  );
-  assert.deepEqual(result, { state: "unavailable" });
+test("forced first-login password replacement retains the active browser session", async () => {
+  const { DB, statements } = fakeDatabase();
+  await updateBetterAuthUserPassword({ DB }, "staff-user-id", "New-Strong-Password-2026!", false);
+  assert.equal(statements.length, 1);
+  assert.match(statements[0].sql, /UPDATE account SET password/);
 });
 
-test("malformed successful Auth response fails closed", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => Response.json({ id: "not-a-uuid" }));
-  const result = await verifySupabaseAccessToken(
-    new Request("https://worker.test", { headers: { Authorization: "Bearer token" } }),
-    BASE_ENV,
-  );
-  assert.deepEqual(result, { state: "unavailable" });
+test("credential update fails closed when no active password account exists", async () => {
+  const DB = {
+    prepare(sql) { return { sql, bind() { return this; }, async run() { return { success: true, meta: { changes: 0 } }; } }; },
+    async batch(items) { return items.map(() => ({ success: true, meta: { changes: 0 } })); },
+  };
+  await assert.rejects(updateBetterAuthUserPassword({ DB }, "missing-user", "New-Strong-Password-2026!"), /BETTER_AUTH_PASSWORD_UPDATE_FAILED/);
 });
 
-test("creates an invitation identity using the server-only Admin API", async (t) => {
-  let receivedUrl = "";
-  let receivedInit;
-  t.mock.method(globalThis, "fetch", async (url, init) => {
-    receivedUrl = String(url);
-    receivedInit = init;
-    return Response.json({ id: USER_ID });
-  });
-  const id = await createSupabaseAuthUser(BASE_ENV, {
-    email: "staff@example.com",
-    password: "a-long-temporary-password",
-    fullName: "Staff Member",
-  });
-  assert.equal(id, USER_ID);
-  assert.equal(receivedUrl, "https://example.supabase.co/auth/v1/admin/users");
-  assert.equal(receivedInit.headers.Authorization, "Bearer server-only-service-role-secret");
-  assert.match(receivedInit.body, /"email_confirm":true/);
-});
-
-test("deletes a newly created identity as the D1 compensation action", async (t) => {
-  let receivedUrl = "";
-  let receivedInit;
-  t.mock.method(globalThis, "fetch", async (url, init) => {
-    receivedUrl = String(url);
-    receivedInit = init;
-    return new Response(null, { status: 204 });
-  });
-  await deleteSupabaseAuthUser(BASE_ENV, USER_ID);
-  assert.equal(receivedUrl, `https://example.supabase.co/auth/v1/admin/users/${USER_ID}`);
-  assert.equal(receivedInit.method, "DELETE");
-});
-
-test("Admin API is unavailable without the service-role secret", async (t) => {
-  const fetchMock = t.mock.method(globalThis, "fetch", async () => Response.json({}));
-  await assert.rejects(
-    createSupabaseAuthUser(
-      { ...BASE_ENV, SUPABASE_SERVICE_ROLE_KEY: undefined },
-      { email: "staff@example.com", password: "temporary-password", fullName: "Staff" },
-    ),
-    /SUPABASE_ADMIN_AUTH_NOT_CONFIGURED/,
-  );
-  assert.equal(fetchMock.mock.callCount(), 0);
-});
-
-test("Admin password updates use the server-side Supabase Auth endpoint", async (t) => {
-  let receivedUrl = "";
-  let receivedMethod = "";
-  let receivedBody = null;
-  t.mock.method(globalThis, "fetch", async (url, init) => {
-    receivedUrl = String(url);
-    receivedMethod = init.method;
-    receivedBody = JSON.parse(init.body);
-    return new Response(null, { status: 200 });
-  });
-  await updateSupabaseAuthUserPassword(BASE_ENV, USER_ID, "test-password-value");
-  assert.equal(receivedUrl, `https://example.supabase.co/auth/v1/admin/users/${USER_ID}`);
-  assert.equal(receivedMethod, "PUT");
-  assert.deepEqual(receivedBody, { password: "test-password-value" });
+test("compensating cleanup deletes a D1 Better Auth user", async () => {
+  const { DB, statements } = fakeDatabase();
+  await deleteBetterAuthUser({ DB }, "staff-user-id");
+  assert.match(statements[0].sql, /DELETE FROM "user"/);
 });

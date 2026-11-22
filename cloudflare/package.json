@@ -7,9 +7,13 @@
     "typecheck": "tsc --noEmit",
     "dev": "wrangler dev --local",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "deploy": "wrangler deploy",
     "deploy:preview": "wrangler deploy --env preview"
   },
-  "dependencies": {},
+  "dependencies": {
+    "better-auth": "1.7.22",
+    "bcryptjs": "3.0.2"
+  },
   "devDependencies": {
     "typescript": "5.9.3",
     "wrangler": "4.46.0"

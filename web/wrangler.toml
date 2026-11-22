@@ -1,30 +1,11 @@
 name = "pcg-missions"
-compatibility_date = "2026-11-13"
+compatibility_date = "2026-11-22"
 pages_build_output_dir = "./dist"
 
-# Shared defaults. Environment-specific sections below explicitly override these.
-[vars]
-SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
-SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
-VITE_SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
-VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
-VITE_CMI_WORKER_API_URL = ""
+# Private event-flyer files remain on the agreed Supabase Storage exception.
 
-# Preview shares the existing Supabase Auth project; only Worker/D1 business storage is rehearsed.
 [env.preview.vars]
-SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
-SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
-VITE_SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
-VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
-VITE_CMI_WORKER_API_URL = "https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
-VITE_CMI_PREVIEW_MODE = "true"
+PCG_MISSIONS_API_ORIGIN = "https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
 
-# Production deliberately retains the existing API origin until the full Worker
-# route parity, data reconciliation and rollback gates have been accepted.
 [env.production.vars]
-SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
-SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
-VITE_SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
-VITE_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
-VITE_CMI_WORKER_API_URL = ""
-VITE_CMI_PREVIEW_MODE = "false"
+PCG_MISSIONS_API_ORIGIN = "https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev"
