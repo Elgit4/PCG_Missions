@@ -132,3 +132,13 @@ Production remains unchanged:
 - PR #102 remains draft and targets the production Pages branch. Do not merge it or change production routing until the production Worker, D1 schema/data, secret bindings, authenticated acceptance, restore and rollback gates pass.
 
 The only Supabase runtime exception remains private event-flyer storage. SMS remains disabled.
+
+### Additional recovery verification
+
+A Cloudflare D1 Time Travel restore was successfully executed against the isolated schema-44 preview database using its current bookmark. Post-restore verification returned schema 44, three Better Auth users, three credential accounts, three staff profiles, two active role assignments, zero sessions, and zero foreign-key violations. This verifies a schema-44 Time Travel restore path without changing the resulting data. It is **not** a substitute for an independent SQL export/import rehearsal.
+
+Pre-change bookmarks captured for the remaining non-production databases:
+- Production-named D1: `00000020-00000000-0000512b-f4344caaecac97d2846845330d37534f`
+- Restore-rehearsal D1: `00000020-00000000-0000512b-0105c30c1f815711e96f9e43be4d3fbd`
+
+Do not restore either database unless a rollback is deliberately approved and the target bookmark is rechecked first.
