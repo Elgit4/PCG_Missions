@@ -1174,4 +1174,25 @@ describe("CmiApiClient", () => {
     expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
     expect(result.data[0]?.roles[0]?.code).toBe("coordinator");
   });
+  
+  it("routes password-reset review operations through the authenticated Worker", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, data: [], request_id: "reset-list" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true, data: { status: "denied" }, request_id: "reset-deny" }), { status: 200 }));
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    await client.listStaffPasswordResetRequests("branch-abc");
+    await client.denyStaffPasswordResetRequest("branch-abc", "reset-123", "Verified with the staff member");
+    const [listUrl, listInit] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(listUrl.pathname).toBe("/api/v1/admin/password-reset-requests");
+    expect(listUrl.searchParams.get("branch_id")).toBe("branch-abc");
+    expect(new Headers(listInit.headers).get("Authorization")).toBe("Bearer access-token");
+    const [denyUrl, denyInit] = fetcher.mock.calls[1] as unknown as [URL, RequestInit];
+    expect(denyUrl.pathname).toBe("/api/v1/admin/password-reset-requests/reset-123/deny");
+    expect(new Headers(denyInit.headers).get("X-Branch-Id")).toBe("branch-abc");
+    expect(JSON.parse(String(denyInit.body))).toEqual({ branch_id: "branch-abc", reason: "Verified with the staff member" });
+  });
 });
