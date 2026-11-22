@@ -18,7 +18,7 @@ This document supersedes the historical preview-only migration notes previously 
 - SMS sending, campaigns and automation are disabled. The production role-capability catalogue has no SMS grants.
 
 Production Pages deployment after the hardening release:
-- Deployment: [70252198-bd66-4cb0-9f54-a0dcb08abf73](https://dash.cloudflare.com/1697f36d4227453d2e25cfb49b347e5f/pages/view/pcg-missions/deployments)
+- Deployment ID: `70252198-bd66-4cb0-9f54-a0dcb08abf73`
 - Source commit: `de8d324902d59cfa00ea0f6296a215a98bc9611c`
 - Status: successful.
 
