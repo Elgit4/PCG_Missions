@@ -153,7 +153,8 @@ jobs:
           set -euo pipefail
           import_url="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/d1/database/833043cd-896e-4833-b5ae-17d520feba0f/import"
           dump_file="/tmp/pcg-missions-d1-recovery-ordered.sql"
-          headers_file="/tmp/task7-d1-upload-headers.txt /tmp/task7-d1-upload-status.txt /tmp/task7-d1-upload-response.txt /tmp/task7-d1-upload-error.txt"
+          printf '\\n-- Task 7 restore rehearsal run %s\\n' "$GITHUB_RUN_ID" >> "$dump_file"
+          headers_file="/tmp/task7-d1-upload-headers.txt"
           etag="$(md5sum "$dump_file" | awk '{print $1}')"
 
           api_post() {
@@ -165,7 +166,7 @@ jobs:
           }
 
           init_response="$(api_post "$(jq -n --arg etag "$etag" '{action:"init",etag:$etag}')")"
-          init_summary="$(jq -c '{success, errors, filename:.result.filename, has_upload_url:(.result.upload_url != null)}' <<< "$init_response")"
+          init_summary="$(jq -c '{success, errors, result_type:(.result|type), result_keys:(.result|keys), filename:.result.filename, has_upload_url:(.result.upload_url != null)}' <<< "$init_response")"
           echo "D1 import initialization: $init_summary"
           if [[ "$(jq -r '.success' <<< "$init_response")" != "true" ]]; then
             echo "::error::Cloudflare D1 import initialization failed."
