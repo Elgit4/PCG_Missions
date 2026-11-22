@@ -125,6 +125,7 @@ jobs:
           PY
 
       - name: Verify restore target is a fresh empty public schema
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -137,6 +138,7 @@ jobs:
           echo "Restore target public and Supabase migration-history schemas are empty."
 
       - name: Create Supabase-aware logical backup on ephemeral runner disk
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
@@ -154,6 +156,7 @@ jobs:
           sha256sum /tmp/cmi-roles.sql /tmp/cmi-schema.sql /tmp/cmi-data.sql /tmp/cmi-history-schema.sql /tmp/cmi-history-data.sql
 
       - name: Restore only to the isolated Supabase target
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
