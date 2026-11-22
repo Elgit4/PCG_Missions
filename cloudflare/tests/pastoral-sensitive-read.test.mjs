@@ -200,3 +200,36 @@ test("sensitive pastoral read rejects a mismatched branch before querying record
   assert.equal((await r.json()).error.code, "INVALID_PASTORAL_READ");
   assert.equal(f.batches.length, 0);
 });
+
+
+test("six-role pastoral read matrix grants oversight only to Admin/Pastor and assigned prayer reads only to Intercessors", async (t) => {
+  mockAuth(t);
+  const cases = [
+    { role: "admin_pastor", mode: "oversight", capability: ["prayer.oversight.read", "oversight"], expected: 200, reason_code: "pastoral_review" },
+    { role: "coordinator", mode: "oversight", capability: null, expected: 403, reason_code: "pastoral_review" },
+    { role: "team_leader", mode: "oversight", capability: null, expected: 403, reason_code: "pastoral_review" },
+    { role: "field_worker", mode: "oversight", capability: null, expected: 403, reason_code: "pastoral_review" },
+    { role: "follow_up_volunteer", mode: "oversight", capability: null, expected: 403, reason_code: "pastoral_review" },
+    { role: "prayer_intercessor", mode: "assigned", capability: ["prayer.request.read.assigned", "assigned"], expected: 200, reason_code: undefined },
+  ];
+  for (const item of cases) {
+    const f = makePastoralEnv({
+      roleCode: item.role,
+      grants: item.capability ? [item.capability] : [],
+      assignmentExists: true,
+    });
+    const body = {
+      branch_id: BRANCH_ID,
+      access_mode: item.mode,
+      ...(item.reason_code ? { reason_code: item.reason_code } : {}),
+    };
+    const r = await worker.fetch(makeRequest("/api/v1/pastoral/prayer/requests/" + PRAYER_ID + "/read", body), f.env);
+    assert.equal(r.status, item.expected, item.role + " access result");
+    if (item.expected === 200) {
+      assert.equal((await r.json()).data.request.id, PRAYER_ID);
+    } else {
+      assert.equal((await r.json()).error.code, "PASTORAL_READ_NOT_AUTHORIZED");
+      assert.equal(f.batches.length, 0);
+    }
+  }
+});
