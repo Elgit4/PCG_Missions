@@ -3530,7 +3530,7 @@ async function handleAnnouncementItem(request: Request, env: Env, announcementId
     return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_QUERY" } }, requestId, origin);
   }
   const current = await env.DB.prepare(`
-    SELECT id,branch_id,title,body,created_by,status,updated_at
+    SELECT id,branch_id,title,body,is_public,status,created_by,created_at,updated_at
     FROM announcement
     WHERE id=? AND branch_id=? AND status='draft'
   `).bind(announcementId, branchId).first<AnnouncementDraftRow & { created_by: string }>();
