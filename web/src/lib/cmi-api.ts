@@ -673,6 +673,12 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
   const verb = method.toUpperCase();
   if (functionName === "staff-session" && suffix === "") return "/api/v1/me";
 
+  if (functionName === "calendar-operations") {
+    if (suffix === "/entries" && (verb === "GET" || verb === "POST")) return "/api/v1/calendar/entries";
+    if (/^\/entries\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix.replace("/entries/", "/calendar/entries/");
+    return null;
+  }
+
   if (functionName === "event-operations") {
     if (/^\/events\/[^/]+\/registrations$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
     if (/^\/events\/[^/]+\/staff-registration\/(open|close)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
