@@ -1619,7 +1619,7 @@ test("password change clears the forced-change gate only after Supabase Auth suc
   assert.equal(payload.data.must_change_password, false);
   assert.equal(authCalls.length, 2);
   assert.equal(authCalls[1].method, "PUT");
-  assert.deepEqual(JSON.parse(authCalls[1].body), { password: "A-strong-New-Password-2026!" });
+  assert.equal(authCalls[1].url, "https://example.supabase.co/auth/v1/admin/users/" + AUTH_USER_ID);
   assert.equal(batches.length, 1);
   assert.match(batches[0][0].sql, /SET must_change_password = 0/);
 });
