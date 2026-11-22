@@ -1,0 +1,165 @@
+name: Task 7 — Isolated D1 restore rehearsal
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_non_production_restore:
+        description: "Type RESTORE-TO-SCRATCH to authorize import into pcg-missions-restore-rehearsal"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcg-missions-task7-d1-restore
+  cancel-in-progress: false
+
+jobs:
+  d1-export-import-verify:
+    if: ${{ inputs.confirm_non_production_restore == 'RESTORE-TO-SCRATCH' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require Cloudflare credential
+        run: |
+          set -euo pipefail
+          test -n "$CLOUDFLARE_API_TOKEN" || {
+            echo "::error::Add CLOUDFLARE_API_TOKEN as a repository Actions secret before running this workflow."
+            exit 1
+          }
+
+      - name: Install pinned Wrangler
+        run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
+
+      - name: Build a temporary config for the exact non-production source and scratch target
+        run: |
+          set -euo pipefail
+          cat > wrangler.task7-recovery.toml <<'EOF'
+          name = "pcg-missions-task7-recovery"
+          account_id = "1697f36d4227453d2e25cfb49b347e5f"
+          compatibility_date = "2026-11-13"
+
+          [[d1_databases]]
+          binding = "SOURCE"
+          database_name = "pcg-missions-migration-test"
+          database_id = "74074d53-1edc-4ad7-83e6-bb3333a6ab4f"
+
+          [[d1_databases]]
+          binding = "TARGET"
+          database_name = "pcg-missions-restore-rehearsal"
+          database_id = "833043cd-896e-4833-b5ae-17d520feba0f"
+          EOF
+
+      - name: Confirm the scratch target has no application schema objects
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "SELECT COUNT(*) AS existing_objects FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' AND name <> '_cf_KV';" > /tmp/task7-target-check.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const root = JSON.parse(fs.readFileSync('/tmp/task7-target-check.json', 'utf8'));
+          const seen = new Set();
+          function find(value) {
+            if (!value || typeof value !== 'object' || seen.has(value)) return [];
+            seen.add(value);
+            if (Array.isArray(value)) return value.flatMap(find);
+            if (Object.hasOwn(value, 'existing_objects')) return [value.existing_objects];
+            return Object.values(value).flatMap(find);
+          }
+          const values = find(root);
+          if (values.length !== 1 || Number(values[0]) !== 0) {
+            throw new Error('Restore target is not demonstrably empty. Refusing to import.');
+          }
+          console.log('Scratch target has no application tables, views, indexes, or triggers; import may proceed.');
+          NODE
+
+      - name: Export migration-test database to ephemeral runner disk
+        run: |
+          set -euo pipefail
+          npx wrangler d1 export pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --output=/tmp/pcg-missions-d1-recovery.sql --skip-confirmation
+          test -s /tmp/pcg-missions-d1-recovery.sql
+          sha256sum /tmp/pcg-missions-d1-recovery.sql | tee /tmp/pcg-missions-d1-recovery.sha256
+          wc -c /tmp/pcg-missions-d1-recovery.sql
+
+      - name: Import only into the fixed EU scratch database
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --file=/tmp/pcg-missions-d1-recovery.sql --yes
+
+      - name: Compare exact schema objects, migration ledger, and critical row counts
+        run: |
+          set -euo pipefail
+          SCHEMA_SQL="SELECT type, name, COALESCE(sql, '') AS sql FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' AND name <> '_cf_KV' ORDER BY type, name"
+          COUNTS_SQL="SELECT 'tables' AS item, COUNT(*) AS row_count FROM sqlite_schema WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name <> '_cf_KV' UNION ALL SELECT 'd1_migrations', COUNT(*) FROM d1_migrations UNION ALL SELECT 'church', COUNT(*) FROM church UNION ALL SELECT 'branch', COUNT(*) FROM branch UNION ALL SELECT 'role', COUNT(*) FROM role UNION ALL SELECT 'capability', COUNT(*) FROM capability UNION ALL SELECT 'role_capability', COUNT(*) FROM role_capability UNION ALL SELECT 'staff_profile', COUNT(*) FROM staff_profile UNION ALL SELECT 'staff_role_assignment', COUNT(*) FROM staff_role_assignment UNION ALL SELECT 'staff_access_audit', COUNT(*) FROM staff_access_audit UNION ALL SELECT 'contact', COUNT(*) FROM contact UNION ALL SELECT 'followup_task', COUNT(*) FROM followup_task UNION ALL SELECT 'ministry_report', COUNT(*) FROM ministry_report UNION ALL SELECT 'announcement', COUNT(*) FROM announcement UNION ALL SELECT 'event', COUNT(*) FROM event UNION ALL SELECT 'prayer_request', COUNT(*) FROM prayer_request"
+          npx wrangler d1 execute pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --json --command "$SCHEMA_SQL" > /tmp/task7-source-schema.json
+          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "$SCHEMA_SQL" > /tmp/task7-target-schema.json
+          npx wrangler d1 execute pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --json --command "$COUNTS_SQL" > /tmp/task7-source-counts.json
+          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "$COUNTS_SQL" > /tmp/task7-target-counts.json
+          npx wrangler d1 execute pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --json --command "SELECT name, applied_at FROM d1_migrations ORDER BY name" > /tmp/task7-source-migration-ledger.json
+          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "SELECT name, applied_at FROM d1_migrations ORDER BY name" > /tmp/task7-target-migration-ledger.json
+          npx wrangler d1 execute pcg-missions-migration-test --remote --config wrangler.task7-recovery.toml --json --command "PRAGMA foreign_key_check;" > /tmp/task7-source-fk.json
+          npx wrangler d1 execute pcg-missions-restore-rehearsal --remote --config wrangler.task7-recovery.toml --json --command "PRAGMA foreign_key_check;" > /tmp/task7-target-fk.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          function resultRows(path, requiredKeys) {
+            const root = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const seen = new Set();
+            function find(value) {
+              if (!value || typeof value !== 'object' || seen.has(value)) return [];
+              seen.add(value);
+              if (Array.isArray(value)) {
+                if (value.every(x => x && typeof x === 'object' && requiredKeys.every(k => Object.hasOwn(x, k)))) return value;
+                return value.flatMap(find);
+              }
+              return Object.values(value).flatMap(find);
+            }
+            return find(root);
+          }
+          function canonical(path, keys) {
+            return resultRows(path, keys).map(row => keys.map(key => String(row[key] ?? '')).join('\u001f'));
+          }
+          const sourceSchema = canonical('/tmp/task7-source-schema.json', ['type','name','sql']);
+          const targetSchema = canonical('/tmp/task7-target-schema.json', ['type','name','sql']);
+          if (!sourceSchema.length || JSON.stringify(sourceSchema) !== JSON.stringify(targetSchema)) {
+            throw new Error('Exact D1 schema-object comparison failed (tables, indexes, views, triggers, or migration ledger differ).');
+          }
+          function countRows(path) {
+            const rows = resultRows(path, ['item','row_count']);
+            if (rows.length !== 16) throw new Error(`Expected 16 count rows (including the D1 migration ledger) in ${path}; got ${rows.length}`);
+            return rows.map(x => [String(x.item), Number(x.row_count)]).sort((a,b) => a[0].localeCompare(b[0]));
+          }
+          const sourceLedger = canonical('/tmp/task7-source-migration-ledger.json', ['name','applied_at']);
+          const targetLedger = canonical('/tmp/task7-target-migration-ledger.json', ['name','applied_at']);
+          if (sourceLedger.length === 0 || JSON.stringify(sourceLedger) !== JSON.stringify(targetLedger)) {
+            throw new Error('Exact D1 migration-ledger entries do not match the source snapshot.');
+          }
+          const sourceCounts = countRows('/tmp/task7-source-counts.json');
+          const targetCounts = countRows('/tmp/task7-target-counts.json');
+          if (JSON.stringify(sourceCounts) !== JSON.stringify(targetCounts)) {
+            console.error({sourceCounts, targetCounts});
+            throw new Error('Restored D1 critical table counts do not match the source snapshot.');
+          }
+          function foreignKeyRows(path) {
+            return resultRows(path, ['table','rowid','parent','fkid']);
+          }
+          const sourceFk = foreignKeyRows('/tmp/task7-source-fk.json');
+          const targetFk = foreignKeyRows('/tmp/task7-target-fk.json');
+          if (sourceFk.length !== 0 || targetFk.length !== 0) {
+            console.error({sourceFk, targetFk});
+            throw new Error('Foreign-key check returned violations on source or restored database.');
+          }
+          console.log(`D1 restore verification passed: ${sourceSchema.length} exact schema objects match; 15 critical table counts and all ${sourceLedger.length} exact migration-ledger entries match; foreign_key_check is clean on both databases.`);
+          console.log(sourceCounts);
+          NODE
+
+      - name: Remove database dump from ephemeral runner
+        if: always()
+        run: rm -f /tmp/pcg-missions-d1-recovery.sql /tmp/pcg-missions-d1-recovery.sha256 /tmp/task7-target-check.json /tmp/task7-source-schema.json /tmp/task7-target-schema.json /tmp/task7-source-counts.json /tmp/task7-target-counts.json /tmp/task7-source-migration-ledger.json /tmp/task7-target-migration-ledger.json /tmp/task7-source-fk.json /tmp/task7-target-fk.json wrangler.task7-recovery.toml
