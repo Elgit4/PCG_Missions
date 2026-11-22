@@ -4050,8 +4050,11 @@ async function listAssignedPrayerRequests(
   const url = new URL(request.url);
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
+  const rawOffset = url.searchParams.get("offset");
+  const offset = rawOffset === null ? 0 : Number(rawOffset);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100 ||
-      [...url.searchParams.keys()].some((key) => key !== "limit")) {
+      !Number.isInteger(offset) || offset < 0 || offset > 100000 ||
+      [...url.searchParams.keys()].some((key) => key !== "limit" && key !== "offset")) {
     return json(400, { ok: false, error: { code: "INVALID_ASSIGNED_PRAYER_QUERY" } }, requestId, origin);
   }
   const now = new Date().toISOString();
