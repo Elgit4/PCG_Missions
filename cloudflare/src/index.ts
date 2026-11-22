@@ -3503,7 +3503,7 @@ async function handleCalendarCollection(request: Request, env: Env, requestId: s
     const rows = await env.DB.prepare(`
       SELECT ${CALENDAR_ENTRY_COLUMNS}
       FROM calendar_entry
-      WHERE branch_id = ? AND scope_type = 'branch' AND status = 'active'
+      WHERE branch_id = ? AND scope_type = 'branch'
       ORDER BY starts_at ASC, id ASC
       LIMIT ? OFFSET ?
     `).bind(branchId, limit, offset).all<CalendarEntryRow>();
@@ -3555,7 +3555,7 @@ async function handleCalendarEntry(request: Request, env: Env, entryId: string, 
   const current = await env.DB.prepare(`
     SELECT ${CALENDAR_ENTRY_COLUMNS}
     FROM calendar_entry
-    WHERE id=? AND branch_id=? AND scope_type='branch' AND status='active'
+    WHERE id=? AND branch_id=? AND scope_type='branch'
   `).bind(entryId, branchId).first<CalendarEntryRow>();
   if (!current) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
   if (method === "GET") return json(200, { ok: true, data: current }, requestId, origin);
@@ -3569,7 +3569,7 @@ async function handleCalendarEntry(request: Request, env: Env, entryId: string, 
   const result = await env.DB.prepare(`
     UPDATE calendar_entry
     SET entry_type=?, title=?, starts_at=?, ends_at=?, updated_by=?, updated_at=?
-    WHERE id=? AND branch_id=? AND scope_type='branch' AND status='active' AND updated_at=?
+    WHERE id=? AND branch_id=? AND scope_type='branch' AND updated_at=?
   `).bind(
     next.entry_type, next.title, next.starts_at, next.ends_at,
     access.staff.userId, now, entryId, branchId, current.updated_at,
