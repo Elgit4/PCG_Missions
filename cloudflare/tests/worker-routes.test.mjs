@@ -1293,6 +1293,33 @@ test("ministry report routes reject anonymous reads and submissions before touch
 
 
 
+test("event draft CRUD and flyer routes reject anonymous access before D1 writes", async () => {
+  const { env, calls } = fakeEnv();
+  const branch = "30000000-0000-4000-8000-000000000001";
+  const event = "40000000-0000-4000-8000-000000000001";
+  const requests = [
+    new Request(`https://worker.example/api/v1/events?branch_id=${branch}`),
+    new Request("https://worker.example/api/v1/events", {
+      method: "POST", headers: { "Content-Type": "application/json", "X-Branch-Id": branch },
+      body: JSON.stringify({ branch_id: branch, title: "Outreach", starts_at: "2026-11-29T08:00:00Z", ends_at: "2026-11-29T10:00:00Z", timezone: "Africa/Accra" }),
+    }),
+    new Request(`https://worker.example/api/v1/events/${event}?branch_id=${branch}`),
+    new Request(`https://worker.example/api/v1/events/${event}?branch_id=${branch}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: "Updated outreach" }),
+    }),
+    new Request(`https://worker.example/api/v1/events/${event}/cancel?branch_id=${branch}`, { method: "POST" }),
+    new Request(`https://worker.example/api/v1/events/${event}/flyer?branch_id=${branch}`),
+    new Request(`https://worker.example/api/v1/events/${event}/flyer?branch_id=${branch}`, { method: "POST" }),
+  ];
+  for (const request of requests) {
+    const response = await worker.fetch(request, env);
+    const payload = await response.json();
+    assert.equal(response.status, 401);
+    assert.equal(payload.error.code, "UNAUTHENTICATED");
+  }
+  assert.equal(calls.length, 0);
+});
+
 test("event registration, check-in and closeout routes reject anonymous access before D1 writes", async () => {
   const { env, calls } = fakeEnv();
   const branch = "30000000-0000-4000-8000-000000000001";
