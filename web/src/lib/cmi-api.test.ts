@@ -139,4 +139,35 @@ describe("Cloudflare Worker API client", () => {
     }
   });
 
+
+  it("routes staff role assignment and dual-control reviews through the Worker", async () => {
+    const fetcher = vi.fn(async () => response([]));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await api.assignStaffRole("branch-1", "staff-1", "coordinator", "Approved ministry appointment.");
+    await api.revokeStaffRole("branch-1", "assignment-1", "Role no longer required.");
+    await api.listAdminElevationRequests("branch-1");
+    await api.requestAdminElevation("branch-1", "staff-2", "Approved pastoral appointment.");
+    await api.reviewAdminElevation("branch-1", "elevation-1", "approve", "Second administrator verified.");
+    await api.listAdminRevocationRequests("branch-1");
+    await api.requestAdminRevocation("branch-1", "admin-assignment-1", "Role holder is leaving office.");
+    await api.reviewAdminRevocation("branch-1", "revocation-1", "reject", "The request lacks supporting evidence.");
+
+    const calls = fetcher.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(calls.map(([url, init]) => [new URL(url).pathname, init.method ?? "GET"])).toEqual([
+      ["/api/v1/staff/roles", "POST"],
+      ["/api/v1/staff/roles/assignment-1", "DELETE"],
+      ["/api/v1/staff/role-elevations", "GET"],
+      ["/api/v1/staff/role-elevations", "POST"],
+      ["/api/v1/staff/role-elevations/elevation-1/approve", "POST"],
+      ["/api/v1/staff/role-revocations", "GET"],
+      ["/api/v1/staff/role-revocations", "POST"],
+      ["/api/v1/staff/role-revocations/revocation-1/reject", "POST"],
+    ]);
+    for (const [, init] of calls) {
+      expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+      expect(init.credentials).toBe("include");
+      expect(new Headers(init.headers).has("Authorization")).toBe(false);
+    }
+  });
+
 });
