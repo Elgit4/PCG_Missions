@@ -710,6 +710,10 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
 
   if (functionName === "pastoral-operations") {
     if (suffix === "/prayer/requests/assigned" && verb === "GET") return "/api/v1/pastoral/prayer/assigned";
+    const prayerRead = suffix.match(/^\/prayer\/requests\/([^/]+)\/read$/);
+    if (prayerRead && verb === "POST") return "/api/v1/pastoral/prayer/requests/" + prayerRead[1] + "/read";
+    const careRead = suffix.match(/^\/care\/records\/([^/]+)\/read$/);
+    if (careRead && verb === "POST") return "/api/v1/pastoral/care/records/" + careRead[1] + "/read";
     return null;
   }
 
