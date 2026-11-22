@@ -81,3 +81,14 @@ Do not cut over if any of these apply:
 | DNS | Worker dev hostname | Unchanged |
 
 **Decision:** this repository is being prepared for a controlled production release. A green build or successful non-production deployment alone does not authorize production cutover. Task 7 (backup and restore rehearsal) remains open until D1 SQL import and Supabase restore-to-new-project validation are completed.
+
+
+## 8. Follow-up recovery blocker — 2026-11-22
+
+A read-only reconciliation pass found that the D1 migration-test database does not yet match the Supabase source on key authorization data: `capability` is 89 in D1 vs 61 in Supabase; `role_capability` is 128 vs 65; `staff_access_audit` is 6 vs 5. Church, branch, role, staff-profile and staff-role-assignment sample counts match, but row-level key/content reconciliation has not been completed. These differences are unexplained and block production data import.
+
+The Supabase organization is currently on the Free plan. Supabase's documented restore-to-new-project feature requires a paid plan and physical backups; automatic daily backups are documented for Pro, Team and Enterprise. Do not assume a recoverable hosted backup exists. The current connector does not expose backup listing/download or clone restore operations. No restore was attempted against the live source project.
+
+The D1 migration-test database has 86 application tables plus the internal `_cf_KV` table and latest migration ID 43. The isolated restore-rehearsal database still has no application tables. The D1 export artifact could not be downloaded because the connected execution environment blocks the signed Cloudflare R2 URL.
+
+**Release remains blocked.** Complete the D1 SQL import, explain and reconcile the row-count differences, and establish a supported Supabase logical-backup or paid-plan restore path before production cutover. See [the detailed backup/restore rehearsal report](backup-restore-rehearsal-2026-11-22.md).
