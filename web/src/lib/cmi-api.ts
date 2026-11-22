@@ -713,6 +713,12 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     return null;
   }
 
+  if (functionName === "staff-access-operations") {
+    const statusMatch = suffix.match(/^\/staff\/([^/]+)\/accounts\/(deactivate|reactivate)$/);
+    if (statusMatch && verb === "POST") return `/api/v1/staff/${statusMatch[1]}/${statusMatch[2]}`;
+    return null;
+  }
+
   if (functionName === "staff-operations") {
     if (suffix === "/contacts" && (verb === "GET" || verb === "POST")) return "/api/v1/contacts";
     if (/^\/contacts\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix;
@@ -1029,7 +1035,7 @@ export class CmiApiClient {
     }>(
       "staff-access-operations",
       `/staff/${encodeURIComponent(staffProfileId)}/accounts/${action}`,
-      { method: "POST", body: { branch_id: branchId, reason } },
+      { method: "POST", query: { branch_id: branchId }, body: { reason } },
     );
   }
 
