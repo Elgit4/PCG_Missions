@@ -20,7 +20,7 @@ Cloudflare Pages serves the PWA. A same-origin Pages Function gateway forwards a
 | Build output | dist |
 | Node.js | 22 |
 
-web/functions/api/_middleware.ts is the same-origin API gateway. web/public/_routes.json includes every /api/* route so authentication and business requests all pass through that gateway. SPA routes use the existing fallback.
+The `web/functions/api/[[path]].ts` dynamic route is required to make every `/api/*` URL match a real Pages Function. The nested `web/functions/api/_middleware.ts` runs for those matched routes and performs the same-origin proxy to the API Worker. The `web/public/_routes.json` include rule ensures `/api/*` requests invoke Pages Functions. Do not remove the dynamic route while the proxy remains middleware-based; a middleware file alone does not create a route. SPA routes use the existing fallback.
 
 ## Runtime variables
 
