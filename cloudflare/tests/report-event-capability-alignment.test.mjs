@@ -44,4 +44,5 @@ test("migration restores least-privilege report and closeout grants", () => {
     "('coordinator','event.closeout.review','branch')",
   ]) assert.ok(migration.includes(grant), "Missing grant " + grant);
   assert.match(migration, /schema_version=46/);
+  assert.ok(migration.includes("environment IN ('non-production','production')"));
 });
