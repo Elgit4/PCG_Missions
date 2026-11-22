@@ -190,11 +190,16 @@ jobs:
             jq -c '.errors // []' <<< "$ingest_response"
             exit 1
           fi
-          bookmark="$(jq -er '.result.at_bookmark' <<< "$ingest_response")"
+          bookmark="$(jq -r '.result.at_bookmark // empty' <<< "$ingest_response")"
           state="$(jq -r '.result.status // empty' <<< "$ingest_response")"
+          poll_response="$ingest_response"
           polls=0
 
           while [[ "$state" == "active" ]]; do
+            if [[ -z "$bookmark" ]]; then
+              echo "::error::D1 import is active but returned no polling bookmark."
+              exit 1
+            fi
             polls=$((polls + 1))
             if (( polls > 900 )); then
               echo "::error::D1 bulk import did not finish within 30 minutes."
