@@ -10,6 +10,7 @@ crons = ["*/5 * * * *"]
 
 [vars]
 APP_ENV = "non-production"
+APP_ALLOWED_ORIGINS = "http://localhost:5173,https://feat-cloudflare-d1-migration.pcg-missions.pages.dev,https://pcg-missions-nonprod.pages.dev"
 BETTER_AUTH_URL = "https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev"
 BETTER_AUTH_TRUSTED_ORIGINS = "https://pcg-missions-api-nonprod.pcg-missions-nonprod.workers.dev,https://pcg-missions-nonprod.pages.dev,https://feat-cloudflare-d1-migration.pcg-missions.pages.dev"
 
