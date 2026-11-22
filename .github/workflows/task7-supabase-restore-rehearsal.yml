@@ -64,12 +64,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          count="$(psql "$SUPABASE_RESTORE_DB_URL" -X -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m');")"
-          if [[ "$count" != "0" ]]; then
-            echo "::error::Restore target public schema is not empty (found $count relations). Refusing to overwrite it."
+          public_count="$(psql "$SUPABASE_RESTORE_DB_URL" -X -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m');")"
+          history_count="$(psql "$SUPABASE_RESTORE_DB_URL" -X -v ON_ERROR_STOP=1 -Atc "SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='supabase_migrations' AND c.relkind IN ('r','p','v','m');")"
+          if [[ "$public_count" != "0" || "$history_count" != "0" ]]; then
+            echo "::error::Restore target is not fresh (public relations=$public_count; migration-history relations=$history_count). Refusing to overwrite it."
             exit 1
           fi
-          echo "Restore target public schema is empty."
+          echo "Restore target public and Supabase migration-history schemas are empty."
 
       - name: Create Supabase-aware logical backup on ephemeral runner disk
         shell: bash
@@ -77,11 +78,16 @@ jobs:
           set -euo pipefail
           supabase db dump --db-url "$SUPABASE_SOURCE_DB_URL" -f /tmp/cmi-roles.sql --role-only
           supabase db dump --db-url "$SUPABASE_SOURCE_DB_URL" -f /tmp/cmi-schema.sql
-          supabase db dump --db-url "$SUPABASE_SOURCE_DB_URL" -f /tmp/cmi-data.sql --use-copy --data-only
+          supabase db dump --db-url "$SUPABASE_SOURCE_DB_URL" -f /tmp/cmi-data.sql --use-copy --data-only -x "storage.buckets_vectors" -x "storage.vector_indexes"
+          # Supabase excludes migration history from the ordinary project dump; preserve it explicitly.
+          supabase db dump --db-url "$SUPABASE_SOURCE_DB_URL" --schema supabase_migrations -f /tmp/cmi-history-schema.sql
+          supabase db dump --db-url "$SUPABASE_SOURCE_DB_URL" --schema supabase_migrations -f /tmp/cmi-history-data.sql --use-copy --data-only
           test -s /tmp/cmi-roles.sql
           test -s /tmp/cmi-schema.sql
           test -s /tmp/cmi-data.sql
-          sha256sum /tmp/cmi-roles.sql /tmp/cmi-schema.sql /tmp/cmi-data.sql
+          test -s /tmp/cmi-history-schema.sql
+          test -s /tmp/cmi-history-data.sql
+          sha256sum /tmp/cmi-roles.sql /tmp/cmi-schema.sql /tmp/cmi-data.sql /tmp/cmi-history-schema.sql /tmp/cmi-history-data.sql
 
       - name: Restore only to the isolated Supabase target
         shell: bash
@@ -91,15 +97,18 @@ jobs:
             --single-transaction \
             --set ON_ERROR_STOP=1 \
             --file /tmp/cmi-roles.sql \
+            --command 'ALTER DEFAULT PRIVILEGES IN SCHEMA public REVOKE ALL ON TABLES FROM anon, authenticated' \
             --file /tmp/cmi-schema.sql \
             --command 'SET session_replication_role = replica' \
-            --file /tmp/cmi-data.sql
+            --file /tmp/cmi-data.sql \
+            --file /tmp/cmi-history-schema.sql \
+            --file /tmp/cmi-history-data.sql
 
       - name: Compare restored public schema and critical CMI row counts
         shell: bash
         run: |
           set -euo pipefail
-          SQL="SELECT 'public_tables' AS item, count(*)::bigint AS row_count FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' UNION ALL SELECT 'capability', count(*) FROM public.capability UNION ALL SELECT 'role_capability', count(*) FROM public.role_capability UNION ALL SELECT 'staff_access_audit', count(*) FROM public.staff_access_audit UNION ALL SELECT 'role', count(*) FROM public.role UNION ALL SELECT 'staff_profile', count(*) FROM public.staff_profile"
+          SQL="SELECT 'public_tables' AS item, count(*)::bigint AS row_count FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE' UNION ALL SELECT 'capability', count(*) FROM public.capability UNION ALL SELECT 'role_capability', count(*) FROM public.role_capability UNION ALL SELECT 'staff_access_audit', count(*) FROM public.staff_access_audit UNION ALL SELECT 'role', count(*) FROM public.role UNION ALL SELECT 'staff_profile', count(*) FROM public.staff_profile UNION ALL SELECT 'migration_history', count(*) FROM supabase_migrations.schema_migrations"
           psql "$SUPABASE_SOURCE_DB_URL" -X -v ON_ERROR_STOP=1 -AtF '|' -c "$SQL" | sort > /tmp/cmi-source-counts.txt
           psql "$SUPABASE_RESTORE_DB_URL" -X -v ON_ERROR_STOP=1 -AtF '|' -c "$SQL" | sort > /tmp/cmi-target-counts.txt
           diff -u /tmp/cmi-source-counts.txt /tmp/cmi-target-counts.txt
@@ -107,4 +116,4 @@ jobs:
 
       - name: Remove logical backup files from ephemeral runner
         if: always()
-        run: rm -f /tmp/cmi-roles.sql /tmp/cmi-schema.sql /tmp/cmi-data.sql /tmp/cmi-source-counts.txt /tmp/cmi-target-counts.txt
+        run: rm -f /tmp/cmi-roles.sql /tmp/cmi-schema.sql /tmp/cmi-data.sql /tmp/cmi-history-schema.sql /tmp/cmi-history-data.sql /tmp/cmi-source-counts.txt /tmp/cmi-target-counts.txt
