@@ -299,12 +299,22 @@ describe("CmiApiClient", () => {
       ends_at: null,
     });
     await client.updateCalendarEntry("branch-a", "calendar-1", { title: "Updated service" });
+    await client.listAnnouncementDrafts("branch-a");
+    await client.createAnnouncementDraft({
+      branch_id: "branch-a",
+      title: "Sunday notice",
+      body: "The service begins at 9:00 AM.",
+    });
+    await client.updateAnnouncementDraft("branch-a", "announcement-1", { title: "Updated notice" });
 
     const calls = fetcher.mock.calls as unknown as Array<[URL, RequestInit]>;
     expect(calls.map(([url, init]) => [url.pathname, init.method ?? "GET"])).toEqual([
       ["/api/v1/calendar/entries", "GET"],
       ["/api/v1/calendar/entries", "POST"],
       ["/api/v1/calendar/entries/calendar-1", "PATCH"],
+      ["/api/v1/announcements", "GET"],
+      ["/api/v1/announcements", "POST"],
+      ["/api/v1/announcements/announcement-1", "PATCH"],
     ]);
     for (const [url, init] of calls) {
       const headers = new Headers(init.headers);
