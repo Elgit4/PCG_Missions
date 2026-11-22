@@ -5,16 +5,21 @@ import test from "node:test";
 const migration = readFileSync(new URL("../migrations/0013_events_attendance_transport.sql", import.meta.url), "utf8");
 const worker = readFileSync(new URL("../src/index.ts", import.meta.url), "utf8");
 
-test("staff event registration INSERT uses only columns present in the D1 schema", () => {
-  const tableMatch = migration.match(/CREATE TABLE event_registration \(([\s\S]*?)\n\);/i);
+test("staff event registration INSERT matches the effective D1 schema and actor guard", () => {
+  const tableMatch = migration.match(/CREATE TABLE event_registration \\(([\\s\\S]*?)\\n\\);/i);
   assert.ok(tableMatch, "event_registration table definition must exist");
   const declared = new Set(
-    tableMatch[1].split("\n")
-      .map((line) => line.trim().match(/^([a-z_][a-z0-9_]*)\s+/i)?.[1])
+    tableMatch[1].split("\\n")
+      .map((line) => line.trim().match(/^([a-z_][a-z0-9_]*)\\s+/i)?.[1])
       .filter(Boolean),
   );
 
-  const insertMatch = worker.match(/INSERT INTO event_registration\(([^)]+)\)\s*VALUES\(/i);
+  // Migration 0013 adds actor attribution after the initial CREATE TABLE.
+  if (/ALTER TABLE\\s+event_registration\\s+ADD COLUMN\\s+created_by\\b/i.test(migration)) {
+    declared.add("created_by");
+  }
+
+  const insertMatch = worker.match(/INSERT INTO event_registration\\(([^)]+)\\)\\s*VALUES\\(/i);
   assert.ok(insertMatch, "Worker staff registration INSERT must exist");
   const inserted = insertMatch[1].split(",").map((column) => column.trim());
 
@@ -23,4 +28,7 @@ test("staff event registration INSERT uses only columns present in the D1 schema
     assert.ok(declared.has(column), `Worker INSERT references undeclared D1 column: ${column}`);
   }
   assert.equal(new Set(inserted).size, inserted.length, "INSERT column list must not contain duplicates");
+  assert.ok(inserted.includes("created_by"), "registration must persist the authenticated actor required by the D1 authorization trigger");
+  assert.match(migration, /event_registration_authorize_insert[\\s\\S]*NEW\\.created_by IS NULL/i);
+  assert.match(worker.slice(insertMatch.index, insertMatch.index + 500), /context\\.staff\\.userId/);
 });
