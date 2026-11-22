@@ -10,8 +10,8 @@ describe("staff account and password-reset mutation concurrency", () => {
     expect(source.match(/staffMutationInFlight\.current = false;/g)).toHaveLength(4);
     expect(source).toContain("staffMutationInFlight.current || !canCreateStaffAccounts");
     expect(source).toContain("staffMutationInFlight.current || !staffStatusEdit");
-    expect(source).toContain("staffMutationInFlight.current || !roleAction");
-    expect(source).toContain("staffMutationInFlight.current || processingRoleRequestId");
+    expect(source).toContain("if (!roleAction || !branchId || !canAssignStaffRoles || staffMutationInFlight.current || saving) return;");
+    expect(source).toContain("if (!canApproveStaffRoles || !branchId || staffMutationInFlight.current || processingRoleRequestId) return;");
   });
 
   it("serializes password-reset approval and denial until the request settles", () => {
