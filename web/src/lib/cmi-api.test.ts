@@ -1087,6 +1087,24 @@ describe("CmiApiClient", () => {
     expect((init.headers as Headers).get("X-Branch-Id")).toBe("branch-abc");
   });
 
+  it("routes preview event cancellation through the authenticated Worker", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ ok: true, data: { event_id: "event-123", status: "cancelled" }, request_id: "worker-event-cancel" }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    ));
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    const result = await client.cancelEventDraft("branch-abc", "event-123");
+    expect(result.data.status).toBe("cancelled");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(String(url)).toBe("https://worker.example.com/api/v1/events/event-123/cancel");
+    expect(init.method).toBe("POST");
+    expect((init.headers as Headers).get("X-Branch-Id")).toBe("branch-abc");
+  });
+
   it("routes preview event-flyer uploads through the authenticated Worker", async () => {
     const fetcher = vi.fn(async () => new Response(
       JSON.stringify({ ok: true, data: { object_path: "events/branch-abc/event-123/flyer.png", mime_type: "image/png", size_bytes: 20, signed_url: "https://project.supabase.co/storage/v1/object/sign/pcg-missions-event-media/events/branch-abc/event-123/flyer.png?token=abc", signed_url_expires_in: 900 }, request_id: "worker-flyer-1" }),
