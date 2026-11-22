@@ -1217,41 +1217,31 @@ export class CmiApiClient {
   }
 
   async uploadEventFlyer(branchId: string, eventId: string, file: File): Promise<ApiEnvelope<EventFlyerResult>> {
-    const token = await this.getAccessToken();
-    if (!token) throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
-    if (this.previewMode && this.workerApiBaseUrl !== null) {
-      const url = new URL("/api/v1/events/" + encodeURIComponent(eventId) + "/flyer", this.workerApiBaseUrl);
-      const headers = new Headers({ Accept: "application/json", Authorization: `Bearer ${token}`, "X-Branch-Id": branchId });
-      const form = new FormData();
-      form.set("file", file);
-      let response: Response;
-      try {
-        response = await this.sendWithBrowserFallback(url, { method: "POST", headers, body: form, cache: "no-store" });
-      } catch {
-        throw new CmiApiError(0, "NETWORK_ERROR", "We couldn't upload the event flyer. Check your connection and try again.", null);
-      }
-      const payload = parseJson(await response.text()) as (ApiEnvelope<EventFlyerResult> & ApiErrorBody) | null;
-      const requestId = payload?.request_id ?? response.headers.get("X-Request-Id");
-      if (!response.ok || !payload || typeof payload !== "object" || !("data" in payload)) {
-        throw new CmiApiError(response.status || 502, payload?.error?.code ?? "EVENT_FLYER_UPLOAD_FAILED", payload?.error?.message ?? "The flyer upload could not be completed.", requestId ?? null);
-      }
-      return payload;
-    }
-    const url = new URL(`${this.baseUrl}/event-flyers/events/${encodeURIComponent(eventId)}`);
-    url.searchParams.set("branch_id", branchId);
+    const url = new URL("/api/v1/events/" + encodeURIComponent(eventId) + "/flyer", this.baseUrl);
+    const headers = new Headers({ Accept: "application/json", "X-Branch-Id": branchId });
     const form = new FormData();
     form.set("file", file);
-    const headers = new Headers({ apikey: this.config.publishableKey, Accept: "application/json", Authorization: `Bearer ${token}` });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
     let response: Response;
     try {
-      response = await this.sendWithBrowserFallback(url, { method: "POST", headers, body: form, cache: "no-store" });
-    } catch {
-      throw new CmiApiError(0, "NETWORK_ERROR", "We couldn't upload the event flyer. Check your connection and try again.", null);
+      response = await this.fetcher(url.toString(), {
+        method: "POST", headers, body: form, credentials: "include", cache: "no-store", signal: controller.signal,
+      });
+    } catch (error) {
+      throw new CmiApiError(0, "NETWORK_ERROR", requestErrorDetail(error), null);
+    } finally {
+      clearTimeout(timeout);
     }
     const payload = parseJson(await response.text()) as (ApiEnvelope<EventFlyerResult> & ApiErrorBody) | null;
     const requestId = payload?.request_id ?? response.headers.get("X-Request-Id");
-    if (!response.ok) throw new CmiApiError(response.status, payload?.error?.code ?? `HTTP_${response.status}`, payload?.error?.message ?? "The flyer upload could not be completed.", requestId ?? null);
-    if (!payload || typeof payload !== "object" || !("data" in payload)) throw new CmiApiError(502, "INVALID_RESPONSE", "The server returned an unexpected response.", requestId ?? null);
+    if (!response.ok) {
+      throw new CmiApiError(response.status, payload?.error?.code ?? "EVENT_FLYER_UPLOAD_FAILED",
+        payload?.error?.message ?? "The flyer upload could not be completed.", requestId ?? null);
+    }
+    if (!payload || typeof payload !== "object" || !("data" in payload)) {
+      throw new CmiApiError(502, "INVALID_RESPONSE", "The server returned an unexpected response.", requestId ?? null);
+    }
     return payload;
   }
   getEventFlyerPreview(branchId: string, eventId: string) {

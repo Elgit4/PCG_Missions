@@ -50,12 +50,12 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
 
-    def test_full_migration_chain_reaches_schema_43(self):
+    def test_full_migration_chain_reaches_schema_44(self):
         self.assertEqual(
             self.db.execute(
                 "SELECT schema_version, environment FROM app_meta WHERE id = 1"
             ).fetchone(),
-            (43, "non-production"),
+            (44, "non-production"),
         )
         self.assertEqual(
             self.role_codes(),
@@ -348,7 +348,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
                 "SELECT id FROM role WHERE code = ?", (role_code,)
             ).fetchone()[0]
             self.db.execute(
-                """INSERT INTO supabase_auth_identity
+                """INSERT INTO "user"
                    (id,name,email,emailVerified,createdAt,updatedAt)
                    VALUES(?,?,?,?,?,?)""",
                 (auth_id, role_code, f"{role_code}@pastoral.example.test", 1, 1, 1),
@@ -438,7 +438,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
                 "SELECT id FROM role WHERE code = ?", (role_code,)
             ).fetchone()[0]
             self.db.execute(
-                """INSERT INTO supabase_auth_identity
+                """INSERT INTO "user"
                    (id,name,email,emailVerified,createdAt,updatedAt)
                    VALUES(?,?,?,?,?,?)""",
                 (auth_id, role_code, f"{role_code}@example.test", 1, 1, 1),
@@ -532,8 +532,8 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         ).fetchall()
         self.assertEqual(after, before)
         self.assertEqual(
-            self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            43,
+            self.db.execute("SELECT undefined").fetchone()[0],
+            44,
         )
 
     def test_worker_authorization_query_enforces_team_leader_membership_for_directory_read(self):
@@ -565,7 +565,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
                 "SELECT id FROM role WHERE code = ?", (role_code,)
             ).fetchone()[0]
             self.db.execute(
-                """INSERT INTO supabase_auth_identity
+                """INSERT INTO "user"
                    (id,name,email,emailVerified,createdAt,updatedAt)
                    VALUES(?,?,?,?,?,?)""",
                 (auth_id, role_code, f"{role_code}@example.test", 1, 1, 1),
@@ -641,8 +641,8 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         ).fetchall()
         self.assertEqual(after, before)
         self.assertEqual(
-            self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            43,
+            self.db.execute("SELECT undefined").fetchone()[0],
+            44,
         )
 
     
@@ -659,7 +659,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         for profile_id in ("import-guard-actor", "import-guard-target"):
             auth_id = f"auth-{profile_id}"
             self.db.execute(
-                """INSERT INTO supabase_auth_identity
+                """INSERT INTO "user"
                    (id,name,email,emailVerified,createdAt,updatedAt,auth_provider)
                    VALUES(?,?,?,?,?,?,?)""",
                 (auth_id, profile_id, f"{profile_id}@example.test", 1, 1795305600000, 1795305600000, "supabase"),
