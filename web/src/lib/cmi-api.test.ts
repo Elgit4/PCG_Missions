@@ -1048,24 +1048,29 @@ describe("CmiApiClient", () => {
     expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-abc");
   });
 
-  it("keeps other Worker-unsupported reads on their existing Supabase function", async () => {
+  it("routes event draft reads through the preview Worker", async () => {
     const fetcher = vi.fn(async () => new Response(
-      JSON.stringify({ data: [], request_id: "supabase-fallback-1" }),
+      JSON.stringify({ ok: true, data: [], request_id: "worker-events-list" }),
       { status: 200 },
     ));
-    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com" }, async () => "access-token", fetcher as typeof fetch);
+    const client = new CmiApiClient({ ...config, workerApiUrl: "https://worker.example.com", previewMode: true }, async () => "access-token", fetcher as typeof fetch);
     await client.listEventDrafts("branch-abc");
-    const [url] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
-    expect(url.pathname).toBe("/functions/v1/event-operations/events");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/events");
+    expect(url.searchParams.get("branch_id")).toBe("branch-abc");
+    expect((init.headers as Headers).get("X-Branch-Id")).toBe("branch-abc");
   });
-  it("blocks Worker-unsupported business writes in preview instead of mutating the shared Supabase project", async () => {
-    const fetcher = vi.fn();
+  it("routes event draft creation through the authenticated preview Worker", async () => {
+    const fetcher = vi.fn(async () => new Response(
+      JSON.stringify({ ok: true, data: { id: "event-123", title: "Preview test event" }, request_id: "worker-event-create" }),
+      { status: 201 },
+    ));
     const client = new CmiApiClient(
       { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
       async () => "access-token",
       fetcher as typeof fetch,
     );
-    await expect(client.createEventDraft({
+    const result = await client.createEventDraft({
       branch_id: "branch-abc",
       title: "Preview test event",
       description: null,
@@ -1074,8 +1079,12 @@ describe("CmiApiClient", () => {
       timezone: "Africa/Accra",
       location: null,
       capacity: null,
-    })).rejects.toMatchObject({ status: 503, code: "PREVIEW_OPERATION_NOT_MIGRATED" });
-    expect(fetcher).not.toHaveBeenCalled();
+    });
+    expect(result.data.id).toBe("event-123");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/events");
+    expect(init.method).toBe("POST");
+    expect((init.headers as Headers).get("X-Branch-Id")).toBe("branch-abc");
   });
 
   it("routes preview event-flyer uploads through the authenticated Worker", async () => {
