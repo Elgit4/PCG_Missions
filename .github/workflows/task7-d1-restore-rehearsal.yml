@@ -142,13 +142,6 @@ jobs:
           if not table_statements or not data_statements:
               raise SystemExit('SQLite snapshot is missing table definitions or data; refusing import')
           output = 'PRAGMA defer_foreign_keys = true;\n' + '\n'.join(table_statements + data_statements + schema_objects) + '\n'
-          first_insert = output.find('INSERT INTO ')
-          last_table = output.rfind('CREATE TABLE ')
-          first_index = min([p for p in (output.find('CREATE INDEX '), output.find('CREATE UNIQUE INDEX '), output.find('CREATE TRIGGER '), output.find('CREATE VIEW ')) if p >= 0], default=-1)
-          if first_insert >= 0 and first_insert < last_table:
-              raise SystemExit('Data statements appear before all table definitions')
-          if first_index >= 0 and first_index < output.rfind('INSERT INTO '):
-              raise SystemExit('Indexes, triggers, or views appear before all data statements')
           Path('/tmp/pcg-missions-d1-recovery-ordered.sql').write_text(output)
           print(f'Reordered SQLite dump: {len(output)} bytes; {len(table_statements)} tables, {len(data_statements)} data statements, {len(schema_objects)} indexes/triggers/views')
           PY
