@@ -3949,8 +3949,8 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     }
     if(input.event_id){
       const event=await env.DB.prepare(`SELECT e.id FROM event e WHERE e.id=? AND e.branch_id=? AND (
-        EXISTS(SELECT 1 FROM event_staff_assignment a WHERE a.event_id=e.id AND a.staff_auth_user_id=? AND a.revoked_at IS NULL AND a.starts_at<=? AND (a.ends_at IS NULL OR a.ends_at>?))
-        OR EXISTS(SELECT 1 FROM event_team_assignment a JOIN staff_team_membership stm ON stm.team_id=a.team_id AND stm.branch_id=a.branch_id WHERE a.event_id=e.id AND stm.staff_profile_id=? AND a.revoked_at IS NULL AND stm.revoked_at IS NULL AND a.starts_at<=? AND (a.ends_at IS NULL OR a.ends_at>?) AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?))
+        EXISTS(SELECT 1 FROM event_staff_assignment a WHERE a.event_id=e.id AND a.staff_auth_user_id=? AND a.assignment_role IN ('owner','organizer','checkin','ushering','support') AND a.revoked_at IS NULL AND a.starts_at<=? AND (a.ends_at IS NULL OR a.ends_at>?))
+        OR EXISTS(SELECT 1 FROM event_team_assignment a JOIN staff_team_membership stm ON stm.team_id=a.team_id AND stm.branch_id=a.branch_id WHERE a.event_id=e.id AND stm.staff_profile_id=? AND a.assignment_role IN ('organizer','ushering','support') AND a.revoked_at IS NULL AND stm.revoked_at IS NULL AND a.starts_at<=? AND (a.ends_at IS NULL OR a.ends_at>?) AND stm.starts_at<=? AND (stm.ends_at IS NULL OR stm.ends_at>?))
       ) LIMIT 1`).bind(input.event_id,input.branch_id,access.staff.userId,now,now,access.staff.profileId,now,now,now,now).first();
       if(!event) return json(403,{ok:false,error:{code:"EVENT_SCOPE_REQUIRED"}},requestId,origin);
     }
