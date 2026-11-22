@@ -3743,7 +3743,7 @@ async function eventOperationContext(request: Request, env: Env, branchId: strin
   const context=await resolveStaffContext(request,env);
   if(context.state!=="authenticated") return {response:mapCapabilityFailure(context.state,requestId,origin)} as const;
   if(!context.activeBranch||context.activeBranch.branchId!==branchId) return {response:json(403,{ok:false,error:{code:"BRANCH_NOT_AUTHORIZED"}},requestId,origin)} as const;
-  const event=await env.DB.prepare("SELECT id,branch_id,status,registration_state,capacity FROM event WHERE id=? AND branch_id=?").bind(eventId,branchId).first<Record<string,unknown>>();
+  const event=await env.DB.prepare("SELECT id,branch_id,status,visibility,registration_state,capacity FROM event WHERE id=? AND branch_id=?").bind(eventId,branchId).first<Record<string,unknown>>();
   if(!event) return {response:json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin)} as const;
   return {context,event} as const;
 }
@@ -3889,7 +3889,7 @@ function validEventFields(value:Record<string,unknown>,partial:boolean):{ok:true
   if("ends_at" in value){if(typeof value.ends_at!=="string"||!Number.isFinite(Date.parse(value.ends_at)))return {ok:false};values.ends_at=new Date(value.ends_at).toISOString();}
   if("timezone" in value){if(typeof value.timezone!=="string"||value.timezone.trim().length<3||value.timezone.trim().length>64)return {ok:false};values.timezone=value.timezone.trim();}
   if("location" in value){if(value.location!==null&&typeof value.location!=="string")return {ok:false};if(typeof value.location==="string"&&value.location.length>240)return {ok:false};values.location=value.location;}
-  if("capacity" in value){if(value.capacity!==null&&(!Number.isInteger(value.capacity)||Number(value.capacity)<1||Number(value.capacity)>100000))return {ok:false};values.capacity=value.capacity;}
+  if("capacity" in value){if(value.capacity!==null&&(typeof value.capacity!=="number"||!Number.isInteger(value.capacity)||value.capacity<1||value.capacity>100000))return {ok:false};values.capacity=value.capacity;}
   const starts="starts_at" in values?String(values.starts_at):undefined,ends="ends_at" in values?String(values.ends_at):undefined;
   if(starts&&ends&&Date.parse(ends)<=Date.parse(starts))return {ok:false};
   return {ok:true,values};
@@ -3940,7 +3940,7 @@ async function handleEventItem(request:Request,env:Env,eventId:string,requestId:
   }
   if(request.method!=="PATCH") return json(405,{ok:false,error:{code:"METHOD_NOT_ALLOWED"}},requestId,origin);
   if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
-  if(event.status!=="draft"||event.registration_state!=="closed") return json(409,{ok:false,error:{code:"EVENT_NOT_EDITABLE"}},requestId,origin);
+  if(event.status!=="draft"||event.visibility!=="private"||event.registration_state!=="closed") return json(409,{ok:false,error:{code:"EVENT_NOT_EDITABLE"}},requestId,origin);
   const parsed=await readJsonBody(request,12*1024);
   if(!parsed.ok||!isPlainObject(parsed.value)) return json(parsed.ok?400:parsed.status,{ok:false,error:{code:"INVALID_EVENT"}},requestId,origin);
   const fields=validEventFields(parsed.value,true);
