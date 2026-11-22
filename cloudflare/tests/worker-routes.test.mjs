@@ -1636,3 +1636,22 @@ test("expired temporary-password gate blocks Better Auth credential mutation", a
   assert.equal((await response.json()).error.code, "PASSWORD_SETUP_EXPIRED");
   assert.equal(fixture.batches?.length ?? 0, 0);
 });
+
+
+test("Coordinator contact search matches normalized phone numbers as well as names", async () => {
+  const { env, calls } = authorizedDirectoryEnv("coordinator", [
+    ["contacts.read", "branch"],
+    ["contacts.contact_details.read", "branch"],
+    ["contacts.private_fields.read", "branch"],
+  ]);
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/contacts?search=024%20123-4567",
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  assert.equal(response.status, 200);
+  const query = calls.find((call) => call.kind === "all" && call.sql.includes("FROM contact c") && call.sql.includes("SELECT c.id"));
+  assert.ok(query);
+  assert.match(query.sql, /COALESCE\(c\.phone_e164/);
+  assert.match(query.sql, /COALESCE\(c\.phone_display/);
+  assert.ok(query.values.includes("%0241234567%"));
+});
