@@ -1262,4 +1262,35 @@ describe("CmiApiClient", () => {
     });
   });
 
+  
+  it("routes sensitive prayer and pastoral-care reads through the Cloudflare Worker with explicit access mode", async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ ok: true, data: {} }), { status: 200 }));
+    const client = new CmiApiClient(
+      { ...config, workerApiUrl: "https://worker.example.com", previewMode: true },
+      async () => "access-token",
+      fetcher as typeof fetch,
+    );
+    const branchId = "30000000-0000-4000-8000-000000000001";
+    const prayerId = "40000000-0000-4000-8000-000000000001";
+    const careId = "50000000-0000-4000-8000-000000000001";
+    await client.readPrayerRequest(branchId, prayerId, "oversight", "safeguarding_concern");
+    await client.readCareRecord(branchId, careId, "assigned");
+    const calls = fetcher.mock.calls as unknown as Array<[URL, RequestInit]>;
+    expect(calls.map(([url]) => url.pathname)).toEqual([
+      "/api/v1/pastoral/prayer/requests/" + prayerId + "/read",
+      "/api/v1/pastoral/care/records/" + careId + "/read",
+    ]);
+    expect(JSON.parse(String(calls[0][1].body))).toEqual({
+      branch_id: branchId, access_mode: "oversight", reason_code: "safeguarding_concern",
+    });
+    expect(JSON.parse(String(calls[1][1].body))).toEqual({
+      branch_id: branchId, access_mode: "assigned",
+    });
+    for (const [url, init] of calls) {
+      expect(url.search).toBe("");
+      expect(new Headers(init.headers).get("Authorization")).toBe("Bearer access-token");
+      expect(new Headers(init.headers).get("X-Branch-Id")).toBe(branchId);
+    }
+  });
+
 });
