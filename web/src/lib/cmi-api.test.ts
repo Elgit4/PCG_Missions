@@ -99,7 +99,7 @@ describe("Cloudflare Worker API client", () => {
     await api.getPublicContent("church-profile", { branch_id: "branch-1" });
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     const parsed = new URL(url);
-    expect(parsed.pathname).toBe("/api/public/content");
+    expect(parsed.pathname).toBe("/api/v1/public-content");
     expect(parsed.searchParams.get("resource")).toBe("church-profile");
     expect(parsed.searchParams.get("branch_id")).toBe("branch-1");
     expect(init.credentials).toBe("include");
