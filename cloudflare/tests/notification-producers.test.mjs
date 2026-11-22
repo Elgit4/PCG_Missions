@@ -24,7 +24,7 @@ test("report review writes author notification in the same D1 batch as the revie
 
 test("event staff and team assignment writes recipient-scoped in-app notifications atomically", () => {
   const start = worker.indexOf('if(isAssignmentCollection&&request.method==="POST")');
-  const end = worker.indexOf("if(isAssignmentRevoke&&request.method==="POST")", start);
+  const end = worker.indexOf('if(isAssignmentRevoke&&request.method==="POST")', start);
   assert.ok(start >= 0 && end > start);
   const assignment = worker.slice(start, end);
 
