@@ -90,7 +90,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes postgresql-client
 
-      - name: Apply forward-only schema 44 to the isolated EU preview D1
+      - name: Apply forward-only schema 45 to the isolated EU preview D1
         run: npx wrangler d1 migrations apply pcg-missions-migration-test --remote --env preview
 
       - name: Import existing staff bcrypt credentials into isolated D1
@@ -99,7 +99,7 @@ jobs:
         run: python scripts/import_supabase_auth_credentials.py
 
       - name: Preflight Worker script write permission without changing traffic
-        run: npx wrangler versions upload --env preview --message "PCG Missions Better Auth schema 44 deployment preflight"
+        run: npx wrangler versions upload --env preview --message "PCG Missions Better Auth schema 45 deployment preflight"
 
       # BETTER_AUTH_SECRET was provisioned directly on the isolated preview Worker.
       # Keep it out of GitHub logs and repository configuration.
@@ -114,7 +114,7 @@ jobs:
           url="https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
           health="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error "$url/health")"
           echo "$health"
-          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="non-production" || p.schema_version!==44) process.exit(1)' "$health"
+          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="non-production" || p.schema_version!==45) process.exit(1)' "$health"
           me_status="$(curl --silent --show-error -o /tmp/me.json -w "%{http_code}" "$url/api/v1/me")"
           cat /tmp/me.json
           test "$me_status" = "401"
