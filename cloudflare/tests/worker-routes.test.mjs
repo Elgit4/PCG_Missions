@@ -344,6 +344,9 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
   let followupTaskStatus = "open";
   let calendarEntryRow = null;
   let announcementRow = null;
+  let eventRow = { id: "40000000-0000-4000-8000-000000000001", branch_id: BRANCH_ID, title: "Missions Conference", starts_at: "2026-12-01T09:00:00.000Z", ends_at: "2026-12-01T17:00:00.000Z", status: "draft", visibility: "private", registration_state: "closed", capacity: 100 };
+  let eventStaffAssignment = null;
+  let eventTeamAssignment = null;
 
   const DB = {
     prepare(sql) {
@@ -354,6 +357,12 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         async first() {
           calls.push({ kind: "first", sql: this.sql, values: this.values });
           if (this.sql.includes("FROM calendar_entry")) return calendarEntryRow;
+          if (this.sql.includes("SELECT id,branch_id,title,starts_at,ends_at,status") && this.sql.includes("FROM event")) return eventRow;
+          if (this.sql.includes("SELECT id,account_status FROM staff_profile")) return { id: STAFF_PROFILE_ID, account_status: "active" };
+          if (this.sql.includes("SELECT sra.id FROM staff_role_assignment")) return { id: "active-role-assignment" };
+          if (this.sql.includes("SELECT id FROM team WHERE id=?")) return this.values[0] === OWN_TEAM_ID ? { id: OWN_TEAM_ID } : null;
+          if (this.sql.includes("SELECT id,event_id,branch_id,starts_at,ends_at,revoked_at FROM event_staff_assignment")) return eventStaffAssignment;
+          if (this.sql.includes("SELECT id,event_id,branch_id,starts_at,ends_at,revoked_at FROM event_team_assignment")) return eventTeamAssignment;
           if (this.sql.includes("FROM announcement")) return announcementRow;
           if (this.sql.includes("SELECT id, branch_id, first_name") && this.sql.includes("FROM contact")) {
             return {
@@ -436,6 +445,10 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         async all() {
           calls.push({ kind: "all", sql: this.sql, values: this.values });
           if (this.sql.includes("FROM calendar_entry")) return { results: calendarEntryRow ? [calendarEntryRow] : [] };
+          if (this.sql.includes("FROM event_staff_assignment a")) return { results: eventStaffAssignment ? [eventStaffAssignment] : [] };
+          if (this.sql.includes("FROM event_team_assignment a")) return { results: eventTeamAssignment ? [eventTeamAssignment] : [] };
+          if (this.sql.includes("SELECT DISTINCT sp.auth_user_id,sp.full_name")) return { results: [{ auth_user_id: AUTH_USER_ID, full_name: "Test Staff" }] };
+          if (this.sql.includes("SELECT id,name FROM team WHERE branch_id")) return { results: [{ id: OWN_TEAM_ID, name: "Welcome Team" }] };
           if (this.sql.includes("FROM announcement")) return { results: announcementRow ? [announcementRow] : [] };
           if (this.sql.includes("SELECT DISTINCT b.id, b.name, b.timezone")) {
             return { results: [{ id: BRANCH_ID, name: "Main Branch", timezone: "Africa/Accra" }] };
@@ -491,7 +504,17 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         },
         async run() {
           calls.push({ kind: "run", sql: this.sql, values: this.values });
-          if (this.sql.includes("INSERT INTO calendar_entry")) {
+          if (this.sql.includes("INSERT INTO event_staff_assignment")) {
+            const [id,event_id,branch_id,staff_auth_user_id,assignment_role,assigned_by,starts_at,ends_at,created_at] = this.values;
+            eventStaffAssignment = { id,event_id,branch_id,staff_auth_user_id,assignment_role,starts_at,ends_at,revoked_at:null,created_at };
+          } else if (this.sql.includes("INSERT INTO event_team_assignment")) {
+            const [id,event_id,branch_id,team_id,assignment_role,assigned_by,starts_at,ends_at,created_at] = this.values;
+            eventTeamAssignment = { id,event_id,branch_id,team_id,assignment_role,starts_at,ends_at,revoked_at:null,created_at };
+          } else if (this.sql.includes("UPDATE event_staff_assignment SET revoked_at")) {
+            eventStaffAssignment = { ...eventStaffAssignment, revoked_at: this.values[0] };
+          } else if (this.sql.includes("UPDATE event_team_assignment SET revoked_at")) {
+            eventTeamAssignment = { ...eventTeamAssignment, revoked_at: this.values[0] };
+          } else if (this.sql.includes("INSERT INTO calendar_entry")) {
             const [id, branch_id, entry_type, title, starts_at, ends_at, created_by, updated_by, created_at, updated_at] = this.values;
             calendarEntryRow = { id, branch_id, entry_type, title, starts_at, ends_at, scope_type: "branch", created_by, created_at, updated_at };
           } else if (this.sql.includes("UPDATE calendar_entry") && calendarEntryRow) {
