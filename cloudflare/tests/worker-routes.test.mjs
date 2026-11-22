@@ -1409,3 +1409,74 @@ test("password lifecycle endpoints reject anonymous callers before D1 access", a
   assert.equal(requestsPayload.error.code, "UNAUTHENTICATED");
   assert.equal(calls.length, 0);
 });
+
+
+test("Admin/Pastor can load event assignment workspace, assign staff and teams, and revoke assignments", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ id: AUTH_USER_ID, email: "staff@example.com" }),
+  );
+  const fixture = authorizedDirectoryEnv("admin_pastor", [["events.manage", "branch"]]);
+  const eventId = "40000000-0000-4000-8000-000000000001";
+  const workspace = await worker.fetch(authenticatedDirectoryRequest("/api/v1/events/" + eventId + "/assignments?branch_id=" + BRANCH_ID), fixture.env);
+  assert.equal(workspace.status, 200);
+  const workspaceBody = await workspace.json();
+  assert.equal(workspaceBody.ok, true);
+  assert.equal(workspaceBody.data.staff_candidates[0].auth_user_id, AUTH_USER_ID);
+  assert.equal(workspaceBody.data.team_candidates[0].id, OWN_TEAM_ID);
+
+  const staffStart = "2026-12-01T10:00:00.000Z";
+  const staffEnd = "2026-12-01T12:00:00.000Z";
+  const staffResponse = await worker.fetch(new Request(
+    "https://worker.example/api/v1/events/" + eventId + "/staff-assignments?branch_id=" + BRANCH_ID,
+    {
+      method: "POST",
+      headers: { Authorization: "Bearer verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+      body: JSON.stringify({ staff_auth_user_id: AUTH_USER_ID, assignment_role: "checkin", starts_at: staffStart, ends_at: staffEnd }),
+    },
+  ), fixture.env);
+  assert.equal(staffResponse.status, 201);
+  const staffBody = await staffResponse.json();
+  assert.equal(staffBody.data.staff_auth_user_id, AUTH_USER_ID);
+  assert.equal(staffBody.data.assignment_role, "checkin");
+  assert.equal(staffBody.data.ends_at, staffEnd);
+
+  const teamResponse = await worker.fetch(new Request(
+    "https://worker.example/api/v1/events/" + eventId + "/team-assignments?branch_id=" + BRANCH_ID,
+    {
+      method: "POST",
+      headers: { Authorization: "Bearer verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+      body: JSON.stringify({ team_id: OWN_TEAM_ID, assignment_role: "ushering", starts_at: staffStart, ends_at: staffEnd }),
+    },
+  ), fixture.env);
+  assert.equal(teamResponse.status, 201);
+  const teamBody = await teamResponse.json();
+  assert.equal(teamBody.data.team_id, OWN_TEAM_ID);
+  assert.equal(teamBody.data.assignment_role, "ushering");
+
+  const revoke = await worker.fetch(new Request(
+    "https://worker.example/api/v1/events/" + eventId + "/staff-assignments/" + staffBody.data.id + "/revoke?branch_id=" + BRANCH_ID,
+    { method: "POST", headers: { Authorization: "Bearer verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), fixture.env);
+  assert.equal(revoke.status, 200);
+  const revokeBody = await revoke.json();
+  assert.equal(revokeBody.already_revoked, false);
+  assert.ok(revokeBody.data.revoked_at);
+});
+
+test("non-admin staff cannot manage event assignment workspace or create assignments", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ id: AUTH_USER_ID, email: "staff@example.com" }),
+  );
+  const fixture = authorizedDirectoryEnv("field_worker");
+  const eventId = "40000000-0000-4000-8000-000000000001";
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/events/" + eventId + "/team-assignments?branch_id=" + BRANCH_ID,
+    {
+      method: "POST",
+      headers: { Authorization: "Bearer verified-test-token", "X-Branch-Id": BRANCH_ID, "Content-Type": "application/json" },
+      body: JSON.stringify({ team_id: OWN_TEAM_ID, assignment_role: "ushering", starts_at: "2026-12-01T10:00:00.000Z" }),
+    },
+  ), fixture.env);
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error.code, "CAPABILITY_DENIED");
+});
