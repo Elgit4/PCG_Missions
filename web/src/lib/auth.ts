@@ -131,6 +131,7 @@ function safeMessage(body: AuthResponse | null, fallback: string): string {
 
 export class PcgAuthClient {
   private readonly baseUrl: string;
+  private readonly workerApiBaseUrl: string | null;
   private session: AuthSession | null = null;
   private refreshPromise: Promise<AuthSession | null> | null = null;
 
@@ -140,6 +141,7 @@ export class PcgAuthClient {
     private readonly storage: StorageLike | null = browserStorage(),
     private readonly fetcher: typeof fetch = fetch,
     private readonly previewMode = false,
+    workerApiUrl = "",
   ) {
     const normalizedUrl = supabaseUrl.trim().replace(/\/+$/, "");
     if (!normalizedUrl || !publishableKey.trim()) {
@@ -152,6 +154,16 @@ export class PcgAuthClient {
       parsed.hostname !== "127.0.0.1"
     ) throw new Error("Supabase URL must use HTTPS outside local development.");
     this.baseUrl = normalizedUrl;
+    const normalizedWorkerUrl = workerApiUrl.trim().replace(/\/+$/, "");
+    if (normalizedWorkerUrl) {
+      const workerUrl = new URL(normalizedWorkerUrl);
+      if (workerUrl.protocol !== "https:" && workerUrl.hostname !== "localhost" && workerUrl.hostname !== "127.0.0.1") {
+        throw new Error("The Cloudflare Worker API URL must use HTTPS outside local development.");
+      }
+      this.workerApiBaseUrl = normalizedWorkerUrl;
+    } else {
+      this.workerApiBaseUrl = null;
+    }
   }
 
   private isLocalDevelopment(): boolean {
@@ -465,7 +477,7 @@ export class PcgAuthClient {
   }
 
   private assertCredentialMutationAllowed(): void {
-    if (!this.previewMode) return;
+    if (!this.previewMode || this.workerApiBaseUrl) return;
     throw new AuthClientError(
       403,
       "PREVIEW_AUTH_MUTATION_DISABLED",
@@ -487,11 +499,13 @@ export class PcgAuthClient {
     let result: Response;
     try {
       result = await this.sendWithBrowserFallback(
-        this.authEndpoint("resource=complete-password-change", "/functions/v1/staff-auth/complete-password-change"),
+        this.workerApiBaseUrl
+          ? new URL("/api/v1/auth/password/change", this.workerApiBaseUrl).toString()
+          : this.authEndpoint("resource=complete-password-change", "/functions/v1/staff-auth/complete-password-change"),
         {
           method: "POST",
           headers: {
-            apikey: this.publishableKey,
+            ...(this.workerApiBaseUrl ? {} : { apikey: this.publishableKey }),
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
             Accept: "application/json",
@@ -518,11 +532,13 @@ export class PcgAuthClient {
     let result: Response;
     try {
       result = await this.sendWithBrowserFallback(
-        this.authEndpoint("resource=request-password-reset", "/functions/v1/staff-auth/request-password-reset"),
+        this.workerApiBaseUrl
+          ? new URL("/api/v1/auth/password-reset-requests", this.workerApiBaseUrl).toString()
+          : this.authEndpoint("resource=request-password-reset", "/functions/v1/staff-auth/request-password-reset"),
         {
           method: "POST",
           headers: {
-            apikey: this.publishableKey,
+            ...(this.workerApiBaseUrl ? {} : { apikey: this.publishableKey }),
             "Content-Type": "application/json",
             Accept: "application/json",
           },
@@ -534,7 +550,9 @@ export class PcgAuthClient {
       throw new AuthClientError(0, "NETWORK_ERROR", "Unable to send the password-reset request.");
     }
     if (!result.ok) {
-      throw new AuthClientError(result.status, "RESET_REQUEST_FAILED", "The password-reset request could not be sent. Try again later.");
+      const payload = await result.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
+      throw new AuthClientError(result.status, payload?.error?.code ?? "RESET_REQUEST_FAILED",
+        payload?.error?.message ?? "The password-reset request could not be sent. Try again later.");
     }
   }
 
