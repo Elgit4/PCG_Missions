@@ -13,7 +13,6 @@
 
 /manifest.webmanifest
   Cache-Control: no-cache
-  Cache-Control: no-store, max-age=0
 
 /api/*
   Cache-Control: no-store, max-age=0
