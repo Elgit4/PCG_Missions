@@ -8,7 +8,7 @@ function sessionPayload() {
 
 describe("Cloudflare Better Auth browser client", () => {
   it("signs in through the same-origin Worker and uses HttpOnly cookies", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify(sessionPayload()), { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify(sessionPayload()), { status: 200 }));
     const client = new PcgAuthClient(fetcher as typeof fetch);
     const session = await client.signIn(" Staff@Example.Test ", "A-valid-password");
     expect(session.user.email).toBe("staff@example.test");
@@ -21,19 +21,19 @@ describe("Cloudflare Better Auth browser client", () => {
   });
 
   it("restores session through the cookie endpoint", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify(sessionPayload()), { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify(sessionPayload()), { status: 200 }));
     const client = new PcgAuthClient(fetcher as typeof fetch);
     expect((await client.getSession())?.user.id).toBe("staff-user-1");
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/auth/get-session");
   });
 
   it("returns null when there is no active session", async () => {
-    const fetcher = vi.fn(async () => new Response("null", { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response("null", { status: 200 }));
     await expect(new PcgAuthClient(fetcher as typeof fetch).getSession()).resolves.toBeNull();
   });
 
   it("submits password resets to the audited Worker workflow", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ ok: true }), { status: 200 }));
     const client = new PcgAuthClient(fetcher as typeof fetch);
     await expect(client.requestPasswordReset(" Staff@Example.Test ")).resolves.toBeUndefined();
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
@@ -44,7 +44,7 @@ describe("Cloudflare Better Auth browser client", () => {
   });
 
   it("completes forced password changes without exposing session tokens", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ ok: true, data: { password_changed: true } }), { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ ok: true, data: { password_changed: true } }), { status: 200 }));
     const client = new PcgAuthClient(fetcher as typeof fetch);
     await expect(client.completePasswordChange("New-Strong-Password-2026!")).resolves.toBeUndefined();
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
@@ -54,7 +54,7 @@ describe("Cloudflare Better Auth browser client", () => {
   });
 
   it("signs out through Better Auth", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ success: true }), { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ success: true }), { status: 200 }));
     const client = new PcgAuthClient(fetcher as typeof fetch);
     await client.signOut();
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/auth/sign-out");
@@ -68,13 +68,13 @@ describe("Cloudflare Better Auth browser client", () => {
   });
 
   it("reports Cloudflare Worker health and never tries Supabase", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ ok: true, schema_version: 44 }), { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ ok: true, schema_version: 44 }), { status: 200 }));
     await expect(new PcgAuthClient(fetcher as typeof fetch).testConnection()).resolves.toContain("schema version 44");
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/v1/health");
   });
 
   it("never stores or exposes a bearer token", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify(sessionPayload()), { status: 200 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify(sessionPayload()), { status: 200 }));
     const client = new PcgAuthClient(fetcher as typeof fetch);
     await client.signIn("staff@example.test", "password");
     expect(await client.getAccessToken()).toBeNull();
@@ -82,7 +82,7 @@ describe("Cloudflare Better Auth browser client", () => {
   });
 
   it("surfaces a rejected reset request as a useful authentication error", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify({ error: { code: "UNAUTHENTICATED", message: "Sign in required." } }), { status: 401 }));
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(JSON.stringify({ error: { code: "UNAUTHENTICATED", message: "Sign in required." } }), { status: 401 }));
     await expect(new PcgAuthClient(fetcher as typeof fetch).requestPasswordReset("staff@example.test")).rejects.toBeInstanceOf(AuthClientError);
   });
 });
