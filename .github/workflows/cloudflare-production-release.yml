@@ -140,28 +140,20 @@ jobs:
             exit 1
           fi
 
-      - name: Switch Pages production to Cloudflare API and reviewed release branch
+      - name: Verify Pages production branch and Cloudflare API configuration
         shell: bash
         run: |
           set -euo pipefail
           api="https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/pcg-missions"
           project="$(curl --fail --silent --show-error -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "$api")"
-          payload="$(printf '%s' "$project" | jq -c '
-            .result as $p |
-            {
-              production_branch: "migration/cloudflare-auth-consolidation",
-              source: ($p.source | .config.production_branch = "migration/cloudflare-auth-consolidation"),
-              deployment_configs: {
-                production: ($p.deployment_configs.production |
-                  .env_vars |= del(.SUPABASE_URL, .SUPABASE_PUBLISHABLE_KEY) |
-                  .env_vars.PCG_MISSIONS_API_ORIGIN = {
-                    type: "plain_text",
-                    value: "https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev"
-                  })
-              }
-            }')"
-          updated="$(curl --fail --silent --show-error -X PATCH "$api" -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H "Content-Type: application/json" --data "$payload")"
-          printf '%s' "$updated" | jq -e '.success == true and .result.production_branch == "migration/cloudflare-auth-consolidation" and .result.deployment_configs.production.env_vars.PCG_MISSIONS_API_ORIGIN.value == "https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev"'
+          printf '%s' "$project" | jq -e '
+            .success == true and
+            .result.production_branch == "migration/cloudflare-auth-consolidation" and
+            .result.source.config.production_branch == "migration/cloudflare-auth-consolidation" and
+            .result.deployment_configs.production.env_vars.PCG_MISSIONS_API_ORIGIN.value == "https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev" and
+            (.result.deployment_configs.production.env_vars | has("SUPABASE_URL") | not) and
+            (.result.deployment_configs.production.env_vars | has("SUPABASE_PUBLISHABLE_KEY") | not)
+          '
 
       - name: Build and deploy reviewed frontend to production Pages
         working-directory: web
