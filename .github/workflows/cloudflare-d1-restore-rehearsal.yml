@@ -1,0 +1,143 @@
+name: Cloudflare D1 Restore Rehearsal
+
+on:
+  push:
+    branches:
+      - migration/cloudflare-auth-consolidation
+    paths:
+      - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
+      - "cloudflare/migrations/**"
+      - "cloudflare/wrangler.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcg-missions-d1-restore-rehearsal
+  cancel-in-progress: true
+
+jobs:
+  restore-rehearsal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: migration/cloudflare-auth-consolidation
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Worker tooling
+        working-directory: cloudflare
+        run: npm ci
+
+      - name: Create isolated EU rehearsal database
+        id: database
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "CLOUDFLARE_API_TOKEN is required" >&2
+            exit 1
+          fi
+          DB_NAME="pcg-missions-restore-rehearsal-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -X POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -n --arg name "$DB_NAME" '{name:$name,jurisdiction:"eu",read_replication:{mode:"disabled"}}')")"
+          echo "$RESPONSE" | jq -e '.success == true' >/dev/null
+          DB_ID="$(echo "$RESPONSE" | jq -r '.result.uuid')"
+          test -n "$DB_ID" && test "$DB_ID" != "null"
+          echo "name=$DB_NAME" >> "$GITHUB_OUTPUT"
+          echo "id=$DB_ID" >> "$GITHUB_OUTPUT"
+          echo "Created isolated EU D1 database: $DB_NAME"
+
+      - name: Apply the complete schema 46 migration chain
+        env:
+          DB_NAME: ${{ steps.database.outputs.name }}
+          DB_ID: ${{ steps.database.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > cloudflare/wrangler.restore-rehearsal.toml <<EOF
+          name = "pcg-missions-restore-rehearsal"
+          main = "src/index.ts"
+          account_id = "${CLOUDFLARE_ACCOUNT_ID}"
+          compatibility_date = "2026-11-22"
+          compatibility_flags = ["nodejs_compat"]
+
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "${DB_NAME}"
+          database_id = "${DB_ID}"
+          migrations_dir = "migrations"
+          EOF
+          cd cloudflare
+          npx wrangler d1 migrations apply "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml
+          npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
+            --command "SELECT CASE WHEN schema_version=46 AND environment='non-production' THEN 'SCHEMA_46_READY' ELSE 'SCHEMA_INVALID' END AS status FROM app_meta WHERE id=1;"
+          npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
+            --command "SELECT CASE WHEN COUNT(*)=46 THEN 'MIGRATION_LEDGER_46_READY' ELSE 'MIGRATION_LEDGER_INVALID' END AS status FROM d1_migrations;"
+
+      - name: Capture bookmark, write probe, restore, and verify
+        env:
+          DB_ID: ${{ steps.database.outputs.id }}
+          DB_NAME: ${{ steps.database.outputs.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BOOKMARK_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DB_ID}/time_travel/bookmark")"
+          echo "$BOOKMARK_RESPONSE" | jq -e '.success == true' >/dev/null
+          BOOKMARK="$(echo "$BOOKMARK_RESPONSE" | jq -r '.result.bookmark')"
+          test -n "$BOOKMARK" && test "$BOOKMARK" != "null"
+
+          cd cloudflare
+          npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
+            --command "CREATE TABLE restore_rehearsal_probe(id TEXT PRIMARY KEY, marker TEXT NOT NULL); INSERT INTO restore_rehearsal_probe(id,marker) VALUES('probe-1','before-restore');"
+          npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
+            --command "SELECT CASE WHEN marker='before-restore' THEN 'PROBE_WRITE_CONFIRMED' ELSE 'PROBE_WRITE_FAILED' END AS status FROM restore_rehearsal_probe WHERE id='probe-1';"
+
+          RESTORE_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -X POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DB_ID}/time_travel/restore?bookmark=${BOOKMARK}" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")"
+          echo "$RESTORE_RESPONSE" | jq -e '.success == true' >/dev/null
+          echo "$RESTORE_RESPONSE" | jq -r '.result.message'
+
+          for attempt in $(seq 1 12); do
+            VERIFY="$(npx wrangler d1 execute "$DB_NAME" --remote --json --config wrangler.restore-rehearsal.toml \
+              --command "SELECT (SELECT schema_version FROM app_meta WHERE id=1) AS schema_version, (SELECT environment FROM app_meta WHERE id=1) AS environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='restore_rehearsal_probe') AS probe_table_count;")"
+            SCHEMA="$(echo "$VERIFY" | jq -r '.[0].results[0].schema_version // empty')"
+            ENVIRONMENT="$(echo "$VERIFY" | jq -r '.[0].results[0].environment // empty')"
+            MIGRATIONS="$(echo "$VERIFY" | jq -r '.[0].results[0].migration_count // empty')"
+            PROBE="$(echo "$VERIFY" | jq -r '.[0].results[0].probe_table_count // empty')"
+            if [ "$SCHEMA" = "46" ] && [ "$ENVIRONMENT" = "non-production" ] && [ "$MIGRATIONS" = "46" ] && [ "$PROBE" = "0" ]; then
+              echo "RESTORE_REHEARSAL_PASSED: schema 46 and all 46 migration records preserved; post-bookmark probe removed."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "D1 restore verification did not converge to the captured schema 46 bookmark." >&2
+          exit 1
+
+      - name: Delete isolated rehearsal database
+        if: always() && steps.database.outputs.id != ''
+        env:
+          DB_ID: ${{ steps.database.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            -X DELETE "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DB_ID}" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" | jq -e '.success == true' >/dev/null
+          rm -f cloudflare/wrangler.restore-rehearsal.toml
