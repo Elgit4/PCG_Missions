@@ -36,8 +36,8 @@ test("event staff and team assignment writes recipient-scoped in-app notificatio
   assert.match(assignment, /JOIN staff_profile sp ON sp\.id=stm\.staff_profile_id AND sp\.account_status='active'/);
   assert.match(assignment, /event-assignment:/);
   assert.match(assignment, /event-team-assignment:/);
-  assert.match(assignment, /crypto\\.randomUUID\\(\\),branchId,eventId,\\s*`event-assignment:/);
-  assert.match(assignment, /\\.bind\\(branchId,eventId,id,now,id,targetId,branchId,now,now\\)/);
+  assert.match(assignment, /crypto\.randomUUID\(\),branchId,eventId,\s*`event-assignment:/);
+  assert.match(assignment, /\.bind\(branchId,eventId,id,now,id,targetId,branchId,now,now\)/);
   assert.match(assignment, /await env\.DB\.batch\(statements\)/);
   assert.match(assignment, /results\[0\].*changes/s);
 });
