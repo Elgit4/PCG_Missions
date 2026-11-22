@@ -64,6 +64,8 @@ These are review artifacts, not approved migrations or a production schema.
 | 05 | [Implementation & Deployment Plan](docs/05_IMPLEMENTATION_AND_DEPLOYMENT_PLAN.md) | Delivery phases and release gates |
 | 06 | [CMI Follow-up Internal User Guide](docs/CMI_FOLLOW_UP_APP_GUIDE.md) | Staff operating guide |
 | 07 | [Task 7 Recovery Rehearsal](docs/RESTORE_REHEARSAL_2026-11-22.md) | Verified backup/restore evidence and remaining recovery actions |
+| 08 | [D1 restore workflow](.github/workflows/task7-d1-restore-rehearsal.yml) | Manual export/import verification into the isolated EU scratch database |
+| 09 | [Supabase restore workflow](.github/workflows/task7-supabase-restore-rehearsal.yml) | Manual logical backup and restore into a separate Supabase project |
 | — | [Full documentation index](docs/README.md) | Reading order and legacy artifact register |
 | — | [Repository audit report](docs/REPOSITORY_AUDIT_REPORT.md) | Consistency findings, verification limits and remaining release gates |
 
