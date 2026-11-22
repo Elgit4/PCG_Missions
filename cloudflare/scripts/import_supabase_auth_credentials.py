@@ -22,12 +22,12 @@ import uuid
 ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "1697f36d4227453d2e25cfb49b347e5f")
 DATABASE_ID = os.environ.get("PCG_MISSIONS_PREVIEW_D1_ID", "74074d53-1edc-4ad7-83e6-bb3333a6ab4f")
 API_BASE = f"https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/d1/database/{DATABASE_ID}"
-BCRYPT_PATTERN = re.compile(r"^\\$2[aby]\\$[0-9]{2}\\$[./A-Za-z0-9]{53}$")
+BCRYPT_PATTERN = re.compile(r"^\$2[aby]\$[0-9]{2}\$[./A-Za-z0-9]{53}$")
 
 
 def parse_source_rows(output: str) -> list[tuple[str, str, str]]:
     rows: list[tuple[str, str, str]] = []
-    for row in csv.reader(io.StringIO(output), delimiter="\\t"):
+    for row in csv.reader(io.StringIO(output), delimiter="\t"):
         if not row or len(row) != 3:
             raise ValueError("Source credential query returned an invalid row shape.")
         user_id, email, password_hash = row
@@ -57,7 +57,7 @@ def psql_source_rows(database_url: str) -> list[tuple[str, str, str]]:
     """
     try:
         completed = subprocess.run(
-            ["psql", database_url, "-X", "-v", "ON_ERROR_STOP=1", "-At", "-F", "\\t", "-c", sql],
+            ["psql", database_url, "-X", "-v", "ON_ERROR_STOP=1", "-At", "-F", "\t", "-c", sql],
             check=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, timeout=90,
             env={**os.environ, "PGCONNECT_TIMEOUT": "15"},
         )
