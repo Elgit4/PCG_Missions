@@ -4429,8 +4429,8 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     }
     const id=crypto.randomUUID();
     const statements=[
-      env.DB.prepare(`INSERT INTO event_registration(id,event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,registration_source,status,registered_at,client_request_id)
-        VALUES(?,?,?,?,?,'staff','registered',?,?)`).bind(id,eventId,branchId,name,phone,now,key),
+      env.DB.prepare(`INSERT INTO event_registration(id,event_id,branch_id,attendee_name_snapshot,attendee_phone_snapshot,registration_source,status,registered_at,client_request_id,created_by)
+        VALUES(?,?,?,?,?,'staff','registered',?,?,?)`).bind(id,eventId,branchId,name,phone,now,key,context.staff.userId),
       env.DB.prepare(`INSERT INTO event_idempotency_receipt(id,event_id,branch_id,operation,caller_class,actor_user_id,idempotency_key,digest_key_version,request_digest,resource_type,resource_id,response_status,created_at)
         VALUES(?,?,?,'staff_registration','staff',?,?,1,?,'event_registration',?,201,?)`).bind(crypto.randomUUID(),eventId,branchId,context.staff.userId,key,digest,id,now),
     ];
