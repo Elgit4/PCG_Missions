@@ -3491,10 +3491,14 @@ async function handleCalendarCollection(request: Request, env: Env, requestId: s
   if (method === "GET") {
     const allowed = new Set(["branch_id", "limit", "offset"]);
     const keys = [...url.searchParams.keys()];
-    const branchId = url.searchParams.get("branch_id");
-    const limit = url.searchParams.has("limit") ? Number(url.searchParams.get("limit")) : 50;
-    const offset = url.searchParams.has("offset") ? Number(url.searchParams.get("offset")) : 0;
-    if (keys.some((key) => !allowed.has(key)) || !branchId ||
+    const branchIds = url.searchParams.getAll("branch_id");
+    const limitValues = url.searchParams.getAll("limit");
+    const offsetValues = url.searchParams.getAll("offset");
+    const branchId = branchIds[0];
+    const limit = limitValues.length ? Number(limitValues[0]) : 50;
+    const offset = offsetValues.length ? Number(offsetValues[0]) : 0;
+    if (keys.some((key) => !allowed.has(key)) || branchIds.length !== 1 ||
+        limitValues.length > 1 || offsetValues.length > 1 || !branchId ||
         branchId !== access.activeBranch.branchId ||
         !Number.isInteger(limit) || limit < 1 || limit > 100 ||
         !Number.isInteger(offset) || offset < 0 || offset > 10000) {
@@ -3547,8 +3551,9 @@ async function handleCalendarEntry(request: Request, env: Env, entryId: string, 
   );
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
   const url = new URL(request.url);
-  const branchId = url.searchParams.get("branch_id");
-  if ([...url.searchParams.keys()].some((key) => key !== "branch_id") ||
+  const branchIds = url.searchParams.getAll("branch_id");
+  const branchId = branchIds[0];
+  if (branchIds.length !== 1 || [...url.searchParams.keys()].some((key) => key !== "branch_id") ||
       branchId !== access.activeBranch.branchId) {
     return json(400, { ok: false, error: { code: "INVALID_CALENDAR_QUERY" } }, requestId, origin);
   }
