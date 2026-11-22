@@ -120,7 +120,7 @@ jobs:
               if not verified_url:
                   raise SystemExit('No assigned EU Session Pooler host accepted a read-only SELECT 1 for ' + key + '; restore was not started')
               with open(os.environ['GITHUB_ENV'], 'a') as f:
-                  f.write(key + '=' + verified_url + '\\n')
+                  f.write(key + '=' + verified_url + '\n')
               print(key + ': assigned Session Pooler host verified with SELECT 1.')
           PY
 
