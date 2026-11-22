@@ -128,7 +128,7 @@ jobs:
                   continue
               lines.append(line)
           output = '\n'.join(lines) + '\n'
-          if 'CREATE TABLE "calendar_series"' not in output:
+          if db.execute("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='calendar_series'").fetchone() is None:
               raise SystemExit('Reordered dump is missing calendar_series; refusing import')
           last_table = output.rfind('CREATE TABLE ')
           first_index = output.find('CREATE INDEX ')
