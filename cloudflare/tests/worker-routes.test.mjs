@@ -140,6 +140,53 @@ test("legacy staff invitation endpoints are permanently disabled", async () => {
   assert.equal(calls.length, 0);
 });
 
+test("calendar collection reads reject anonymous requests before database access", async () => {
+  const { env, calls } = fakeEnv();
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/calendar/entries?branch_id=30000000-0000-4000-8000-000000000001"), env);
+  const payload = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(payload.error.code, "UNAUTHENTICATED");
+  assert.equal(calls.length, 0);
+});
+
+test("calendar creation rejects anonymous requests before database access", async () => {
+  const { env, calls } = fakeEnv();
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/calendar/entries", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      branch_id: "30000000-0000-4000-8000-000000000001",
+      entry_type: "service",
+      title: "Sunday service",
+      starts_at: "2026-11-29T09:00:00+00:00",
+      ends_at: "2026-11-29T11:00:00+00:00",
+    }),
+  }), env);
+  const payload = await response.json();
+  assert.equal(response.status, 401);
+  assert.equal(payload.error.code, "UNAUTHENTICATED");
+  assert.equal(calls.length, 0);
+});
+
+test("calendar detail reads and updates reject anonymous requests before database access", async () => {
+  const { env, calls } = fakeEnv();
+  const id = "60000000-0000-4000-8000-000000000001";
+  const branch = "30000000-0000-4000-8000-000000000001";
+  const read = await worker.fetch(new Request(`https://worker.example/api/v1/calendar/entries/${id}?branch_id=${branch}`), env);
+  const readPayload = await read.json();
+  assert.equal(read.status, 401);
+  assert.equal(readPayload.error.code, "UNAUTHENTICATED");
+  const update = await worker.fetch(new Request(`https://worker.example/api/v1/calendar/entries/${id}?branch_id=${branch}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "Updated service" }),
+  }), env);
+  const updatePayload = await update.json();
+  assert.equal(update.status, 401);
+  assert.equal(updatePayload.error.code, "UNAUTHENTICATED");
+  assert.equal(calls.length, 0);
+});
+
 test("team collection reads reject anonymous requests", async () => {
   const { env, calls } = fakeEnv();
   const response = await worker.fetch(new Request("https://worker.example/api/v1/teams?branch_id=00000000-0000-4000-8000-000000000001"), env);
