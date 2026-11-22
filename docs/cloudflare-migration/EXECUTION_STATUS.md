@@ -437,3 +437,26 @@ Security and acceptance boundaries:
 - Admin/Pastor assignment is intentionally not accepted through this ordinary create-account route; it remains subject to the existing dual-control Admin/Pastor elevation workflow.
 - Password change and Admin-approved reset operations still require Worker migration and authenticated acceptance. The shared preview currently blocks credential mutations because it shares the live Supabase Auth tenant.
 - The source changes are committed but are not yet CI-verified or deployed. No production Auth identities or D1 records were created.
+
+
+## 2026-11-22 — Calendar and announcement Worker parity
+
+Implemented on `feat/cloudflare-d1-migration-foundation`:
+- Branch-scoped calendar list, detail, create and update routes now run through the Cloudflare Worker. Writes force branch scope, reject caller-supplied identity/scope fields, require the corresponding scoped capability, and use an `updated_at` concurrency predicate.
+- Announcement draft list, create and update routes now run through the Worker. New drafts are forced private and branch-audience only; edits are restricted to the original creator and draft state.
+- The browser API adapter routes these operations to the Worker when the preview API URL is configured. Non-preview fallback behavior is unchanged.
+- Regression coverage includes anonymous denial, Admin/Pastor branch writes, non-admin denial, branch scoping, and frontend Worker-path selection.
+
+Verification for source commit `9b5602ed34852cc24904394b4e69d5e15909ec19`:
+- Cloudflare D1 Foundation: passed (SQLite schema/security checks, Worker typecheck and route tests).
+- Cloudflare Preview Worker Bundle: passed (Worker build, route tests, existing deployed-preview smoke probes, and immutable bundle publication).
+- CMI web CI: passed (typecheck, lint, unit tests and production build).
+- The immutable Worker bundle artifact records the same source commit and targets `pcg-missions-api-preview` with the non-production migration-test D1.
+
+**Deployment status:** the new bundle is built and published for review, but it has not been deployed to the preview Worker. The latest Pages preview deployment for the feature branch is still queued; the previous successful preview deployment remains the last confirmed frontend deployment. Do not treat these source changes as live until both deployments and post-deploy probes pass.
+
+## Additional release blockers found in the deployed preview configuration
+
+- The deployed preview Worker currently has `SUPABASE_SERVICE_ROLE_KEY` as a **plain-text variable**, while its secret inventory has no corresponding `secret_text` binding. Rotate the Supabase server key, add the replacement as a Cloudflare Worker Secret with this name, and remove the plain-text variable before deploying the latest Admin-only staff-provisioning bundle. Never place it in Wrangler `[vars]`, Pages variables, GitHub comments, or browser code.
+- Cloudflare R2 remains unavailable on this account (previous API response 10042). No event-media R2 bucket exists. The Supabase project also currently has no Storage buckets; no alternative storage backend was created or switched without explicit approval.
+- No production Worker, production Pages routing, production D1 data, Supabase production records, or SMS delivery was changed in this work.
