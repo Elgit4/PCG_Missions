@@ -91,7 +91,7 @@ jobs:
           sudo apt-get install --yes postgresql-client
 
       - name: Apply forward-only schema 44 to the isolated EU preview D1
-        run: npx wrangler d1 migrations apply pcg-missions-migration-test --remote --env preview --yes
+        run: npx wrangler d1 migrations apply pcg-missions-migration-test --remote --env preview
 
       - name: Import existing staff bcrypt credentials into isolated D1
         env:
