@@ -1577,7 +1577,7 @@ test("public password reset is non-enumerating and records only eligible active 
 
 test("password change rotates the D1 credential before clearing the forced-change gate", async () => {
   const fixture = fakeEnv();
-  fixture.env.SUPABASE_SERVICE_ROLE_KEY = "server-only-synthetic-secret";
+  fixture.env.__TEST_SESSION_RESOLVER = async () => ({ user: { id: AUTH_USER_ID, email: "staff@example.com" } });
   const originalPrepare = fixture.env.DB.prepare.bind(fixture.env.DB);
   const batches = [];
   fixture.env.DB.prepare = (sql) => {
@@ -1613,6 +1613,7 @@ test("password change rotates the D1 credential before clearing the forced-chang
 
 test("expired temporary-password gate blocks Better Auth credential mutation", async () => {
   const fixture = fakeEnv();
+  fixture.env.__TEST_SESSION_RESOLVER = async () => ({ user: { id: AUTH_USER_ID, email: "staff@example.com" } });
   const originalPrepare = fixture.env.DB.prepare.bind(fixture.env.DB);
   fixture.env.DB.prepare = (sql) => {
     const statement = originalPrepare(sql);

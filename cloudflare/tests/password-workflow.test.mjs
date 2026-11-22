@@ -145,6 +145,7 @@ test("forced password change updates the D1 credential and atomically clears the
   assert.equal(fixture.batches.length, 2);
   const credentialWrites = fixture.batches[0];
   assert.equal(credentialWrites.length, 1);
+  assert.equal(credentialWrites.length, 1);
   assert.match(credentialWrites[0].sql, /UPDATE account SET password=/);
   const profileWrites = fixture.batches[1];
   assert.match(profileWrites[0].sql, /UPDATE staff_profile/);
