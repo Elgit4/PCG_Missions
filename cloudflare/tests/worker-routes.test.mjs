@@ -341,6 +341,8 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
     password_setup_expires_at: null,
   };
   let writes = 0;
+  const batches = [];
+  const resetRequest = { id: "90000000-0000-4000-8000-000000000002", target_profile_id: COVERED_STAFF_ID, branch_id: BRANCH_ID, status: "pending", expires_at: "2099-01-01T00:00:00.000Z", auth_user_id: "10000000-0000-4000-8000-000000000002", email: "reset-target@example.test" };
   let followupTaskStatus = "open";
   let calendarEntryRow = null;
   let announcementRow = null;
@@ -357,6 +359,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         async first() {
           calls.push({ kind: "first", sql: this.sql, values: this.values });
           if (this.sql.includes("FROM calendar_entry")) return calendarEntryRow;
+          if (this.sql.includes("SELECT req.id, req.target_profile_id") && this.sql.includes("FROM staff_password_reset_request")) return resetRequest;
           if (this.sql.includes("SELECT id,branch_id,title,starts_at,ends_at,status") && this.sql.includes("FROM event")) return eventRow;
           if (this.sql.includes("SELECT id,account_status FROM staff_profile")) return { id: STAFF_PROFILE_ID, account_status: "active" };
           if (this.sql.includes("SELECT sra.id FROM staff_role_assignment")) return { id: "active-role-assignment" };
@@ -533,6 +536,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
       return statement;
     },
     async batch(statements) {
+      batches.push(statements.map((statement) => ({ sql: statement.sql, values: statement.values })));
       writes += statements.length;
       if (statements.some((statement) => statement.sql.includes("UPDATE followup_task"))) {
         followupTaskStatus = "completed";
@@ -544,6 +548,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
 
   return {
     calls,
+    batches,
     get writes() { return writes; },
     env: {
       DB,
@@ -551,6 +556,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
       APP_ALLOWED_ORIGINS: "https://preview.example, http://localhost:5173",
       SUPABASE_URL: "https://example.supabase.co",
       SUPABASE_PUBLISHABLE_KEY: "sb_publishable_test",
+      SUPABASE_SERVICE_ROLE_KEY: "server-only-synthetic-secret",
     },
   };
 }
