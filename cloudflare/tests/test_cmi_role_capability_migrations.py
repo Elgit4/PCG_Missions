@@ -99,6 +99,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
                    VALUES(?,?,?,?,'active',?,?,0)""",
                 (profile_id, user_id, name, email, now, now),
             )
+        for key, (user_id, profile_id, name, email, role_code) in identities.items():
             role_id = self.db.execute("SELECT id FROM role WHERE code=?", (role_code,)).fetchone()[0]
             assigned_by = identities["admin"][1] if key != "admin" else profile_id
             self.db.execute(
