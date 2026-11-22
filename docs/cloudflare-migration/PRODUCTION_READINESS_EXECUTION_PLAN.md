@@ -100,7 +100,7 @@ A runner with access to the signed R2 URL and Cloudflare D1 import API is requir
 
 ### Gate 1 — Non-production build and route safety
 
-<badge color="success">Passed at test commit b1b1565</badge>
+**Status: PASSED** — test commit `b1b1565`.
 
 - D1 migration chain replays to schema 43.
 - Worker typecheck and route/auth/security tests pass.
@@ -109,7 +109,7 @@ A runner with access to the signed R2 URL and Cloudflare D1 import API is requir
 
 ### Gate 2 — Data and recovery
 
-<badge color="warning">In progress</badge>
+**Status: IN PROGRESS**
 
 - Complete row-by-row reconciliation and foreign-key verification.
 - Import the D1 SQL export into a disposable EU D1 and verify schema, data, constraints, and key references.
@@ -118,7 +118,7 @@ A runner with access to the signed R2 URL and Cloudflare D1 import API is requir
 
 ### Gate 3 — Authenticated role acceptance
 
-<badge color="warning">Synthetic tests passed; browser acceptance outstanding</badge>
+**Status: SYNTHETIC TESTS PASSED; BROWSER ACCEPTANCE OUTSTANDING**
 
 - Run controlled authenticated browser workflows for all six roles.
 - Verify branch/team/assigned record boundaries, account lifecycle, reports, event assignments, notifications, and sensitive pastoral reads.
@@ -126,7 +126,7 @@ A runner with access to the signed R2 URL and Cloudflare D1 import API is requir
 
 ### Gate 4 — Production provisioning
 
-<badge color="warning">Not started</badge>
+**Status: NOT STARTED**
 
 - Provision a separate production Worker and verify production-only D1, secret bindings, allowed origins, logging, monitoring, and alerting.
 - Verify the production D1 has the approved schema and data before it is bound to production.
@@ -134,7 +134,7 @@ A runner with access to the signed R2 URL and Cloudflare D1 import API is requir
 
 ### Gate 5 — Cutover and rollback
 
-<badge color="warning">Not started</badge>
+**Status: NOT STARTED**
 
 - Complete and rehearse a rollback using verified backups.
 - Take a final source backup and perform controlled data synchronization.
