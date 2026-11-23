@@ -5201,14 +5201,15 @@ export default {
           const responseBody = await authResponse.clone().text();
           const diagnosticCode = /no such table|no such column|sqlite_error/i.test(responseBody)
             ? "D1_SCHEMA_ERROR"
-            : `BETTER_AUTH_HTTP_${authResponse.status}`;
-          console.error("BETTER_AUTH_HANDLER_RESPONSE_FAILED", diagnosticCode, responseBody.slice(0, 300));
+            : /failed query: insert into ["']?rateLimit/i.test(responseBody)
+              ? "D1_RATE_LIMIT_WRITE_FAILED"
+              : `BETTER_AUTH_HTTP_${authResponse.status}`;
+          console.error("BETTER_AUTH_HANDLER_RESPONSE_FAILED", diagnosticCode);
           return json(503, {
             ok: false,
             error: {
               code: "AUTH_SERVICE_UNAVAILABLE",
               diagnostic_code: diagnosticCode,
-              diagnostic_detail: responseBody.slice(0, 300),
             },
           }, requestId, origin);
         }
@@ -5224,15 +5225,12 @@ export default {
             : /^[A-Z0-9_]+$/.test(message)
               ? message
               : error instanceof Error ? error.name : "AUTH_RUNTIME_ERROR";
-        console.error("BETTER_AUTH_HANDLER_FAILED", diagnosticCode, diagnosticDetail.slice(0, 300));
+        console.error("BETTER_AUTH_HANDLER_FAILED", diagnosticCode);
         return json(503, {
           ok: false,
           error: {
             code: "AUTH_SERVICE_UNAVAILABLE",
-            ...(env.APP_ENV !== "production" ? {
-              diagnostic_code: diagnosticCode,
-              diagnostic_detail: diagnosticDetail.slice(0, 300),
-            } : {}),
+            ...(env.APP_ENV !== "production" ? { diagnostic_code: diagnosticCode } : {}),
           },
         }, requestId, origin);
       }
