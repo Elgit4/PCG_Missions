@@ -50,7 +50,7 @@ jobs:
           set -euo pipefail
           restore_path=".github/workflows/cloudflare-d1-restore-rehearsal.yml"
           for attempt in $(seq 1 720); do
-            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100)"
+            runs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100)"
             chosen=""
             while IFS=$'\t' read -r run_id sha status conclusion; do
               [[ -z "$run_id" ]] && continue
@@ -87,7 +87,7 @@ jobs:
             local scope="$3"
             local accepted=""
             for attempt in $(seq 1 120); do
-              runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100)"
+              runs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100)"
               while IFS= read -r sha; do
                 [[ -z "$sha" ]] && continue
                 if ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then continue; fi
