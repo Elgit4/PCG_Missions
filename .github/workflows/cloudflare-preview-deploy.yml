@@ -12,25 +12,19 @@ on:
       - "cloudflare/package.json"
       - "cloudflare/wrangler.toml"
       - ".github/workflows/cloudflare-preview-deploy.yml"
-      - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
   actions: read
 
-# Serialize preview, restore rehearsal and production D1 writes against the account's daily quota.
+# Keep routine preview releases separate from the expensive full restore rehearsal, which runs before production cutover.
 concurrency:
   group: pcg-missions-preview-release-v2
   cancel-in-progress: false
 
 jobs:
-  restore-rehearsal:
-    uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
-    secrets: inherit
-
   validate-migrate-deploy:
-    needs: restore-rehearsal
     runs-on: ubuntu-latest
     timeout-minutes: 360
     defaults:
