@@ -30,8 +30,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'drizzleAdapter' src/auth.ts
-          grep -q 'authSchema' src/auth.ts
+          grep -q 'drizzleAdapter' cloudflare/src/auth.ts
+          grep -q 'authSchema' cloudflare/src/auth.ts
           echo "Authenticated restore rehearsal is testing the Drizzle-backed Better Auth implementation."
 
       - name: Verify non-production auth diagnostics do not expose query details
