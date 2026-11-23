@@ -1505,6 +1505,48 @@ class AuthorizationQueryTests(unittest.TestCase):
                 (field_user,self.NOW,self.NOW),
             )
 
+    def test_calendar_cancellation_sets_state_and_appends_immutable_audit(self):
+        admin_user, _ = self.staff["admin"]
+        self.db.execute(
+            """INSERT INTO calendar_entry
+               (id,branch_id,entry_type,title,starts_at,scope_type,created_by,updated_by,created_at,updated_at)
+               VALUES ('calendar-cancel-1','authz-branch','service','Sunday Service',?,'branch',?,?,?,?,?)""",
+            (self.NOW, admin_user, admin_user, self.NOW, self.NOW),
+        )
+
+        self.db.execute(
+            """UPDATE calendar_entry
+               SET status='cancelled', cancelled_at=?, cancelled_by=?,
+                   cancellation_reason=?, updated_by=?, updated_at=?
+               WHERE id='calendar-cancel-1' AND status='active'""",
+            (self.NOW, admin_user, "Service moved to a different venue.", admin_user, self.NOW),
+        )
+
+        self.assertEqual(
+            self.db.execute(
+                "SELECT status,cancelled_by,cancellation_reason FROM calendar_entry WHERE id='calendar-cancel-1'"
+            ).fetchone(),
+            ("cancelled", admin_user, "Service moved to a different venue."),
+        )
+        audit = self.db.execute(
+            """SELECT action,
+                      json_extract(before_state,'$.status'),
+                      json_extract(after_state,'$.status'),
+                      json_extract(after_state,'$.cancellation_reason')
+               FROM calendar_entry_change_audit
+               WHERE entry_id='calendar-cancel-1' AND action='cancelled'"""
+        ).fetchone()
+        self.assertEqual(
+            audit,
+            ("cancelled", "active", "cancelled", "Service moved to a different venue."),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE calendar_entry_change_audit
+                   SET action='updated'
+                   WHERE entry_id='calendar-cancel-1' AND action='cancelled'"""
+            )
+
     def test_public_content_requires_content_manage_and_published_projection_fields(self):
         admin_user, _ = self.staff["admin"]
         field_user, _ = self.staff["field"]
