@@ -44,6 +44,14 @@ jobs:
           grep -q 'authSchema' cloudflare/src/auth.ts
           echo "Authenticated restore rehearsal is testing the Drizzle-backed Better Auth implementation."
 
+      - name: Verify non-production auth diagnostics do not expose query details
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -q 'diagnostic_detail' cloudflare/src/index.ts
+          grep -q 'D1_RATE_LIMIT_WRITE_FAILED' cloudflare/src/index.ts
+          echo "Authentication diagnostics expose stable error codes only; SQL parameters and client addresses are not returned."
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
