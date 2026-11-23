@@ -1,5 +1,8 @@
 import { betterAuth } from "better-auth";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { drizzle } from "drizzle-orm/d1";
 import { compare as bcryptCompare, hash as bcryptHash } from "bcryptjs";
+import { authSchema } from "./auth-schema.ts";
 
 export interface AuthStatement {
   bind(...values: unknown[]): AuthStatement;
@@ -46,12 +49,14 @@ export function createAuth(env: AuthEnvironment) {
   if (baseUrl.protocol !== "https:" && baseUrl.hostname !== "localhost") throw new Error("BETTER_AUTH_URL_MUST_USE_HTTPS");
   const secureCookies = baseUrl.protocol === "https:";
 
+  const database = drizzle(env.DB as Parameters<typeof drizzle>[0], { schema: authSchema });
+
   return betterAuth({
     appName: "PCG Missions",
     baseURL: baseUrl.origin,
     basePath: "/api/auth",
     secret: env.BETTER_AUTH_SECRET,
-    database: env.DB as never,
+    database: drizzleAdapter(database, { provider: "sqlite", schema: authSchema }),
     trustedOrigins: trustedOrigins(env, baseUrl),
     databaseHooks: {
       session: {
