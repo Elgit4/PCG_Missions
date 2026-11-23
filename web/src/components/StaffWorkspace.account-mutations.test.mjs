@@ -35,4 +35,12 @@ describe("staff account and password-reset mutation concurrency", () => {
     expect(source).toContain("A different Admin/Pastor must review this request.");
   });
 
+  it("supports authorised team and staff targets for follow-up creation and handoff", () => {
+    expect(source).toContain("const canAssignFollowUpToStaff");
+    expect(source).toContain("name=\"task_assignment_target\"");
+    expect(source).toContain('value={`team:${team.id}`}');
+    expect(source).toContain('value={`staff:${member.id}`}');
+    expect(source).toContain("const input: TaskReassignmentInput = targetType === \"staff\"");
+  });
+
 });

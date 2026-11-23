@@ -97,6 +97,26 @@ describe("Cloudflare Worker API client", () => {
     expect(init.credentials).toBe("include");
   });
 
+  it("supports team-target contact assignment without sending a staff profile ID", async () => {
+    const fetcher = vi.fn(async () => response({
+      assignment_id: "assignment-team-1",
+      assignee_profile_id: null,
+      team_id: "team-1",
+      starts_at: "2026-11-23T12:00:00.000Z",
+    }, 201));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    const result = await api.assignContact("branch-1", "contact-1", {
+      team_id: "team-1",
+      reason: "Route this visitor to the Welcome Team for follow-up.",
+    });
+    expect(result.data.team_id).toBe("team-1");
+    const [, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      team_id: "team-1",
+      reason: "Route this visitor to the Welcome Team for follow-up.",
+    });
+  });
+
   it("rejects contact assignments without a valid reason before sending a request", async () => {
     const fetcher = vi.fn(async () => response({}));
     const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
@@ -105,6 +125,35 @@ describe("Cloudflare Worker API client", () => {
       reason: "short",
     })).toThrow(/reason of 10–500 characters/);
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("creates follow-up tasks for a team or an active staff profile", async () => {
+    const fetcher = vi.fn(async () => response({ id: "task-1", team_id: "team-1" }));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await api.createFollowUpTask({
+      branch_id: "branch-1",
+      contact_id: "contact-1",
+      client_request_id: "team-task-request-1",
+      team_id: "team-1",
+      priority: 2,
+    });
+    await api.createFollowUpTask({
+      branch_id: "branch-1",
+      contact_id: "contact-1",
+      client_request_id: "staff-task-request-1",
+      assignee_profile_id: "staff-1",
+      priority: 2,
+    });
+    expect(JSON.parse(String((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toMatchObject({ team_id: "team-1" });
+    expect(JSON.parse(String((fetcher.mock.calls[1] as unknown as [string, RequestInit])[1].body))).toMatchObject({ assignee_profile_id: "staff-1" });
+    expect(() => api.createFollowUpTask({
+      branch_id: "branch-1",
+      contact_id: "contact-1",
+      client_request_id: "invalid-task-request-1",
+      team_id: "team-1",
+      assignee_profile_id: "staff-1",
+      priority: 2,
+    } as never)).toThrow(/Exactly one non-empty task assignment target/);
   });
 
   it("routes follow-up handoffs through the branch-scoped Worker assignment endpoint", async () => {

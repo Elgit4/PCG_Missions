@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { Activity, AlertTriangle, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, HandHeart, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { StaffNotificationCenter } from "./StaffNotificationCenter";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
-import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffRoleApprovalRequest, StaffSession, StandardStaffRoleCode, TaskCreateInput, TaskReassignmentInput } from "../lib/cmi-api";
+import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffRoleApprovalRequest, StaffSession, StandardStaffRoleCode, TaskCreateInput, TaskReassignmentInput, TeamRecord } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 import { ThemeToggle } from "../lib/theme";
 import { formatApplicationError } from "../lib/error-messages";
@@ -147,6 +147,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [savingReassignmentId, setSavingReassignmentId] = useState<string | null>(null);
   const [resetRequests, setResetRequests] = useState<StaffPasswordResetRequest[]>([]);
   const [staffMembers, setStaffMembers] = useState<StaffDirectoryEntry[]>([]);
+  const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [showStaffForm, setShowStaffForm] = useState(false);
   const [credentialHandoff, setCredentialHandoff] = useState<{
     email: string;
@@ -229,8 +230,12 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canUpdateTasks = hasCapability(session, "followup.task.update.scoped", branchId);
   const canManagePasswordResets = hasCapability(session, "staff.password_reset.manage", branchId);
   const canReadStaffDirectory = hasCapability(session, "staff.directory.read", branchId);
-  const canAssignFollowUp = hasCapability(session, "followup.assign", branchId) && canReadStaffDirectory;
-  const canAssignContacts = hasCapability(session, "contacts.assign", branchId) && canReadStaffDirectory;
+  const canReadTeams = hasCapability(session, "team.read", branchId);
+  const canAssignFollowUp = hasCapability(session, "followup.assign", branchId) && (canReadStaffDirectory || canReadTeams);
+  const followUpAssignGrant = session.capabilities.find((grant) => grant.code === "followup.assign" && grant.branch_id === branchId);
+  const canAssignFollowUpToStaff = canAssignFollowUp && followUpAssignGrant?.scope_mode === "branch" && canReadStaffDirectory;
+  const canAssignContacts = hasCapability(session, "contacts.assign", branchId) && (canReadStaffDirectory || canReadTeams);
+  const canCreateTaskFromWorkspace = canSelfAssignTask || (canAssignFollowUp && teams.some((team) => team.is_active));
   const canAssignStaffRoles = hasCapability(session, "staff.role.assign", branchId);
   const canApproveStaffRoles = hasCapability(session, "staff.role.approve", branchId);
   const canManageStaffAccounts = hasCapability(session, "staff.account.manage", branchId);
@@ -308,6 +313,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setTasksHasMore(false);
     setResetRequests([]);
     setStaffMembers([]);
+    setTeams([]);
     setShowStaffForm(false);
     setStaffStatusEdit(null);
     setStaffStatusReason("");
@@ -417,12 +423,24 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     } else {
       setStaffMembers([]);
     }
+    if (canReadTeams) {
+      requests.push(api.listTeams(branchId)
+        .then((result) => { if (current) setTeams(result.data.teams); })
+        .catch((error: unknown) => {
+          if (!current) return;
+          if (error instanceof CmiApiError && error.status === 401) expireSession();
+          else setLoadError(messageFor(error));
+        }));
+    } else {
+      setTeams([]);
+    }
+
     void Promise.all(requests).finally(() => { if (current) setLoading(false); });
     return () => {
       current = false;
       paginationVersion.current += 1;
     };
-  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, canApproveStaffRoles, debouncedQuery, expireSession]);
+  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, canReadTeams, canApproveStaffRoles, debouncedQuery, expireSession]);
 
   const visibleContacts = contacts;
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
@@ -446,13 +464,14 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setLoadingMore(false);
     setRefreshing(true); setActionError("");
     try {
-      const [contactResult, taskResult, resetResult, staffResult, elevationResult, revocationResult] = await Promise.all([
+      const [contactResult, taskResult, resetResult, staffResult, elevationResult, revocationResult, teamResult] = await Promise.all([
         canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0, search: debouncedQuery || undefined }) : Promise.resolve(null),
         canReadTasks ? api.listFollowUpTasks(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
         canManagePasswordResets ? api.listStaffPasswordResetRequests(branchId) : Promise.resolve(null),
         canReadStaffDirectory ? api.listStaffDirectory(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
         canApproveStaffRoles ? api.listAdminElevationRequests(branchId) : Promise.resolve(null),
         canApproveStaffRoles ? api.listAdminRevocationRequests(branchId) : Promise.resolve(null),
+        canReadTeams ? api.listTeams(branchId) : Promise.resolve(null),
       ]);
       if (contactResult) {
         setContacts(contactResult.data);
@@ -464,6 +483,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       }
       if (resetResult) setResetRequests(resetResult.data);
       if (staffResult) setStaffMembers(staffResult.data);
+      if (teamResult) setTeams(teamResult.data.teams);
       if (elevationResult) setElevationRequests(elevationResult.data);
       if (revocationResult) setRevocationRequests(revocationResult.data);
     } catch (error) { handleActionError(error); }
@@ -765,15 +785,30 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     const form = new FormData(event.currentTarget);
     const contactId = taskContactId || String(form.get("contact_id") ?? "");
     const taskNote = String(form.get("task_note") ?? "").trim();
+    const selectedTarget = String(form.get("task_assignment_target") ?? (canSelfAssignTask ? "self" : "")).trim();
     const rawPriority = Number(form.get("priority") ?? 2);
     const dueInput = String(form.get("due_at") ?? "");
     if (!contactId) {
       setActionError("Search for and select a contact before creating the follow-up.");
       return;
     }
-    // Without membership/assignment projections, only self-assignment can be constructed safely.
-    if (!canSelfAssignTask) {
-      setActionError("Task creation for this scope requires an authorised team or staff assignment target.");
+    let assignment:
+      | { assignee_user_id: string }
+      | { assignee_profile_id: string }
+      | { team_id: string };
+    if (selectedTarget === "self" && canSelfAssignTask) {
+      assignment = { assignee_user_id: session.user.id };
+    } else if (selectedTarget.startsWith("staff:") && canAssignFollowUpToStaff) {
+      const profileId = selectedTarget.slice("staff:".length);
+      const target = staffMembers.find((member) => member.id === profileId && member.account_status === "active" && member.roles.length > 0);
+      if (!target) { setActionError("Choose an active staff member in the current assignment scope."); return; }
+      assignment = { assignee_profile_id: profileId };
+    } else if (selectedTarget.startsWith("team:") && canAssignFollowUp) {
+      const teamId = selectedTarget.slice("team:".length);
+      if (!teams.some((team) => team.id === teamId && team.is_active)) { setActionError("Choose an active team in the current assignment scope."); return; }
+      assignment = { team_id: teamId };
+    } else {
+      setActionError("Choose an assignment target permitted by your current role.");
       return;
     }
     const parsedDueDate = dueInput ? new Date(dueInput) : null;
@@ -781,19 +816,23 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     const taskPayload = {
       branch_id: branchId,
       contact_id: contactId,
-      assignee_user_id: session.user.id,
       priority: Number.isInteger(rawPriority) && rawPriority >= 1 && rawPriority <= 5 ? rawPriority : 2,
       task_note: taskNote || null,
       due_at: parsedDueDate ? parsedDueDate.toISOString() : null,
     };
-    const fingerprint = JSON.stringify(taskPayload);
+    const fingerprint = JSON.stringify({ ...taskPayload, ...assignment });
     if (!taskRequestRef.current || taskRequestRef.current.fingerprint !== fingerprint) {
       taskRequestRef.current = { fingerprint, id: crypto.randomUUID() };
     }
-    const input: TaskCreateInput = {
-      ...taskPayload,
-      client_request_id: taskRequestRef.current.id,
-    };
+    const clientRequestId = taskRequestRef.current.id;
+    let input: TaskCreateInput;
+    if ("assignee_user_id" in assignment) {
+      input = { ...taskPayload, assignee_user_id: assignment.assignee_user_id, client_request_id: clientRequestId };
+    } else if ("assignee_profile_id" in assignment) {
+      input = { ...taskPayload, assignee_profile_id: assignment.assignee_profile_id, client_request_id: clientRequestId };
+    } else {
+      input = { ...taskPayload, team_id: assignment.team_id, client_request_id: clientRequestId };
+    }
     setSaving(true); setActionError("");
     try {
       const result = await api.createFollowUpTask(input);
@@ -808,17 +847,24 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     event.preventDefault();
     if (!canAssignFollowUp || !branchId || savingReassignmentId) return;
     const form = new FormData(event.currentTarget);
-    const assigneeProfileId = String(form.get("assignee_profile_id") ?? "").trim();
+    const target = String(form.get("target") ?? "").trim();
+    const [targetType, targetId] = target.split(":", 2);
     const reason = String(form.get("reason") ?? "").trim();
-    if (!assigneeProfileId || reason.length < 10 || reason.length > 500) {
-      setActionError("Choose an active staff member and provide a reason of 10–500 characters.");
+    const validStaffTarget = targetType === "staff" && canAssignFollowUpToStaff &&
+      staffMembers.some((member) => member.id === targetId && member.account_status === "active" && member.roles.length > 0);
+    const validTeamTarget = targetType === "team" &&
+      teams.some((team) => team.id === targetId && team.is_active);
+    if ((!validStaffTarget && !validTeamTarget) || reason.length < 10 || reason.length > 500) {
+      setActionError("Choose an active staff member or team in your authorised scope and provide a reason of 10–500 characters.");
       return;
     }
     setSavingReassignmentId(task.id);
     setActionError("");
     setActionNotice("");
     try {
-      const input: TaskReassignmentInput = { assignee_profile_id: assigneeProfileId, reason };
+      const input: TaskReassignmentInput = targetType === "staff"
+        ? { assignee_profile_id: targetId, reason }
+        : { team_id: targetId, reason };
       const result = await api.reassignFollowUpTask(branchId, task.id, input);
       setTasks((current) => current.map((item) => item.id === task.id ? result.data : item));
       setReassigningTaskId(null);
@@ -1104,17 +1150,17 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
           {page === "Follow-up" && canReadTasks && <div className="cmi-panel">
             <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h3>Follow-up tasks</h3><p>Filter tasks in your current branch and assignment scope. Counts reflect the loaded records.</p></div>
-              {canSelfAssignTask && <button className="cmi-button cmi-button-primary" onClick={() => {
+              {canCreateTaskFromWorkspace && <button className="cmi-button cmi-button-primary" onClick={() => {
                 setTaskContactId("");
                 setTaskContactQuery("");
                 setTaskContactResults([]);
                 setTaskContactError("");
                 setShowTaskForm((value) => !value);
               }} disabled={!canReadContacts}><Plus size={16} />New task</button>}
-              {canCreateTasks && canSelfAssignTask && !canReadContacts && <div className="cmi-task-prerequisite" role="note">
+              {canCreateTasks && canCreateTaskFromWorkspace && !canReadContacts && <div className="cmi-task-prerequisite" role="note">
                 <span>Your current role cannot search the contact directory. Ask an authorised coordinator to grant the required contact access.</span>
               </div>}
-              {canCreateTasks && !canSelfAssignTask && <span className="cmi-scope-note">Task creation is granted, but a supported team assignment target is not available in this workspace.</span>}
+              {canCreateTasks && !canCreateTaskFromWorkspace && <span className="cmi-scope-note">Task creation is granted, but no active assignment target is available in your current scope. Ask an authorised team leader to confirm team membership.</span>}
             </div>
             {showTaskForm && canCreateTasks && <form className="cmi-form-grid" onSubmit={createTask}>
               <div className="cmi-field-wide cmi-task-contact-picker">
@@ -1151,6 +1197,12 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                   Change selected contact
                 </button>}
               </div>
+              {canAssignFollowUp && <label>Assign responsibility<select name="task_assignment_target" defaultValue={canSelfAssignTask ? "self" : teams.find((team) => team.is_active) ? `team:${teams.find((team) => team.is_active)!.id}` : ""} required>
+                {canSelfAssignTask && <option value="self">Keep responsibility with me</option>}
+                {canAssignFollowUpToStaff && <optgroup label="Staff members">{staffMembers.filter((member) => member.account_status === "active" && member.roles.length > 0).map((member) => <option key={`staff:${member.id}`} value={`staff:${member.id}`}>{member.full_name} · {member.roles.map((role) => role.name).join(", ")}</option>)}</optgroup>}
+                <optgroup label="Teams">{teams.filter((team) => team.is_active).map((team) => <option key={`team:${team.id}`} value={`team:${team.id}`}>{team.name}</option>)}</optgroup>
+              </select></label>}
+              {!canAssignFollowUp && <p className="cmi-field-wide cmi-scope-note">This task will be assigned to you within your current access scope.</p>}
               <label>Priority<select name="priority" defaultValue="2"><option value="1">Urgent</option><option value="2">Normal</option><option value="3">Low</option><option value="4">Very low</option><option value="5">Minimal</option></select></label>
               <label>Due date and time<input type="datetime-local" name="due_at" /></label>
               <label className="cmi-field-wide">Operational note <span>Do not enter pastoral narratives or sensitive identity data</span><textarea name="task_note" rows={3} maxLength={1000} /></label>
@@ -1183,9 +1235,9 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                 {canAssignFollowUp && (task.status === "open" || task.status === "in_progress") && <div className="cmi-task-handoff">
                   <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setReassigningTaskId((current) => current === task.id ? null : task.id)} aria-expanded={reassigningTaskId === task.id}> {reassigningTaskId === task.id ? "Close handoff" : "Reassign"}</button>
                   {reassigningTaskId === task.id && <form className="cmi-form-grid" onSubmit={(event) => void reassignTask(task, event)}>
-                    <label>New responsible staff member<select name="assignee_profile_id" required defaultValue=""><option value="">Choose active staff</option>{staffMembers.filter((member) => member.account_status === "active" && member.roles.length > 0).map((member) => <option key={member.id} value={member.id}>{member.full_name} · {member.roles.map((role) => role.name).join(", ")}</option>)}</select></label>
+                    <label>New responsible staff member or team<select name="target" required defaultValue=""><option value="">Choose active staff or team</option>{canAssignFollowUpToStaff && staffMembers.some((member) => member.account_status === "active" && member.roles.length > 0) && <optgroup label="Staff">{staffMembers.filter((member) => member.account_status === "active" && member.roles.length > 0).map((member) => <option key={member.id} value={`staff:${member.id}`}>{member.full_name} · {member.roles.map((role) => role.name).join(", ")}</option>)}</optgroup>}{teams.some((team) => team.is_active) && <optgroup label="Teams">{teams.filter((team) => team.is_active).map((team) => <option key={team.id} value={`team:${team.id}`}>{team.name}</option>)}</optgroup>}</select></label>
                     <label>Reason for handoff<textarea name="reason" required minLength={10} maxLength={500} rows={2} placeholder="Record why responsibility is changing (10–500 characters)." /></label>
-                    <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setReassigningTaskId(null)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={savingReassignmentId === task.id || !staffMembers.some((member) => member.account_status === "active" && member.roles.length > 0)}>{savingReassignmentId === task.id ? "Transferring…" : "Confirm handoff"}</button></div>
+                    <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setReassigningTaskId(null)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={savingReassignmentId === task.id || (!staffMembers.some((member) => member.account_status === "active" && member.roles.length > 0) && !teams.some((team) => team.is_active))}>{savingReassignmentId === task.id ? "Transferring…" : "Confirm handoff"}</button></div>
                   </form>}
                 </div>}
               </article>;
@@ -1338,6 +1390,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         canCreateFollowUp={canCreateTasks && canSelfAssignTask}
         canAssignContact={canAssignContacts}
         staffMembers={staffMembers}
+        teams={teams}
         onCreateFollowUp={(contact) => {
           setTaskContactId(contact.id);
           setTaskContactQuery(displayName(contact));

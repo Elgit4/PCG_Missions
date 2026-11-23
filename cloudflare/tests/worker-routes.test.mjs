@@ -438,7 +438,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           if (this.sql.includes("SELECT id,branch_id,title,starts_at,ends_at,status") && this.sql.includes("FROM event")) return eventRow;
           if (this.sql.includes("SELECT id,account_status FROM staff_profile")) return { id: STAFF_PROFILE_ID, account_status: "active" };
           if (this.sql.includes("SELECT sra.id FROM staff_role_assignment")) return { id: "active-role-assignment" };
-          if (this.sql.includes("SELECT id FROM team WHERE id=?")) return this.values[0] === OWN_TEAM_ID ? { id: OWN_TEAM_ID } : null;
+          if (this.sql.includes("FROM team WHERE id")) return [OWN_TEAM_ID, OTHER_TEAM_ID].includes(this.values[0]) ? { id: this.values[0] } : null;
           if (this.sql.includes("SELECT id,event_id,branch_id,starts_at,ends_at,revoked_at FROM event_staff_assignment")) return eventStaffAssignment;
           if (this.sql.includes("SELECT id,event_id,branch_id,starts_at,ends_at,revoked_at FROM event_team_assignment")) return eventTeamAssignment;
           if (this.sql.includes("FROM announcement")) return announcementRow;
@@ -461,7 +461,9 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           if (this.sql.includes("SELECT id FROM contact") && this.sql.includes("WHERE id = ? AND branch_id = ?")) {
             return this.values[0] === CONTACT_ID && this.values[1] === BRANCH_ID ? { id: CONTACT_ID } : null;
           }
-          if (this.sql.includes("SELECT ca.team_id") && this.sql.includes("FROM contact_assignment ca")) return null;
+          if (this.sql.includes("SELECT ca.team_id") && this.sql.includes("FROM contact_assignment ca")) {
+            return roleCode === "team_leader" ? { team_id: OWN_TEAM_ID } : null;
+          }
           if (this.sql.includes("SELECT sp.id AS profile_id, sp.auth_user_id") && this.sql.includes("FROM staff_profile sp")) {
             return { profile_id: STAFF_PROFILE_ID, auth_user_id: AUTH_USER_ID };
           }
@@ -1321,6 +1323,58 @@ test("Admin/Pastor can assign a contact to an active staff member and receives t
   assert.equal(fixture.batches.length, 1);
   assert.equal(fixture.writes, 2);
   assert.ok(fixture.batches[0].some((statement) => statement.sql.includes("INSERT INTO contact_assignment")));
+});
+
+test("Team Leader can assign a contact only within the leader's active team", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("team_leader", [["contacts.assign", "team"]]);
+  const response = await worker.fetch(new Request(`https://worker.example/api/v1/contacts/${CONTACT_ID}/assign`, {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      team_id: OWN_TEAM_ID,
+      reason: "Team Leader routes this visitor to the Welcome Team.",
+    }),
+  }), fixture.env);
+  const payload = await response.json();
+  assert.equal(response.status, 201);
+  assert.equal(payload.data.team_id, OWN_TEAM_ID);
+  assert.equal(fixture.batches.length, 1);
+  assert.equal(fixture.writes, 2);
+});
+
+test("Team Leader cannot assign a contact to a different branch team", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("team_leader", [["contacts.assign", "team"]]);
+  const response = await worker.fetch(new Request(`https://worker.example/api/v1/contacts/${CONTACT_ID}/assign`, {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      team_id: OTHER_TEAM_ID,
+      reason: "Attempted to transfer a visitor outside the leader's team.",
+    }),
+  }), fixture.env);
+  const payload = await response.json();
+  assert.equal(response.status, 403);
+  assert.equal(payload.error.code, "TEAM_OUTSIDE_SCOPE");
+  assert.equal(fixture.batches.length, 0);
+  assert.equal(fixture.writes, 0);
 });
 
 test("staff without contacts.assign cannot reassign a contact", async (t) => {
