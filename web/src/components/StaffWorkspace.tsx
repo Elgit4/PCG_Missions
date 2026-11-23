@@ -825,17 +825,20 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     event.preventDefault();
     if (!canAssignFollowUp || !branchId || savingReassignmentId) return;
     const form = new FormData(event.currentTarget);
-    const assigneeProfileId = String(form.get("assignee_profile_id") ?? "").trim();
+    const target = String(form.get("target") ?? "").trim();
+    const [targetType, targetId] = target.split(":", 2);
     const reason = String(form.get("reason") ?? "").trim();
-    if (!assigneeProfileId || reason.length < 10 || reason.length > 500) {
-      setActionError("Choose an active staff member and provide a reason of 10–500 characters.");
+    if (!targetId || (targetType !== "staff" && targetType !== "team") || reason.length < 10 || reason.length > 500) {
+      setActionError("Choose an active staff member or team and provide a reason of 10–500 characters.");
       return;
     }
     setSavingReassignmentId(task.id);
     setActionError("");
     setActionNotice("");
     try {
-      const input: TaskReassignmentInput = { assignee_profile_id: assigneeProfileId, reason };
+      const input: TaskReassignmentInput = targetType === "staff"
+        ? { assignee_profile_id: targetId, reason }
+        : { team_id: targetId, reason };
       const result = await api.reassignFollowUpTask(branchId, task.id, input);
       setTasks((current) => current.map((item) => item.id === task.id ? result.data : item));
       setReassigningTaskId(null);
@@ -1200,9 +1203,9 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                 {canAssignFollowUp && (task.status === "open" || task.status === "in_progress") && <div className="cmi-task-handoff">
                   <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setReassigningTaskId((current) => current === task.id ? null : task.id)} aria-expanded={reassigningTaskId === task.id}> {reassigningTaskId === task.id ? "Close handoff" : "Reassign"}</button>
                   {reassigningTaskId === task.id && <form className="cmi-form-grid" onSubmit={(event) => void reassignTask(task, event)}>
-                    <label>New responsible staff member<select name="assignee_profile_id" required defaultValue=""><option value="">Choose active staff</option>{staffMembers.filter((member) => member.account_status === "active" && member.roles.length > 0).map((member) => <option key={member.id} value={member.id}>{member.full_name} · {member.roles.map((role) => role.name).join(", ")}</option>)}</select></label>
+                    <label>New responsible staff member or team<select name="target" required defaultValue=""><option value="">Choose active staff or team</option>{staffMembers.some((member) => member.account_status === "active" && member.roles.length > 0) && <optgroup label="Staff">{staffMembers.filter((member) => member.account_status === "active" && member.roles.length > 0).map((member) => <option key={member.id} value={`staff:${member.id}`}>{member.full_name} · {member.roles.map((role) => role.name).join(", ")}</option>)}</optgroup>}{teams.some((team) => team.is_active) && <optgroup label="Teams">{teams.filter((team) => team.is_active).map((team) => <option key={team.id} value={`team:${team.id}`}>{team.name}</option>)}</optgroup>}</select></label>
                     <label>Reason for handoff<textarea name="reason" required minLength={10} maxLength={500} rows={2} placeholder="Record why responsibility is changing (10–500 characters)." /></label>
-                    <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setReassigningTaskId(null)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={savingReassignmentId === task.id || !staffMembers.some((member) => member.account_status === "active" && member.roles.length > 0)}>{savingReassignmentId === task.id ? "Transferring…" : "Confirm handoff"}</button></div>
+                    <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setReassigningTaskId(null)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={savingReassignmentId === task.id || (!staffMembers.some((member) => member.account_status === "active" && member.roles.length > 0) && !teams.some((team) => team.is_active))}>{savingReassignmentId === task.id ? "Transferring…" : "Confirm handoff"}</button></div>
                   </form>}
                 </div>}
               </article>;
