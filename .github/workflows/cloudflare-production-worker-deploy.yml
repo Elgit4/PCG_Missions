@@ -74,7 +74,7 @@ jobs:
             local workflow_file="$1"
             local label="$2"
             local runs accepted sha
-            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_file}/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq '.workflow_runs[] | select(.conclusion == "success") | .head_sha')"
+            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq --arg workflow ".github/workflows/${workflow_file}" '.workflow_runs[] | select(.path == $workflow) | select(.conclusion == "success") | .head_sha')"
             accepted=""
             while IFS= read -r sha; do
               [[ -z "$sha" ]] && continue
