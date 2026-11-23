@@ -43,7 +43,7 @@ jobs:
       - name: Check out Cloudflare auth consolidation
         uses: actions/checkout@v4
         with:
-          ref: migration/cloudflare-auth-consolidation
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Node.js
