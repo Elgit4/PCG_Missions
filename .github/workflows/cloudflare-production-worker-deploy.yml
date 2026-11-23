@@ -10,9 +10,10 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: pcg-missions-cloudflare-production-worker
+  group: pcg-missions-d1-restore-rehearsal
   cancel-in-progress: false
 
 jobs:
@@ -56,6 +57,46 @@ jobs:
           test "$CONFIRMATION" = "DEPLOY-PRODUCTION"
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           npx --yes wrangler@4.166.0 whoami
+
+      - name: Require successful preview, restore and CI acceptance on reviewed code
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git fetch origin migration/cloudflare-auth-consolidation --quiet
+          auth_fix_sha="$(git log --all -1 --format=%H --grep='fix(auth): connect Better Auth to D1 through Drizzle')"
+          if [[ -z "$auth_fix_sha" ]]; then
+            echo "::error title=Authentication fix not found::The reviewed Better Auth D1 adapter commit is missing from this release branch."
+            exit 1
+          fi
+
+          require_successful_ancestor() {
+            local workflow_file="$1"
+            local label="$2"
+            local runs accepted sha
+            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow_file}/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq '.workflow_runs[] | select(.conclusion == "success") | .head_sha')"
+            accepted=""
+            while IFS= read -r sha; do
+              [[ -z "$sha" ]] && continue
+              if git cat-file -e "${sha}^{commit}" 2>/dev/null &&
+                 git merge-base --is-ancestor "$auth_fix_sha" "$sha" &&
+                 git merge-base --is-ancestor "$sha" "$GITHUB_SHA"; then
+                accepted="$sha"
+                break
+              fi
+            done <<< "$runs"
+            if [[ -z "$accepted" ]]; then
+              echo "::error title=Production acceptance gate blocked::$label has no successful run on this authentication fix or a later ancestor of the selected release commit."
+              exit 1
+            fi
+            echo "$label accepted at $accepted"
+          }
+
+          require_successful_ancestor "cloudflare-d1-foundation.yml" "Cloudflare D1 Foundation"
+          require_successful_ancestor "cmi-web-ci.yml" "CMI web CI"
+          require_successful_ancestor "cloudflare-d1-restore-rehearsal.yml" "Cloudflare D1 Restore and Authenticated API Rehearsal"
+          require_successful_ancestor "cloudflare-preview-deploy.yml" "Cloudflare Auth Preview Release"
 
       - name: Install pinned Worker dependencies
         run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
@@ -143,7 +184,7 @@ jobs:
           npx wrangler d1 migrations apply pcg-missions-production --remote --env production 2>&1 | tee /tmp/pcg-production-migrations.log
           migration_status=${PIPESTATUS[0]}
           set -e
-          if [[ "$migration_status" -ne 0 ]] && grep -q "code: 7500" /tmp/pcg-production-migrations.log; then
+          if [[ "$migration_status" -ne 0 ]] && grep -Eiq "7500|daily row write limit|free tier" /tmp/pcg-production-migrations.log; then
             reset_at="$(date -u -d 'tomorrow 00:05:00' +%s)"
             now="$(date -u +%s)"
             wait_seconds=$((reset_at - now))
@@ -189,6 +230,58 @@ jobs:
             latest_migration_id: row.latest_migration_id
           }));
           NODE
+
+      - name: Verify production D1 write budget for Better Auth session storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_id="pcg-rate-limit-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          probe_key="pcg-rate-limit-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          insert_sql="INSERT INTO rateLimit (id,key,count,lastRequest) VALUES ('${probe_id}','${probe_key}',1,$(date -u +%s%3N))"
+          delete_sql="DELETE FROM rateLimit WHERE id='${probe_id}'"
+
+          wait_for_quota_reset() {
+            reset_at="$(date -u -d '00:05 tomorrow' +%s)"
+            now="$(date -u +%s)"
+            wait_seconds=$((reset_at - now))
+            if [[ "$wait_seconds" -le 0 || "$wait_seconds" -gt 18000 ]]; then
+              echo "::error title=D1 free-tier daily write limit::Cloudflare D1 row-write quota is exhausted outside the supported five-hour wait window."
+              return 1
+            fi
+            echo "::warning title=D1 daily write quota exhausted::Waiting until 00:05 UTC before retrying the production rate-limit write probe."
+            sleep "$wait_seconds"
+          }
+
+          run_probe_sql() {
+            local sql="$1"
+            local log_file="$2"
+            set +e
+            npx wrangler d1 execute pcg-missions-production --remote --env production --command "$sql" 2>&1 | tee "$log_file"
+            local status=${PIPESTATUS[0]}
+            set -e
+            if [[ "$status" -ne 0 ]] && grep -Eiq "7500|daily row write limit|free tier" "$log_file"; then
+              return 75
+            fi
+            return "$status"
+          }
+
+          if run_probe_sql "$insert_sql" /tmp/pcg-production-write-probe-insert.log; then
+            :
+          else
+            status=$?
+            if [[ "$status" -ne 75 ]]; then exit "$status"; fi
+            wait_for_quota_reset
+            run_probe_sql "$insert_sql" /tmp/pcg-production-write-probe-insert-retry.log
+          fi
+
+          if run_probe_sql "$delete_sql" /tmp/pcg-production-write-probe-delete.log; then
+            :
+          else
+            status=$?
+            if [[ "$status" -ne 75 ]]; then exit "$status"; fi
+            wait_for_quota_reset
+            run_probe_sql "$delete_sql" /tmp/pcg-production-write-probe-delete-retry.log
+          fi
 
       - name: Deploy reviewed Worker code to production
         run: npx wrangler deploy --env production
