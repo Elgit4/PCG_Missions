@@ -24,4 +24,10 @@ describe("staff account and password-reset mutation concurrency", () => {
       setProcessingResetId(null);
     }`);
   });
+  it("loads Admin/Pastor elevation and revocation queues on first workspace load", () => {
+    expect(source).toContain("requests.push(api.listAdminElevationRequests(branchId)");
+    expect(source).toContain("requests.push(api.listAdminRevocationRequests(branchId)");
+    expect(source).toContain("canApproveStaffRoles, debouncedQuery");
+  });
+
 });
