@@ -25,7 +25,7 @@ test("calendar and event audit triggers do not turn successful updates into conf
   assert.match(calendar, /result\.meta\?\.changes \?\? 0\) < 1/);
   const eventItem = section("async function handleEventItem(", "async function handleEventWorkspaceOperations(");
   assert.match(eventItem, /result\.meta\?\.changes\?\?0\)<1/);
-  const flyer = section("async function handleEventFlyer(", "const EVENT_RESPONSE_COLUMNS");
+  const flyer = section("async function handleEventFlyer(", "async function handleEventCollection(");
   assert.match(flyer, /updated\.meta\?\.changes\?\?0\)<1/);
   const eventOps = section("async function handleEventWorkspaceOperations(", "async function handleReportOperations(");
   assert.match(eventOps, /result\.meta\?\.changes\?\?0\)<1/);
