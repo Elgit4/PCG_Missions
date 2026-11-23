@@ -2,7 +2,7 @@
 
 **Verified:** 22 November 2026 (UTC)  
 **Branch:** `migration/cloudflare-auth-consolidation`  
-**Status:** Cloudflare production baseline remains live. Preview is now on schema 46 with the current Worker. Production schema and Worker have not received the schema 46 release.
+**Status:** Cloudflare production baseline remains live. Preview target is schema 47 with the current Worker. Production schema and Worker have not received the schema 47 release.
 
 ## Target architecture
 
@@ -53,7 +53,7 @@ The positive D1 lifecycle test covers ministry report submission and approval, e
 
 ## D1 backup and restore rehearsal
 
-The restore-rehearsal workflow created a temporary EU D1 database, applied the complete 46-migration chain, verified schema 46 and all 46 migration-ledger entries, captured a Time Travel bookmark, wrote a probe record, restored to the bookmark, and verified that the schema and migration ledger remained while the post-bookmark probe disappeared. The temporary database was deleted after the test.
+The restore-rehearsal workflow created a temporary EU D1 database, applied the complete 47-migration chain, verified schema 46 and all 47 migration-ledger entries, captured a Time Travel bookmark, wrote a probe record, restored to the bookmark, and verified that the schema and migration ledger remained while the post-bookmark probe disappeared. The temporary database was deleted after the test.
 
 A current Time Travel bookmark is available on production D1. **A production-data restore has not been rehearsed**; do not treat the isolated scratch rehearsal as proof that recovery of production records has been tested.
 
