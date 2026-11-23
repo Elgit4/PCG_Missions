@@ -12,7 +12,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: pcg-missions-production-test-account-reset-v3
+  group: pcg-missions-production-test-account-reset-v4
   cancel-in-progress: false
 
 jobs:
@@ -44,38 +44,75 @@ jobs:
           npx --yes wrangler@4.166.0 whoami
           npm install --no-package-lock --ignore-scripts --no-audit --no-fund
 
-      - name: Require isolated D1 restore and authenticated API acceptance to pass first
+      - name: Require isolated schema and authenticated API restore rehearsal
         shell: bash
         run: |
           set -euo pipefail
-          restore_path=".github/workflows/cloudflare-d1-restore-rehearsal.yml"
+          workflow_path=".github/workflows/cloudflare-d1-restore-rehearsal.yml"
           for attempt in $(seq 1 720); do
             runs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100)"
-            chosen=""
-            while IFS=$'\t' read -r run_id sha status conclusion; do
-              [[ -z "$run_id" ]] && continue
-              if ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then continue; fi
-              if ! git diff --quiet "$sha" "$GITHUB_SHA" -- cloudflare/src cloudflare/migrations cloudflare/package.json cloudflare/package-lock.json cloudflare/wrangler.toml; then continue; fi
-              chosen="$run_id"$'\t'"$status"$'\t'"$conclusion"
-              break
-            done < <(jq -r --arg path "$restore_path" \
-              '[.workflow_runs[] | select(.path == $path and .head_branch == "migration/cloudflare-auth-consolidation")] | sort_by(.created_at) | reverse | .[] | [.id,.head_sha,.status,(.conclusion // "")] | @tsv' \
-              <<< "$runs")
+            chosen="$(jq -r --arg path "$workflow_path" '
+              [.workflow_runs[] | select(.path == $path and .head_branch == "migration/cloudflare-auth-consolidation")]
+              | sort_by(.created_at) | reverse | .[0] // empty
+              | [.id,.head_sha,.status,(.conclusion // "")] | @tsv
+            ' <<< "$runs")"
             if [[ -n "$chosen" ]]; then
-              IFS=$'\t' read -r run_id status conclusion <<< "$chosen"
+              IFS=$'\t' read -r run_id sha status conclusion <<< "$chosen"
               if [[ "$status" == "completed" ]]; then
                 if [[ "$conclusion" != "success" ]]; then
-                  echo "::error title=Production-data recovery failed::The clone/restore rehearsal concluded $conclusion."
+                  echo "::error title=Isolated restore failed::The isolated schema and authenticated API rehearsal concluded $conclusion."
                   exit 1
                 fi
-                echo "Production-data clone/restore passed (run $run_id)."
-                exit 0
+                if ! git cat-file -e "${sha}^{commit}" 2>/dev/null ||
+                   ! git diff --quiet "$sha" "$GITHUB_SHA" -- cloudflare/src cloudflare/migrations cloudflare/package.json cloudflare/package-lock.json cloudflare/wrangler.toml; then
+                  echo "::error title=Stale restore evidence::The successful restore run does not match the current Worker/schema source."
+                  exit 1
+                fi
+                echo "Isolated EU schema and authenticated API restore passed (run $run_id)."
+                break
               fi
+            fi
+            if [[ "$attempt" -eq 720 ]]; then
+              echo "::error title=Isolated restore timeout::No successful current-source restore rehearsal completed within six hours."
+              exit 1
             fi
             sleep 30
           done
-          echo "::error title=Production-data recovery timeout::No successful production-data clone/restore completed within six hours."
-          exit 1
+
+      - name: Require production-data clone and Time Travel restore rehearsal
+        shell: bash
+        run: |
+          set -euo pipefail
+          workflow_path=".github/workflows/cloudflare-production-data-restore-rehearsal.yml"
+          for attempt in $(seq 1 720); do
+            runs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100)"
+            chosen="$(jq -r --arg path "$workflow_path" '
+              [.workflow_runs[] | select(.path == $path and .head_branch == "migration/cloudflare-auth-consolidation")]
+              | sort_by(.created_at) | reverse | .[0] // empty
+              | [.id,.head_sha,.status,(.conclusion // "")] | @tsv
+            ' <<< "$runs")"
+            if [[ -n "$chosen" ]]; then
+              IFS=$'\t' read -r run_id sha status conclusion <<< "$chosen"
+              if [[ "$status" == "completed" ]]; then
+                if [[ "$conclusion" != "success" ]]; then
+                  echo "::error title=Production-data recovery failed::The production-data clone/restore rehearsal concluded $conclusion."
+                  exit 1
+                fi
+                if ! git cat-file -e "${sha}^{commit}" 2>/dev/null ||
+                   ! git diff --quiet "$sha" "$GITHUB_SHA" -- cloudflare/src cloudflare/migrations cloudflare/package.json cloudflare/package-lock.json cloudflare/wrangler.toml; then
+                  echo "::error title=Stale production-data evidence::The clone/restore run does not match the current Worker/schema source."
+                  exit 1
+                fi
+                echo "Production data clone and Time Travel restore passed (run $run_id)."
+                break
+              fi
+            fi
+            if [[ "$attempt" -eq 720 ]]; then
+              echo "::error title=Production-data recovery timeout::No successful current-source clone/restore completed within six hours."
+              exit 1
+            fi
+            sleep 30
+          done
 
       - name: Require current-source D1 and frontend CI to pass
         shell: bash
