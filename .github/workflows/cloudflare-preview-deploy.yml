@@ -16,10 +16,11 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 # Serialize preview, restore rehearsal and production D1 writes against the account's daily quota.
 concurrency:
-  group: pcg-missions-d1-restore-rehearsal
+  group: pcg-missions-cloudflare-auth-preview-release
   cancel-in-progress: false
 
 jobs:
@@ -37,6 +38,37 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: migration/cloudflare-auth-consolidation
+          fetch-depth: 0
+
+      - name: Wait for authenticated D1 restore rehearsal on reviewed code
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          auth_fix_sha="$(git log --all -1 --format=%H --grep='fix(auth): connect Better Auth to D1 through Drizzle')"
+          if [[ -z "$auth_fix_sha" ]]; then
+            echo "::error title=Authentication fix not found::The reviewed Better Auth D1 adapter commit is missing from this preview branch."
+            exit 1
+          fi
+
+          deadline=$((SECONDS + 18000))
+          while (( SECONDS < deadline )); do
+            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/cloudflare-d1-restore-rehearsal.yml/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq '.workflow_runs[] | select(.conclusion == "success") | .head_sha')"
+            while IFS= read -r sha; do
+              [[ -z "$sha" ]] && continue
+              if git cat-file -e "${sha}^{commit}" 2>/dev/null &&
+                 git merge-base --is-ancestor "$auth_fix_sha" "$sha" &&
+                 git merge-base --is-ancestor "$sha" "$GITHUB_SHA"; then
+                echo "Authenticated D1 restore rehearsal accepted at $sha."
+                exit 0
+              fi
+            done <<< "$runs"
+            echo "Waiting for a successful schema 46 restore and six-role authenticated acceptance run..."
+            sleep 60
+          done
+          echo "::error title=Authenticated restore rehearsal not complete::Preview deployment is blocked until the reviewed code passes the isolated D1 restore and six-role acceptance rehearsal."
+          exit 1
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
