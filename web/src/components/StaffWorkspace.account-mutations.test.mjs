@@ -43,4 +43,10 @@ describe("staff account and password-reset mutation concurrency", () => {
     expect(source).toContain("const input: TaskReassignmentInput = targetType === \"staff\"");
   });
 
+  it("does not silently treat an unconfirmed server sign-out as success", () => {
+    expect(source).toContain("await onSignOut()");
+    expect(source).toContain("setActionError(cause instanceof Error");
+    expect(source).not.toContain("Local credentials are cleared even when offline");
+  });
+
 });

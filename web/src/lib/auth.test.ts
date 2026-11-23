@@ -60,6 +60,19 @@ describe("Cloudflare Better Auth browser client", () => {
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/auth/sign-out");
   });
 
+  it("surfaces a failed server sign-out instead of pretending the HttpOnly session was cleared", async () => {
+    const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response(
+      JSON.stringify({ error: { code: "AUTH_SERVICE_UNAVAILABLE", message: "Sign-out could not be confirmed." } }),
+      { status: 503 },
+    ));
+    const client = new PcgAuthClient(fetcher as typeof fetch);
+    await expect(client.signOut()).rejects.toMatchObject({
+      status: 503,
+      code: "AUTH_SERVICE_UNAVAILABLE",
+      message: "Sign-out could not be confirmed.",
+    });
+  });
+
   it("rejects weak forced-password replacements before a request", async () => {
     const fetcher = vi.fn();
     const client = new PcgAuthClient(fetcher as typeof fetch);

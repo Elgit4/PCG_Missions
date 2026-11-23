@@ -90,7 +90,9 @@ export class PcgAuthClient {
   }
 
   async signOut(): Promise<void> {
-    try { await this.request("sign-out", "POST"); } catch { /* Server-side cookie expiry remains authoritative. */ }
+    // Better Auth's session cookie is HttpOnly. A local UI reset cannot revoke it;
+    // callers must know whether the server actually confirmed sign-out.
+    await this.request("sign-out", "POST");
   }
 
   async testConnection(): Promise<string> {

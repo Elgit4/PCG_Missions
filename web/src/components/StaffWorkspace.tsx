@@ -902,8 +902,16 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   };
   const signOut = async () => {
     setSigningOut(true);
-    try { await onSignOut(); } catch { /* Local credentials are cleared even when offline. */ }
-    finally { setSigningOut(false); }
+    setActionError("");
+    try {
+      await onSignOut();
+    } catch (cause) {
+      setActionError(cause instanceof Error
+        ? cause.message
+        : "The secure service could not confirm sign-out. Your session may still be active; check your connection and retry.");
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   if (!activeBranch) return (
@@ -911,6 +919,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       <div className="cmi-empty-icon"><ShieldCheck size={24} /></div>
       <h1>No active branch access</h1>
       <p>Your staff account is authenticated, but no active branch assignment is available. Contact an authorised church administrator.</p>
+      {actionError && <FeedbackMessage kind="error" message={actionError} />}
       <button className="cmi-button cmi-button-secondary" onClick={() => void signOut()} disabled={signingOut}><LogOut size={16} />{signingOut ? "Signing out…" : "Sign out"}</button>
     </main>
   );
