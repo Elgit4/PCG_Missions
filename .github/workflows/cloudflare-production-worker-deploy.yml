@@ -20,7 +20,7 @@ jobs:
     name: Validate, migrate and deploy the production Worker
     if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 360
     environment: production
     defaults:
       run:
@@ -55,7 +55,7 @@ jobs:
           test "$GITHUB_REF" = "refs/heads/migration/cloudflare-auth-consolidation"
           test "$CONFIRMATION" = "DEPLOY-PRODUCTION"
           test -n "${CLOUDFLARE_API_TOKEN:-}"
-          npx --yes wrangler@4.46.0 whoami
+          npx --yes wrangler@4.166.0 whoami
 
       - name: Install pinned Worker dependencies
         run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
@@ -136,7 +136,27 @@ jobs:
           NODE
 
       - name: Apply only pending forward-only production migrations
-        run: npx wrangler d1 migrations apply pcg-missions-production --remote --env production
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          npx wrangler d1 migrations apply pcg-missions-production --remote --env production 2>&1 | tee /tmp/pcg-production-migrations.log
+          migration_status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$migration_status" -ne 0 ]] && grep -q "code: 7500" /tmp/pcg-production-migrations.log; then
+            reset_at="$(date -u -d 'tomorrow 00:05:00' +%s)"
+            now="$(date -u +%s)"
+            wait_seconds=$((reset_at - now))
+            if [[ "$wait_seconds" -le 0 || "$wait_seconds" -gt 18000 ]]; then
+              echo "::error title=D1 free-tier daily write limit::Cloudflare D1 returned code 7500. Re-run after the UTC quota reset or use a paid D1 plan."
+              exit 1
+            fi
+            echo "::warning title=D1 daily write quota exhausted::Waiting until 00:05 UTC for the account's daily row-write quota to reset, then retrying the same forward-only production migration."
+            sleep "$wait_seconds"
+            npx wrangler d1 migrations apply pcg-missions-production --remote --env production
+          elif [[ "$migration_status" -ne 0 ]]; then
+            exit "$migration_status"
+          fi
 
       - name: Verify production schema and migration ledger after migration
         shell: bash
