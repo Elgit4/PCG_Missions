@@ -530,8 +530,9 @@ interface TaskCreateBase {
   task_note?: string | null;
 }
 export type TaskAssignmentTarget =
-  | { assignee_user_id: string; team_id?: never }
-  | { team_id: string; assignee_user_id?: never };
+  | { assignee_user_id: string; assignee_profile_id?: never; team_id?: never }
+  | { assignee_profile_id: string; assignee_user_id?: never; team_id?: never }
+  | { team_id: string; assignee_user_id?: never; assignee_profile_id?: never };
 export type TaskCreateInput = TaskCreateBase & TaskAssignmentTarget;
 export interface FollowUpAssignmentTeam { id: string; name: string }
 export type TaskReassignmentInput =
@@ -561,11 +562,14 @@ function parseJson(text: string): unknown {
   try { return JSON.parse(text) as unknown; } catch { return null; }
 }
 function assertExactlyOneTaskTarget(
-  input: { assignee_user_id?: unknown; team_id?: unknown },
+  input: { assignee_user_id?: unknown; assignee_profile_id?: unknown; team_id?: unknown },
 ): asserts input is TaskAssignmentTarget {
-  const hasAssignee = typeof input.assignee_user_id === "string" && input.assignee_user_id.trim().length > 0;
-  const hasTeam = typeof input.team_id === "string" && input.team_id.trim().length > 0;
-  if (hasAssignee === hasTeam) {
+  const targets = [
+    input.assignee_user_id,
+    input.assignee_profile_id,
+    input.team_id,
+  ].filter((value) => typeof value === "string" && value.trim().length > 0);
+  if (targets.length !== 1) {
     throw new TypeError("Exactly one non-empty task assignment target is required.");
   }
 }
