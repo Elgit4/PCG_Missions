@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createAuth, createBetterAuthUser, deleteBetterAuthUser, updateBetterAuthUserPassword, verifyLegacyBcryptPassword } from "../src/auth.ts";
+import { rateLimit } from "../src/auth-schema.ts";
 
 function fakeDatabase() {
   const statements = [];
@@ -15,6 +16,12 @@ function fakeDatabase() {
   };
   return { DB, statements };
 }
+
+test("D1 rate-limit records receive an application-generated primary key", () => {
+  assert.equal(typeof rateLimit.id.defaultFn, "function");
+  assert.match(rateLimit.id.defaultFn(), /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+  assert.equal(rateLimit.key.isUnique, true);
+});
 
 test("Better Auth initializes its session API with the D1 Drizzle adapter", () => {
   const { DB } = fakeDatabase();
