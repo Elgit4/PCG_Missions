@@ -12,7 +12,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: pcg-missions-production-test-account-reset-v2
+  group: pcg-missions-production-test-account-reset-v3
   cancel-in-progress: false
 
 jobs:
