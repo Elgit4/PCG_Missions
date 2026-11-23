@@ -45,8 +45,9 @@ describe("Cloudflare Pages same-origin API gateway", () => {
     expect(forwarded.get("accept")).toBe("application/json");
     expect(forwarded.get("x-request-id")).toBeTruthy();
 
-    const setCookies = typeof response.headers.getSetCookie === "function"
-      ? response.headers.getSetCookie()
+    const getSetCookie = (response.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie;
+    const setCookies = typeof getSetCookie === "function"
+      ? getSetCookie.call(response.headers)
       : [response.headers.get("set-cookie") ?? ""];
     expect(setCookies).toHaveLength(2);
     expect(setCookies[0]).toContain("better-auth.session_token=opaque-session");
