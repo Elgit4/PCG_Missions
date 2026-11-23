@@ -81,8 +81,8 @@ jobs:
             while IFS= read -r sha; do
               [[ -z "$sha" ]] && continue
               if git cat-file -e "${sha}^{commit}" 2>/dev/null &&
-                 git grep -q 'drizzleAdapter' "$sha" -- cloudflare/src/auth.ts &&
-                 git grep -q 'authSchema' "$sha" -- cloudflare/src/auth.ts &&
+                 git grep -q 'drizzleAdapter' "$sha" -- src/auth.ts &&
+                 git grep -q 'authSchema' "$sha" -- src/auth.ts &&
                  git merge-base --is-ancestor "$sha" "$GITHUB_SHA"; then
                 accepted="$sha"
                 break
