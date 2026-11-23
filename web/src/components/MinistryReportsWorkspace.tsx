@@ -35,8 +35,8 @@ function emptyCounts(): Record<CountKey, string> {
 }
 
 export function MinistryReportsWorkspace({ branchId, api, session, onSessionExpired }: Props) {
-  const canSubmit = hasCapability(session, "report.submit.own", branchId);
-  const canReview = hasCapability(session, "report.review.branch", branchId) || hasCapability(session, "report.review.team", branchId);
+  const canSubmit = hasCapability(session, "report.submit.scoped", branchId);
+  const canReview = hasCapability(session, "report.review.scoped", branchId);
   const [reports, setReports] = useState<MinistryReportRecord[]>([]);
   const [totalReports, setTotalReports] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
