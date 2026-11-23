@@ -5145,7 +5145,7 @@ async function listAssignedPrayerRequests(
              json_object('access_mode', 'assigned')
       FROM prayer_request
       JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
-            WHERE prayer_request.branch_id = ?
+      WHERE prayer_request.branch_id = ?
         AND prayer_request.status IN ('assigned','in_progress','answered')
         AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
         AND ${activeAssignment}
@@ -5177,7 +5177,9 @@ async function listAssignedPrayerRequests(
     env.DB.prepare(`
       SELECT prayer_request.id, prayer_request.request_text, prayer_request.status,
              prayer_request.sensitivity, prayer_request.expires_at,
-             prayer_request.answered_at, prayer_request.created_at, prayer_request.updated_at
+             prayer_request.answered_at, prayer_request.created_at, prayer_request.updated_at,
+             prayer_assignment.starts_at AS assignment_starts_at,
+             prayer_assignment.ends_at AS assignment_ends_at
       FROM prayer_request
       JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
             WHERE prayer_request.branch_id = ?
@@ -5192,7 +5194,7 @@ async function listAssignedPrayerRequests(
     ),
   ]);
   const rows = (batch[2] as unknown as {
-    results?: Array<{ id: string; request_text: string; status: string; sensitivity: string; expires_at: string | null; answered_at: string | null; created_at: string; updated_at: string }>;
+    results?: Array<{ id: string; request_text: string; status: string; sensitivity: string; expires_at: string | null; answered_at: string | null; created_at: string; updated_at: string; assignment_starts_at: string; assignment_ends_at: string | null }>;
   })?.results ?? [];
   if (!batch[0]?.success || !batch[1]?.success ||
       (batch[0]?.meta?.changes ?? 0) !== rows.length ||
@@ -5203,7 +5205,7 @@ async function listAssignedPrayerRequests(
     SELECT COUNT(*) AS total
     FROM prayer_request
     JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
-        WHERE prayer_request.branch_id = ?
+    WHERE prayer_request.branch_id = ?
       AND prayer_request.status IN ('assigned','in_progress','answered')
       AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
       AND ${activeAssignment}
