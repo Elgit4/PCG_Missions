@@ -465,6 +465,9 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           if (this.sql.includes("SELECT sp.id AS profile_id, sp.auth_user_id") && this.sql.includes("FROM staff_profile sp")) {
             return { profile_id: STAFF_PROFILE_ID, auth_user_id: AUTH_USER_ID };
           }
+          if (this.sql.includes("SELECT sp.auth_user_id") && this.sql.includes("FROM staff_profile sp")) {
+            return { auth_user_id: "10000000-0000-4000-8000-000000000003" };
+          }
           if (this.sql.includes("FROM followup_task") && this.sql.includes("SELECT id, status, team_id, assignee_user_id")) {
             return { id: "90000000-0000-4000-8000-000000000001", status: "open", team_id: null, assignee_user_id: AUTH_USER_ID };
           }
@@ -1289,6 +1292,64 @@ test("Prayer Intercessor cannot write visitor contact interactions", async (t) =
   );
 });
 
+test("Admin/Pastor can assign a contact to an active staff member and receives the standard data envelope", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("admin_pastor", [["contacts.assign", "branch"]]);
+  const response = await worker.fetch(new Request(`https://worker.example/api/v1/contacts/${CONTACT_ID}/assign`, {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      assignee_profile_id: COVERED_STAFF_ID,
+      reason: "Missions leader assigned this visitor for follow-up.",
+    }),
+  }), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.data.assignee_profile_id, COVERED_STAFF_ID);
+  assert.equal(payload.data.team_id, null);
+  assert.equal(payload.assignment_id, payload.data.assignment_id);
+  assert.equal(fixture.batches.length, 1);
+  assert.equal(fixture.writes, 2);
+  assert.ok(fixture.batches[0].some((statement) => statement.sql.includes("INSERT INTO contact_assignment")));
+});
+
+test("staff without contacts.assign cannot reassign a contact", async (t) => {
+  t.mock.method(globalThis, "fetch", async (input) => {
+    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
+    assert.equal(url.pathname, "/auth/v1/user");
+    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
+  });
+  const fixture = authorizedDirectoryEnv("coordinator");
+  const response = await worker.fetch(new Request(`https://worker.example/api/v1/contacts/${CONTACT_ID}/assign`, {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      assignee_profile_id: COVERED_STAFF_ID,
+      reason: "Attempted assignment without the required grant.",
+    }),
+  }), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 403);
+  assert.equal(payload.error.code, "CAPABILITY_DENIED");
+  assert.equal(fixture.batches.length, 0);
+  assert.equal(fixture.writes, 0);
+});
+
 test("Admin/Pastor can create an idempotent branch-scoped follow-up task assigned by Auth user ID", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
     const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
@@ -1739,6 +1800,67 @@ test("expired temporary-password gate blocks Better Auth credential mutation", a
   assert.equal(response.status, 403);
   assert.equal((await response.json()).error.code, "PASSWORD_SETUP_EXPIRED");
   assert.equal(fixture.batches?.length ?? 0, 0);
+});
+
+
+test("staff role assignment and Admin/Pastor review endpoints enforce their capabilities", async () => {
+  const fixture = authorizedDirectoryEnv("coordinator");
+  const headers = {
+    Cookie: "better-auth.session_token=verified-test-token",
+    "X-Branch-Id": BRANCH_ID,
+    "Content-Type": "application/json",
+  };
+  const assignment = await worker.fetch(new Request("https://worker.example/api/v1/staff/roles", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      target_profile_id: COVERED_STAFF_ID,
+      role_code: "field_worker",
+      starts_at: "2026-11-22T12:00:00.000Z",
+      ends_at: null,
+      reason: "The ministry appointment was approved.",
+    }),
+  }), fixture.env);
+  const elevationList = await worker.fetch(new Request("https://worker.example/api/v1/staff/role-elevations", { headers }), fixture.env);
+  const revocationList = await worker.fetch(new Request("https://worker.example/api/v1/staff/role-revocations", { headers }), fixture.env);
+
+  for (const response of [assignment, elevationList, revocationList]) {
+    const payload = await response.json();
+    assert.equal(response.status, 403);
+    assert.equal(payload.error.code, "CAPABILITY_DENIED");
+  }
+  assert.equal(fixture.batches.length, 0);
+  assert.equal(fixture.writes, 0);
+});
+
+
+test("staff directory preserves branch history and exposes active assignment identifiers for role management", async () => {
+  const fixture = authorizedDirectoryEnv("admin_pastor");
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/staff?limit=50&offset=0", {
+    headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID },
+  }), fixture.env);
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.deepEqual(payload.data, []);
+  const query = fixture.calls.find((call) => call.kind === "all" && call.sql.includes("FROM staff_profile sp") && call.sql.includes("roles_json"));
+  assert.ok(query);
+  assert.match(query.sql, /json_object\('assignment_id', sra2\.id/);
+  const branchHistoryPredicate = query.sql.slice(query.sql.indexOf("WHERE EXISTS"));
+  assert.match(branchHistoryPredicate, /sra\.branch_id = \?/);
+  assert.doesNotMatch(branchHistoryPredicate, /sra\.revoked_at IS NULL/);
+});
+
+test("Admin/Pastor role approval queues return the standard data envelope", async () => {
+  const fixture = authorizedDirectoryEnv("admin_pastor", [["staff.role.approve", "branch"]]);
+  const headers = { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID };
+  const elevations = await worker.fetch(new Request("https://worker.example/api/v1/staff/role-elevations", { headers }), fixture.env);
+  const revocations = await worker.fetch(new Request("https://worker.example/api/v1/staff/role-revocations", { headers }), fixture.env);
+  const elevationPayload = await elevations.json();
+  const revocationPayload = await revocations.json();
+  assert.equal(elevations.status, 200);
+  assert.equal(revocations.status, 200);
+  assert.deepEqual(elevationPayload.data, []);
+  assert.deepEqual(revocationPayload.data, []);
 });
 
 

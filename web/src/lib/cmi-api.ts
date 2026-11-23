@@ -48,11 +48,29 @@ export interface StaffSession {
   password_setup_expires_at: string | null;
 }
 
+export interface StaffDirectoryRole {
+  assignment_id: string;
+  code: string;
+  name: string;
+  starts_at: string;
+  ends_at: string | null;
+}
 export interface StaffDirectoryEntry {
   id: string;
   full_name: string;
   account_status: "active" | "inactive";
-  roles: Array<{ code: string; name: string }>;
+  roles: StaffDirectoryRole[];
+}
+export type StandardStaffRoleCode = "coordinator" | "team_leader" | "field_worker" | "follow_up_volunteer" | "prayer_intercessor";
+export interface StaffRoleApprovalRequest {
+  id: string;
+  target_profile_id: string;
+  target_name: string;
+  assignment_id?: string;
+  requested_by: string;
+  requester_name: string;
+  reason: string;
+  requested_at: string;
 }
 
 export interface StaffAccountCreateInput {
@@ -477,6 +495,17 @@ export interface ContactInteractionCreateInput {
   next_action_at?: string | null;
 }
 
+export interface ContactAssignmentInput {
+  assignee_profile_id: string;
+  reason: string;
+}
+export interface ContactAssignmentResult {
+  assignment_id: string;
+  assignee_profile_id: string | null;
+  team_id: string | null;
+  starts_at: string;
+}
+
 export interface FollowUpTask {
   id: string;
   branch_id: string;
@@ -514,7 +543,7 @@ export interface TaskUpdateInput {
   status?: FollowUpTask["status"];
 }
 export interface CmiRequestOptions {
-  method?: "GET" | "POST" | "PATCH";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   /** Branch scope sent as trusted request context, independently of route query parameters. */
   branchId?: string;
   query?: Record<string, string | number | undefined>;
@@ -718,11 +747,24 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     return null;
   }
 
+  if (functionName === "staff-role-operations") {
+    if (suffix === "/staff/roles" && verb === "POST") return "/api/v1/staff/roles";
+    if (/^\/staff\/roles\/[^/]+$/.test(suffix) && verb === "DELETE") return "/api/v1" + suffix;
+    if ((suffix === "/staff/role-elevations" || suffix === "/staff/role-revocations") && (verb === "GET" || verb === "POST")) {
+      return "/api/v1" + suffix;
+    }
+    if (/^\/staff\/role-(elevations|revocations)\/[^/]+\/(approve|reject)$/.test(suffix) && verb === "POST") {
+      return "/api/v1" + suffix;
+    }
+    return null;
+  }
+
   if (functionName === "staff-operations") {
     if (suffix === "/contacts" && (verb === "GET" || verb === "POST")) return "/api/v1/contacts";
     if (/^\/contacts\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix;
     if (/^\/contacts\/[^/]+\/interactions$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
     if (/^\/contacts\/[^/]+\/notes$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
+    if (/^\/contacts\/[^/]+\/assign$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
     if (suffix === "/staff" && verb === "GET") return "/api/v1/staff";
     if (suffix === "/followup/tasks" && (verb === "GET" || verb === "POST")) return "/api/v1/followup/tasks";
     if (suffix.startsWith("/followup/tasks/") && suffix.split("/").length === 4 && verb === "PATCH") return "/api/v1" + suffix;
@@ -900,6 +942,18 @@ export class CmiApiClient {
     );
   }
 
+  assignContact(branchId: string, contactId: string, input: ContactAssignmentInput) {
+    const reason = input.reason.trim();
+    if (!input.assignee_profile_id.trim() || reason.length < 10 || reason.length > 500) {
+      throw new TypeError("A staff assignment target and a reason of 10–500 characters are required.");
+    }
+    return this.request<ContactAssignmentResult>(
+      "staff-operations",
+      `/contacts/${encodeURIComponent(contactId)}/assign`,
+      { method: "POST", query: { branch_id: branchId }, body: { assignee_profile_id: input.assignee_profile_id, reason } },
+    );
+  }
+
   listFollowUpTasks(branchId: string, options: { limit?: number; offset?: number; status?: FollowUpTask["status"] } = {}) {
     return this.request<FollowUpTask[]>("staff-operations", "/followup/tasks", {
       branchId,
@@ -932,6 +986,56 @@ export class CmiApiClient {
     return this.request<StaffDirectoryEntry[]>("staff-operations", "/staff", {
       query: { branch_id: branchId, limit: options.limit ?? 25, offset: options.offset ?? 0, search: options.search },
     });
+  }
+
+  assignStaffRole(branchId: string, targetProfileId: string, roleCode: StandardStaffRoleCode, reason: string) {
+    return this.request<{ id: string; target_profile_id: string; role_code: StandardStaffRoleCode; branch_id: string; starts_at: string; ends_at: string | null }>(
+      "staff-role-operations", "/staff/roles", {
+        method: "POST", branchId,
+        body: { target_profile_id: targetProfileId, role_code: roleCode, starts_at: new Date().toISOString(), ends_at: null, reason },
+      },
+    );
+  }
+  revokeStaffRole(branchId: string, assignmentId: string, reason: string) {
+    return this.request<{ revoked_assignment_id: string }>(
+      "staff-role-operations", "/staff/roles/" + encodeURIComponent(assignmentId), {
+        method: "DELETE", branchId, body: { reason },
+      },
+    );
+  }
+  listAdminElevationRequests(branchId: string) {
+    return this.request<StaffRoleApprovalRequest[]>("staff-role-operations", "/staff/role-elevations", { branchId });
+  }
+  requestAdminElevation(branchId: string, targetProfileId: string, reason: string) {
+    return this.request<{ id: string; target_profile_id: string; status: string }>(
+      "staff-role-operations", "/staff/role-elevations", {
+        method: "POST", branchId, body: { target_profile_id: targetProfileId, reason },
+      },
+    );
+  }
+  reviewAdminElevation(branchId: string, requestId: string, decision: "approve" | "reject", reason: string) {
+    return this.request<{ elevation_request_id: string; assignment_id?: string; status: string }>(
+      "staff-role-operations", "/staff/role-elevations/" + encodeURIComponent(requestId) + "/" + decision, {
+        method: "POST", branchId, body: { review_reason: reason },
+      },
+    );
+  }
+  listAdminRevocationRequests(branchId: string) {
+    return this.request<StaffRoleApprovalRequest[]>("staff-role-operations", "/staff/role-revocations", { branchId });
+  }
+  requestAdminRevocation(branchId: string, assignmentId: string, reason: string) {
+    return this.request<{ id: string; assignment_id: string; status: string }>(
+      "staff-role-operations", "/staff/role-revocations", {
+        method: "POST", branchId, body: { assignment_id: assignmentId, reason },
+      },
+    );
+  }
+  reviewAdminRevocation(branchId: string, requestId: string, decision: "approve" | "reject", reason: string) {
+    return this.request<{ revocation_request_id: string; status: string }>(
+      "staff-role-operations", "/staff/role-revocations/" + encodeURIComponent(requestId) + "/" + decision, {
+        method: "POST", branchId, body: { review_reason: reason },
+      },
+    );
   }
 
   createStaffAccount(input: StaffAccountCreateInput) {

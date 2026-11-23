@@ -73,6 +73,57 @@ describe("Cloudflare Worker API client", () => {
     expect(init.credentials).toBe("include");
   });
 
+  it("assigns a contact through the branch-scoped Worker route with a required reason", async () => {
+    const fetcher = vi.fn(async () => response({
+      assignment_id: "assignment-1",
+      assignee_profile_id: "staff-profile-2",
+      team_id: null,
+      starts_at: "2026-11-23T12:00:00.000Z",
+    }, 201));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    const result = await api.assignContact("branch-1", "contact-1", {
+      assignee_profile_id: "staff-profile-2",
+      reason: "Missions leader assigned this visitor for follow-up.",
+    });
+    expect(result.data.assignment_id).toBe("assignment-1");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URL(url).pathname).toBe("/api/v1/contacts/contact-1/assign");
+    expect(new URL(url).searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(JSON.parse(String(init.body))).toEqual({
+      assignee_profile_id: "staff-profile-2",
+      reason: "Missions leader assigned this visitor for follow-up.",
+    });
+    expect(init.credentials).toBe("include");
+  });
+
+  it("rejects contact assignments without a valid reason before sending a request", async () => {
+    const fetcher = vi.fn(async () => response({}));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    expect(() => api.assignContact("branch-1", "contact-1", {
+      assignee_profile_id: "staff-profile-2",
+      reason: "short",
+    })).toThrow(/reason of 10–500 characters/);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("routes follow-up handoffs through the branch-scoped Worker assignment endpoint", async () => {
+    const fetcher = vi.fn(async () => response({ id: "task-1", assignee_user_id: "staff-user-2" }));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await api.reassignFollowUpTask("branch-1", "task-1", {
+      assignee_profile_id: "staff-profile-2",
+      reason: "Transfer to the assigned field worker for continuity.",
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URL(url).pathname).toBe("/api/v1/followup/tasks/task-1/assign");
+    expect(new URL(url).searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(JSON.parse(String(init.body))).toEqual({
+      assignee_profile_id: "staff-profile-2",
+      reason: "Transfer to the assigned field worker for continuity.",
+    });
+  });
+
   it("routes calendar cancellation through the branch-scoped Cloudflare Worker endpoint", async () => {
     const fetcher = vi.fn(async () => response({ entry_id: "entry-1", status: "cancelled" }));
     const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
@@ -193,6 +244,37 @@ describe("Cloudflare Worker API client", () => {
     for (const [, init] of calls) {
       expect(init.credentials).toBe("include");
       expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+      expect(new Headers(init.headers).has("Authorization")).toBe(false);
+    }
+  });
+
+
+  it("routes staff role assignment and dual-control reviews through the Worker", async () => {
+    const fetcher = vi.fn(async () => response([]));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await api.assignStaffRole("branch-1", "staff-1", "coordinator", "Approved ministry appointment.");
+    await api.revokeStaffRole("branch-1", "assignment-1", "Role no longer required.");
+    await api.listAdminElevationRequests("branch-1");
+    await api.requestAdminElevation("branch-1", "staff-2", "Approved pastoral appointment.");
+    await api.reviewAdminElevation("branch-1", "elevation-1", "approve", "Second administrator verified.");
+    await api.listAdminRevocationRequests("branch-1");
+    await api.requestAdminRevocation("branch-1", "admin-assignment-1", "Role holder is leaving office.");
+    await api.reviewAdminRevocation("branch-1", "revocation-1", "reject", "The request lacks supporting evidence.");
+
+    const calls = fetcher.mock.calls as unknown as Array<[string, RequestInit]>;
+    expect(calls.map(([url, init]) => [new URL(url).pathname, init.method ?? "GET"])).toEqual([
+      ["/api/v1/staff/roles", "POST"],
+      ["/api/v1/staff/roles/assignment-1", "DELETE"],
+      ["/api/v1/staff/role-elevations", "GET"],
+      ["/api/v1/staff/role-elevations", "POST"],
+      ["/api/v1/staff/role-elevations/elevation-1/approve", "POST"],
+      ["/api/v1/staff/role-revocations", "GET"],
+      ["/api/v1/staff/role-revocations", "POST"],
+      ["/api/v1/staff/role-revocations/revocation-1/reject", "POST"],
+    ]);
+    for (const [, init] of calls) {
+      expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+      expect(init.credentials).toBe("include");
       expect(new Headers(init.headers).has("Authorization")).toBe(false);
     }
   });
