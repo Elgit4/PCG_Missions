@@ -468,13 +468,23 @@ console.log("AUTHENTICATED_SESSION_RETRIEVAL_PASSED");
 
 // Exercise a genuine first-login password gate and prove that the old credential is no longer valid.
 const firstLoginCookie = await signIn(firstLoginUser, "First-login Field Worker");
+const firstLoginSessionResponse = await fetchWithTimeout(workerUrl + "/api/v1/me", {
+  headers: { origin, cookie: firstLoginCookie },
+});
+const firstLoginSessionPayload = await firstLoginSessionResponse.json().catch(() => null);
+if (firstLoginSessionResponse.status !== 200 ||
+    firstLoginSessionPayload?.data?.must_change_password !== true ||
+    !Array.isArray(firstLoginSessionPayload?.data?.branches) ||
+    firstLoginSessionPayload.data.branches.length !== 0) {
+  throw new Error("First-login session hydration did not preserve the forced-password-change state.");
+}
 const firstLoginProtectedRead = await api(
   firstLoginCookie,
   "/api/v1/notifications?branch_id=" + branchId + "&limit=50",
 );
 if (firstLoginProtectedRead.status !== 403 ||
-    firstLoginProtectedRead.payload?.error?.code !== "PASSWORD_CHANGE_REQUIRED") {
-  throw new Error("First-login account was not blocked from normal staff operations before password replacement: HTTP " +
+    firstLoginProtectedRead.payload?.error?.code !== "BRANCH_NOT_AUTHORIZED") {
+  throw new Error("First-login account was not blocked from branch-scoped staff operations before password replacement: HTTP " +
     firstLoginProtectedRead.status + " code=" + (firstLoginProtectedRead.payload?.error?.code ?? "unexpected_response"));
 }
 const firstLoginPassword = "PcgQa-First-" + randomBytes(18).toString("base64url") + "-9!aA";
@@ -857,6 +867,7 @@ const checks = {
   unassignedRegistrationDenied: unassignedRegistration.status === 403,
   unassignedCheckinDenied: unassignedCheckin.status === 403,
   authenticatedSessionRetrieved: authenticatedSessionResponse.status === 200 && Boolean(authenticatedSessionPayload?.session?.id),
+  firstLoginSessionGate: firstLoginSessionResponse.status === 200 && firstLoginSessionPayload?.data?.must_change_password === true && firstLoginProtectedRead.status === 403,
   firstLoginPasswordChanged: Number(firstLoginState?.must_change_password) === 0 && firstLoginState?.password_setup_expires_at === null,
   firstLoginOldPasswordRejected: firstLoginOldAttempt.status === 401,
   passwordResetCompleted: resetRequestState?.status === "completed" &&
