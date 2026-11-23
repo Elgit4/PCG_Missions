@@ -11,35 +11,16 @@ const PublicVisitorSite = lazy(async () => {
   const module = await import("./components/PublicVisitorSite");
   return { default: module.PublicVisitorSite };
 });
-import { PcgAuthClient } from "./lib/auth";
-import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./lib/supabase-config";
+import { AuthClientError, PcgAuthClient } from "./lib/auth";
 import { CmiApiClient, CmiApiError, type StaffSession } from "./lib/cmi-api";
 import { ThemeToggle } from "./lib/theme";
 import { formatApplicationError } from "./lib/error-messages";
 import { hasSingleWorkspaceBranch } from "./lib/workspace-context";
 
 function StaffApp() {
-  const supabaseUrl = SUPABASE_URL;
-  const publishableKey = SUPABASE_PUBLISHABLE_KEY;
-  const configurationError = !supabaseUrl || !publishableKey
-    ? "This portal is not connected to its secure sign-in service. Contact a church administrator."
-    : "";
-
-  const auth = useMemo(() => {
-    if (!supabaseUrl || !publishableKey) return null;
-    try {
-      return new PcgAuthClient(supabaseUrl, publishableKey);
-    } catch {
-      return null;
-    }
-  }, [supabaseUrl, publishableKey]);
-
-  const api = useMemo(() => auth
-    ? new CmiApiClient(
-      { supabaseUrl, publishableKey },
-      () => auth.getAccessToken(),
-    )
-    : null, [auth, supabaseUrl, publishableKey]);
+  const configurationError = "";
+  const auth = useMemo(() => new PcgAuthClient(), []);
+  const api = useMemo(() => new CmiApiClient(), []);
 
   const [view, setView] = useState<StaffAuthView>("sign-in");
   const [staffSession, setStaffSession] = useState<StaffSession | null>(null);
@@ -49,20 +30,23 @@ function StaffApp() {
   const [notice, setNotice] = useState("");
   const [workspaceRetryAvailable, setWorkspaceRetryAvailable] = useState(false);
 
-  const messageFor = useCallback((cause: unknown): string => formatApplicationError(cause, "We could not complete the sign-in request. Please try again."), []);
+  const messageFor = useCallback((cause: unknown): string => cause instanceof AuthClientError ? cause.message : formatApplicationError(cause, "We could not complete the sign-in request. Please try again."), []);
 
-  const clearAuthentication = useCallback(async () => {
+  const clearAuthentication = useCallback(async (clearLocalOnFailure = true): Promise<boolean> => {
+    let serverConfirmed = false;
     try {
-      await auth?.signOut();
+      await auth.signOut();
+      serverConfirmed = true;
     } catch {
-      // Authentication state is cleared locally even if browser storage or
-      // the optional server-side global sign-out request is unavailable.
-    } finally {
-      setStaffSession(null);
-      setView("sign-in");
-      setNotice("");
-      setWorkspaceRetryAvailable(false);
+      // HttpOnly Better Auth cookies cannot be cleared by JavaScript. Explicit
+      // sign-out keeps the authenticated workspace open until the server confirms.
+      if (!clearLocalOnFailure) return false;
     }
+    setStaffSession(null);
+    setView("sign-in");
+    setNotice("");
+    setWorkspaceRetryAvailable(false);
+    return serverConfirmed;
   }, [auth]);
 
   const loadStaffSession = useCallback(async () => {
@@ -87,6 +71,8 @@ function StaffApp() {
 
   useEffect(() => {
     let current = true;
+    let bootstrapExpired = false;
+    let timeoutId: number | undefined;
     const initialize = async () => {
       try {
         if (!auth || !api) {
@@ -94,17 +80,18 @@ function StaffApp() {
           return;
         }
         const recovery = await auth.restoreRecoveryFromUrl();
-        if (!current) return;
+        if (!current || bootstrapExpired) return;
         if (recovery) {
           setView("recovery");
           setNotice("Your recovery link is ready. Choose a new password to finish resetting your account.");
           return;
         }
         const session = await auth.getSession();
-        if (!session) return;
+        if (!current || bootstrapExpired || !session) return;
         await loadStaffSession();
+        if (!current || bootstrapExpired) return;
       } catch (cause) {
-        if (!current) return;
+        if (!current || bootstrapExpired) return;
         setError(messageFor(cause));
         if (cause instanceof CmiApiError && cause.status === 401) {
           await clearAuthentication();
@@ -115,8 +102,29 @@ function StaffApp() {
         if (current) setInitializing(false);
       }
     };
-    void initialize();
-    return () => { current = false; };
+    const initialization = initialize();
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = window.setTimeout(() => {
+        bootstrapExpired = true;
+        reject(new AuthClientError(
+          0,
+          "AUTH_BOOTSTRAP_TIMEOUT",
+          "The sign-in service is taking too long to respond. You can still use the sign-in form below; please try signing in.",
+        ));
+      }, 7000);
+    });
+    void Promise.race([initialization, timeout]).catch((cause) => {
+      if (!current) return;
+      setError(messageFor(cause));
+      setWorkspaceRetryAvailable(false);
+      setInitializing(false);
+    }).finally(() => {
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    });
+    return () => {
+      current = false;
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
   }, [auth, api, configurationError, loadStaffSession, messageFor, clearAuthentication]);
 
   const handleSignIn = async (email: string, password: string) => {
@@ -204,7 +212,7 @@ function StaffApp() {
     setNotice("");
     try {
       await auth.requestPasswordReset(email);
-      setNotice("If this address belongs to an active staff account, the church administrators have been notified. If approved, the administrator will email you a temporary password that you must replace after signing in.");
+      setNotice("If this address belongs to an active staff account, the church administrators have been notified. An administrator will verify your request and provide a temporary password through a private channel. You must change it at your next sign-in.");
     } catch (cause) {
       setError(messageFor(cause));
     } finally {
@@ -234,9 +242,22 @@ function StaffApp() {
 
   const signOut = async () => {
     setBusy(true);
-    await clearAuthentication();
     setError("");
-    setBusy(false);
+    try {
+      const confirmed = await clearAuthentication(false);
+      if (!confirmed) {
+        throw new AuthClientError(
+          0,
+          "SIGN_OUT_NOT_CONFIRMED",
+          "We could not confirm sign-out with the secure service. Your session may still be active. Check your connection and retry; do not leave this device unattended.",
+        );
+      }
+    } catch (cause) {
+      setError(messageFor(cause));
+      throw cause;
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (initializing) {
@@ -272,6 +293,7 @@ function StaffApp() {
           <div className="staff-login-form-wrap staff-login-auth-wrap">
             <div className="staff-login-security-label">WORKSPACE ACCESS CHECK</div>
             <h1 id="workspace-context-title">Workspace access needs review</h1>
+            {error && <p role="alert">{error}</p>}
             <p role="alert">
               {staffSession.branches.length === 0
                 ? "This account has no active workspace assignment. Ask an administrator to assign the correct workspace before signing in again."
@@ -279,7 +301,7 @@ function StaffApp() {
                 ? "This account has more than one active workspace assignment. Ask an administrator to confirm the correct workspace before signing in again."
                 : "This account's workspace assignment could not be verified. Ask an administrator to review the assignment before signing in again."}
             </p>
-            <button type="button" className="cmi-button cmi-button-primary" onClick={() => void signOut()} disabled={busy}>
+            <button type="button" className="cmi-button cmi-button-primary" onClick={() => { void signOut().catch(() => undefined); }} disabled={busy}>
               Sign out
             </button>
           </div>

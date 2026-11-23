@@ -5,11 +5,16 @@ on:
     paths:
       - "cloudflare/**"
       - ".github/workflows/cloudflare-d1-foundation.yml"
+      - ".github/workflows/cloudflare-preview-deploy.yml"
+      - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
+      - ".github/workflows/cloudflare-production-worker-deploy.yml"
   push:
-    branches: [main, 'migration/**']
+    branches: [main, 'migration/**', 'feat/**']
     paths:
       - "cloudflare/**"
       - ".github/workflows/cloudflare-d1-foundation.yml"
+      - ".github/workflows/cloudflare-preview-deploy.yml"
+      - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
 
 permissions:
   contents: read
@@ -41,3 +46,7 @@ jobs:
         run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
       - name: Type-check Worker and Better Auth integration
         run: npm run typecheck
+      - name: Test Better Auth credential verification and session integration
+        run: npm test
+      - name: Syntax-check authenticated acceptance harness
+        run: node --check scripts/run_authenticated_acceptance.mjs

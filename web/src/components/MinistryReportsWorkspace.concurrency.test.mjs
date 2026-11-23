@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const source = readFileSync(new URL("./MinistryReportsWorkspace.tsx", import.meta.url), "utf8");
+const capabilitySource = readFileSync(new URL("../lib/capabilities.ts", import.meta.url), "utf8");
 
 describe("ministry report detail request concurrency", () => {
   it("uses a separate request version for detail lookups", () => {
@@ -35,4 +36,15 @@ it("clears the pagination loading state when a fresh report list supersedes it",
   );
   expect(loadStart).toContain("loadMoreRequestVersion.current += 1");
   expect(loadStart).toContain("setLoadingMore(false)");
+});
+
+it("uses the canonical Cloudflare scoped report capabilities throughout the UI", () => {
+  expect(source).toContain('hasCapability(session, "report.submit.scoped", branchId)');
+  expect(source).toContain('hasCapability(session, "report.review.scoped", branchId)');
+  expect(capabilitySource).toContain('hasCapability(session, "report.read.scoped", branchId)');
+  expect(capabilitySource).not.toContain('hasCapability(session, "report.submit.scoped", branchId)');
+  expect(capabilitySource).toContain('hasCapability(session, "report.review.scoped", branchId)');
+  expect(source).not.toContain("report.submit.own");
+  expect(source).not.toContain("report.review.branch");
+  expect(source).not.toContain("report.review.team");
 });

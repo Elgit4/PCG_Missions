@@ -1025,7 +1025,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db = sqlite3.connect(":memory:")
         self.db.execute("PRAGMA foreign_keys = ON")
         migrations = Path(__file__).resolve().parents[1] / "migrations"
-        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql"):
+        for name in ("0001_platform_core.sql", "0002_contacts_followup.sql", "0003_staff_authorization_policy.sql", "0004_staff_session_revocation.sql", "0005_better_auth_rate_limit.sql", "0006_last_role_session_revocation.sql", "0007_staff_lifecycle_and_admin_revocation.sql", "0008_staff_invitation_onboarding.sql", "0009_contacts_private_field_write.sql", "0010_contact_assignment_audit.sql", "0011_followup_task_idempotency.sql", "0012_prayer_pastoral_care.sql", "0013_events_attendance_transport.sql", "0014_calendar_announcements_public_content.sql", "0015_prayer_share_revocation_hardening.sql", "0024_calendar_audit_cancellation_read_receipts.sql"):
             self.db.executescript((migrations / name).read_text(encoding="utf-8"))
         self.db.execute(
             """INSERT INTO church (id, name, created_at, updated_at)
@@ -1122,7 +1122,7 @@ class AuthorizationQueryTests(unittest.TestCase):
             resource_type, record_id, record_id, self.NOW, self.NOW,
             resource_type, record_id, record_id,
             resource_type, record_id, resource_type, record_id,
-            self.NOW, self.NOW, actor_profile,
+            self.NOW, self.NOW, resource_type, record_id, actor_profile,
         )
         self.assertEqual(query.count("?"), len(values), "SQL placeholders and D1 bind values must match")
         return self.db.execute(query, values).fetchone()
@@ -1503,6 +1503,48 @@ class AuthorizationQueryTests(unittest.TestCase):
                    (id,branch_id,title,body,audience_type,created_by,created_at,updated_at)
                    VALUES ('announcement-field','authz-branch','Unauthorized','No access','branch',?,?,?)""",
                 (field_user,self.NOW,self.NOW),
+            )
+
+    def test_calendar_cancellation_sets_state_and_appends_immutable_audit(self):
+        admin_user, _ = self.staff["admin"]
+        self.db.execute(
+            """INSERT INTO calendar_entry
+               (id,branch_id,entry_type,title,starts_at,scope_type,created_by,updated_by,created_at,updated_at)
+               VALUES ('calendar-cancel-1','authz-branch','service','Sunday Service',?,'branch',?,?,?,?)""",
+            (self.NOW, admin_user, admin_user, self.NOW, self.NOW),
+        )
+
+        self.db.execute(
+            """UPDATE calendar_entry
+               SET status='cancelled', cancelled_at=?, cancelled_by=?,
+                   cancellation_reason=?, updated_by=?, updated_at=?
+               WHERE id='calendar-cancel-1' AND status='active'""",
+            (self.NOW, admin_user, "Service moved to a different venue.", admin_user, self.NOW),
+        )
+
+        self.assertEqual(
+            self.db.execute(
+                "SELECT status,cancelled_by,cancellation_reason FROM calendar_entry WHERE id='calendar-cancel-1'"
+            ).fetchone(),
+            ("cancelled", admin_user, "Service moved to a different venue."),
+        )
+        audit = self.db.execute(
+            """SELECT action,
+                      json_extract(before_state,'$.status'),
+                      json_extract(after_state,'$.status'),
+                      json_extract(after_state,'$.cancellation_reason')
+               FROM calendar_entry_change_audit
+               WHERE entry_id='calendar-cancel-1' AND action='cancelled'"""
+        ).fetchone()
+        self.assertEqual(
+            audit,
+            ("cancelled", "active", "cancelled", "Service moved to a different venue."),
+        )
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.execute(
+                """UPDATE calendar_entry_change_audit
+                   SET action='updated'
+                   WHERE entry_id='calendar-cancel-1' AND action='cancelled'"""
             )
 
     def test_public_content_requires_content_manage_and_published_projection_fields(self):

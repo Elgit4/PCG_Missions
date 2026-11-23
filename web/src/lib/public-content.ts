@@ -63,35 +63,27 @@ export class PublicContentError extends Error {
 }
 
 export function createPublicContentClient(
-  config: { supabaseUrl: string; publishableKey: string },
   fetcher: typeof fetch = fetch,
 ): PublicContentClient {
-  const baseUrl = config.supabaseUrl.replace(/\/+$/, "");
 
   async function request<T>(
     resource: string,
     options: { slug?: string; signal?: AbortSignal } = {},
   ): Promise<T> {
-    if (!baseUrl || !config.publishableKey) {
-      throw new PublicContentError(0, "Public content is not configured.");
-    }
-
-    const url = new URL(`${baseUrl}/functions/v1/public-content`);
-    url.searchParams.set("resource", resource);
-    if (options.slug) url.searchParams.set("slug", options.slug);
+    const params = new URLSearchParams({ resource });
+    if (options.slug) params.set("slug", options.slug);
     if (resource !== "church-profile") {
-      url.searchParams.set("limit", "20");
-      url.searchParams.set("offset", "0");
+      params.set("limit", "20");
+      params.set("offset", "0");
     }
 
     let response: Response;
     try {
-      response = await fetcher(url.toString(), {
+      response = await fetcher(`/api/v1/public-content?${params.toString()}`, {
         method: "GET",
-        headers: {
-          apikey: config.publishableKey,
-          Accept: "application/json",
-        },
+        credentials: "omit",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
         signal: options.signal,
       });
     } catch (error) {
@@ -100,7 +92,7 @@ export function createPublicContentClient(
     }
 
     const payload = await response.json().catch(() => null) as
-      | { data?: T; error?: string }
+      | { data?: T; error?: string | { message?: string } }
       | null;
 
     if (!response.ok) {
@@ -108,7 +100,7 @@ export function createPublicContentClient(
         response.status,
         typeof payload?.error === "string"
           ? payload.error
-          : "Unable to retrieve public content.",
+          : payload?.error?.message ?? "Unable to retrieve public content.",
       );
     }
     if (!payload || !("data" in payload)) {

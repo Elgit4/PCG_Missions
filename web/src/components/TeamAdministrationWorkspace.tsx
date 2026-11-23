@@ -32,7 +32,7 @@ interface TeamAdministrationWorkspaceProps {
 
 function apiMessage(error: unknown): string {
   if (error instanceof CmiApiError) {
-    if (error.code === "TEAM_LEADER_ROLE_REQUIRED") return "Assign this staff member the Team Leader role in this branch before adding them as a team leader.";
+    if (error.code === "TEAM_LEADER_ROLE_REQUIRED") return "Assign this staff member the Team Leader role before adding them as a team leader.";
     if (error.code === "ACTIVE_ASSIGNMENTS_EXIST") return "This team or service area still has active assignments. Reassign or revoke those assignments before deactivating it.";
     if (error.code === "DUPLICATE_RECORD") return "A team, service-area code or membership with these details already exists. Review the existing records and try again.";
   }
@@ -54,9 +54,11 @@ export function TeamAdministrationWorkspace({
 }: TeamAdministrationWorkspaceProps) {
   const canManageTeams = hasCapability(session, "team.manage", branchId);
   const canManageAreas = hasCapability(session, "area.manage", branchId);
+  const canViewTeams = canManageTeams || hasCapability(session, "team.read", branchId);
+  const canViewAreas = canManageAreas || hasCapability(session, "area.read", branchId);
   const canReadStaff = hasCapability(session, "staff.directory.read", branchId);
 
-  const [tab, setTab] = useState<WorkspaceTab>(canManageTeams ? "teams" : "areas");
+  const [tab, setTab] = useState<WorkspaceTab>(canViewTeams ? "teams" : "areas");
   const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [areas, setAreas] = useState<ServiceAreaRecord[]>([]);
   const [staff, setStaff] = useState<StaffDirectoryEntry[]>([]);
@@ -94,8 +96,8 @@ export function TeamAdministrationWorkspace({
     setError("");
     try {
       const [teamResult, areaResult, staffResult] = await Promise.all([
-        canManageTeams ? api.listTeams(branchId) : Promise.resolve(null),
-        canManageAreas ? api.listServiceAreas(branchId) : Promise.resolve(null),
+        canViewTeams ? api.listTeams(branchId) : Promise.resolve(null),
+        canViewAreas ? api.listServiceAreas(branchId) : Promise.resolve(null),
         canReadStaff ? api.listStaffDirectory(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
       ]);
       if (requestId !== loadVersion.current) return;
@@ -133,7 +135,7 @@ export function TeamAdministrationWorkspace({
     } finally {
       if (requestId === loadVersion.current) setLoading(false);
     }
-  }, [api, branchId, canManageAreas, canManageTeams, canReadStaff, onSessionExpired]);
+  }, [api, branchId, canReadStaff, canViewAreas, canViewTeams, onSessionExpired]);
 
   useEffect(() => {
     void loadWorkspace();
@@ -291,7 +293,7 @@ export function TeamAdministrationWorkspace({
           <div>
             <p className="cmi-eyebrow">PEOPLE & MINISTRY STRUCTURE</p>
             <h3>Teams & Service Areas</h3>
-            <p>Organise staff membership and coverage for your ministry. Access is restricted to your assigned workspace.</p>
+            <p>View the team and service-area information available to your role. Administrative changes remain restricted to authorised staff.</p>
           </div>
           <button
             type="button"
@@ -304,7 +306,7 @@ export function TeamAdministrationWorkspace({
         </div>
 
         <div className="cmi-structure-tabs" role="tablist" aria-label="Team administration sections">
-          {canManageTeams && (
+          {canViewTeams && (
             <button
               type="button"
               role="tab"
@@ -316,7 +318,7 @@ export function TeamAdministrationWorkspace({
               <span>{teams.length}</span>
             </button>
           )}
-          {canManageAreas && (
+          {canViewAreas && (
             <button
               type="button"
               role="tab"
@@ -332,21 +334,23 @@ export function TeamAdministrationWorkspace({
 
         {error && <div className="cmi-alert" role="alert">{error}<button type="button" onClick={() => setError("")} aria-label="Dismiss error">×</button></div>}
         {notice && <div className="cmi-success-note" role="status">{notice}<button type="button" onClick={() => setNotice("")} aria-label="Dismiss notice">×</button></div>}
-        {loading && <div className="cmi-loading" role="status">Loading branch structure…</div>}
+        {loading && <div className="cmi-loading" role="status">Loading teams and service areas…</div>}
 
-        {tab === "teams" && canManageTeams && (
+        {tab === "teams" && canViewTeams && (
           <div className="cmi-structure-grid">
             <div className="cmi-structure-index">
               <div className="cmi-structure-index-heading">
-                <div><strong>Branch teams</strong><small>{teams.length} team{teams.length === 1 ? "" : "s"}</small></div>
-                <button
-                  type="button"
-                  className="cmi-button cmi-button-primary cmi-button-compact"
-                  onClick={() => { setEditingTeamId(null); setShowTeamForm((value) => !value); setError(""); }}
-                  disabled={saving}
-                >
-                  <Plus size={14} />New
-                </button>
+                <div><strong>Teams</strong><small>{teams.length} team{teams.length === 1 ? "" : "s"}</small></div>
+                {canManageTeams && (
+                  <button
+                    type="button"
+                    className="cmi-button cmi-button-primary cmi-button-compact"
+                    onClick={() => { setEditingTeamId(null); setShowTeamForm((value) => !value); setError(""); }}
+                    disabled={saving}
+                  >
+                    <Plus size={14} />New
+                  </button>
+                )}
               </div>
               {teams.map((team) => (
                 <button
@@ -361,14 +365,14 @@ export function TeamAdministrationWorkspace({
                   <ChevronRight size={15} />
                 </button>
               ))}
-              {!teams.length && !loading && <div className="cmi-structure-index-empty"><Users size={24} /><strong>No teams yet</strong><span>Create the first branch team to begin assigning staff.</span></div>}
+              {!teams.length && !loading && <div className="cmi-structure-index-empty"><Users size={24} /><strong>No teams available</strong><span>{canManageTeams ? "Create your first team to begin assigning staff." : "No team is currently assigned to this workspace."}</span></div>}
             </div>
 
             <div className="cmi-structure-detail">
-              {showTeamForm && (
+              {canManageTeams && showTeamForm && (
                 <form className="cmi-structure-form" onSubmit={(event) => void submitTeam(event)}>
                   <div className="cmi-structure-detail-heading">
-                    <div><p className="cmi-eyebrow">{editingTeamId ? "EDIT TEAM" : "NEW TEAM"}</p><h4>{editingTeamId ? "Update team details" : "Create a branch team"}</h4></div>
+                    <div><p className="cmi-eyebrow">{editingTeamId ? "EDIT TEAM" : "NEW TEAM"}</p><h4>{editingTeamId ? "Update team details" : "Create a team"}</h4></div>
                     <button type="button" className="cmi-icon-button" onClick={() => { setShowTeamForm(false); setEditingTeamId(null); }} aria-label="Close form"><X size={16} /></button>
                   </div>
                   <label>Team name<input name="name" required minLength={2} maxLength={160} defaultValue={teams.find((team) => team.id === editingTeamId)?.name ?? ""} placeholder="e.g. Welcome & Follow-up" /></label>
@@ -391,27 +395,31 @@ export function TeamAdministrationWorkspace({
                     <span className={"cmi-structure-status" + (selectedTeam.is_active ? " active" : "")}>{selectedTeam.is_active ? "Active" : "Inactive"}</span>
                   </div>
                   <div className="cmi-structure-metrics">
-                    <div><strong>{selectedTeam.members.length}</strong><span>Active members</span></div>
-                    <div><strong>{selectedTeam.members.filter((member) => member.membership_role === "leader").length}</strong><span>Team leaders</span></div>
+                    <div><strong>{selectedTeam.member_count ?? selectedTeam.members.length}</strong><span>Active members</span></div>
+                    <div><strong>{canReadStaff ? selectedTeam.members.filter((member) => member.membership_role === "leader").length : "—"}</strong><span>{canReadStaff ? "Team leaders" : "Member identities restricted"}</span></div>
                   </div>
                   <div className="cmi-structure-action-row">
-                    <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginTeamEdit(selectedTeam)} disabled={saving}><Users size={14} />Edit details</button>
-                    <button type="button" className="cmi-button cmi-button-secondary" onClick={() => void setTeamActive(selectedTeam)} disabled={saving}>
-                      <Archive size={14} />{selectedTeam.is_active ? "Deactivate" : "Reactivate"}
-                    </button>
-                    {canReadStaff && selectedTeam.is_active && (
+                    {canManageTeams && (
+                      <>
+                        <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginTeamEdit(selectedTeam)} disabled={saving}><Users size={14} />Edit details</button>
+                        <button type="button" className="cmi-button cmi-button-secondary" onClick={() => void setTeamActive(selectedTeam)} disabled={saving}>
+                          <Archive size={14} />{selectedTeam.is_active ? "Deactivate" : "Reactivate"}
+                        </button>
+                      </>
+                    )}
+                    {canManageTeams && canReadStaff && selectedTeam.is_active && (
                       <button type="button" className="cmi-button cmi-button-primary" onClick={() => setShowMemberForm((value) => !value)} disabled={saving}>
                         <UserRoundPlus size={14} />Add member
                       </button>
                     )}
                   </div>
 
-                  {showMemberForm && canReadStaff && (
+                  {canManageTeams && showMemberForm && canReadStaff && (
                     <form className="cmi-structure-assignment-form" onSubmit={(event) => void addMember(event)}>
-                      <div><strong>Add staff to team</strong><small>Only active staff assigned to this branch are eligible.</small></div>
+                      <div><strong>Add staff to team</strong><small>Only active staff with the required ministry assignment are eligible.</small></div>
                       <label>Staff member<select name="staff_profile_id" required defaultValue=""><option value="" disabled>Select a staff member</option>{activeStaff.filter((person) => !selectedTeam.members.some((member) => member.staff_profile_id === person.id)).map((person) => <option key={person.id} value={person.id}>{person.full_name} · {person.roles.map((role) => role.name).join(", ")}</option>)}</select></label>
                       <label>Team membership<select name="membership_role" defaultValue="member"><option value="member">Member</option><option value="leader" disabled={!activeStaff.some((person) => isLeader(person) && !selectedTeam.members.some((member) => member.staff_profile_id === person.id))}>Team Leader</option></select></label>
-                      {!activeStaff.some((person) => isLeader(person) && !selectedTeam.members.some((member) => member.staff_profile_id === person.id)) && <p className="cmi-scope-note cmi-structure-leader-note">No eligible Team Leaders are available. Assign the Team Leader role to a staff account in this branch first.</p>}
+                      {!activeStaff.some((person) => isLeader(person) && !selectedTeam.members.some((member) => member.staff_profile_id === person.id)) && <p className="cmi-scope-note cmi-structure-leader-note">No eligible Team Leaders are available. Assign the Team Leader role to an active staff account first.</p>}
                       <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowMemberForm(false)} disabled={saving}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving || !activeStaff.some((person) => !selectedTeam.members.some((member) => member.staff_profile_id === person.id))}>{saving ? "Adding…" : "Add to team"}</button></div>
                     </form>
                   )}
@@ -427,13 +435,13 @@ export function TeamAdministrationWorkspace({
                           <span className="cmi-structure-avatar">{displayName(member.staff).split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>
                           <div className="cmi-structure-person-copy"><strong>{displayName(member.staff)}</strong><small>{member.membership_role === "leader" ? "Team Leader" : "Member"} · Joined {new Intl.DateTimeFormat("en-GH", { dateStyle: "medium" }).format(new Date(member.starts_at))}</small></div>
                           {member.membership_role === "leader" && <span className="cmi-structure-role">Leader</span>}
-                          {canReadStaff && (
+                          {canManageTeams && canReadStaff && (
                             <div className="cmi-structure-person-actions">
                               {canPromote && <button type="button" className="cmi-text-action" onClick={() => void changeMemberRole(member)} disabled={saving}>{member.membership_role === "leader" ? "Set member" : "Make leader"}</button>}
                               <button type="button" className="cmi-text-action danger" onClick={() => setConfirmMemberId(confirmMemberId === member.id ? null : member.id)} disabled={saving}>Remove</button>
                             </div>
                           )}
-                          {confirmMemberId === member.id && (
+                          {canManageTeams && canReadStaff && confirmMemberId === member.id && (
                             <div className="cmi-inline-confirm">
                               <span>End this team membership? Historical assignment records will remain.</span>
                               <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setConfirmMemberId(null)} disabled={saving}>Keep</button>
@@ -443,21 +451,23 @@ export function TeamAdministrationWorkspace({
                         </article>
                       );
                     })}
-                    {!selectedTeam.members.length && <div className="cmi-structure-empty"><Users size={21} /><span>No active members have been assigned to this team.</span></div>}
+                    {!canReadStaff && (selectedTeam.member_count ?? 0) > 0 && <div className="cmi-structure-empty"><ShieldCheck size={21} /><span>{selectedTeam.member_count} active team member{selectedTeam.member_count === 1 ? "" : "s"}. Individual staff identities are not available to this role.</span></div>}
+                    {!canReadStaff && (selectedTeam.member_count ?? 0) === 0 && <div className="cmi-structure-empty"><Users size={21} /><span>No active members have been assigned to this team.</span></div>}
+                    {canReadStaff && !selectedTeam.members.length && <div className="cmi-structure-empty"><Users size={21} /><span>No active members have been assigned to this team.</span></div>}
                   </div>
                 </>
               )}
-              {!selectedTeam && !showTeamForm && <div className="cmi-structure-detail-empty"><ShieldCheck size={27} /><strong>Select a team or create one.</strong><span>Membership and role assignment controls will appear here.</span></div>}
+              {!selectedTeam && !showTeamForm && <div className="cmi-structure-detail-empty"><ShieldCheck size={27} /><strong>{canManageTeams ? "Select a team or create one." : "Select an available team."}</strong><span>{canManageTeams ? "Membership and role assignment controls will appear here." : "Only teams assigned to your active team-leader membership are listed."}</span></div>}
             </div>
           </div>
         )}
 
-        {tab === "areas" && canManageAreas && (
+        {tab === "areas" && canViewAreas && (
           <div className="cmi-structure-grid">
             <div className="cmi-structure-index">
               <div className="cmi-structure-index-heading">
                 <div><strong>Service areas</strong><small>{areas.length} area{areas.length === 1 ? "" : "s"}</small></div>
-                <button type="button" className="cmi-button cmi-button-primary cmi-button-compact" onClick={() => { setEditingAreaId(null); setShowAreaForm((value) => !value); setError(""); }} disabled={saving}><Plus size={14} />New</button>
+                {canManageAreas && <button type="button" className="cmi-button cmi-button-primary cmi-button-compact" onClick={() => { setEditingAreaId(null); setShowAreaForm((value) => !value); setError(""); }} disabled={saving}><Plus size={14} />New</button>}
               </div>
               {areas.map((area) => (
                 <button
@@ -467,16 +477,16 @@ export function TeamAdministrationWorkspace({
                   onClick={() => { setSelectedAreaId(area.id); setShowAreaForm(false); setShowCoverageForm(false); setConfirmCoverageId(null); }}
                 >
                   <span className="cmi-structure-index-icon"><MapPin size={17} /></span>
-                  <span className="cmi-structure-index-copy"><strong>{area.name}</strong><small>{area.coverage.length} active assignment{area.coverage.length === 1 ? "" : "s"}{area.code ? " · " + area.code : ""}</small></span>
+                  <span className="cmi-structure-index-copy"><strong>{area.name}</strong><small>{area.coverage_count ?? area.coverage.length} active assignment{(area.coverage_count ?? area.coverage.length) === 1 ? "" : "s"}{area.code ? " · " + area.code : ""}</small></span>
                   <span className={"cmi-structure-dot" + (area.is_active ? " active" : "")} aria-label={area.is_active ? "Active" : "Inactive"} />
                   <ChevronRight size={15} />
                 </button>
               ))}
-              {!areas.length && !loading && <div className="cmi-structure-index-empty"><MapPin size={24} /><strong>No service areas yet</strong><span>Create an area to organise field coverage.</span></div>}
+              {!areas.length && !loading && <div className="cmi-structure-index-empty"><MapPin size={24} /><strong>No service areas available</strong><span>{canManageAreas ? "Create an area to organise field coverage." : "No service areas are available in this workspace."}</span></div>}
             </div>
 
             <div className="cmi-structure-detail">
-              {showAreaForm && (
+              {canManageAreas && showAreaForm && (
                 <form className="cmi-structure-form" onSubmit={(event) => void submitArea(event)}>
                   <div className="cmi-structure-detail-heading">
                     <div><p className="cmi-eyebrow">{editingAreaId ? "EDIT SERVICE AREA" : "NEW SERVICE AREA"}</p><h4>{editingAreaId ? "Update service area" : "Create a service area"}</h4></div>
@@ -484,7 +494,7 @@ export function TeamAdministrationWorkspace({
                   </div>
                   <label>Area name<input name="name" required minLength={2} maxLength={160} defaultValue={areas.find((area) => area.id === editingAreaId)?.name ?? ""} placeholder="e.g. Northern Area" /></label>
                   <label>Area code <span>Optional</span><input name="code" maxLength={24} pattern="[A-Za-z0-9_-]{2,24}" defaultValue={areas.find((area) => area.id === editingAreaId)?.code ?? ""} placeholder="e.g. NORTH" /></label>
-                  <p className="cmi-scope-note">Area codes are unique within this branch. Use short codes that are easy to recognise in reports and field assignments.</p>
+                  <p className="cmi-scope-note">Area codes are unique within this workspace. Use short codes that are easy to recognise in reports and field assignments.</p>
                   <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setShowAreaForm(false); setEditingAreaId(null); }} disabled={saving}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : editingAreaId ? "Save changes" : "Create service area"}</button></div>
                 </form>
               )}
@@ -496,18 +506,22 @@ export function TeamAdministrationWorkspace({
                     <span className={"cmi-structure-status" + (selectedArea.is_active ? " active" : "")}>{selectedArea.is_active ? "Active" : "Inactive"}</span>
                   </div>
                   <div className="cmi-structure-metrics">
-                    <div><strong>{selectedArea.coverage.length}</strong><span>Active staff coverage</span></div>
-                    <div><strong>{selectedArea.coverage.filter((record) => record.staff?.account_status === "active").length}</strong><span>Active staff profiles</span></div>
+                    <div><strong>{selectedArea.coverage_count ?? selectedArea.coverage.length}</strong><span>Active staff coverage</span></div>
+                    <div><strong>{canReadStaff ? selectedArea.coverage.filter((record) => record.staff?.account_status === "active").length : "—"}</strong><span>{canReadStaff ? "Active staff profiles" : "Staff identities restricted"}</span></div>
                   </div>
                   <div className="cmi-structure-action-row">
-                    <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginAreaEdit(selectedArea)} disabled={saving}><MapPin size={14} />Edit details</button>
-                    <button type="button" className="cmi-button cmi-button-secondary" onClick={() => void setAreaActive(selectedArea)} disabled={saving}><Archive size={14} />{selectedArea.is_active ? "Deactivate" : "Reactivate"}</button>
-                    {canReadStaff && selectedArea.is_active && <button type="button" className="cmi-button cmi-button-primary" onClick={() => setShowCoverageForm((value) => !value)} disabled={saving}><UserRoundPlus size={14} />Assign staff</button>}
+                    {canManageAreas && (
+                      <>
+                        <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginAreaEdit(selectedArea)} disabled={saving}><MapPin size={14} />Edit details</button>
+                        <button type="button" className="cmi-button cmi-button-secondary" onClick={() => void setAreaActive(selectedArea)} disabled={saving}><Archive size={14} />{selectedArea.is_active ? "Deactivate" : "Reactivate"}</button>
+                      </>
+                    )}
+                    {canManageAreas && canReadStaff && selectedArea.is_active && <button type="button" className="cmi-button cmi-button-primary" onClick={() => setShowCoverageForm((value) => !value)} disabled={saving}><UserRoundPlus size={14} />Assign staff</button>}
                   </div>
 
-                  {showCoverageForm && canReadStaff && (
+                  {canManageAreas && showCoverageForm && canReadStaff && (
                     <form className="cmi-structure-assignment-form" onSubmit={(event) => void addCoverage(event)}>
-                      <div><strong>Assign field coverage</strong><small>Choose active staff who already belong to this branch.</small></div>
+                      <div><strong>Assign field coverage</strong><small>Choose active staff with the correct ministry assignment.</small></div>
                       <label>Staff member<select name="staff_profile_id" required defaultValue=""><option value="" disabled>Select staff member</option>{activeStaff.filter((person) => !selectedArea.coverage.some((item) => item.staff_profile_id === person.id)).map((person) => <option key={person.id} value={person.id}>{person.full_name} · {person.roles.map((role) => role.name).join(", ")}</option>)}</select></label>
                       <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowCoverageForm(false)} disabled={saving}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving || !activeStaff.some((person) => !selectedArea.coverage.some((item) => item.staff_profile_id === person.id))}>{saving ? "Assigning…" : "Assign coverage"}</button></div>
                     </form>
@@ -520,8 +534,8 @@ export function TeamAdministrationWorkspace({
                       <article className="cmi-structure-person" key={coverage.id}>
                         <span className="cmi-structure-avatar"><MapPin size={16} /></span>
                         <div className="cmi-structure-person-copy"><strong>{displayName(coverage.staff)}</strong><small>Assigned {new Intl.DateTimeFormat("en-GH", { dateStyle: "medium" }).format(new Date(coverage.starts_at))}</small></div>
-                        {canReadStaff && <div className="cmi-structure-person-actions"><button type="button" className="cmi-text-action danger" onClick={() => setConfirmCoverageId(confirmCoverageId === coverage.id ? null : coverage.id)} disabled={saving}>End coverage</button></div>}
-                        {confirmCoverageId === coverage.id && (
+                        {canManageAreas && canReadStaff && <div className="cmi-structure-person-actions"><button type="button" className="cmi-text-action danger" onClick={() => setConfirmCoverageId(confirmCoverageId === coverage.id ? null : coverage.id)} disabled={saving}>End coverage</button></div>}
+                        {canManageAreas && canReadStaff && confirmCoverageId === coverage.id && (
                           <div className="cmi-inline-confirm">
                             <span>End this staff member's coverage for the selected area?</span>
                             <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setConfirmCoverageId(null)} disabled={saving}>Keep</button>
@@ -530,17 +544,19 @@ export function TeamAdministrationWorkspace({
                         )}
                       </article>
                     ))}
-                    {!selectedArea.coverage.length && <div className="cmi-structure-empty"><MapPin size={21} /><span>No active staff coverage has been assigned to this area.</span></div>}
+                    {!canReadStaff && (selectedArea.coverage_count ?? 0) > 0 && <div className="cmi-structure-empty"><ShieldCheck size={21} /><span>{selectedArea.coverage_count} active coverage assignment{selectedArea.coverage_count === 1 ? "" : "s"}. Staff identities are not available to this role.</span></div>}
+                    {!canReadStaff && (selectedArea.coverage_count ?? 0) === 0 && <div className="cmi-structure-empty"><MapPin size={21} /><span>No active staff coverage has been assigned to this area.</span></div>}
+                    {canReadStaff && !selectedArea.coverage.length && <div className="cmi-structure-empty"><MapPin size={21} /><span>No active staff coverage has been assigned to this area.</span></div>}
                   </div>
                 </>
               )}
-              {!selectedArea && !showAreaForm && <div className="cmi-structure-detail-empty"><ShieldCheck size={27} /><strong>Select an area or create one.</strong><span>Staff coverage controls will appear here.</span></div>}
+              {!selectedArea && !showAreaForm && <div className="cmi-structure-detail-empty"><ShieldCheck size={27} /><strong>{canManageAreas ? "Select an area or create one." : "Select an available service area."}</strong><span>{canManageAreas ? "Staff coverage controls will appear here." : "Service-area details are visible in read-only mode."}</span></div>}
             </div>
           </div>
         )}
 
-        {!canManageTeams && !canManageAreas && (
-          <div className="cmi-empty-state"><ShieldCheck size={22} /><strong>Team administration is not authorised.</strong><p>This section is visible only when your active branch grants team or service-area management.</p></div>
+        {!canViewTeams && !canViewAreas && (
+          <div className="cmi-empty-state"><ShieldCheck size={22} /><strong>Directory access is not authorised.</strong><p>Your current role does not grant access to the team or service-area directory.</p></div>
         )}
       </section>
     </div>

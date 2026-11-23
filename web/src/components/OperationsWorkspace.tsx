@@ -8,6 +8,7 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   X,
   Users,
   ClipboardList,
@@ -68,6 +69,7 @@ export function OperationsWorkspace({
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [flyerFile, setFlyerFile] = useState<File | null>(null);
@@ -202,6 +204,30 @@ export function OperationsWorkspace({
     setShowForm(false);
   };
 
+  const deleteRecord = async (id: string, title: string) => {
+    if (!canManage || (section !== "Events" && section !== "Calendar") || mutationInFlight.current || saving || deletingId) return;
+    const verb = section === "Events" ? "cancel" : "remove";
+    if (!window.confirm(`Delete “${title}”? This will ${verb} the record and preserve its audit history. It cannot be undone here.`)) return;
+    mutationInFlight.current = true;
+    setDeletingId(id);
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      if (section === "Events") await api.cancelEventDraft(branchId, id);
+      else if (section === "Calendar") await api.cancelCalendarEntry(branchId, id, "Removed by an authorized administrator.");
+      setNotice(section === "Events" ? "Event cancelled and removed from active drafts." : "Calendar entry cancelled and removed from the active calendar.");
+      await loadRecords();
+    } catch (cause) {
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
+    } finally {
+      mutationInFlight.current = false;
+      setDeletingId(null);
+      setSaving(false);
+    }
+  };
+
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (mutationInFlight.current || !canManage || saving) return;
@@ -214,7 +240,7 @@ export function OperationsWorkspace({
       if (section === "Events") {
         const start = branchLocalInputToIso(String(form.get("starts_at") ?? ""), timeZone);
         const end = branchLocalInputToIso(String(form.get("ends_at") ?? ""), timeZone);
-        if (!start || !end) throw new Error("Enter valid start and end times in the branch time zone.");
+        if (!start || !end) throw new Error("Enter valid start and end times in the selected local time zone.");
         if (Date.parse(end) <= Date.parse(start)) throw new Error("The event end must be later than its start.");
         const capacityValue = String(form.get("capacity") ?? "").trim();
         const capacity = capacityValue === "" ? null : Number(capacityValue);
@@ -254,7 +280,7 @@ export function OperationsWorkspace({
         const start = branchLocalInputToIso(String(form.get("starts_at") ?? ""), timeZone);
         const endValue = String(form.get("ends_at") ?? "");
         const end = endValue ? branchLocalInputToIso(endValue, timeZone) : null;
-        if (!start || (endValue && !end)) throw new Error("Enter a valid calendar date and time in the branch time zone.");
+        if (!start || (endValue && !end)) throw new Error("Enter a valid calendar date and time in the selected local time zone.");
         if (end && Date.parse(end) <= Date.parse(start)) throw new Error("The end must be later than the start.");
         const input = {
           entry_type: String(form.get("entry_type") ?? "other") as "service" | "event" | "other",
@@ -317,9 +343,9 @@ export function OperationsWorkspace({
   const editingWelcome = section === "Content" && contentKind === "welcome-messages" ? welcomeMessages.find((item) => item.id === editingId) : undefined;
 
   const description = section === "Events"
-    ? "Manage branch events, assigned teams, staff registration and attendance. Completed events can be submitted for independent closeout review."
+    ? "Manage events, assigned teams, staff registration and attendance. Completed events can be submitted for independent closeout review."
     : section === "Calendar"
-    ? "Maintain branch calendar entries for services, events and other ministry activities."
+    ? "Maintain calendar entries for services, events and other ministry activities."
     : section === "Announcements"
     ? "Prepare private announcement drafts. Publishing and message delivery are separate, unavailable actions."
     : "Prepare sermon and welcome-message drafts. Publishing remains disabled and is not available from this screen.";
@@ -404,7 +430,7 @@ export function OperationsWorkspace({
                 <label>Entry type<select name="entry_type" defaultValue={editingEntry?.entry_type ?? "service"}><option value="service">Service</option><option value="event">Event</option><option value="other">Other ministry activity</option></select></label>
                 <label>Starts at ({timeZone})<input name="starts_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEntry?.starts_at, timeZone)} /></label>
                 <label>Ends at ({timeZone})<input name="ends_at" type="datetime-local" defaultValue={toBranchLocalInput(editingEntry?.ends_at, timeZone)} /></label>
-                <p className="cmi-field-wide cmi-scope-note">Calendar entries are branch-scoped. Leave the end time blank for an entry with no defined end.</p>
+                <p className="cmi-field-wide cmi-scope-note">Calendar entries follow your assigned ministry scope. Leave the end time blank for an entry with no defined end.</p>
               </>
             )}
             {section === "Announcements" && (
@@ -488,9 +514,10 @@ export function OperationsWorkspace({
                   <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setCloseoutEvent(item)} aria-label={"Open closeout for " + item.title}><ClipboardCheck size={14} />Closeout</button>
                 )}
                 {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-danger" onClick={() => void deleteRecord(item.id,item.title)} disabled={deletingId!==null} aria-label={"Delete " + item.title}>{deletingId===item.id ? "Deleting…" : <><Trash2 size={14} />Delete</>}</button>}
               </article>
             ))}
-            {!events.length && <p className="cmi-detail-muted">No event drafts are visible in this branch.</p>}
+            {!events.length && <p className="cmi-detail-muted">No event drafts are available yet.</p>}
           </div>
         )}
 
@@ -542,9 +569,10 @@ export function OperationsWorkspace({
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{item.entry_type.replaceAll("_", " ")} · {formatBranchDate(item.starts_at, timeZone)} – {formatBranchDate(item.ends_at, timeZone)}</p></div>
                 <span className="cmi-task-status status-open">Scheduled</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+                {canManage && <button type="button" className="cmi-button cmi-button-danger" onClick={() => void deleteRecord(item.id,item.title)} disabled={deletingId!==null} aria-label={"Delete " + item.title}>{deletingId===item.id ? "Deleting…" : <><Trash2 size={14} />Delete</>}</button>}
               </article>
             ))}
-            {!entries.length && <p className="cmi-detail-muted">No calendar entries are visible in this branch.</p>}
+            {!entries.length && <p className="cmi-detail-muted">No calendar entries are available yet.</p>}
           </div>
         )}
 
@@ -556,9 +584,10 @@ export function OperationsWorkspace({
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.updated_at, timeZone)} · {shortText(item.body)}</p></div>
                 <span className="cmi-task-status status-open">Private draft</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+
               </article>
             ))}
-            {!announcements.length && <p className="cmi-detail-muted">No announcement drafts are visible in this branch.</p>}
+            {!announcements.length && <p className="cmi-detail-muted">No announcement drafts are available yet.</p>}
           </div>
         )}
 
@@ -572,7 +601,7 @@ export function OperationsWorkspace({
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
-            {!sermons.length && <p className="cmi-detail-muted">No sermon drafts are visible in this branch.</p>}
+            {!sermons.length && <p className="cmi-detail-muted">No sermon drafts are available yet.</p>}
           </div>
         )}
 
@@ -586,11 +615,11 @@ export function OperationsWorkspace({
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
-            {!welcomeMessages.length && <p className="cmi-detail-muted">No welcome-message drafts are visible in this branch.</p>}
+            {!welcomeMessages.length && <p className="cmi-detail-muted">No welcome-message drafts are available yet.</p>}
           </div>
         )}
 
-        {!canRead && !canManage && <div className="cmi-empty-state"><ShieldCheck size={22} /><strong>This module is not authorised for your account.</strong><p>The sidebar is permission-driven. Ask an administrator to review the role and branch capability assignments.</p></div>}
+        {!canRead && !canManage && <div className="cmi-empty-state"><ShieldCheck size={22} /><strong>This module is not authorised for your account.</strong><p>The sidebar is permission-driven. Ask an administrator to review your staff-role permissions.</p></div>}
       </section>
     </div>
   );

@@ -1,9 +1,11 @@
 # PCG Missions — CMI Staff API Contract
 
 **Baseline:** CMI Follow-up v2.1  
-**Status:** Staff session, contacts, follow-up task APIs, audited pastoral record reads, event drafts, announcement drafts, visitor-content drafts, branch calendar operations and the staff directory are merged to `main`. These Edge Functions and SQL transaction drafts are source-controlled but not deployed; business access remains fail-closed pending approved grants.  
-**Backend workspace:** `supabase-cmi/`  
-**Security rule:** Browser clients use a user access token and publishable/anon key only. A service-role key is never shipped to the browser.
+**Status:** Historical Supabase API contract retained for migration traceability; it is not the live runtime API.  
+**Historical backend:** `supabase-cmi/`  
+**Current runtime:** Better Auth + Cloudflare Worker + Cloudflare D1. Browser staff operations use same-origin `/api/v1/*` routes and HttpOnly session cookies. Supabase remains only for private event-flyer object storage.
+
+> **Current implementation source of truth:** [Cloudflare production status](../cloudflare/MIGRATION_STATUS.md) and [Worker routes](../cloudflare/src/index.ts). Endpoint names, session handling and capability codes in this historical contract may differ from the live Cloudflare implementation.
 
 This document defines the API boundary between the staff PWA and the CMI backend. It is intentionally separate from the historical ChurchConnect SQL tree.
 
@@ -72,7 +74,7 @@ Query parameters:
 - `branch_id` — required UUID; must be an active branch assigned to the staff member.
 - `limit` — optional integer 1–50; default 25.
 - `offset` — optional integer 0–5000; default 0.
-- `search` — optional first-name search, maximum 80 characters.
+- `search` — optional name, email or normalized phone-number search, maximum 100 characters. Phone matching ignores common display punctuation and whitespace.
 
 Requires `contact.read.scoped`. Results are constrained by the granted scope:
 - `branch`: active contacts within the authorized branch;

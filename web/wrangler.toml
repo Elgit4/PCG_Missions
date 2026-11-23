@@ -1,7 +1,11 @@
 name = "pcg-missions"
-compatibility_date = "2026-11-13"
+compatibility_date = "2026-11-22"
 pages_build_output_dir = "./dist"
 
-[vars]
-SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
-SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FM9k__vF-RNoCRA_gZ7bzw_Z9B1P_TS"
+# Private event-flyer files remain on the agreed Supabase Storage exception.
+
+[env.preview.vars]
+PCG_MISSIONS_API_ORIGIN = "https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
+
+[env.production.vars]
+PCG_MISSIONS_API_ORIGIN = "https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev"
