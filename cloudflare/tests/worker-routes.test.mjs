@@ -529,6 +529,8 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           if (this.sql.includes("FROM event_staff_assignment a")) return { results: eventStaffAssignment ? [eventStaffAssignment] : [] };
           if (this.sql.includes("FROM event_team_assignment a")) return { results: eventTeamAssignment ? [eventTeamAssignment] : [] };
           if (this.sql.includes("SELECT DISTINCT sp.auth_user_id,sp.full_name")) return { results: [{ auth_user_id: AUTH_USER_ID, full_name: "Test Staff" }] };
+          if (this.sql.includes("FROM team t") && this.sql.includes("tm.membership_role = 'leader'")) return { results: [] };
+          if (this.sql.includes("FROM team") && this.sql.includes("WHERE branch_id = ? AND is_active = 1")) return { results: [{ id: OWN_TEAM_ID, name: "Welcome Team" }] };
           if (this.sql.includes("SELECT id,name FROM team WHERE branch_id")) return { results: [{ id: OWN_TEAM_ID, name: "Welcome Team" }] };
           if (this.sql.includes("FROM sermon") || this.sql.includes("FROM welcome_message")) {
             return { results: contentRows.filter((row) => row.branch_id === this.values[0] && row.created_by === this.values[1]) };
