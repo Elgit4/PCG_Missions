@@ -21,7 +21,10 @@ function makePastoralEnv(options = {}) {
         sql, values: [],
         bind(...values) { this.values = values; return this; },
         async first() {
-          if (this.sql.includes("FROM app_meta")) return { schema_version: 44, environment: "non-production" };
+          if (this.sql.includes("SELECT COUNT(*) AS total") && this.sql.includes("prayer_assignment")) {
+            return { total: recordExists && assignmentExists ? 1 : 0 };
+          }
+          if (this.sql.includes("FROM app_meta")) return { schema_version: 46, environment: "non-production" };
           if (this.sql.includes("FROM staff_profile") && this.sql.includes("WHERE auth_user_id = ?")) return staff;
           return null;
         },
@@ -47,16 +50,23 @@ function makePastoralEnv(options = {}) {
         if (auditFailure && (s.sql.includes("INSERT INTO prayer_access_audit") || s.sql.includes("INSERT INTO care_access_audit"))) {
           return { success: false, meta: { changes: 0 } };
         }
-        if (s.sql.includes("SELECT p.id, p.branch_id, p.request_text")) {
-          const allowed = recordExists && (!s.sql.includes("EXISTS (SELECT 1 FROM prayer_assignment") || assignmentExists);
-          return { success: true, results: allowed ? [{ id: PRAYER_ID, branch_id: BRANCH_ID, request_text: "Synthetic prayer narrative", status: "assigned", sensitivity: "highly_restricted", expires_at: null, answered_at: null, created_at: "2026-11-20T08:00:00.000Z", updated_at: "2026-11-20T08:00:00.000Z" }] : [] };
+        if (s.sql.includes("SELECT p.id, p.branch_id, p.request_text") ||
+            s.sql.includes("SELECT prayer_request.id, prayer_request.request_text")) {
+          const allowed = recordExists && assignmentExists;
+          return { success: true, results: allowed ? [{
+            id: PRAYER_ID, branch_id: BRANCH_ID, request_text: "Synthetic prayer narrative",
+            status: "assigned", sensitivity: "highly_restricted", expires_at: null,
+            answered_at: null, created_at: "2026-11-20T08:00:00.000Z",
+            updated_at: "2026-11-20T08:00:00.000Z",
+            assignment_starts_at: "2026-11-20T08:00:00.000Z", assignment_ends_at: null,
+          }] : [] };
         }
         if (s.sql.includes("SELECT cr.id, cr.branch_id, cr.status")) {
           const allowed = recordExists && (!s.sql.includes("EXISTS (SELECT 1 FROM care_assignment") || assignmentExists);
           return { success: true, results: allowed ? [{ id: CARE_ID, branch_id: BRANCH_ID, status: "active", reviewed_at: null, created_at: "2026-11-19T08:00:00.000Z", updated_at: "2026-11-20T08:00:00.000Z" }] : [] };
         }
         if (s.sql.includes("FROM care_interaction ci")) return { success: true, results: recordExists ? [{ id: "60000000-0000-4000-8000-000000000001", interaction_type: "visit", outcome_code: "completed", restricted_note: "Synthetic restricted note", occurred_at: "2026-11-20T10:00:00.000Z" }] : [] };
-        const needsAssignment = s.sql.includes("EXISTS (SELECT 1 FROM prayer_assignment") || s.sql.includes("EXISTS (SELECT 1 FROM care_assignment");
+        const needsAssignment = s.sql.includes("prayer_assignment") || s.sql.includes("EXISTS (SELECT 1 FROM care_assignment");
         return { success: true, meta: { changes: recordExists && (!needsAssignment || assignmentExists) ? 1 : 0 } };
       });
     },
@@ -78,6 +88,51 @@ function makeRequest(path, body) {
     body: JSON.stringify(body),
   });
 }
+test("assigned Prayer inbox uses the canonical assigned grant and does not require a legacy share", async () => {
+  const f = makePastoralEnv({
+    roleCode: "prayer_intercessor",
+    grants: [["prayer.request.read.assigned", "assigned"]],
+    assignmentExists: true,
+  });
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/pastoral/prayer/assigned?limit=25&offset=0",
+    { headers: { Cookie: "better-auth.session_token=synthetic-pastoral-session", "X-Branch-Id": BRANCH_ID } },
+  ), f.env);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.data.requests.length, 1);
+  assert.equal(body.data.total, 1);
+  assert.equal(body.data.requests[0].assignment_starts_at, "2026-11-20T08:00:00.000Z");
+  assert.equal(body.data.requests[0].assignment_ends_at, null);
+  assert.equal(f.batches.length, 1);
+  assert.ok(f.batches[0].every((statement) => !statement.sql.includes("staff_record_share")));
+  assert.ok(f.batches[0].some((statement) =>
+    statement.sql.includes("prayer.request.read.assigned") && statement.sql.includes("scope_mode = 'assigned'")));
+});
+
+test("assigned Prayer inbox fails closed without the assigned-read capability", async () => {
+  const f = makePastoralEnv({ roleCode: "prayer_intercessor", grants: [] });
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/pastoral/prayer/assigned",
+    { headers: { Cookie: "better-auth.session_token=synthetic-pastoral-session", "X-Branch-Id": BRANCH_ID } },
+  ), f.env);
+  assert.equal(response.status, 403);
+  assert.equal(f.batches.length, 0);
+});
+
+test("assigned Prayer inbox rejects a duplicate branch query parameter", async () => {
+  const f = makePastoralEnv({
+    roleCode: "prayer_intercessor",
+    grants: [["prayer.request.read.assigned", "assigned"]],
+  });
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/pastoral/prayer/assigned?branch_id=" + BRANCH_ID,
+    { headers: { Cookie: "better-auth.session_token=synthetic-pastoral-session", "X-Branch-Id": BRANCH_ID } },
+  ), f.env);
+  assert.equal(response.status, 400);
+  assert.equal(f.batches.length, 0);
+});
+
 test("assigned prayer read audits before returning the allowlisted narrative", async (t) => {
   const f = makePastoralEnv({ roleCode: "prayer_intercessor", grants: [["prayer.request.read.assigned", "assigned"]], assignmentExists: true });
   const r = await worker.fetch(makeRequest("/api/v1/pastoral/prayer/requests/" + PRAYER_ID + "/read", { branch_id: BRANCH_ID, access_mode: "assigned" }), f.env);
