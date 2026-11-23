@@ -117,7 +117,7 @@ jobs:
         working-directory: cloudflare
         env:
           DB_ID: ${{ steps.database.outputs.id }}
-          WORKER_URL: "http://localhost:8787"
+          WORKER_URL: "http://127.0.0.1:8787"
         shell: bash
         run: |
           set -euo pipefail
@@ -131,7 +131,7 @@ jobs:
           }
           trap cleanup EXIT
           for attempt in $(seq 1 30); do
-            if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://localhost:8787/health >/dev/null; then
+            if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://127.0.0.1:8787/health >/dev/null; then
               echo "Temporary authenticated Worker is healthy."
               node scripts/run_authenticated_acceptance.mjs
               exit 0
