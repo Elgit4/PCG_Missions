@@ -30,4 +30,9 @@ describe("staff account and password-reset mutation concurrency", () => {
     expect(source).toContain("canApproveStaffRoles, debouncedQuery");
   });
 
+  it("prevents the requester from reviewing their own Admin/Pastor role request", () => {
+    expect(source).toContain("if (request.requested_by === session.staff.id)");
+    expect(source).toContain("A different Admin/Pastor must review this request.");
+  });
+
 });
