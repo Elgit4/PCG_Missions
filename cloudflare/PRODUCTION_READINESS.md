@@ -9,8 +9,8 @@
 |---|---|
 | Application | https://pcg-missions.pages.dev |
 | Cloudflare Pages project | `pcg-missions` |
-| Pages production branch | `migration/cloudflare-auth-consolidation` |
-| Latest verified Pages deployment | `e1d26a7d`; commit `6359178d5121b940ff7bcc88be25a66d3b4fea5b`; successful deployment stage |
+| Pages production branch | `main` (automatic production deployments disabled) |
+| Latest verified Pages deployment | existing canonical deployment `70252198-bd66-4cb0-9f54-a0dcb08abf73`; commit `de8d324902d59cfa00ea0f6296a215a98bc9611c`; successful stage; unchanged during schema 46 work |
 | Pages API origin | `https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev` |
 | API Worker | `pcg-missions-api-production`; latest deployed version receives 100% of Worker traffic |
 | Production D1 | `pcg-missions-production`; ID `2bbfb04f-9182-427d-b269-d050b8a9403f` |
@@ -22,6 +22,15 @@
 The initial Cloudflare production cutover workflow [45058057798](https://github.com/Elgit4/PCG_Missions/actions/runs/45058057798) completed successfully. All 19 operational steps passed, including tests, schema migration and promotion, staff credential import, Better Auth deployment, private media-secret verification, and Pages smoke checks.
 
 The latest frontend checks on commit `6359178` passed. Pages deployment `e1d26a7d` completed successfully from the configured production branch.
+
+## Release-control and preview update — 22 November 2026
+
+- The Pages project now uses `main` as its production branch and has automatic production deployments disabled until the cutover is explicitly approved. Five queued production deployments from migration-branch commits were removed. The currently serving Pages deployment and production Worker were not redeployed.
+- The Pages project environment contains only `PCG_MISSIONS_API_ORIGIN`; the browser uses Better Auth through same-origin Cloudflare API routes. Supabase is retained only for private event-flyer storage.
+- Preview D1 is at schema 46 in the non-production environment, with six roles, 89 active capabilities and 140 role-capability grants. The preview Worker is deployed and passed the preview health and anonymous-boundary checks.
+- The schema 46 preview release includes the canonical report and event capability repair. The positive D1 lifecycle regression covers report submit/review, event registration/check-in and event closeout submit/review.
+- The isolated EU D1 Time Travel restore rehearsal passed: all 46 migrations were applied, a bookmark was captured, a post-bookmark probe was written, restore removed the probe while preserving schema 46 and the 46-row migration ledger, and the scratch database was deleted.
+- Production remains on D1 schema 45 with 128 role-capability grants. No schema 46 migration, production Worker deployment or production data restore has occurred. A current production Time Travel bookmark is available.
 
 ## Identity and authorization baseline
 
@@ -74,7 +83,7 @@ The production database currently has one branch and no seeded business records 
 2. **Authenticated acceptance:** complete a real login, password-change and sign-out walkthrough using intended staff accounts, then verify live Contacts, Follow-up and Staff operations. Run acceptance for all six roles using dedicated test accounts and synthetic fixtures in preview; do not create fake records in production.
 3. **Email delivery:** invitation delivery and password-reset notifications do not yet have a verified production email sender. The safe fallback is an authorized manual one-time credential handoff. Never tell staff an email was sent unless the provider confirms delivery.
 4. **Recovery operations:** run an administrator reset and forced password-change acceptance with an authorized account; verify session revocation and audit history.
-5. **Backup/restore:** a current D1 Time Travel bookmark is available, and Cloudflare's migration command captures a backup after applying migrations. A production restore has not been rehearsed. A preview restore rehearsal is not proof that production recovery works. Establish an independently retained backup and test the recovery procedure before relying on the system for irreplaceable ministry records.
+5. **Backup/restore:** the isolated EU schema 46 D1 Time Travel restore rehearsal passed and the production database has a current bookmark. A production-data restore has not been rehearsed. Establish an independently retained backup and test the recovery procedure against a safe production clone before relying on the system for irreplaceable ministry records.
 6. **Privacy and governance:** approve the church's privacy notice, data-controller contact, lawful purposes, retention/deletion schedule, pastoral-record access policy and incident-response contact before importing real visitor or sensitive pastoral information.
 7. **Security review:** complete authenticated negative tests across all six roles, branch isolation, team/assignee scope, sensitive prayer/care access, session expiry and rate limiting. Review MFA requirements and require stronger authentication for high-risk administrative access where supported.
 8. **Monitoring:** keep production Pages/Worker health, authentication-boundary checks and release alerts active. Monitor application HTTP errors separately from Worker runtime exceptions.
