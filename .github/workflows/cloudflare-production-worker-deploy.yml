@@ -1,6 +1,12 @@
 name: Cloudflare Production Worker Deploy
 
 on:
+  workflow_call:
+    inputs:
+      confirm_production:
+        description: Exact confirmation token for the guarded production release
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       confirm_production:
@@ -19,7 +25,7 @@ concurrency:
 jobs:
   production-roster-preflight:
     name: Require active Admin/Pastor owner and clean onboarded staff roster before restore rehearsal
-    if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
+    if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
@@ -144,7 +150,7 @@ jobs:
   production-worker:
     needs: restore-rehearsal
     name: Validate, migrate and deploy the production Worker
-    if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' && needs.restore-rehearsal.result == 'success' }}
+    if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' && needs.restore-rehearsal.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     environment: production
@@ -178,9 +184,20 @@ jobs:
           CONFIRMATION: ${{ inputs.confirm_production }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = "refs/heads/migration/cloudflare-auth-consolidation"
           test "$CONFIRMATION" = "DEPLOY-PRODUCTION"
           test -n "${CLOUDFLARE_API_TOKEN:-}"
+          if [[ "$GITHUB_REF" == "refs/heads/migration/cloudflare-auth-consolidation" ]]; then
+            test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          elif [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            test "$GITHUB_EVENT_NAME" = "push"
+            test -f .github/production/DEPLOY-PRODUCTION
+            test "$(cat .github/production/DEPLOY-PRODUCTION)" = "DEPLOY-PRODUCTION"
+            changed_files="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | sed '/^$/d')"
+            test "$changed_files" = ".github/production/DEPLOY-PRODUCTION"
+          else
+            echo "::error title=Production release branch rejected::Only the reviewed migration branch or a one-file production authorization commit on main is allowed."
+            exit 1
+          fi
           npx --yes wrangler@4.166.0 whoami
 
       - name: Require current preview, Worker and frontend acceptance before production mutation
@@ -197,7 +214,7 @@ jobs:
             local scope="$3"
             local jq_filter runs accepted sha
             jq_filter=".workflow_runs[] | select(.path == \".github/workflows/${workflow_file}\" and .conclusion == \"success\") | .head_sha"
-            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq "$jq_filter")"
+            runs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq "$jq_filter")"
             accepted=""
             while IFS= read -r sha; do
               [[ -z "$sha" ]] && continue
