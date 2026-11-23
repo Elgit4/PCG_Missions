@@ -48,15 +48,14 @@ The production D1 database currently has schema 45, while preview has schema 46.
 
 The guarded release workflow requires all of the following before any production mutation:
 
-- Six configured role definitions and at least one credential-ready, active Admin/Pastor.
-- At least six active staff profiles.
-- All six standard role codes effectively assigned to active staff.
-- No active staff profile without an effective role.
-- No active role assignment attached to an inactive staff profile.
-- A valid Better Auth credential for every active staff profile.
-- No expired or missing first-login password setup window.
+- Six configured role definitions and at least one credential-ready, active Admin/Pastor owner.
+- Every active staff profile has an effective role and a valid Better Auth credential.
+- No active role assignment is attached to an inactive staff profile.
+- No active profile has an expired or missing first-login password setup window.
 
-**Do not run the production release workflow until the roster gate passes and the authenticated acceptance and restore rehearsal have succeeded.** A green CI result or healthy Worker endpoint is not a substitute for those checks.
+The production cutover does **not** require six production users or all six role codes to be assigned. Additional staff are provisioned after release through the authenticated Staff workspace; each staff member establishes or changes their own password through the first-login onboarding flow. The six-role API and authorization boundaries are exercised in the isolated acceptance rehearsal, not by fabricating production identities.
+
+**Do not run the production release workflow until the owner gate and the isolated authenticated acceptance and restore rehearsal have succeeded.** A green CI result or healthy Worker endpoint is not a substitute for those checks.
 
 ## Development and verification
 
