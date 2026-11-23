@@ -15,8 +15,8 @@ The production application is hosted on Cloudflare Pages, with the authenticated
 | Authentication | Better Auth on the production Worker | Better Auth on the preview Worker |
 | Database | \`pcg-missions-production\` | \`pcg-missions-migration-test\` |
 | D1 jurisdiction | EU | EU |
-| D1 schema | **45** | **46** |
-| Applied migration ledger | 45 migrations | 46 migrations |
+| D1 schema | **45** | **47** |
+| Applied migration ledger | 45 migrations | 47 migrations |
 
 Production and preview are separate environments. The production Worker is bound to the production D1 database; the preview Worker is bound to the isolated preview D1 database. The Pages production configuration points to the production Worker, while preview points to the preview Worker.
 
@@ -44,7 +44,7 @@ Authorisation is capability-based and branch/team scoped. Sensitive pastoral acc
 
 ## Current production release gate
 
-The production D1 database currently has schema 45, while preview has schema 46. Migration 0046 is a forward-only capability repair and has not been applied to production.
+The production D1 database currently has schema 45, while preview has schema 47. Migration 0046 is a forward-only capability repair and has not been applied to production.
 
 The guarded release workflow requires all of the following before any production mutation:
 
