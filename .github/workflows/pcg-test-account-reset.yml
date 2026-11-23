@@ -55,7 +55,7 @@ jobs:
             while IFS=$'\t' read -r run_id sha status conclusion; do
               [[ -z "$run_id" ]] && continue
               if ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then continue; fi
-              if ! git diff --quiet "$sha" "$GITHUB_SHA" -- cloudflare; then continue; fi
+              if ! git diff --quiet "$sha" "$GITHUB_SHA" -- cloudflare/src cloudflare/migrations cloudflare/package.json cloudflare/package-lock.json cloudflare/wrangler.toml; then continue; fi
               chosen="$run_id"$'\t'"$status"$'\t'"$conclusion"
               break
             done < <(jq -r --arg path "$restore_path" \
