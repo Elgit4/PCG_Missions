@@ -142,8 +142,12 @@ jobs:
           for attempt in $(seq 1 30); do
             if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://127.0.0.1:8787/health >/dev/null; then
               echo "Temporary authenticated Worker is healthy."
+              set +e
               node scripts/run_authenticated_acceptance.mjs
-              exit 0
+              ACCEPTANCE_EXIT=$?
+              set -e
+              grep "REPORT_REVIEW" "$RUNNER_TEMP/pcg-acceptance-worker.log" || true
+              exit "$ACCEPTANCE_EXIT"
             fi
             sleep 1
           done
