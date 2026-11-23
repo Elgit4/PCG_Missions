@@ -113,7 +113,7 @@ jobs:
           fi
 
       - name: Preflight Worker script write permission without changing traffic
-        run: npx wrangler versions upload --env preview --message "PCG Missions Better Auth schema 46 deployment preflight"
+        run: npx wrangler versions upload --env preview --message "PCG Missions Better Auth schema 47 deployment preflight"
 
       # BETTER_AUTH_SECRET was provisioned directly on the isolated preview Worker.
       # Keep it out of GitHub logs and repository configuration.
