@@ -20,7 +20,7 @@ permissions:
 
 # Keep routine preview releases separate from the expensive full restore rehearsal, which runs before production cutover.
 concurrency:
-  group: pcg-missions-preview-release-v2
+  group: pcg-missions-preview-release-v3
   cancel-in-progress: false
 
 jobs:
@@ -88,11 +88,6 @@ jobs:
           path: cloudflare/dist/index.js
           if-no-files-found: error
           retention-days: 2
-
-      - name: Install PostgreSQL client for the one-time credential bridge
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client
 
       - name: Apply forward-only schema 46 to the isolated EU preview D1
         shell: bash
