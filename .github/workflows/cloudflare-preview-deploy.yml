@@ -20,7 +20,7 @@ permissions:
 
 # Keep routine preview releases separate from the expensive full restore rehearsal, which runs before production cutover.
 concurrency:
-  group: pcg-missions-preview-release-v2
+  group: pcg-missions-preview-release-v3
   cancel-in-progress: false
 
 jobs:
