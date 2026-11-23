@@ -27,6 +27,7 @@ describe("Cloudflare Pages same-origin API gateway", () => {
         origin: "https://pcg-missions.pages.dev",
         accept: "application/json",
         "user-agent": "PCG-Missions-Test",
+        "cf-connecting-ip": "203.0.113.9",
       },
     });
 
@@ -43,6 +44,7 @@ describe("Cloudflare Pages same-origin API gateway", () => {
     expect(forwarded.get("cookie")).toBe("better-auth.session_token=opaque-session");
     expect(forwarded.get("origin")).toBe("https://pcg-missions.pages.dev");
     expect(forwarded.get("accept")).toBe("application/json");
+    expect(forwarded.get("cf-connecting-ip")).toBe("203.0.113.9");
     expect(forwarded.get("x-request-id")).toBeTruthy();
 
     const getSetCookie = (response.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie;
