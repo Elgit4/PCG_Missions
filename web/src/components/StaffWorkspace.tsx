@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { Activity, AlertTriangle, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, HandHeart, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
 import { StaffNotificationCenter } from "./StaffNotificationCenter";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
-import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffRoleApprovalRequest, StaffSession, StandardStaffRoleCode, TaskCreateInput, TaskReassignmentInput } from "../lib/cmi-api";
+import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffRoleApprovalRequest, StaffSession, StandardStaffRoleCode, TaskCreateInput, TaskReassignmentInput, TeamRecord } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 import { ThemeToggle } from "../lib/theme";
 import { formatApplicationError } from "../lib/error-messages";
@@ -147,6 +147,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [savingReassignmentId, setSavingReassignmentId] = useState<string | null>(null);
   const [resetRequests, setResetRequests] = useState<StaffPasswordResetRequest[]>([]);
   const [staffMembers, setStaffMembers] = useState<StaffDirectoryEntry[]>([]);
+  const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [showStaffForm, setShowStaffForm] = useState(false);
   const [credentialHandoff, setCredentialHandoff] = useState<{
     email: string;
@@ -229,8 +230,9 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canUpdateTasks = hasCapability(session, "followup.task.update.scoped", branchId);
   const canManagePasswordResets = hasCapability(session, "staff.password_reset.manage", branchId);
   const canReadStaffDirectory = hasCapability(session, "staff.directory.read", branchId);
-  const canAssignFollowUp = hasCapability(session, "followup.assign", branchId) && canReadStaffDirectory;
-  const canAssignContacts = hasCapability(session, "contacts.assign", branchId) && canReadStaffDirectory;
+  const canReadTeams = hasCapability(session, "team.read", branchId);
+  const canAssignFollowUp = hasCapability(session, "followup.assign", branchId) && (canReadStaffDirectory || canReadTeams);
+  const canAssignContacts = hasCapability(session, "contacts.assign", branchId) && (canReadStaffDirectory || canReadTeams);
   const canAssignStaffRoles = hasCapability(session, "staff.role.assign", branchId);
   const canApproveStaffRoles = hasCapability(session, "staff.role.approve", branchId);
   const canManageStaffAccounts = hasCapability(session, "staff.account.manage", branchId);
@@ -308,6 +310,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setTasksHasMore(false);
     setResetRequests([]);
     setStaffMembers([]);
+    setTeams([]);
     setShowStaffForm(false);
     setStaffStatusEdit(null);
     setStaffStatusReason("");
@@ -417,12 +420,24 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     } else {
       setStaffMembers([]);
     }
+    if (canReadTeams) {
+      requests.push(api.listTeams(branchId)
+        .then((result) => { if (current) setTeams(result.data.teams); })
+        .catch((error: unknown) => {
+          if (!current) return;
+          if (error instanceof CmiApiError && error.status === 401) expireSession();
+          else setLoadError(messageFor(error));
+        }));
+    } else {
+      setTeams([]);
+    }
+
     void Promise.all(requests).finally(() => { if (current) setLoading(false); });
     return () => {
       current = false;
       paginationVersion.current += 1;
     };
-  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, canApproveStaffRoles, debouncedQuery, expireSession]);
+  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, canReadTeams, canApproveStaffRoles, debouncedQuery, expireSession]);
 
   const visibleContacts = contacts;
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
@@ -446,13 +461,14 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setLoadingMore(false);
     setRefreshing(true); setActionError("");
     try {
-      const [contactResult, taskResult, resetResult, staffResult, elevationResult, revocationResult] = await Promise.all([
+      const [contactResult, taskResult, resetResult, staffResult, elevationResult, revocationResult, teamResult] = await Promise.all([
         canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0, search: debouncedQuery || undefined }) : Promise.resolve(null),
         canReadTasks ? api.listFollowUpTasks(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
         canManagePasswordResets ? api.listStaffPasswordResetRequests(branchId) : Promise.resolve(null),
         canReadStaffDirectory ? api.listStaffDirectory(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
         canApproveStaffRoles ? api.listAdminElevationRequests(branchId) : Promise.resolve(null),
         canApproveStaffRoles ? api.listAdminRevocationRequests(branchId) : Promise.resolve(null),
+        canReadTeams ? api.listTeams(branchId) : Promise.resolve(null),
       ]);
       if (contactResult) {
         setContacts(contactResult.data);
@@ -464,6 +480,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       }
       if (resetResult) setResetRequests(resetResult.data);
       if (staffResult) setStaffMembers(staffResult.data);
+      if (teamResult) setTeams(teamResult.data.teams);
       if (elevationResult) setElevationRequests(elevationResult.data);
       if (revocationResult) setRevocationRequests(revocationResult.data);
     } catch (error) { handleActionError(error); }
