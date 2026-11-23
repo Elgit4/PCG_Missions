@@ -176,7 +176,7 @@ button,input,select,textarea{font:inherit}
 @media(max-width:420px){.staff-login-main{padding:16px 12px}.staff-login-form-wrap{padding:21px 17px;border-radius:17px}.staff-login-heading{margin:22px 0 20px}.staff-login-heading h2{font-size:27px}}
 
 /* Contact record sheets and permission-gated module workspaces */
-.cmi-detail-overlay{background:rgb(18 32 51 / 48%);backdrop-filter:blur(2px)}
+.cmi-detail-overlay{background:rgb(18 32 51 / 54%)}
 .cmi-detail-dialog{border:1px solid #e2e8ef;border-radius:20px;background:#fff;color:var(--cmi-text);box-shadow:0 28px 90px rgb(14 31 52 / 25%)}
 .cmi-detail-header{border-bottom-color:#e9eef3;background:#fff}
 .cmi-detail-heading .cmi-eyebrow{color:#a52a3e}.cmi-detail-title{color:var(--cmi-text)}
