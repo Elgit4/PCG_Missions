@@ -187,3 +187,46 @@ PR #119's first SQLite Foundation run failed because the focused authorization f
 4. Run full authenticated browser acceptance with synthetic accounts for all six roles across contacts, follow-up, teams, events, calendar, announcements, content, reports, prayer reads and notifications.
 5. Rehearse production-data recovery, reconcile staff identities, approve privacy/retention/incident procedures, then separately authorize schema-46 production migration and cutover.
 6. Keep SMS, public registration, Transport, offline workflows, publishing and unapproved exports disabled until their dedicated gates pass.
+
+---
+
+## 12. Superseding implementation and release-status update — 23 November 2026, 20:37 UTC
+
+This section supersedes earlier statements in this audit where later merged pull requests completed the cited workflow. It does not convert source-level completion into production acceptance.
+
+### Completed after the original audit snapshot
+
+- **Staff role administration — PR #123 merged.** The staff role management UI/client implementation is integrated, including active role history and audited role assignment/revocation. Admin/Pastor elevation retains its dual-control safeguard.
+- **Contact assignment and follow-up responsibility — PR #124 merged.** The browser API client and Staff Workspace now expose scoped contact assignment to staff or teams, follow-up task creation for self/staff/team targets, and reason-required reassignment/handoff. The client validates target cardinality; the Worker remains the authority for current membership, active status, branch scope and capability checks.
+- **Better Auth D1 adapter — PR #128 merged.** Better Auth now receives a Drizzle D1 database through its supported SQLite adapter rather than the raw D1 binding. The adapter schema maps the existing `user`, `session`, `account`, `verification` and `rateLimit` tables. Dependency pin was aligned to Drizzle ORM 0.45.4, matching Better Auth 1.7.22 peer requirements.
+- **CI evidence for PR #128:** Cloudflare Worker type-check and SQLite foundation tests passed; CMI web CI passed after merge.
+
+### Current live environment evidence
+
+| Area | Observed state | Acceptance |
+|---|---|---|
+| Non-production D1 | Schema 46; migration ledger includes 0046 | Schema deployed |
+| Production D1 | Schema 45; migration ledger ends at 0045 | Migration 0046 pending |
+| Production staff authorization | Two staff profiles currently have effective role assignments | Not sufficient evidence of all intended staff accounts being provisioned |
+| Preview Worker | Latest deployment is the Better Auth adapter build; health endpoint reports non-production schema 46 and auth configuration ready | Health passes |
+| Preview anonymous API boundary | `/api/v1/me` returns HTTP 401 with `UNAUTHENTICATED` | Pass |
+| Preview Better Auth session endpoint | `/api/auth/get-session` reaches Better Auth, but its rate-limit insert fails because the Cloudflare account has exceeded the D1 Free-tier daily row-write allowance | Blocked by account quota; live session acceptance not yet passed |
+| Production Worker | Last observed deployment was 22 November 2026; it is bound to production D1 and has production Better Auth secrets | New adapter version not deployed |
+| Production release workflow | Guarded manual workflow exists; it verifies D1 ledger, secrets, bundle, Time Travel bookmark, migrations and post-deploy endpoints | Not executed for schema 46 / new adapter |
+| Legacy initial-cutover workflow | Explicitly retired | Must not be rerun |
+
+The preview failure was confirmed directly by Cloudflare D1: a read-only metadata query succeeded, while a harmless isolated preview `rateLimit` insert returned error 7500, explicitly stating that the account exceeded the Free-tier daily row-write limit. The failed Better Auth session request attempted this same rate-limit write. Therefore, the latest smoke-test failure is **not evidence of a remaining Drizzle adapter mismatch**; it is an infrastructure quota block. No production data was changed to investigate it.
+
+### Release decision
+
+**Do not mark PCG Missions production-ready yet.** The following are still required:
+
+1. Re-run preview authenticated-session and login/password lifecycle tests after the D1 row-write quota resets, or after the account moves to a D1 plan with sufficient write capacity. Verify a real test account can sign in, retrieve its session, change its temporary password and complete a password reset.
+2. Complete the full role matrix against isolated test accounts: Admin/Pastor, Coordinator, Team Leader, Field Worker, Follow-up Volunteer and Prayer Intercessor. Include negative tests for cross-branch reads, team-boundary violations, pastoral restrictions and unauthorized role elevation.
+3. Complete browser-level acceptance for contact capture/assignment, task create/handoff/status, staff-role changes, reports, events, calendar cancellation, announcements/content drafts and notifications. Existing unit/type/SQLite tests do not replace this.
+4. Run and retain a successful D1 restore rehearsal. The previous rehearsal was cancelled after earlier account write-quota exhaustion; it is not a passed restore test.
+5. Apply migration 0046 to production through the guarded production release workflow, then deploy the reviewed Better Auth Worker and verify the production Pages proxy, session endpoint, CORS and unauthenticated boundaries.
+6. Verify the production Pages frontend is using the intended Cloudflare Worker routes and no Supabase Auth/Postgres operational dependencies remain. Supabase object storage is the documented exception for event flyers. SMS remains disabled.
+7. Verify production backups/Time Travel recovery evidence, monitoring/alerting, account provisioning and operational support procedures before opening access to the full ministry team.
+
+No production migration, Worker deployment, staff credential change, SMS activation or destructive data operation was performed as part of this audit update.
