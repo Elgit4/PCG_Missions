@@ -135,6 +135,27 @@ const admin = await insertUser("admin_pastor", "admin", null, true);
 const worker = await insertUser("field_worker", "worker", admin.profileId);
 const reviewer = await insertUser("coordinator", "reviewer", admin.profileId);
 const unassigned = await insertUser("field_worker", "unassigned", admin.profileId);
+const teamLeader = await insertUser("team_leader", "team-leader", admin.profileId);
+const followupVolunteer = await insertUser("follow_up_volunteer", "followup-volunteer", admin.profileId);
+const prayerIntercessor = await insertUser("prayer_intercessor", "prayer-intercessor", admin.profileId);
+const teamId = randomUUID();
+const outsideTeamId = randomUUID();
+await d1(
+  "INSERT INTO team(id,branch_id,name,description,is_active,created_at,updated_at) VALUES(?,?,?,NULL,1,?,?)",
+  [teamId, branchId, "QA Follow-up Team", nowIso, nowIso],
+);
+await d1(
+  "INSERT INTO team(id,branch_id,name,description,is_active,created_at,updated_at) VALUES(?,?,?,NULL,1,?,?)",
+  [outsideTeamId, branchId, "QA Outside Team", nowIso, nowIso],
+);
+await d1(
+  "INSERT INTO staff_team_membership(id,staff_profile_id,team_id,branch_id,membership_role,starts_at,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
+  [randomUUID(), teamLeader.profileId, teamId, branchId, "leader", nowIso, admin.profileId, nowIso],
+);
+await d1(
+  "INSERT INTO staff_team_membership(id,staff_profile_id,team_id,branch_id,membership_role,starts_at,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)",
+  [randomUUID(), followupVolunteer.profileId, teamId, branchId, "member", nowIso, admin.profileId, nowIso],
+);
 console.log("SYNTHETIC_IDENTITIES_SEEDED");
 
 const unauthenticated = await fetchWithTimeout(`${workerUrl}/api/v1/me`);
@@ -144,9 +165,19 @@ const adminCookie = await signIn(admin, "Admin/Pastor");
 const workerCookie = await signIn(worker, "Field Worker");
 const reviewerCookie = await signIn(reviewer, "Coordinator");
 const unassignedCookie = await signIn(unassigned, "Unassigned Field Worker");
+const teamLeaderCookie = await signIn(teamLeader, "Team Leader");
+const followupVolunteerCookie = await signIn(followupVolunteer, "Follow-up Volunteer");
+const prayerIntercessorCookie = await signIn(prayerIntercessor, "Prayer Intercessor");
 console.log("BETTER_AUTH_SESSIONS_CREATED");
 
-for (const [cookie, label] of [[adminCookie, "Admin/Pastor"], [workerCookie, "Field Worker"], [reviewerCookie, "Coordinator"]]) {
+for (const [cookie, label] of [
+  [adminCookie, "Admin/Pastor"],
+  [reviewerCookie, "Coordinator"],
+  [teamLeaderCookie, "Team Leader"],
+  [workerCookie, "Field Worker"],
+  [followupVolunteerCookie, "Follow-up Volunteer"],
+  [prayerIntercessorCookie, "Prayer Intercessor"],
+]) {
   const me = await api(cookie, "/api/v1/me");
   if (me.status !== 200 || me.payload.ok !== true) throw new Error(`${label} authenticated /api/v1/me failed: ${me.status} ${JSON.stringify(me.payload)}`);
 }
@@ -193,6 +224,92 @@ if (followupStarted.status !== 200) throw new Error("Follow-up start failed: " +
 const followupCompleted = await api(workerCookie, "/api/v1/followup/tasks/" + followupTaskId, "PATCH", { status: "completed" });
 if (followupCompleted.status !== 200) throw new Error("Follow-up completion failed: " + followupCompleted.status + " " + JSON.stringify(followupCompleted.payload));
 console.log("CONTACT_AND_FOLLOWUP_LIFECYCLE_PASSED");
+
+// Verify team-scoped allocation, handoff, and assigned-only privacy across all six roles.
+const adminTeamAssign = await api(adminCookie, `/api/v1/contacts/${contactId}/assign`, "POST", {
+  team_id: teamId,
+  reason: "Admin routes the captured visitor to the responsible ministry team.",
+});
+if (adminTeamAssign.status !== 201 || adminTeamAssign.payload?.data?.team_id !== teamId) {
+  throw new Error("Admin/Pastor could not assign the contact to a branch team: " + adminTeamAssign.status + " " + JSON.stringify(adminTeamAssign.payload));
+}
+await new Promise((resolve) => setTimeout(resolve, 1250));
+const teamLeaderContacts = await api(teamLeaderCookie, "/api/v1/contacts?limit=50&offset=0");
+if (teamLeaderContacts.status !== 200 || !teamLeaderContacts.payload?.data?.some((contact) => contact.id === contactId)) {
+  throw new Error("Team Leader could not read a contact assigned to their active team.");
+}
+const crossTeamContactAssign = await api(teamLeaderCookie, `/api/v1/contacts/${contactId}/assign`, "POST", {
+  team_id: outsideTeamId,
+  reason: "Attempted to assign a visitor outside the Team Leader's own team.",
+});
+if (crossTeamContactAssign.status !== 403 || crossTeamContactAssign.payload?.error?.code !== "TEAM_OUTSIDE_SCOPE") {
+  throw new Error("Team Leader was not blocked from assigning a contact outside their team.");
+}
+const teamLeaderStaffAssign = await api(teamLeaderCookie, `/api/v1/contacts/${contactId}/assign`, "POST", {
+  assignee_profile_id: followupVolunteer.profileId,
+  reason: "Team Leader hands this visitor to the assigned Follow-up Volunteer.",
+});
+if (teamLeaderStaffAssign.status !== 201) {
+  throw new Error("Team Leader could not hand off a contact to an active member of their team: " + teamLeaderStaffAssign.status + " " + JSON.stringify(teamLeaderStaffAssign.payload));
+}
+await new Promise((resolve) => setTimeout(resolve, 1250));
+const volunteerContacts = await api(followupVolunteerCookie, "/api/v1/contacts?limit=50&offset=0");
+if (volunteerContacts.status !== 200 || !volunteerContacts.payload?.data?.some((contact) => contact.id === contactId)) {
+  throw new Error("Follow-up Volunteer could not read the contact currently assigned to them.");
+}
+const fieldWorkerAfterHandoff = await api(workerCookie, "/api/v1/contacts?limit=50&offset=0");
+if (fieldWorkerAfterHandoff.status !== 200 || fieldWorkerAfterHandoff.payload?.data?.some((contact) => contact.id === contactId)) {
+  throw new Error("Previous Field Worker retained contact access after responsibility was transferred.");
+}
+const prayerContactBoundary = await api(prayerIntercessorCookie, "/api/v1/contacts?limit=50&offset=0");
+if (prayerContactBoundary.status !== 403) {
+  throw new Error("Prayer Intercessor unexpectedly received ordinary visitor-contact access.");
+}
+const volunteerTask = await api(adminCookie, "/api/v1/followup/tasks", "POST", {
+  contact_id: contactId,
+  team_id: teamId,
+  priority: 2,
+  due_at: endsAt,
+  task_note: "Synthetic team-assigned follow-up for authenticated role acceptance.",
+}, "qa-team-followup-" + runId);
+if (volunteerTask.status !== 201) {
+  throw new Error("Admin/Pastor could not create a team-assigned follow-up task: " + volunteerTask.status + " " + JSON.stringify(volunteerTask.payload));
+}
+const teamTaskId = volunteerTask.payload?.data?.id;
+const teamLeaderTasks = await api(teamLeaderCookie, "/api/v1/followup/tasks?limit=50&offset=0&status=open");
+if (teamLeaderTasks.status !== 200 || !teamLeaderTasks.payload?.data?.some((task) => task.id === teamTaskId)) {
+  throw new Error("Team Leader could not read a task assigned to their active team.");
+}
+const outOfTeamHandoff = await api(teamLeaderCookie, `/api/v1/followup/tasks/${teamTaskId}/assign`, "POST", {
+  assignee_profile_id: worker.profileId,
+  reason: "Attempted handoff to a Field Worker outside the leader's team.",
+});
+if (outOfTeamHandoff.status !== 403 || outOfTeamHandoff.payload?.error?.code !== "FOLLOWUP_ASSIGNEE_OUTSIDE_TEAM") {
+  throw new Error("Team Leader was not blocked from handing off a task outside their team.");
+}
+const teamTaskHandoff = await api(teamLeaderCookie, `/api/v1/followup/tasks/${teamTaskId}/assign`, "POST", {
+  assignee_profile_id: followupVolunteer.profileId,
+  reason: "Team Leader transfers this task to the responsible Follow-up Volunteer.",
+});
+if (teamTaskHandoff.status !== 200) {
+  throw new Error("Team Leader could not hand off a team task to an active team member: " + teamTaskHandoff.status + " " + JSON.stringify(teamTaskHandoff.payload));
+}
+const volunteerTasks = await api(followupVolunteerCookie, "/api/v1/followup/tasks?limit=50&offset=0&status=open");
+if (volunteerTasks.status !== 200 || !volunteerTasks.payload?.data?.some((task) => task.id === teamTaskId)) {
+  throw new Error("Follow-up Volunteer could not read the task handed off to them.");
+}
+const volunteerHandoffDenied = await api(followupVolunteerCookie, `/api/v1/followup/tasks/${teamTaskId}/assign`, "POST", {
+  team_id: teamId,
+  reason: "Attempted a handoff without the assignment capability.",
+});
+if (volunteerHandoffDenied.status !== 403) {
+  throw new Error("Follow-up Volunteer unexpectedly gained the task-assignment capability.");
+}
+const prayerTaskBoundary = await api(prayerIntercessorCookie, "/api/v1/followup/tasks?limit=50&offset=0");
+if (prayerTaskBoundary.status !== 403) {
+  throw new Error("Prayer Intercessor unexpectedly received ordinary follow-up task access.");
+}
+console.log("SIX_ROLE_CONTACT_AND_TEAM_HANDOFF_BOUNDARIES_PASSED");
 
 const assignment = await api(adminCookie, `/api/v1/events/${eventId}/staff-assignments`, "POST", {
   staff_auth_user_id: worker.userId,

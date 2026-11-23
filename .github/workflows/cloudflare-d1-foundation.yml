@@ -43,3 +43,5 @@ jobs:
         run: npm run typecheck
       - name: Test Better Auth credential verification and session integration
         run: npm test
+      - name: Syntax-check authenticated acceptance harness
+        run: node --check scripts/run_authenticated_acceptance.mjs
