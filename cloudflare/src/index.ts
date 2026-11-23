@@ -2236,7 +2236,9 @@ async function createFollowupTask(
   const assignScope = bestScope(context.activeBranch.capabilities
     .filter((grant) => grant.code === "followup.assign")
     .map((grant) => grant.scopeMode));
-  if (!createScope || !assignScope || createScope === "assigned" || assignScope === "assigned" || createScope !== assignScope) {
+  const canSelfAssign = createScope === "assigned" && (assignScope === null || assignScope === "assigned");
+  const canManageAssignments = !!assignScope && assignScope !== "assigned" && createScope === assignScope;
+  if (!createScope || (!canSelfAssign && !canManageAssignments)) {
     return json(403, { ok: false, error: { code: "FOLLOWUP_CREATE_NOT_AUTHORIZED" } }, requestId, origin);
   }
 
@@ -2261,6 +2263,14 @@ async function createFollowupTask(
   const requestedTeamId = typeof payload.team_id === "string" ? payload.team_id.trim() : "";
   const hasAssignmentTargets = Number(Boolean(assigneeAuthUserId)) +
     Number(Boolean(requestedAssigneeProfileId)) + Number(Boolean(requestedTeamId));
+  const isSelfAssignment = (
+    assigneeAuthUserId === context.staff.userId && !requestedAssigneeProfileId && !requestedTeamId
+  ) || (
+    requestedAssigneeProfileId === context.staff.profileId && !assigneeAuthUserId && !requestedTeamId
+  );
+  if (canSelfAssign && !isSelfAssignment) {
+    return json(403, { ok: false, error: { code: "FOLLOWUP_SELF_ASSIGNMENT_ONLY" } }, requestId, origin);
+  }
   const listId = typeof payload.list_id === "string" ? payload.list_id.trim() || null : null;
   const priority = payload.priority === undefined ? 3 : payload.priority;
   const dueAt = payload.due_at === undefined || payload.due_at === null || payload.due_at === ""
@@ -2430,6 +2440,10 @@ async function createFollowupTask(
   const targetValues = assigneeUserId !== null
     ? assignScope === "team" ? [assigneeUserId, now, now, teamIdForScope, now, now] : [assigneeUserId, now, now]
     : assignScope === "team" ? [teamId, teamIdForScope] : [teamId];
+  const assignmentCapabilityPredicate = canSelfAssign ? "? = ?" : actorCapabilityPredicate("followup.assign");
+  const assignmentCapabilityValues = canSelfAssign
+    ? [assigneeUserId, context.staff.userId]
+    : [context.staff.userId, now, now];
   const listScopeTeamId = teamId ?? teamIdForScope;
   const listPredicate = listId === null
     ? "1 = 1"
@@ -2470,14 +2484,14 @@ async function createFollowupTask(
           AND (${targetPredicate})
           AND (${listPredicate})
           AND (${actorCapabilityPredicate("followup.create")})
-          AND (${actorCapabilityPredicate("followup.assign")})
+          AND (${assignmentCapabilityPredicate})
       `).bind(
         taskId, listId, assigneeUserId, teamId, priority, dueAt, taskNote,
         context.staff.userId, now, now, idempotencyKey, digestBytes,
         contactId, context.activeBranch.branchId, ...contactPredicate.values,
         ...targetValues, ...listValues,
         context.staff.userId, now, now,
-        context.staff.userId, now, now,
+        ...assignmentCapabilityValues,
       ),
       env.DB.prepare(`
         INSERT INTO followup_task_event
