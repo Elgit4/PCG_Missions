@@ -1,0 +1,1479 @@
+/* PCG Missions — frontend production polish
+   Layered after the existing design system. No workflow or data behavior changes. */
+
+:root {
+  --cmi-focus-ring: 0 0 0 3px rgb(49 81 111 / 16%);
+  --cmi-control-border: #d8e1e9;
+  --cmi-copy: #42536a;
+  --cmi-copy-muted: #69798e;
+}
+
+html,
+body {
+  min-width: 320px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  line-height: 1.5;
+}
+
+.cmi-workspace,
+.staff-login-page {
+  font-family: "DM Sans Variable", "Segoe UI", sans-serif;
+  font-optical-sizing: auto;
+}
+
+.cmi-content {
+  padding-top: clamp(22px, 3vw, 34px);
+  padding-bottom: max(42px, env(safe-area-inset-bottom));
+}
+
+.cmi-topbar {
+  min-height: 88px;
+}
+
+.cmi-topbar-heading h1 {
+  font-size: clamp(22px, 2.1vw, 28px);
+  line-height: 1.2;
+}
+
+.cmi-breadcrumb {
+  font-size: 10px;
+  letter-spacing: .12em;
+}
+
+.cmi-eyebrow,
+.cmi-operations-eyebrow,
+.ministry-reports-eyebrow {
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: .12em;
+}
+
+.cmi-welcome {
+  min-height: 148px;
+  padding: clamp(22px, 3vw, 32px);
+}
+
+.cmi-welcome h2 {
+  max-width: 680px;
+  line-height: 1.14;
+}
+
+.cmi-welcome p:not(.cmi-eyebrow) {
+  max-width: 650px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.cmi-stat-card {
+  min-height: 126px;
+  padding: 19px 20px;
+}
+
+.cmi-stat-card > span {
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: .07em;
+}
+
+.cmi-stat-card strong {
+  font-size: clamp(25px, 2.2vw, 31px);
+  line-height: 1.15;
+}
+
+.cmi-stat-card small {
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.cmi-overview-card-heading h3,
+.cmi-panel-heading h3 {
+  line-height: 1.25;
+}
+
+.cmi-overview-card-heading p:not(.cmi-eyebrow),
+.cmi-panel-heading p:not(.cmi-eyebrow) {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cmi-overview-disclosure > summary {
+  min-height: 70px;
+}
+
+.cmi-overview-disclosure > summary strong {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.cmi-overview-disclosure > summary small {
+  font-size: 12px;
+}
+
+.cmi-disclosure-body,
+.cmi-access-list > div span,
+.cmi-restricted-list article p,
+.cmi-access-footnote {
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.cmi-button,
+.cmi-complete-button,
+.cmi-user-card > button,
+.cmi-icon-action,
+.cmi-theme-toggle {
+  min-height: 44px;
+}
+
+.cmi-button {
+  padding-inline: 15px;
+  font-size: 12px;
+  border-radius: 11px;
+}
+
+.cmi-button-primary {
+  font-weight: 750;
+}
+
+.cmi-search {
+  min-height: 46px;
+  border-radius: 12px;
+}
+
+.cmi-search input {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.cmi-form-grid,
+.cmi-operations-form,
+.cmi-detail-form,
+.cmi-detail-form-grid,
+.cmi-staff-status-form {
+  gap: 15px;
+}
+
+.cmi-form-grid label,
+.cmi-operations-form label,
+.cmi-detail-form label,
+.cmi-detail-form-grid label,
+.cmi-staff-status-form label,
+.ministry-report-form-grid label > span,
+.ministry-report-count-grid label > span,
+.ministry-report-review label > span {
+  font-size: 12px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.cmi-form-grid label > span,
+.cmi-operations-form label > span,
+.cmi-staff-status-form label > span {
+  font-size: 11px;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+.cmi-form-grid input,
+.cmi-form-grid select,
+.cmi-form-grid textarea,
+.cmi-operations-form input,
+.cmi-operations-form select,
+.cmi-operations-form textarea,
+.cmi-detail-form input,
+.cmi-detail-form select,
+.cmi-detail-form textarea,
+.cmi-detail-form-grid input,
+.cmi-detail-form-grid select,
+.cmi-detail-form-grid textarea,
+.cmi-staff-status-form textarea,
+.ministry-report-form-grid input,
+.ministry-report-form-grid select,
+.ministry-report-count-grid input,
+.ministry-report-review textarea {
+  min-height: 46px;
+  border-color: var(--cmi-control-border);
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.cmi-form-grid textarea,
+.cmi-operations-form textarea,
+.cmi-detail-form textarea,
+.cmi-detail-form-grid textarea,
+.cmi-staff-status-form textarea,
+.ministry-report-review textarea {
+  min-height: 104px;
+  padding: 12px;
+  resize: vertical;
+}
+
+.cmi-form-grid input:focus-visible,
+.cmi-form-grid select:focus-visible,
+.cmi-form-grid textarea:focus-visible,
+.cmi-operations-form input:focus-visible,
+.cmi-operations-form select:focus-visible,
+.cmi-operations-form textarea:focus-visible,
+.cmi-detail-form input:focus-visible,
+.cmi-detail-form select:focus-visible,
+.cmi-detail-form textarea:focus-visible,
+.cmi-detail-form-grid input:focus-visible,
+.cmi-detail-form-grid select:focus-visible,
+.cmi-detail-form-grid textarea:focus-visible,
+.cmi-staff-status-form textarea:focus-visible,
+.ministry-report-form-grid input:focus-visible,
+.ministry-report-form-grid select:focus-visible,
+.ministry-report-count-grid input:focus-visible,
+.ministry-report-review textarea:focus-visible {
+  outline: 2px solid #315a7b;
+  outline-offset: 2px;
+  box-shadow: var(--cmi-focus-ring);
+}
+
+.cmi-table thead th {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.cmi-table tbody td {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.cmi-table tbody td strong {
+  font-size: 13px;
+}
+
+.cmi-table tbody td small,
+.cmi-contact-open span {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.cmi-task-copy strong {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.cmi-task-copy p {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.cmi-task-copy small,
+.cmi-task-status,
+.cmi-status {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.cmi-scope-note,
+.cmi-detail-muted,
+.cmi-empty-row,
+.cmi-empty-state p {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cmi-alert,
+.cmi-success-note {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cmi-operations-timezone {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.cmi-operations-actions {
+  flex: 0 0 auto;
+}
+
+.staff-login-form-wrap {
+  border-radius: 20px;
+}
+
+.staff-login-heading h2 {
+  line-height: 1.12;
+}
+
+.staff-login-heading > p:last-child {
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.staff-login-security-label,
+.staff-login-section-label {
+  font-size: 10px;
+}
+
+.staff-login-auth-field > span {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.staff-login-auth-field input,
+.staff-login-password-field input {
+  min-height: 49px;
+  font-size: 16px;
+}
+
+.staff-login-auth-form button[type="submit"],
+.staff-login-submit {
+  min-height: 48px;
+  font-size: 13px;
+}
+
+.staff-login-config-error,
+.staff-login-auth-error,
+.staff-login-auth-notice {
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cmi-workspace :focus-visible,
+.staff-login-page :focus-visible {
+  outline: 2px solid #315a7b;
+  outline-offset: 3px;
+  box-shadow: none;
+}
+
+.cmi-overview-disclosure > summary:focus-visible,
+.cmi-icon-action:focus-visible,
+.cmi-theme-toggle:focus-visible {
+  outline: 2px solid #315a7b;
+  outline-offset: 2px;
+}
+
+.cmi-skip-link {
+  z-index: 120;
+}
+
+.cmi-footer {
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+/* Tablet and phone layouts */
+@media (max-width: 980px) {
+  .cmi-content {
+    padding-right: 22px;
+    padding-left: 22px;
+  }
+
+  .cmi-overview-tools {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .cmi-topbar {
+    gap: 10px;
+    padding-top: max(13px, env(safe-area-inset-top));
+  }
+
+  .cmi-topbar-heading h1 {
+    font-size: 21px;
+  }
+
+  .cmi-content {
+    padding-top: 16px;
+    padding-right: max(13px, env(safe-area-inset-right));
+    padding-bottom: calc(126px + env(safe-area-inset-bottom));
+    padding-left: max(13px, env(safe-area-inset-left));
+  }
+
+  .cmi-welcome {
+    gap: 14px;
+    padding: 18px;
+  }
+
+  .cmi-welcome h2 {
+    font-size: 22px;
+  }
+
+  .cmi-welcome p:not(.cmi-eyebrow) {
+    font-size: 12px;
+  }
+
+  .cmi-stat-card {
+    min-height: 106px;
+    padding: 14px;
+  }
+
+  .cmi-stat-card > span {
+    font-size: 9px;
+  }
+
+  .cmi-stat-card small {
+    font-size: 10px;
+  }
+
+  .cmi-panel {
+    padding: 17px 14px;
+  }
+
+  .cmi-form-grid,
+  .cmi-operations-form,
+  .cmi-detail-form,
+  .cmi-detail-form-grid {
+    padding: 14px;
+  }
+
+  .cmi-form-grid input,
+  .cmi-form-grid select,
+  .cmi-form-grid textarea,
+  .cmi-operations-form input,
+  .cmi-operations-form select,
+  .cmi-operations-form textarea,
+  .cmi-detail-form input,
+  .cmi-detail-form select,
+  .cmi-detail-form textarea,
+  .cmi-detail-form-grid input,
+  .cmi-detail-form-grid select,
+  .cmi-detail-form-grid textarea,
+  .cmi-staff-status-form textarea,
+  .ministry-report-form-grid input,
+  .ministry-report-form-grid select,
+  .ministry-report-count-grid input,
+  .ministry-report-review textarea {
+    font-size: 16px;
+  }
+
+  .cmi-mobile-nav {
+    bottom: max(8px, env(safe-area-inset-bottom));
+    padding: 6px;
+  }
+
+  .cmi-mobile-nav-items button {
+    min-height: 56px;
+    font-size: 10px;
+  }
+
+  .cmi-mobile-more button {
+    min-height: 48px;
+    font-size: 12px;
+  }
+
+  .cmi-task-copy strong {
+    font-size: 13px;
+  }
+
+  .cmi-task-copy p {
+    font-size: 12px;
+    white-space: normal;
+  }
+
+  .cmi-operations-heading {
+    align-items: flex-start;
+  }
+
+  .cmi-operations-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .cmi-operations-actions .cmi-button {
+    flex: 1 1 auto;
+  }
+
+  .ministry-report-form-grid,
+  .ministry-report-count-grid {
+    gap: 11px;
+  }
+
+  .staff-login-main {
+    padding-top: max(18px, env(safe-area-inset-top));
+    padding-right: max(16px, env(safe-area-inset-right));
+    padding-bottom: max(18px, env(safe-area-inset-bottom));
+    padding-left: max(16px, env(safe-area-inset-left));
+  }
+
+  .staff-login-mobile-brand {
+    margin-bottom: clamp(16px, 4vh, 30px);
+  }
+
+  .staff-login-form-wrap {
+    padding: 22px 18px;
+  }
+
+  .staff-login-heading {
+    margin-top: 20px;
+    margin-bottom: 20px;
+  }
+
+  .staff-login-heading h2 {
+    font-size: clamp(27px, 7.5vw, 34px);
+  }
+}
+
+@media (max-width: 420px) {
+  .cmi-overview-card {
+    padding: 15px;
+  }
+
+  .cmi-overview-card-heading h3 {
+    font-size: 16px;
+  }
+
+  .cmi-overview-disclosure > summary {
+    gap: 9px;
+    padding: 10px;
+  }
+
+  .cmi-overview-disclosure > summary small {
+    font-size: 11px;
+  }
+
+  .cmi-mobile-nav {
+    width: calc(100% - 16px);
+  }
+
+  .cmi-mobile-nav-items button {
+    min-height: 54px;
+    font-size: 9px;
+  }
+
+  .staff-login-form-wrap {
+    padding: 20px 16px;
+  }
+}
+
+/* Dark theme counterpart for the new control and typography rules */
+html[data-theme="dark"] .cmi-form-grid input,
+html[data-theme="dark"] .cmi-form-grid select,
+html[data-theme="dark"] .cmi-form-grid textarea,
+html[data-theme="dark"] .cmi-operations-form input,
+html[data-theme="dark"] .cmi-operations-form select,
+html[data-theme="dark"] .cmi-operations-form textarea,
+html[data-theme="dark"] .cmi-detail-form input,
+html[data-theme="dark"] .cmi-detail-form select,
+html[data-theme="dark"] .cmi-detail-form textarea,
+html[data-theme="dark"] .cmi-detail-form-grid input,
+html[data-theme="dark"] .cmi-detail-form-grid select,
+html[data-theme="dark"] .cmi-detail-form-grid textarea,
+html[data-theme="dark"] .cmi-staff-status-form textarea,
+html[data-theme="dark"] .ministry-report-form-grid input,
+html[data-theme="dark"] .ministry-report-form-grid select,
+html[data-theme="dark"] .ministry-report-count-grid input,
+html[data-theme="dark"] .ministry-report-review textarea {
+  border-color: #40536a;
+  background: #111c29;
+  color: #edf3fa;
+  color-scheme: dark;
+}
+
+html[data-theme="dark"] .cmi-form-grid label,
+html[data-theme="dark"] .cmi-operations-form label,
+html[data-theme="dark"] .cmi-detail-form label,
+html[data-theme="dark"] .cmi-detail-form-grid label,
+html[data-theme="dark"] .cmi-staff-status-form label,
+html[data-theme="dark"] .ministry-report-form-grid label > span,
+html[data-theme="dark"] .ministry-report-count-grid label > span,
+html[data-theme="dark"] .ministry-report-review label > span {
+  color: #d0dbe8;
+}
+
+html[data-theme="dark"] .cmi-form-grid label > span,
+html[data-theme="dark"] .cmi-operations-form label > span,
+html[data-theme="dark"] .cmi-staff-status-form label > span {
+  color: #a6b6c8;
+}
+
+html[data-theme="dark"] .cmi-table thead th {
+  background: #202e3f;
+  color: #a9b9cb;
+}
+
+html[data-theme="dark"] .cmi-table tbody td {
+  border-color: #2c3b4d;
+  color: #c2cfdd;
+}
+
+html[data-theme="dark"] .cmi-table tbody tr:hover {
+  background: #202e3f;
+}
+
+html[data-theme="dark"] .cmi-task-copy p,
+html[data-theme="dark"] .cmi-task-copy small,
+html[data-theme="dark"] .cmi-detail-muted,
+html[data-theme="dark"] .cmi-scope-note {
+  color: #a6b6c8;
+}
+
+html[data-theme="dark"] .cmi-success-note {
+  border-color: #315b4a;
+  background: #1d342d;
+  color: #bce5ce;
+}
+
+html[data-theme="dark"] .cmi-alert {
+  border-color: #75404d;
+  background: #3a222a;
+  color: #ffc2cc;
+}
+
+html[data-theme="dark"] .cmi-skip-link {
+  background: #263b51;
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .cmi-button,
+  .cmi-icon-action,
+  .cmi-theme-toggle,
+  .cmi-mobile-nav-items button,
+  .cmi-overview-disclosure {
+    border: 1px solid ButtonText;
+  }
+
+  .cmi-workspace :focus-visible,
+  .staff-login-page :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 3px;
+  }
+}
+
+
+/* Compact handset sign-in: preserve the full recovery flow without clipping. */
+@media (max-width: 759px) {
+  .staff-login-auth-bottom {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 3px 16px;
+    min-height: 0;
+    margin-top: 9px;
+  }
+
+  .staff-login-inline-link {
+    min-height: 38px;
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 759px) and (max-height: 740px) {
+  .staff-login-main {
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .staff-login-mobile-brand {
+    margin-top: 0;
+    margin-bottom: 9px;
+  }
+
+  .staff-login-mobile-brand .staff-login-brand-mark {
+    width: 35px;
+    height: 35px;
+    flex-basis: 35px;
+  }
+
+  .staff-login-form-wrap {
+    padding: 15px 15px 14px;
+    border-radius: 16px;
+  }
+
+  .staff-login-theme-row {
+    margin: -2px 0 7px;
+  }
+
+  .staff-login-theme-row .cmi-theme-toggle {
+    min-height: 34px;
+  }
+
+  .staff-login-security-label {
+    min-height: 32px;
+    padding-block: 5px;
+  }
+
+  .staff-login-heading {
+    margin: 12px 0 13px;
+  }
+
+  .staff-login-heading h2 {
+    font-size: clamp(25px, 7vw, 29px);
+  }
+
+  .staff-login-heading > p:last-child {
+    margin-top: 6px;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .staff-login-auth-form {
+    gap: 11px;
+    margin-top: 2px;
+  }
+
+  .staff-login-auth-field {
+    gap: 5px;
+  }
+
+  .staff-login-auth-field input,
+  .staff-login-password-field input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .staff-login-auth-form button[type="submit"],
+  .staff-login-submit {
+    min-height: 46px;
+  }
+
+  .staff-login-auth-bottom {
+    gap: 2px 13px;
+    margin-top: 5px;
+  }
+
+  .staff-login-inline-link {
+    min-height: 34px;
+    font-size: 11px;
+  }
+
+  .staff-login-support {
+    margin-top: 11px;
+    padding-top: 9px;
+  }
+
+  .staff-login-support > span {
+    font-size: 10px;
+  }
+
+  .staff-login-support p {
+    margin-top: 4px;
+    font-size: 9px;
+    line-height: 1.45;
+  }
+
+  .staff-login-footer {
+    padding-top: 9px;
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 759px) and (max-height: 560px) {
+  .staff-login-page {
+    min-height: 100svh;
+  }
+
+  .staff-login-main {
+    justify-content: flex-start;
+  }
+
+  .staff-login-support {
+    display: none;
+  }
+
+  .staff-login-footer {
+    margin-top: 10px;
+  }
+}
+
+
+/* WCAG AA text contrast and page-heading semantics for the authentication surface. */
+.staff-login-aside-content h2 {
+  margin: 18px 0 16px;
+  color: var(--cmi-navy, #123a63);
+  font-size: clamp(34px, 3.7vw, 48px);
+  line-height: 1.08;
+  font-weight: 720;
+  letter-spacing: -.045em;
+}
+
+.staff-login-aside-content h2 em {
+  color: var(--cmi-crimson, #c9203a);
+  font-style: normal;
+}
+
+.staff-login-heading h1 {
+  max-width: 440px;
+  margin: 0;
+  color: #24272b;
+  font-size: clamp(30px, 3.2vw, 38px);
+  line-height: 1.12;
+  font-weight: 680;
+  letter-spacing: -.052em;
+}
+
+html:not([data-theme="dark"]) .staff-login-brand-copy small,
+html:not([data-theme="dark"]) .staff-login-mobile-brand .staff-login-brand-copy small {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .staff-login-overline {
+  color: #566b80;
+}
+
+html:not([data-theme="dark"]) .staff-login-aside-description {
+  color: #52677d;
+}
+
+html:not([data-theme="dark"]) .staff-login-service-list small {
+  color: #596b7c;
+}
+
+html:not([data-theme="dark"]) .staff-login-aside-foot {
+  color: #536579;
+}
+
+html:not([data-theme="dark"]) .staff-login-security-label > span {
+  color: #536579;
+}
+
+html:not([data-theme="dark"]) .staff-login-section-label {
+  color: #9f293b;
+}
+
+html:not([data-theme="dark"]) .staff-login-heading > p:last-child {
+  color: #586a7d;
+}
+
+html:not([data-theme="dark"]) .staff-login-support p {
+  color: #5d696e;
+}
+
+html:not([data-theme="dark"]) .staff-login-footer {
+  color: #596b7d;
+}
+
+html[data-theme="dark"] .staff-login-aside-content h2,
+html[data-theme="dark"] .staff-login-heading h1 {
+  color: #edf3fa;
+}
+
+html[data-theme="dark"] .staff-login-aside-content h2 em {
+  color: #f18a9b;
+}
+
+@media (max-width: 759px) {
+  .staff-login-heading h1 {
+    font-size: clamp(28px, 8vw, 34px);
+  }
+}
+
+@media (max-width: 420px) {
+  .staff-login-heading h1 {
+    font-size: 27px;
+  }
+}
+
+/* Keep the login and recovery screens self-contained on common phone heights. */
+@media (max-width: 759px) and (max-height: 840px) {
+  .staff-login-main {
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+
+  .staff-login-mobile-brand {
+    margin-bottom: 10px;
+  }
+
+  .staff-login-form-wrap {
+    padding: 14px 14px 12px;
+  }
+
+  .staff-login-theme-row {
+    margin: -5px 0 8px;
+  }
+
+  .staff-login-heading {
+    margin: 12px 0;
+  }
+
+  .staff-login-auth-form {
+    gap: 12px;
+  }
+
+  .staff-login-config-error {
+    margin-bottom: 10px;
+    padding: 10px 11px;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .staff-login-auth-bottom {
+    min-height: 34px;
+    margin-top: 6px;
+  }
+
+  .staff-login-support {
+    margin-top: 12px;
+    padding-top: 10px;
+  }
+
+  .staff-login-footer {
+    padding-top: 8px;
+  }
+}
+
+@media (max-width: 759px) and (max-height: 680px) {
+  .staff-login-main {
+    padding-top: max(8px, env(safe-area-inset-top));
+    padding-bottom: max(8px, env(safe-area-inset-bottom));
+  }
+
+  .staff-login-mobile-brand {
+    margin-bottom: 6px;
+  }
+
+  .staff-login-form-wrap {
+    padding: 11px 13px 10px;
+    border-radius: 15px;
+  }
+
+  .staff-login-theme-row {
+    margin: -4px 0 5px;
+  }
+
+  .staff-login-security-label {
+    min-height: 29px;
+  }
+
+  .staff-login-heading {
+    margin: 9px 0 10px;
+  }
+
+  .staff-login-heading h1 {
+    font-size: 25px;
+  }
+
+  .staff-login-heading > p:last-child {
+    margin-top: 6px;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  .staff-login-auth-form {
+    gap: 9px;
+  }
+
+  .staff-login-auth-field {
+    gap: 4px;
+  }
+
+  .staff-login-auth-field input,
+  .staff-login-password-field input {
+    min-height: 44px;
+  }
+
+  .staff-login-submit,
+  .staff-login-auth-form button[type="submit"] {
+    min-height: 44px;
+  }
+
+  .staff-login-auth-bottom {
+    gap: 1px 10px;
+    margin-top: 3px;
+  }
+
+  .staff-login-inline-link {
+    min-height: 32px;
+    font-size: 10px;
+  }
+
+  .staff-login-support {
+    margin-top: 8px;
+    padding-top: 7px;
+  }
+
+  .staff-login-support > span {
+    font-size: 10px;
+  }
+
+  .staff-login-support p {
+    margin-top: 3px;
+    font-size: 9px;
+    line-height: 1.4;
+  }
+
+  .staff-login-footer {
+    padding-top: 6px;
+  }
+}
+
+
+/* Dark-mode links and support copy retain readable contrast on the slate surface. */
+html[data-theme="dark"] .staff-login-inline-link {
+  color: #ff9eac;
+}
+
+html[data-theme="dark"] .staff-login-inline-link:hover {
+  color: #ffd5dc;
+}
+
+html[data-theme="dark"] .staff-login-support > span {
+  color: #e6edf5;
+}
+
+html[data-theme="dark"] .staff-login-support p {
+  color: #b9c7d6;
+}
+
+
+/* Workspace content contrast — light theme */
+html:not([data-theme="dark"]) .cmi-brand small,
+html:not([data-theme="dark"]) .cmi-user-card small,
+html:not([data-theme="dark"]) .cmi-mobile-brand small {
+  color: #536579;
+}
+
+html:not([data-theme="dark"]) .cmi-sidebar-label {
+  color: #526477;
+}
+
+html:not([data-theme="dark"]) .cmi-access-note,
+html:not([data-theme="dark"]) .cmi-access-note span {
+  color: #526477;
+}
+
+html:not([data-theme="dark"]) .cmi-breadcrumb,
+html:not([data-theme="dark"]) .cmi-eyebrow {
+  color: #566a7d;
+}
+
+html:not([data-theme="dark"]) .cmi-welcome p:not(.cmi-eyebrow) {
+  color: #536579;
+}
+
+html:not([data-theme="dark"]) .cmi-stat-card > span,
+html:not([data-theme="dark"]) .cmi-stat-card > small {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .cmi-mobile-nav-items button {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .cmi-mobile-nav-items button svg {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .cmi-overview-count,
+html:not([data-theme="dark"]) .cmi-access-summary-count,
+html:not([data-theme="dark"]) .cmi-inline-count {
+  color: #536477;
+}
+
+html:not([data-theme="dark"]) .cmi-access-list > div strong,
+html:not([data-theme="dark"]) .cmi-access-footnote,
+html:not([data-theme="dark"]) .cmi-overview-disclosure > summary small {
+  color: #536477;
+}
+
+/* Workspace contrast and surfaces — dark theme */
+html[data-theme="dark"] .cmi-sidebar {
+  background: #182332 !important;
+  border-right-color: #344458;
+}
+
+html[data-theme="dark"] .cmi-brand strong,
+html[data-theme="dark"] .cmi-mobile-brand strong {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .cmi-brand small,
+html[data-theme="dark"] .cmi-mobile-brand small,
+html[data-theme="dark"] .cmi-sidebar-label,
+html[data-theme="dark"] .cmi-breadcrumb,
+html[data-theme="dark"] .cmi-eyebrow {
+  color: #c0ccda !important;
+}
+
+html[data-theme="dark"] .cmi-nav button {
+  color: #cbd5e1 !important;
+  background: transparent;
+}
+
+html[data-theme="dark"] .cmi-nav button > svg {
+  color: #bac9d9 !important;
+}
+
+html[data-theme="dark"] .cmi-nav button:hover {
+  background: #253548 !important;
+  border-color: #43586f;
+  color: #fff !important;
+}
+
+html[data-theme="dark"] .cmi-nav button.active {
+  background: #3a202b !important;
+  border-color: #75404d;
+  color: #ffe5e9 !important;
+  box-shadow: inset 3px 0 0 #e15a70;
+}
+
+html[data-theme="dark"] .cmi-nav button.active > svg {
+  color: #ffb6c2 !important;
+}
+
+html[data-theme="dark"] .cmi-access-note,
+html[data-theme="dark"] .cmi-access-note span,
+html[data-theme="dark"] .cmi-user-card small {
+  color: #c0ccda !important;
+}
+
+html[data-theme="dark"] .cmi-topbar {
+  background: #101a28;
+  border-bottom-color: #344458;
+}
+
+html[data-theme="dark"] .cmi-welcome,
+html[data-theme="dark"] .cmi-stat-card {
+  background: #182332 !important;
+  border-color: #344458;
+}
+
+html[data-theme="dark"] .cmi-welcome h2,
+html[data-theme="dark"] .cmi-stat-card strong,
+html[data-theme="dark"] .cmi-panel-heading h3,
+html[data-theme="dark"] .cmi-overview-card-heading h3 {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .cmi-welcome p:not(.cmi-eyebrow),
+html[data-theme="dark"] .cmi-stat-card > span,
+html[data-theme="dark"] .cmi-stat-card > small,
+html[data-theme="dark"] .cmi-panel-heading p:not(.cmi-eyebrow) {
+  color: #c0ccda !important;
+}
+
+html[data-theme="dark"] .cmi-overview-card,
+html[data-theme="dark"] .cmi-overview-disclosure {
+  background: #182332 !important;
+  border-color: #344458;
+  color: #e7edf5;
+}
+
+html[data-theme="dark"] .cmi-overview-disclosure > summary strong,
+html[data-theme="dark"] .cmi-access-list > div span,
+html[data-theme="dark"] .cmi-restricted-list article strong {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .cmi-overview-disclosure > summary small,
+html[data-theme="dark"] .cmi-disclosure-body,
+html[data-theme="dark"] .cmi-access-list > div strong,
+html[data-theme="dark"] .cmi-restricted-list article p,
+html[data-theme="dark"] .cmi-access-footnote {
+  color: #c0ccda !important;
+}
+
+html[data-theme="dark"] .cmi-overview-count,
+html[data-theme="dark"] .cmi-access-summary-count,
+html[data-theme="dark"] .cmi-inline-count {
+  background: #2a3a4d;
+  border-color: #455a70;
+  color: #d7e1eb !important;
+}
+
+html[data-theme="dark"] .cmi-step-number,
+html[data-theme="dark"] .cmi-access-icon,
+html[data-theme="dark"] .cmi-access-icon.muted {
+  background: #2a3a4d;
+  color: #d7e7f5;
+}
+
+html[data-theme="dark"] .cmi-mobile-nav {
+  background: #182332;
+  border-color: #40546b;
+}
+
+html[data-theme="dark"] .cmi-mobile-nav-items button {
+  color: #cbd5e1 !important;
+  background: transparent;
+}
+
+html[data-theme="dark"] .cmi-mobile-nav-items button svg {
+  color: #bdcbd9 !important;
+}
+
+html[data-theme="dark"] .cmi-mobile-nav-items button.active {
+  background: #3a202b !important;
+  color: #ffe5e9 !important;
+}
+
+html[data-theme="dark"] .cmi-mobile-nav-items button.active svg {
+  color: #ffb6c2 !important;
+}
+
+html[data-theme="dark"] .cmi-structure-heading h2 {
+  margin: 0;
+  color: #edf3fa;
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 730;
+  letter-spacing: -.03em;
+}
+
+
+/* Keep empty-state and index labels readable in dark-mode administration panels. */
+html[data-theme="dark"] .cmi-structure-index-heading strong,
+html[data-theme="dark"] .cmi-structure-index-empty strong,
+html[data-theme="dark"] .cmi-structure-detail-empty strong {
+  color: #edf3fa !important;
+}
+
+
+/* Higher-specificity dark-state controls: active navigation and tab surfaces. */
+html[data-theme="dark"] .cmi-workspace .cmi-sidebar .cmi-nav button .cmi-nav-desktop-label,
+html[data-theme="dark"] .cmi-workspace .cmi-sidebar .cmi-nav button:not(.active) {
+  color: #d4deea !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-sidebar .cmi-nav button.active,
+html[data-theme="dark"] .cmi-workspace .cmi-sidebar .cmi-nav button.active .cmi-nav-desktop-label {
+  color: #ffe5e9 !important;
+  background-color: #3a202b !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-mobile-nav .cmi-mobile-nav-items > button.active,
+html[data-theme="dark"] .cmi-workspace .cmi-mobile-nav .cmi-mobile-nav-items > button[aria-controls="cmi-mobile-more-list"].active {
+  color: #ffe5e9 !important;
+  background-color: #3a202b !important;
+  background-image: none !important;
+  opacity: 1 !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-mobile-nav .cmi-mobile-nav-items > button.active svg {
+  color: #ffb6c2 !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-structure-tabs > button {
+  border-color: #40546b !important;
+  background-color: #202e3f !important;
+  color: #d4deea !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-structure-tabs > button.active {
+  border-color: #75404d !important;
+  background-color: #3a202b !important;
+  color: #ffe5e9 !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-structure-tabs > button span {
+  border-color: #53677d !important;
+  background-color: #2c3e50 !important;
+  color: #e0e8f0 !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-mobile-more {
+  border-color: #40546b;
+  background-color: #182332 !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-mobile-more button {
+  border-color: #40546b;
+  background-color: #223247 !important;
+  color: #d4deea !important;
+}
+
+html[data-theme="dark"] .cmi-workspace .cmi-mobile-more button.active {
+  border-color: #75404d !important;
+  background-color: #3a202b !important;
+  color: #ffe5e9 !important;
+}
+
+
+/* Empty-state copy in the ministry reports workspace remains readable in dark mode. */
+html[data-theme="dark"] .ministry-report-empty {
+  color: #c0ccda;
+}
+
+html[data-theme="dark"] .ministry-report-empty h3 {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .ministry-report-empty p {
+  color: #c0ccda !important;
+}
+
+
+/* Contacts and follow-up pages: readable copy and correct light/dark table surfaces. */
+html:not([data-theme="dark"]) .cmi-panel-heading h2 {
+  margin: 0;
+  color: #26384e;
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 730;
+  letter-spacing: -.03em;
+}
+
+html:not([data-theme="dark"]) .cmi-panel-heading p:not(.cmi-eyebrow) {
+  color: #566a7d;
+}
+
+html:not([data-theme="dark"]) .cmi-contact-open,
+html:not([data-theme="dark"]) .cmi-contact-open strong {
+  color: #26384e;
+}
+
+html:not([data-theme="dark"]) .cmi-contact-open span,
+html:not([data-theme="dark"]) .cmi-table td > small {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .cmi-contact-open:hover,
+html:not([data-theme="dark"]) .cmi-contact-open:hover strong {
+  color: #9f1c31;
+}
+
+html:not([data-theme="dark"]) .cmi-followup-toolbar > span,
+html:not([data-theme="dark"]) .cmi-task-copy small {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .cmi-structure-index-heading small,
+html:not([data-theme="dark"]) .cmi-structure-index-empty > span,
+html:not([data-theme="dark"]) .cmi-structure-detail-empty > span {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .ministry-reports-eyebrow,
+html:not([data-theme="dark"]) .ministry-reports-header p:not(.ministry-reports-eyebrow),
+html:not([data-theme="dark"]) .ministry-report-list-heading > div > span,
+html:not([data-theme="dark"]) .ministry-report-scope,
+html:not([data-theme="dark"]) .ministry-report-empty p {
+  color: #586b7e;
+}
+
+html[data-theme="dark"] .cmi-table-wrap {
+  background: #182332 !important;
+  border-color: #344458;
+}
+
+html[data-theme="dark"] .cmi-table tbody tr {
+  background: #182332 !important;
+}
+
+html[data-theme="dark"] .cmi-table tbody tr:hover {
+  background: #223247 !important;
+}
+
+html[data-theme="dark"] .cmi-table tbody td {
+  background: transparent !important;
+  color: #d4deea;
+  border-top-color: #344458;
+}
+
+html[data-theme="dark"] .cmi-contact-open,
+html[data-theme="dark"] .cmi-contact-open strong {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .cmi-contact-open span,
+html[data-theme="dark"] .cmi-table td > small {
+  color: #c0ccda !important;
+}
+
+html[data-theme="dark"] .cmi-contact-open:hover,
+html[data-theme="dark"] .cmi-contact-open:hover strong {
+  color: #ffb6c2 !important;
+}
+
+html[data-theme="dark"] .cmi-followup-toolbar > span,
+html[data-theme="dark"] .cmi-task-copy small {
+  color: #c0ccda !important;
+}
+
+html[data-theme="dark"] .cmi-panel-heading h2,
+html[data-theme="dark"] .cmi-structure-heading h2 {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .cmi-structure-index-heading small,
+html[data-theme="dark"] .cmi-structure-index-empty > span,
+html[data-theme="dark"] .cmi-structure-detail-empty > span {
+  color: #c0ccda !important;
+}
+
+
+/* Table headings and follow-up metadata keep AA contrast on both surfaces. */
+html:not([data-theme="dark"]) .cmi-table thead th {
+  background: #f8fafc;
+  color: #566a7d;
+}
+
+html[data-theme="dark"] .cmi-followup-toolbar {
+  background: #1e2b3b !important;
+  border-color: #40546b !important;
+}
+
+html[data-theme="dark"] .cmi-followup-toolbar > span {
+  color: #e0e8f0 !important;
+}
+
+
+/* Desktop contact rows must use the light table surface in the light theme. */
+html:not([data-theme="dark"]) .cmi-table tbody tr {
+  background: #fff !important;
+}
+
+html:not([data-theme="dark"]) .cmi-table tbody tr:hover {
+  background: #f8fafc !important;
+}
+
+html:not([data-theme="dark"]) .cmi-table tbody td {
+  background: transparent !important;
+  color: #586b7e;
+}
+
+/* The follow-up filter label uses a separate compact toolbar surface. */
+html[data-theme="dark"] .cmi-followup-toolbar label {
+  color: #d4deea !important;
+}
+
+
+/* Remaining administration copy and operations metadata. */
+html:not([data-theme="dark"]) .cmi-empty-row,
+html:not([data-theme="dark"]) .cmi-operations-timezone,
+html:not([data-theme="dark"]) .cmi-detail-muted {
+  color: #586b7e;
+}
+
+html:not([data-theme="dark"]) .cmi-reset-empty {
+  border-color: #d8e1e9;
+  background: #fafbfd;
+}
+
+html:not([data-theme="dark"]) .cmi-reset-empty strong {
+  color: #26384e;
+}
+
+html:not([data-theme="dark"]) .cmi-reset-empty p {
+  color: #586b7e;
+}
+
+html[data-theme="dark"] .cmi-operations-heading h2,
+html[data-theme="dark"] .cmi-operations-heading h3 {
+  color: #edf3fa !important;
+}
+
+html[data-theme="dark"] .cmi-overview-card-heading p:not(.cmi-eyebrow) {
+  color: #c0ccda !important;
+}
+
+
+/* Scope-boundary guidance must remain readable for team-scoped task roles. */
+html:not([data-theme="dark"]) .cmi-scope-note {
+  color: #536579 !important;
+}
