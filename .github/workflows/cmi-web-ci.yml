@@ -6,6 +6,7 @@ on:
     paths:
       - "web/**"
       - ".github/workflows/cmi-web-ci.yml"
+      - ".github/workflows/cloudflare-production-worker-deploy.yml"
   pull_request:
     branches:
       - main
