@@ -17,7 +17,126 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  production-roster-preflight:
+    name: Require complete six-role production roster before restore rehearsal
+    if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Check out the reviewed production branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Verify Cloudflare access for the read-only roster preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          npx --yes wrangler@4.166.0 whoami
+
+      - name: Verify production Admin/Pastor bootstrap and report staff roster readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "
+            SELECT
+              (SELECT COUNT(*) FROM role WHERE code IN ('admin_pastor','coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor')) AS configured_role_catalogue,
+              (SELECT COUNT(*) FROM staff_profile WHERE account_status='active' AND deactivated_at IS NULL) AS active_staff_profiles,
+              (SELECT COUNT(*) FROM user) AS auth_users,
+              (SELECT COUNT(DISTINCT userId) FROM account WHERE password IS NOT NULL) AS password_users,
+              (SELECT COUNT(*) FROM staff_profile s
+                LEFT JOIN user u ON u.id=s.auth_user_id
+                LEFT JOIN account credential ON credential.userId=u.id
+                  AND credential.providerId='credential' AND credential.password IS NOT NULL
+                WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                  AND (u.id IS NULL OR credential.id IS NULL)) AS active_staff_without_credential,
+              (SELECT COUNT(DISTINCT s.id) FROM staff_role_assignment a JOIN role r ON r.id=a.role_id
+                JOIN staff_profile s ON s.id=a.staff_profile_id JOIN user u ON u.id=s.auth_user_id
+                JOIN account credential ON credential.userId=u.id AND credential.password IS NOT NULL
+                WHERE r.code='admin_pastor' AND a.revoked_at IS NULL
+                  AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now')
+                  AND s.account_status='active' AND s.deactivated_at IS NULL
+                  AND (s.must_change_password=0 OR (s.password_setup_expires_at IS NOT NULL
+                    AND datetime(s.password_setup_expires_at)>datetime('now')))) AS active_admin_pastor_ready,
+              (SELECT COUNT(DISTINCT r.code) FROM staff_role_assignment a JOIN role r ON r.id=a.role_id
+                JOIN staff_profile s ON s.id=a.staff_profile_id
+                WHERE r.code IN ('admin_pastor','coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor')
+                  AND a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now')
+                  AND s.account_status='active' AND s.deactivated_at IS NULL) AS assigned_role_codes,
+              (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                AND NOT EXISTS (SELECT 1 FROM staff_role_assignment a WHERE a.staff_profile_id=s.id
+                  AND a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now'))) AS active_profiles_without_role,
+              (SELECT COUNT(*) FROM staff_role_assignment a JOIN staff_profile s ON s.id=a.staff_profile_id
+                WHERE a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now')
+                  AND (s.account_status<>'active' OR s.deactivated_at IS NOT NULL)) AS assignments_on_inactive_profiles,
+              (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                AND s.must_change_password=1 AND (s.password_setup_expires_at IS NULL
+                  OR datetime(s.password_setup_expires_at)<datetime('now'))) AS invalid_first_login_setups
+          " > /tmp/pcg-production-staff-roster.json
+
+          node - /tmp/pcg-production-staff-roster.json <<'NODE'
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const candidates = [];
+          const visit = (value) => {
+            if (Array.isArray(value)) return value.forEach(visit);
+            if (!value || typeof value !== "object") return;
+            if (Object.hasOwn(value, "active_admin_pastor_ready")) candidates.push(value);
+            Object.values(value).forEach(visit);
+          };
+          visit(payload);
+          const row = candidates[0];
+          if (!row) {
+            console.error("Production staff-roster query returned no summary row.");
+            process.exit(1);
+          }
+          const summary = {
+            configured_role_catalogue: Number(row.configured_role_catalogue),
+            active_staff_profiles: Number(row.active_staff_profiles),
+            auth_users: Number(row.auth_users),
+            password_users: Number(row.password_users),
+            active_staff_without_credential: Number(row.active_staff_without_credential),
+            active_admin_pastor_ready: Number(row.active_admin_pastor_ready),
+            assigned_role_codes: Number(row.assigned_role_codes),
+            active_profiles_without_role: Number(row.active_profiles_without_role),
+            assignments_on_inactive_profiles: Number(row.assignments_on_inactive_profiles),
+            invalid_first_login_setups: Number(row.invalid_first_login_setups),
+          };
+          console.log(JSON.stringify(summary, null, 2));
+          if (summary.configured_role_catalogue !== 6 || summary.active_admin_pastor_ready < 1) {
+            console.error("Production cutover blocked: six role definitions and one credential-ready active Admin/Pastor account are required.");
+            process.exit(1);
+          }
+          const fullRosterReady =
+            summary.active_staff_profiles >= 6 &&
+            summary.assigned_role_codes === 6 &&
+            summary.active_profiles_without_role === 0 &&
+            summary.assignments_on_inactive_profiles === 0 &&
+            summary.active_staff_without_credential === 0 &&
+            summary.invalid_first_login_setups === 0;
+          if (!fullRosterReady) {
+            console.error("Production cutover blocked: provision all six staff accounts, assign all six roles, ensure every active profile has a Cloudflare password credential, and resolve inactive assignments or expired first-login setup windows before production migration.");
+            process.exit(1);
+          }
+          console.log("Production staff roster gate passed: six or more active profiles, all six role codes effectively assigned, credential accounts present, and no stale/expired account setups.");
+          NODE
+
+
   restore-rehearsal:
+    needs: production-roster-preflight
     name: Full D1 restore and six-role authenticated acceptance
     if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
     uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
@@ -186,97 +305,6 @@ jobs:
             schema_version: row.schema_version,
             latest_migration_id: row.latest_migration_id
           }));
-          NODE
-
-      - name: Verify production Admin/Pastor bootstrap and report staff roster readiness
-        shell: bash
-        run: |
-          set -euo pipefail
-          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "
-            SELECT
-              (SELECT COUNT(*) FROM role WHERE code IN ('admin_pastor','coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor')) AS configured_role_catalogue,
-              (SELECT COUNT(*) FROM staff_profile WHERE account_status='active' AND deactivated_at IS NULL) AS active_staff_profiles,
-              (SELECT COUNT(*) FROM user) AS auth_users,
-              (SELECT COUNT(DISTINCT userId) FROM account WHERE password IS NOT NULL) AS password_users,
-              (SELECT COUNT(*) FROM staff_profile s
-                LEFT JOIN user u ON u.id=s.auth_user_id
-                LEFT JOIN account credential ON credential.userId=u.id
-                  AND credential.providerId='credential' AND credential.password IS NOT NULL
-                WHERE s.account_status='active' AND s.deactivated_at IS NULL
-                  AND (u.id IS NULL OR credential.id IS NULL)) AS active_staff_without_credential,
-              (SELECT COUNT(DISTINCT s.id) FROM staff_role_assignment a JOIN role r ON r.id=a.role_id
-                JOIN staff_profile s ON s.id=a.staff_profile_id JOIN user u ON u.id=s.auth_user_id
-                JOIN account credential ON credential.userId=u.id AND credential.password IS NOT NULL
-                WHERE r.code='admin_pastor' AND a.revoked_at IS NULL
-                  AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
-                  AND datetime(a.starts_at)<=datetime('now')
-                  AND s.account_status='active' AND s.deactivated_at IS NULL
-                  AND (s.must_change_password=0 OR (s.password_setup_expires_at IS NOT NULL
-                    AND datetime(s.password_setup_expires_at)>datetime('now')))) AS active_admin_pastor_ready,
-              (SELECT COUNT(DISTINCT r.code) FROM staff_role_assignment a JOIN role r ON r.id=a.role_id
-                JOIN staff_profile s ON s.id=a.staff_profile_id
-                WHERE r.code IN ('admin_pastor','coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor')
-                  AND a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
-                  AND datetime(a.starts_at)<=datetime('now')
-                  AND s.account_status='active' AND s.deactivated_at IS NULL) AS assigned_role_codes,
-              (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
-                AND NOT EXISTS (SELECT 1 FROM staff_role_assignment a WHERE a.staff_profile_id=s.id
-                  AND a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
-                  AND datetime(a.starts_at)<=datetime('now'))) AS active_profiles_without_role,
-              (SELECT COUNT(*) FROM staff_role_assignment a JOIN staff_profile s ON s.id=a.staff_profile_id
-                WHERE a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
-                  AND datetime(a.starts_at)<=datetime('now')
-                  AND (s.account_status<>'active' OR s.deactivated_at IS NOT NULL)) AS assignments_on_inactive_profiles,
-              (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
-                AND s.must_change_password=1 AND (s.password_setup_expires_at IS NULL
-                  OR datetime(s.password_setup_expires_at)<datetime('now'))) AS invalid_first_login_setups
-          " > /tmp/pcg-production-staff-roster.json
-
-          node - /tmp/pcg-production-staff-roster.json <<'NODE'
-          const fs = require("node:fs");
-          const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
-          const candidates = [];
-          const visit = (value) => {
-            if (Array.isArray(value)) return value.forEach(visit);
-            if (!value || typeof value !== "object") return;
-            if (Object.hasOwn(value, "active_admin_pastor_ready")) candidates.push(value);
-            Object.values(value).forEach(visit);
-          };
-          visit(payload);
-          const row = candidates[0];
-          if (!row) {
-            console.error("Production staff-roster query returned no summary row.");
-            process.exit(1);
-          }
-          const summary = {
-            configured_role_catalogue: Number(row.configured_role_catalogue),
-            active_staff_profiles: Number(row.active_staff_profiles),
-            auth_users: Number(row.auth_users),
-            password_users: Number(row.password_users),
-            active_staff_without_credential: Number(row.active_staff_without_credential),
-            active_admin_pastor_ready: Number(row.active_admin_pastor_ready),
-            assigned_role_codes: Number(row.assigned_role_codes),
-            active_profiles_without_role: Number(row.active_profiles_without_role),
-            assignments_on_inactive_profiles: Number(row.assignments_on_inactive_profiles),
-            invalid_first_login_setups: Number(row.invalid_first_login_setups),
-          };
-          console.log(JSON.stringify(summary, null, 2));
-          if (summary.configured_role_catalogue !== 6 || summary.active_admin_pastor_ready < 1) {
-            console.error("Production cutover blocked: six role definitions and one credential-ready active Admin/Pastor account are required.");
-            process.exit(1);
-          }
-          const fullRosterReady =
-            summary.active_staff_profiles >= 6 &&
-            summary.assigned_role_codes === 6 &&
-            summary.active_profiles_without_role === 0 &&
-            summary.assignments_on_inactive_profiles === 0 &&
-            summary.active_staff_without_credential === 0 &&
-            summary.invalid_first_login_setups === 0;
-          if (!fullRosterReady) {
-            console.error("Production cutover blocked: provision all six staff accounts, assign all six roles, ensure every active profile has a Cloudflare password credential, and resolve inactive assignments or expired first-login setup windows before production migration.");
-            process.exit(1);
-          }
-          console.log("Production staff roster gate passed: six or more active profiles, all six role codes effectively assigned, credential accounts present, and no stale/expired account setups.");
           NODE
 
       - name: Verify existing production Worker secrets without exposing values
