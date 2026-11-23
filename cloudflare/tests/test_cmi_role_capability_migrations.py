@@ -55,7 +55,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             self.db.execute(
                 "SELECT schema_version, environment FROM app_meta WHERE id = 1"
             ).fetchone(),
-            (46, "non-production"),
+            (47, "non-production"),
         )
         self.assertEqual(
             self.role_codes(),
@@ -69,6 +69,85 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             },
         )
 
+
+    def test_branch_admin_can_deactivate_audited_staff_profile_without_active_role(self):
+        now = "2026-11-23T12:00:00.000Z"
+        church_id = "orphan-deactivation-church"
+        branch_id = "orphan-deactivation-branch"
+        self.db.execute(
+            "INSERT INTO church(id,name,created_at,updated_at) VALUES(?,?,?,?)",
+            (church_id, "Deactivation Test Church", now, now),
+        )
+        self.db.execute(
+            "INSERT INTO branch(id,church_id,name,timezone,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+            (branch_id, church_id, "Deactivation Test Branch", "Africa/Accra", now, now),
+        )
+        self.db.execute(
+            'INSERT INTO "user"(id,name,email,emailVerified,image,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?)',
+            ("orphan-admin-user", "Admin", "orphan-admin@example.test", 1, None, 1, 1),
+        )
+        self.db.execute(
+            'INSERT INTO "user"(id,name,email,emailVerified,image,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?)',
+            ("orphan-target-user", "Test Member", "orphan-target@example.test", 1, None, 1, 1),
+        )
+        self.db.execute(
+            """INSERT INTO staff_profile
+               (id,auth_user_id,full_name,email,account_status,created_at,updated_at,must_change_password)
+               VALUES('orphan-admin-profile','orphan-admin-user','Admin','orphan-admin@example.test','active',?,?,0)""",
+            (now, now),
+        )
+        self.db.execute(
+            """INSERT INTO staff_profile
+               (id,auth_user_id,full_name,email,account_status,created_at,updated_at,must_change_password)
+               VALUES('orphan-target-profile','orphan-target-user','Test Member','orphan-target@example.test','active',?,?,1)""",
+            (now, now),
+        )
+        admin_role_id = self.db.execute(
+            "SELECT id FROM role WHERE code='admin_pastor'"
+        ).fetchone()[0]
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at)
+               VALUES('orphan-admin-assignment','orphan-admin-profile',?,?,'orphan-admin-profile',?,?)""",
+            (admin_role_id, branch_id, now, now),
+        )
+        # The target has a verified branch history but no current assignment.
+        self.db.execute(
+            """INSERT INTO staff_access_audit
+               (id,branch_id,actor_profile_id,target_profile_id,action,reason,metadata,created_at)
+               VALUES(?,?,?,?,?,?,?,?)""",
+            ("orphan-target-history", branch_id, "orphan-admin-profile",
+             "orphan-target-profile", "account_created", "Created for controlled onboarding test",
+             "{}", now),
+        )
+        self.db.execute(
+            """INSERT INTO session(id,expiresAt,token,createdAt,updatedAt,userId)
+               VALUES('orphan-target-session',9999999999,'orphan-target-session-token',1,1,'orphan-target-user')"""
+        )
+        self.db.execute(
+            """UPDATE staff_profile
+               SET account_status='inactive',deactivated_at=?,
+                   account_status_changed_by='orphan-admin-profile',
+                   account_status_changed_branch_id=?,
+                   account_status_reason='Owner-directed removal of test login',
+                   updated_at=?
+               WHERE id='orphan-target-profile'""",
+            (now, branch_id, now),
+        )
+        self.assertEqual(
+            self.db.execute("SELECT account_status FROM staff_profile WHERE id='orphan-target-profile'").fetchone()[0],
+            "inactive",
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM session WHERE userId='orphan-target-user'").fetchone()[0],
+            0,
+        )
+        self.assertEqual(
+            self.db.execute("""SELECT COUNT(*) FROM staff_account_audit
+                               WHERE target_profile_id='orphan-target-profile' AND action='account_deactivated'""").fetchone()[0],
+            1,
+        )
+        self.assertEqual(self.db.execute("PRAGMA foreign_key_check").fetchall(), [])
 
     def test_report_event_registration_checkin_and_closeout_lifecycle(self):
         now = "2026-11-22T23:00:00.000Z"
@@ -681,7 +760,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            46,
+            47,
         )
 
     def test_worker_authorization_query_enforces_team_leader_membership_for_directory_read(self):
