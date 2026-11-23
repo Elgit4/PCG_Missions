@@ -621,7 +621,222 @@ const afterSignOut = await api(resetUpdatedCookie, "/api/v1/me");
 if (afterSignOut.status !== 401) {
   throw new Error("Server-confirmed sign-out did not revoke the authenticated session.");
 }
+
 console.log("SERVER_CONFIRMED_SIGN_OUT_PASSED");
+
+// Exercise team and service-area administration through the same Worker routes
+// used by the staff workspace, including audited membership and coverage changes.
+const createdTeam = await api(adminCookie, "/api/v1/teams", "POST", {
+  branch_id: branchId,
+  name: "QA Acceptance Team " + runId,
+  description: "Temporary API acceptance team",
+});
+if (createdTeam.status !== 201 || !createdTeam.payload?.data?.id) {
+  throw new Error("Admin/Pastor could not create a team through the staff API: HTTP " +
+    createdTeam.status + " code=" + (createdTeam.payload?.error?.code ?? "unexpected_response"));
+}
+const managedTeamId = createdTeam.payload.data.id;
+const listedTeams = await api(adminCookie, "/api/v1/teams?branch_id=" + branchId);
+if (listedTeams.status !== 200 ||
+    !(listedTeams.payload?.data?.teams ?? []).some((team) => team.id === managedTeamId)) {
+  throw new Error("Created team did not appear in the authenticated team directory.");
+}
+const memberAdd = await api(
+  adminCookie,
+  "/api/v1/teams/" + managedTeamId + "/members?branch_id=" + branchId,
+  "POST",
+  { staff_profile_id: unassigned.profileId, membership_role: "member" },
+);
+if (memberAdd.status !== 201 || !memberAdd.payload?.data?.id) {
+  throw new Error("Admin/Pastor could not add an active branch staff member to a team.");
+}
+const managedMembershipId = memberAdd.payload.data.id;
+const memberRoleUpdate = await api(
+  adminCookie,
+  "/api/v1/teams/" + managedTeamId + "/members/" + managedMembershipId + "?branch_id=" + branchId,
+  "PATCH",
+  { membership_role: "leader" },
+);
+if (memberRoleUpdate.status !== 200 || memberRoleUpdate.payload?.data?.membership_role !== "leader") {
+  throw new Error("Team membership role update did not persist.");
+}
+const memberRevoke = await api(
+  adminCookie,
+  "/api/v1/teams/" + managedTeamId + "/members/" + managedMembershipId + "/revoke?branch_id=" + branchId,
+  "POST",
+);
+if (memberRevoke.status !== 200) throw new Error("Team membership revocation failed.");
+const membershipAudit = await d1(
+  "SELECT action FROM team_management_audit WHERE target_id=? ORDER BY created_at",
+  [managedMembershipId],
+);
+const membershipState = (await d1(
+  "SELECT revoked_at FROM staff_team_membership WHERE id=?",
+  [managedMembershipId],
+))[0];
+if (!membershipState?.revoked_at ||
+    !["team.member.added", "team.member.role_changed", "team.member.revoked"].every((action) =>
+      membershipAudit.some((item) => item.action === action))) {
+  throw new Error("Team membership history or audit trail was not preserved after revocation.");
+}
+
+const createdArea = await api(adminCookie, "/api/v1/areas", "POST", {
+  branch_id: branchId,
+  name: "QA Service Area " + runId,
+  code: "QA" + String(runId).slice(-6),
+});
+if (createdArea.status !== 201 || !createdArea.payload?.data?.id) {
+  throw new Error("Admin/Pastor could not create a service area through the staff API.");
+}
+const managedAreaId = createdArea.payload.data.id;
+const listedAreas = await api(adminCookie, "/api/v1/areas?branch_id=" + branchId);
+if (listedAreas.status !== 200 ||
+    !(listedAreas.payload?.data?.areas ?? []).some((area) => area.id === managedAreaId)) {
+  throw new Error("Created service area did not appear in the authenticated service-area directory.");
+}
+const coverageAdd = await api(
+  adminCookie,
+  "/api/v1/areas/" + managedAreaId + "/coverage?branch_id=" + branchId,
+  "POST",
+  { staff_profile_id: unassigned.profileId },
+);
+if (coverageAdd.status !== 201 || !coverageAdd.payload?.data?.id) {
+  throw new Error("Active staff member could not be assigned to service-area coverage.");
+}
+const managedCoverageId = coverageAdd.payload.data.id;
+const coverageRevoke = await api(
+  adminCookie,
+  "/api/v1/areas/" + managedAreaId + "/coverage/" + managedCoverageId + "/revoke?branch_id=" + branchId,
+  "POST",
+);
+if (coverageRevoke.status !== 200) throw new Error("Service-area coverage revocation failed.");
+const coverageAudit = await d1(
+  "SELECT action FROM team_management_audit WHERE target_id=? ORDER BY created_at",
+  [managedCoverageId],
+);
+const coverageState = (await d1(
+  "SELECT revoked_at FROM staff_area_coverage WHERE id=?",
+  [managedCoverageId],
+))[0];
+if (!coverageState?.revoked_at ||
+    !["area.coverage.added", "area.coverage.revoked"].every((action) =>
+      coverageAudit.some((item) => item.action === action))) {
+  throw new Error("Service-area coverage history or audit trail was not preserved.");
+}
+console.log("TEAM_AND_SERVICE_AREA_ADMINISTRATION_PASSED");
+
+// Exercise announcements and church-content drafts end-to-end. Drafts must
+// remain private and must not be mistaken for public/published content.
+const announcementCreate = await api(adminCookie, "/api/v1/announcements", "POST", {
+  branch_id: branchId,
+  title: "QA announcement " + runId,
+  body: "Temporary announcement draft for authenticated API acceptance.",
+});
+if (announcementCreate.status !== 201 ||
+    announcementCreate.payload?.data?.status !== "draft" ||
+    announcementCreate.payload?.data?.is_public !== false) {
+  throw new Error("Announcement draft creation failed or exposed an unpublished draft.");
+}
+const announcementId = announcementCreate.payload.data.id;
+const announcementList = await api(adminCookie, "/api/v1/announcements?branch_id=" + branchId + "&limit=50&offset=0");
+if (announcementList.status !== 200 ||
+    !(announcementList.payload?.data ?? []).some((item) => item.id === announcementId)) {
+  throw new Error("Created announcement draft did not appear in the authenticated draft list.");
+}
+const announcementUpdate = await api(
+  adminCookie,
+  "/api/v1/announcements/" + announcementId + "?branch_id=" + branchId,
+  "PATCH",
+  { title: "QA announcement revised " + runId, body: "Updated synthetic announcement draft." },
+);
+if (announcementUpdate.status !== 200 ||
+    announcementUpdate.payload?.data?.status !== "draft" ||
+    announcementUpdate.payload?.data?.is_public !== false ||
+    announcementUpdate.payload?.data?.title !== "QA announcement revised " + runId) {
+  throw new Error("Announcement draft update changed publication state or failed to persist.");
+}
+
+const sermonCreate = await api(adminCookie, "/api/v1/content/sermons", "POST", {
+  branch_id: branchId,
+  title: "QA sermon draft " + runId,
+  body: "Temporary sermon content draft for API acceptance only.",
+  public_slug: "qa-acceptance-" + runId,
+});
+if (sermonCreate.status !== 201 || sermonCreate.payload?.data?.status !== "draft") {
+  throw new Error("Sermon draft creation failed.");
+}
+const sermonId = sermonCreate.payload.data.id;
+const sermonList = await api(adminCookie, "/api/v1/content/sermons?branch_id=" + branchId + "&limit=50&offset=0");
+if (sermonList.status !== 200 ||
+    !(sermonList.payload?.data ?? []).some((item) => item.id === sermonId && item.status === "draft")) {
+  throw new Error("Created sermon draft did not appear in the authenticated content list.");
+}
+const sermonUpdate = await api(
+  adminCookie,
+  "/api/v1/content/sermons/" + sermonId + "?branch_id=" + branchId,
+  "PATCH",
+  { title: "QA sermon draft revised " + runId, body: "Updated temporary sermon draft." },
+);
+if (sermonUpdate.status !== 200 || sermonUpdate.payload?.data?.status !== "draft" ||
+    sermonUpdate.payload?.data?.title !== "QA sermon draft revised " + runId) {
+  throw new Error("Sermon draft update failed or changed its publication state.");
+}
+const contentState = (await d1(
+  "SELECT status,published_at FROM sermon WHERE id=?",
+  [sermonId],
+))[0];
+if (contentState?.status !== "draft" || contentState?.published_at !== null) {
+  throw new Error("Sermon draft was unexpectedly published during draft operations.");
+}
+console.log("ANNOUNCEMENT_AND_CONTENT_DRAFT_LIFECYCLE_PASSED");
+
+// Exercise calendar entry create, update, list and reason-coded cancellation.
+const calendarStart = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+const calendarEnd = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+const calendarCreate = await api(adminCookie, "/api/v1/calendar/entries", "POST", {
+  branch_id: branchId,
+  entry_type: "other",
+  title: "QA calendar entry " + runId,
+  starts_at: calendarStart,
+  ends_at: calendarEnd,
+});
+if (calendarCreate.status !== 201 || !calendarCreate.payload?.data?.id) {
+  throw new Error("Calendar entry creation failed.");
+}
+const calendarEntryId = calendarCreate.payload.data.id;
+const calendarList = await api(adminCookie, "/api/v1/calendar/entries?branch_id=" + branchId + "&limit=100&offset=0");
+if (calendarList.status !== 200 ||
+    !(calendarList.payload?.data ?? []).some((item) => item.id === calendarEntryId)) {
+  throw new Error("Created calendar entry did not appear in the branch calendar.");
+}
+const calendarUpdate = await api(
+  adminCookie,
+  "/api/v1/calendar/entries/" + calendarEntryId + "?branch_id=" + branchId,
+  "PATCH",
+  { title: "QA calendar entry revised " + runId },
+);
+if (calendarUpdate.status !== 200 ||
+    calendarUpdate.payload?.data?.title !== "QA calendar entry revised " + runId) {
+  throw new Error("Calendar entry update failed.");
+}
+const calendarCancel = await api(
+  adminCookie,
+  "/api/v1/calendar/entries/" + calendarEntryId + "/cancel?branch_id=" + branchId,
+  "POST",
+  { reason: "Synthetic acceptance cancellation verifies the audited calendar lifecycle." },
+);
+const calendarState = (await d1(
+  "SELECT status,cancellation_reason,cancelled_by FROM calendar_entry WHERE id=?",
+  [calendarEntryId],
+))[0];
+if (calendarCancel.status !== 200 ||
+    calendarCancel.payload?.data?.status !== "cancelled" ||
+    calendarState?.status !== "cancelled" ||
+    calendarState?.cancellation_reason !== "Synthetic acceptance cancellation verifies the audited calendar lifecycle." ||
+    !calendarState?.cancelled_by) {
+  throw new Error("Calendar cancellation did not persist its reason and actor audit fields.");
+}
+console.log("CALENDAR_ENTRY_LIFECYCLE_PASSED");
 
 const checks = {
   reportApproved: reportState?.status === "approved",
@@ -650,6 +865,12 @@ const checks = {
   passwordResetOldPasswordRejected: resetOldCredentialAttempt.status === 401,
   passwordResetReplacementAccepted: resetUpdatedMe.status === 200,
   serverConfirmedSignOut: signOutResponse.ok && afterSignOut.status === 401,
+  teamAndServiceAreaAdministration: membershipState?.revoked_at !== null && coverageState?.revoked_at !== null &&
+    ["team.member.added", "team.member.role_changed", "team.member.revoked"].every((action) => membershipAudit.some((item) => item.action === action)) &&
+    ["area.coverage.added", "area.coverage.revoked"].every((action) => coverageAudit.some((item) => item.action === action)),
+  announcementDraftLifecycle: announcementUpdate.status === 200 && announcementUpdate.payload?.data?.status === "draft" && announcementUpdate.payload?.data?.is_public === false,
+  sermonDraftLifecycle: sermonUpdate.status === 200 && contentState?.status === "draft" && contentState?.published_at === null,
+  calendarEntryLifecycle: calendarCancel.status === 200 && calendarState?.status === "cancelled" && Boolean(calendarState?.cancelled_by),
 };
 const failed = Object.entries(checks).filter(([, value]) => !value).map(([key]) => key);
 if (failed.length) throw new Error(`Authenticated API acceptance failed: ${failed.join(", ")}`);
