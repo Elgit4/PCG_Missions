@@ -76,7 +76,12 @@ export class PcgAuthClient {
   }
 
   async getSession(): Promise<AuthSession | null> {
-    const payload = await this.request("get-session");
+    let payload = await this.request("get-session");
+    if (payload?.needsRefresh === true) {
+      // Better Auth's deferred refresh makes GET read-only. Persist the rolling
+      // expiry only through this intentional POST when the server requests it.
+      payload = await this.request("get-session", "POST", {});
+    }
     if (!payload) return null;
     const user = payload.user as AuthUser | undefined;
     const session = payload.session as AuthSession["session"] | undefined;
