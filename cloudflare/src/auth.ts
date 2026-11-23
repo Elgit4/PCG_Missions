@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { drizzle } from "drizzle-orm/d1";
 import { compare as bcryptCompare, hash as bcryptHash } from "bcryptjs";
-import { authSchema } from "./auth-schema";
+import { authSchema } from "./auth-schema.ts";
 
 export interface AuthStatement {
   bind(...values: unknown[]): AuthStatement;
