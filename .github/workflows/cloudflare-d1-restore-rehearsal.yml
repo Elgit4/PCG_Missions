@@ -25,7 +25,8 @@ concurrency:
 jobs:
   restore-rehearsal:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Allow one quota-reset wait (up to five hours) plus the actual restore and acceptance run.
+    timeout-minutes: 360
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
