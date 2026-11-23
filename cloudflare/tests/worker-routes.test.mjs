@@ -438,7 +438,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           if (this.sql.includes("SELECT id,branch_id,title,starts_at,ends_at,status") && this.sql.includes("FROM event")) return eventRow;
           if (this.sql.includes("SELECT id,account_status FROM staff_profile")) return { id: STAFF_PROFILE_ID, account_status: "active" };
           if (this.sql.includes("SELECT sra.id FROM staff_role_assignment")) return { id: "active-role-assignment" };
-          if (this.sql.includes("SELECT id FROM team WHERE id=?")) return [OWN_TEAM_ID, OTHER_TEAM_ID].includes(this.values[0]) ? { id: this.values[0] } : null;
+          if (this.sql.includes("FROM team WHERE id")) return [OWN_TEAM_ID, OTHER_TEAM_ID].includes(this.values[0]) ? { id: this.values[0] } : null;
           if (this.sql.includes("SELECT id,event_id,branch_id,starts_at,ends_at,revoked_at FROM event_staff_assignment")) return eventStaffAssignment;
           if (this.sql.includes("SELECT id,event_id,branch_id,starts_at,ends_at,revoked_at FROM event_team_assignment")) return eventTeamAssignment;
           if (this.sql.includes("FROM announcement")) return announcementRow;
