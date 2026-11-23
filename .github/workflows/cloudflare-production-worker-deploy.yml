@@ -207,8 +207,8 @@ jobs:
                 WHERE a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
                   AND datetime(a.starts_at)<=datetime('now') AND (s.account_status<>'active' OR s.deactivated_at IS NOT NULL)) AS assignments_on_inactive_profiles,
               (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
-                AND s.must_change_password=1 AND s.password_setup_expires_at IS NOT NULL
-                AND datetime(s.password_setup_expires_at)<datetime('now')) AS expired_first_login_setups,
+                AND s.must_change_password=1 AND (s.password_setup_expires_at IS NULL
+                  OR datetime(s.password_setup_expires_at)<datetime('now'))) AS invalid_first_login_setups,
               (SELECT COUNT(*) FROM staff_profile s LEFT JOIN user u ON u.id=s.auth_user_id
                 WHERE s.account_status='active' AND s.deactivated_at IS NULL
                   AND (u.id IS NULL OR NOT EXISTS (SELECT 1 FROM account a WHERE a.userId=u.id AND a.password IS NOT NULL))) AS active_staff_without_credential,
@@ -246,7 +246,7 @@ jobs:
             assigned_role_codes: 6,
             active_profiles_without_role: 0,
             assignments_on_inactive_profiles: 0,
-            expired_first_login_setups: 0,
+            invalid_first_login_setups: 0,
             active_staff_without_credential: 0,
             roles_with_one_active_assignee: 6,
           };
@@ -264,7 +264,7 @@ jobs:
             assigned_role_codes: Number(row.assigned_role_codes),
             active_profiles_without_role: Number(row.active_profiles_without_role),
             assignments_on_inactive_profiles: Number(row.assignments_on_inactive_profiles),
-            expired_first_login_setups: Number(row.expired_first_login_setups),
+            invalid_first_login_setups: Number(row.invalid_first_login_setups),
             active_staff_without_credential: Number(row.active_staff_without_credential),
             roles_with_one_active_assignee: Number(row.roles_with_one_active_assignee),
           }, null, 2));
