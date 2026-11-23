@@ -79,7 +79,20 @@ async function insertUser(roleCode, label, assignerProfileId, bootstrapAdmin = f
   return { userId, profileId, email, password };
 }
 
+let lastSignInAttemptAt = 0;
+async function waitForSignInRateLimitSlot() {
+  // Better Auth limits /sign-in/email per client IP. This isolated rehearsal
+  // uses many synthetic accounts from one local Worker IP, so pace every
+  // positive and negative attempt without weakening the production policy.
+  if (lastSignInAttemptAt > 0) {
+    const remaining = 12_500 - (Date.now() - lastSignInAttemptAt);
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  }
+  lastSignInAttemptAt = Date.now();
+}
+
 async function signIn(identity, label) {
+  await waitForSignInRateLimitSlot();
   const response = await fetchWithTimeout(`${workerUrl}/api/auth/sign-in/email`, {
     method: "POST",
     headers: { origin, "content-type": "application/json" },
@@ -480,6 +493,7 @@ const firstLoginState = (await d1(
 if (Number(firstLoginState?.must_change_password) !== 0 || firstLoginState?.password_setup_expires_at !== null) {
   throw new Error("Forced first-login password gate was not cleared after password replacement.");
 }
+await waitForSignInRateLimitSlot();
 const firstLoginOldAttempt = await fetchWithTimeout(workerUrl + "/api/auth/sign-in/email", {
   method: "POST",
   headers: { origin, "content-type": "application/json" },
@@ -542,6 +556,7 @@ const resetOldSession = await api(resetTargetCookie, "/api/v1/me");
 if (resetOldSession.status !== 401) {
   throw new Error("Password reset did not revoke the target staff member's pre-existing session.");
 }
+await waitForSignInRateLimitSlot();
 const resetOldCredentialAttempt = await fetchWithTimeout(workerUrl + "/api/auth/sign-in/email", {
   method: "POST",
   headers: { origin, "content-type": "application/json" },
