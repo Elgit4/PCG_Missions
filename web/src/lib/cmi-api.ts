@@ -943,8 +943,8 @@ export class CmiApiClient {
 
   assignContact(branchId: string, contactId: string, input: ContactAssignmentInput) {
     const reason = input.reason.trim();
-    const staffTarget = "assignee_profile_id" in input ? input.assignee_profile_id.trim() : "";
-    const teamTarget = "team_id" in input ? input.team_id.trim() : "";
+    const staffTarget = typeof input.assignee_profile_id === "string" ? input.assignee_profile_id.trim() : "";
+    const teamTarget = typeof input.team_id === "string" ? input.team_id.trim() : "";
     if (!!staffTarget === !!teamTarget || reason.length < 10 || reason.length > 500) {
       throw new TypeError("Choose exactly one active staff member or team and provide a reason of 10–500 characters.");
     }
