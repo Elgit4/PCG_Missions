@@ -52,6 +52,9 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn("restore-rehearsal:", self.preview)
         self.assertNotIn("needs: restore-rehearsal", self.preview)
 
+    def test_new_preview_release_uses_a_fresh_concurrency_group(self):
+        self.assertIn("pcg-missions-preview-release-v3", self.preview)
+
 
 if __name__ == "__main__":
     unittest.main()
