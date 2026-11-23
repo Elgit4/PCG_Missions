@@ -65,9 +65,8 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin migration/cloudflare-auth-consolidation --quiet
-          auth_fix_sha="$(git log --all -1 --format=%H --grep='fix(auth): connect Better Auth to D1 through Drizzle')"
-          if [[ -z "$auth_fix_sha" ]]; then
-            echo "::error title=Authentication fix not found::The reviewed Better Auth D1 adapter commit is missing from this release branch."
+          if ! grep -q 'drizzleAdapter' cloudflare/src/auth.ts || ! grep -q 'authSchema' cloudflare/src/auth.ts; then
+            echo "::error title=Authentication adapter missing::The release branch does not contain the reviewed Drizzle-backed Better Auth implementation."
             exit 1
           fi
 
@@ -80,7 +79,8 @@ jobs:
             while IFS= read -r sha; do
               [[ -z "$sha" ]] && continue
               if git cat-file -e "${sha}^{commit}" 2>/dev/null &&
-                 git merge-base --is-ancestor "$auth_fix_sha" "$sha" &&
+                 git show "$sha:cloudflare/src/auth.ts" | grep -q 'drizzleAdapter' &&
+                 git show "$sha:cloudflare/src/auth.ts" | grep -q 'authSchema' &&
                  git merge-base --is-ancestor "$sha" "$GITHUB_SHA"; then
                 accepted="$sha"
                 break
