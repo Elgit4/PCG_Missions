@@ -95,13 +95,14 @@ async function signIn(identity, label) {
   return cookie;
 }
 
-async function api(cookie, path, method = "GET", body = undefined) {
+async function api(cookie, path, method = "GET", body = undefined, idempotencyKey = undefined) {
   const response = await fetchWithTimeout(`${workerUrl}${path}`, {
     method,
     headers: {
       origin,
       cookie,
       "x-branch-id": branchId,
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       ...(body === undefined ? {} : { "content-type": "application/json" }),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -156,6 +157,42 @@ await d1(
 );
 
 console.log("AUTHENTICATED_ME_ENDPOINTS_PASSED");
+
+const contactCapture = await api(workerCookie, "/api/v1/contacts", "POST", {
+  first_name: "Synthetic",
+  last_name: "Acceptance",
+  preferred_name: null,
+  phone_e164: null,
+  email: null,
+  age_range: null,
+  preferred_language: null,
+  service_area_id: null,
+  source_metadata: { device_type: "automated-test" },
+}, "qa-contact-" + runId);
+if (contactCapture.status !== 201) throw new Error("Field Worker contact capture failed: " + contactCapture.status + " " + JSON.stringify(contactCapture.payload));
+const contactId = contactCapture.payload?.data?.id;
+if (!contactId) throw new Error("Contact capture response did not include a contact id");
+
+const followupCreate = await api(workerCookie, "/api/v1/followup/tasks", "POST", {
+  contact_id: contactId,
+  assignee_user_id: worker.userId,
+  priority: 2,
+  due_at: endsAt,
+  task_note: "Synthetic authenticated acceptance follow-up",
+}, "qa-followup-" + runId);
+if (followupCreate.status !== 201) throw new Error("Field Worker self-assigned follow-up creation failed: " + followupCreate.status + " " + JSON.stringify(followupCreate.payload));
+const followupTaskId = followupCreate.payload?.data?.id;
+if (!followupTaskId) throw new Error("Follow-up creation response did not include a task id");
+
+const followupList = await api(workerCookie, "/api/v1/followup/tasks?limit=50&offset=0&status=open");
+if (followupList.status !== 200 || !followupList.payload?.data?.some((task) => task.id === followupTaskId)) {
+  throw new Error("Assigned follow-up list did not return the new task: " + followupList.status + " " + JSON.stringify(followupList.payload));
+}
+const followupStarted = await api(workerCookie, "/api/v1/followup/tasks/" + followupTaskId, "PATCH", { status: "in_progress" });
+if (followupStarted.status !== 200) throw new Error("Follow-up start failed: " + followupStarted.status + " " + JSON.stringify(followupStarted.payload));
+const followupCompleted = await api(workerCookie, "/api/v1/followup/tasks/" + followupTaskId, "PATCH", { status: "completed" });
+if (followupCompleted.status !== 200) throw new Error("Follow-up completion failed: " + followupCompleted.status + " " + JSON.stringify(followupCompleted.payload));
+console.log("CONTACT_AND_FOLLOWUP_LIFECYCLE_PASSED");
 
 const assignment = await api(adminCookie, `/api/v1/events/${eventId}/staff-assignments`, "POST", {
   staff_auth_user_id: worker.userId,
@@ -258,6 +295,28 @@ const closeoutState = (await d1("SELECT status FROM event_closeout WHERE event_i
 const closeoutHistory = (await d1("SELECT COUNT(*) AS count FROM event_closeout_event e JOIN event_closeout c ON c.id=e.closeout_id WHERE c.event_id=?", [eventId]))[0]?.count;
 const eventNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='event_assigned' ORDER BY created_at DESC LIMIT 1", [worker.userId]))[0];
 const reportNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='report_reviewed' ORDER BY created_at DESC LIMIT 1", [worker.userId]))[0];
+const followupState = (await d1("SELECT status FROM followup_task WHERE id=?", [followupTaskId]))[0];
+const followupEventCount = (await d1("SELECT COUNT(*) AS count FROM followup_task_event WHERE task_id=?", [followupTaskId]))[0]?.count;
+const followupNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='followup_assigned' ORDER BY created_at DESC LIMIT 1", [worker.userId]))[0];
+
+const inbox = await api(workerCookie, "/api/v1/notifications?branch_id=" + branchId + "&limit=50");
+if (inbox.status !== 200) throw new Error("Worker notification inbox failed: " + inbox.status + " " + JSON.stringify(inbox.payload));
+const workerNotifications = inbox.payload?.data?.notifications ?? [];
+const followupNotification = workerNotifications.find((notice) => notice.target_id === followupTaskId);
+if (!followupNotification) throw new Error("Follow-up assignment notification was not present in the assigned worker inbox");
+const adminInbox = await api(adminCookie, "/api/v1/notifications?branch_id=" + branchId + "&limit=50");
+if (adminInbox.status !== 200 || (adminInbox.payload?.data?.notifications ?? []).some((notice) => notice.id === followupNotification.id)) {
+  throw new Error("Notification inbox exposed a worker notification to another staff member");
+}
+const readNotice = await api(workerCookie, "/api/v1/notifications/" + followupNotification.id + "/read", "POST", { branch_id: branchId });
+if (readNotice.status !== 200 || readNotice.payload?.data?.updated !== true) throw new Error("Recipient could not mark their notification as read");
+const crossReadNotice = await api(adminCookie, "/api/v1/notifications/" + followupNotification.id + "/read", "POST", { branch_id: branchId });
+if (crossReadNotice.status !== 200 || crossReadNotice.payload?.data?.updated !== false) throw new Error("A different staff member was able to mark another recipient's notification as read");
+const readAll = await api(workerCookie, "/api/v1/notifications/read-all", "POST", { branch_id: branchId });
+if (readAll.status !== 200) throw new Error("Recipient could not mark all notifications as read");
+const inboxAfterReadAll = await api(workerCookie, "/api/v1/notifications?branch_id=" + branchId + "&limit=50");
+if (inboxAfterReadAll.payload?.data?.unread_count !== 0) throw new Error("Notification unread count did not reach zero after read-all");
+
 
 const checks = {
   reportApproved: reportState?.status === "approved",
@@ -268,6 +327,12 @@ const checks = {
   eventCloseoutAudit: Number(closeoutHistory) === 2,
   eventAssignmentNotificationTargetsEvent: eventNotice?.target_type === "event" && eventNotice?.target_id === eventId,
   reportReviewNotificationTargetsReport: reportNotice?.target_type === "ministry_report" && reportNotice?.target_id === reportId,
+  followupTaskCompleted: followupState?.status === "completed" && Number(followupEventCount) === 3,
+  followupNotificationTargetsTask: followupNotice?.target_type === "followup_task" && followupNotice?.target_id === followupTaskId,
+  notificationInboxRecipientScoped: workerNotifications.some((notice) => notice.id === followupNotification.id) &&
+    !(adminInbox.payload?.data?.notifications ?? []).some((notice) => notice.id === followupNotification.id),
+  notificationReadIsolation: readNotice.payload?.data?.updated === true && crossReadNotice.payload?.data?.updated === false,
+  notificationReadAll: inboxAfterReadAll.payload?.data?.unread_count === 0,
   selfReviewDenied: selfReview.status === 403,
   unassignedRegistrationDenied: unassignedRegistration.status === 403,
   unassignedCheckinDenied: unassignedCheckin.status === 403,
