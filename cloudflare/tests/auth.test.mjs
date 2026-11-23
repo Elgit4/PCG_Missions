@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createAuth, createBetterAuthUser, deleteBetterAuthUser, updateBetterAuthUserPassword, verifyLegacyBcryptPassword } from "../src/auth.ts";
+import * as authModule from "../src/auth.ts";
+const { createAuth, createBetterAuthUser, deleteBetterAuthUser, updateBetterAuthUserPassword, verifyLegacyBcryptPassword } = authModule;
 import { rateLimit } from "../src/auth-schema.ts";
 
 function fakeDatabase() {
@@ -16,6 +17,16 @@ function fakeDatabase() {
   };
   return { DB, statements };
 }
+
+test("Better Auth session polling bypasses D1 rate-limit writes while sensitive endpoints stay throttled", () => {
+  const config = authModule.betterAuthRateLimitOptions;
+  assert.ok(config, "the shared Better Auth rate-limit configuration must be exported for regression testing");
+  assert.equal(config.storage, "database");
+  assert.equal(config.customRules["/get-session"], false);
+  assert.deepEqual(config.customRules["/sign-in/email"], { window: 60, max: 5 });
+  assert.deepEqual(config.customRules["/forget-password"], { window: 60, max: 3 });
+  assert.deepEqual(config.customRules["/reset-password"], { window: 60, max: 5 });
+});
 
 test("D1 rate-limit records receive an application-generated primary key", () => {
   assert.equal(typeof rateLimit.id.defaultFn, "function");
