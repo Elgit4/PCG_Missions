@@ -127,6 +127,35 @@ describe("Cloudflare Worker API client", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it("creates follow-up tasks for a team or an active staff profile", async () => {
+    const fetcher = vi.fn(async () => response({ id: "task-1", team_id: "team-1" }));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await api.createFollowUpTask({
+      branch_id: "branch-1",
+      contact_id: "contact-1",
+      client_request_id: "team-task-request-1",
+      team_id: "team-1",
+      priority: 2,
+    });
+    await api.createFollowUpTask({
+      branch_id: "branch-1",
+      contact_id: "contact-1",
+      client_request_id: "staff-task-request-1",
+      assignee_profile_id: "staff-1",
+      priority: 2,
+    });
+    expect(JSON.parse(String((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toMatchObject({ team_id: "team-1" });
+    expect(JSON.parse(String((fetcher.mock.calls[1] as unknown as [string, RequestInit])[1].body))).toMatchObject({ assignee_profile_id: "staff-1" });
+    expect(() => api.createFollowUpTask({
+      branch_id: "branch-1",
+      contact_id: "contact-1",
+      client_request_id: "invalid-task-request-1",
+      team_id: "team-1",
+      assignee_profile_id: "staff-1",
+      priority: 2,
+    } as never)).toThrow(/Exactly one non-empty task assignment target/);
+  });
+
   it("routes follow-up handoffs through the branch-scoped Worker assignment endpoint", async () => {
     const fetcher = vi.fn(async () => response({ id: "task-1", assignee_user_id: "staff-user-2" }));
     const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
