@@ -327,6 +327,15 @@ jobs:
       - name: Deploy reviewed Worker code to production
         run: npx wrangler deploy --env production
 
+      - name: Deploy reviewed frontend and Pages Functions to production
+        working-directory: web
+        run: |
+          ../cloudflare/node_modules/.bin/wrangler pages deploy dist \
+            --project-name pcg-missions \
+            --branch main \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-message "PCG Missions production release $GITHUB_SHA"
+
       - name: Deploy reviewed frontend assets to Pages production
         working-directory: web
         run: |
