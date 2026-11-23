@@ -46,7 +46,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if ! grep -q 'drizzleAdapter' cloudflare/src/auth.ts || ! grep -q 'authSchema' cloudflare/src/auth.ts; then
+          if ! grep -q 'drizzleAdapter' src/auth.ts || ! grep -q 'authSchema' src/auth.ts; then
             echo "::error title=Authentication adapter missing::The preview branch does not contain the reviewed Drizzle-backed Better Auth implementation."
             exit 1
           fi
