@@ -43,7 +43,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ! grep -q 'diagnostic_detail' cloudflare/src/index.ts
+          if grep -q 'diagnostic_detail' cloudflare/src/index.ts; then
+            echo "Unexpected diagnostic detail field found in the Worker source." >&2
+            exit 1
+          fi
           grep -q 'D1_RATE_LIMIT_WRITE_FAILED' cloudflare/src/index.ts
           echo "Authentication diagnostics expose stable error codes only; SQL parameters and client addresses are not returned."
 
@@ -218,12 +221,7 @@ jobs:
           npx wrangler dev --config wrangler.restore-rehearsal.toml \
             --ip 0.0.0.0 --port 8787 </dev/null > "$RUNNER_TEMP/pcg-acceptance-worker.log" 2>&1 &
           WORKER_PID=$!
-          cleanup() {
-            pkill -P "$WORKER_PID" 2>/dev/null || true
-            kill "$WORKER_PID" 2>/dev/null || true
-            wait "$WORKER_PID" 2>/dev/null || true
-          }
-          trap cleanup EXIT
+          trap 'pkill -P "$WORKER_PID" 2>/dev/null || true; kill "$WORKER_PID" 2>/dev/null || true; wait "$WORKER_PID" 2>/dev/null || true' EXIT
           for _ in $(seq 1 30); do
             if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://127.0.0.1:8787/health >/dev/null; then
               echo "Temporary authenticated Worker is healthy."
