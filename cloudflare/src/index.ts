@@ -5197,8 +5197,21 @@ export default {
       }
       try {
         return withSecurityHeaders(await createAuth(env).handler(request), origin);
-      } catch {
-        return json(503, { ok: false, error: { code: "AUTH_SERVICE_UNAVAILABLE" } }, requestId, origin);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "";
+        const diagnosticCode = /^[A-Z0-9_]+$/.test(message)
+          ? message
+          : /no such table|no such column|sqlite_error/i.test(message)
+            ? "D1_SCHEMA_ERROR"
+            : error instanceof Error ? error.name : "AUTH_RUNTIME_ERROR";
+        console.error("BETTER_AUTH_HANDLER_FAILED", diagnosticCode);
+        return json(503, {
+          ok: false,
+          error: {
+            code: "AUTH_SERVICE_UNAVAILABLE",
+            ...(env.APP_ENV === "non-production" ? { diagnostic_code: diagnosticCode } : {}),
+          },
+        }, requestId, origin);
       }
     }
 
@@ -6333,12 +6346,20 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
           }, requestId, origin);
         }
 
+        let authConfiguration = "ready";
+        try {
+          createAuth(env);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "";
+          authConfiguration = /^[A-Z0-9_]+$/.test(message) ? message : "AUTH_CONFIGURATION_INVALID";
+        }
         return json(200, {
           ok: true,
           service: "pcg-missions-cloudflare-api",
           state: "ready",
           environment: result.environment,
           schema_version: result.schema_version,
+          auth_configuration: authConfiguration,
         }, requestId, origin);
       } catch {
         return json(503, {
