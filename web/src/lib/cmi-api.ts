@@ -477,6 +477,17 @@ export interface ContactInteractionCreateInput {
   next_action_at?: string | null;
 }
 
+export interface ContactAssignmentInput {
+  assignee_profile_id: string;
+  reason: string;
+}
+export interface ContactAssignmentResult {
+  assignment_id: string;
+  assignee_profile_id: string | null;
+  team_id: string | null;
+  starts_at: string;
+}
+
 export interface FollowUpTask {
   id: string;
   branch_id: string;
@@ -897,6 +908,18 @@ export class CmiApiClient {
       "staff-operations",
       `/contacts/${encodeURIComponent(contactId)}/interactions`,
       { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+
+  assignContact(branchId: string, contactId: string, input: ContactAssignmentInput) {
+    const reason = input.reason.trim();
+    if (!input.assignee_profile_id.trim() || reason.length < 10 || reason.length > 500) {
+      throw new TypeError("A staff assignment target and a reason of 10–500 characters are required.");
+    }
+    return this.request<ContactAssignmentResult>(
+      "staff-operations",
+      `/contacts/${encodeURIComponent(contactId)}/assign`,
+      { method: "POST", query: { branch_id: branchId }, body: { assignee_profile_id: input.assignee_profile_id, reason } },
     );
   }
 
