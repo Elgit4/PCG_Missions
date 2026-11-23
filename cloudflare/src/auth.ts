@@ -63,6 +63,14 @@ export const betterAuthRateLimitOptions = {
   },
 } as const;
 
+export const betterAuthSessionOptions = {
+  expiresIn: 60 * 60 * 24 * 7,
+  updateAge: 60 * 60 * 24,
+  // Keep GET session hydration read-only; clients refresh only when explicitly requested.
+  deferSessionRefresh: true,
+  cookieCache: { enabled: false },
+} as const;
+
 /** Build Better Auth per request so the instance always uses the current Cloudflare D1 binding. */
 export function createAuth(env: AuthEnvironment) {
   if (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32) throw new Error("BETTER_AUTH_SECRET_MISSING_OR_TOO_SHORT");
@@ -111,13 +119,7 @@ export function createAuth(env: AuthEnvironment) {
       // PCG Missions uses its audited Admin/Pastor-approved reset-request flow.
       sendResetPassword: async () => { throw new Error("ADMIN_APPROVED_PASSWORD_RESET_REQUIRED"); },
     },
-    session: {
-      expiresIn: 60 * 60 * 24 * 7,
-      updateAge: 60 * 60 * 24,
-      // Session hydration stays read-only; the browser performs a deliberate POST only when refresh is due.
-      deferSessionRefresh: true,
-      cookieCache: { enabled: false },
-    },
+    session: betterAuthSessionOptions,
     advanced: {
       useSecureCookies: secureCookies,
       defaultCookieAttributes: { httpOnly: true, secure: secureCookies, sameSite: "lax", path: "/" },
