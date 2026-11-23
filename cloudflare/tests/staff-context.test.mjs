@@ -68,7 +68,7 @@ test("assigned-scope contact capture is authorized before a new contact ID exist
   });
   assert.equal(allowed.allowed, true);
   assert.equal(allowed.scopeMode, "assigned");
-  assert.deepEqual(capturedValues.slice(-2), ["", ""]);
+  assert.deepEqual(capturedValues.slice(-3), ["", "", PROFILE_ID]);
 
   const denied = await authorizeCapability(db, {
     actorProfileId: PROFILE_ID,
