@@ -232,7 +232,10 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canReadStaffDirectory = hasCapability(session, "staff.directory.read", branchId);
   const canReadTeams = hasCapability(session, "team.read", branchId);
   const canAssignFollowUp = hasCapability(session, "followup.assign", branchId) && (canReadStaffDirectory || canReadTeams);
+  const followUpAssignGrant = session.capabilities.find((grant) => grant.code === "followup.assign" && grant.branch_id === branchId);
+  const canAssignFollowUpToStaff = canAssignFollowUp && followUpAssignGrant?.scope_mode === "branch" && canReadStaffDirectory;
   const canAssignContacts = hasCapability(session, "contacts.assign", branchId) && (canReadStaffDirectory || canReadTeams);
+  const canCreateTaskFromWorkspace = canSelfAssignTask || (canAssignFollowUp && teams.some((team) => team.is_active));
   const canAssignStaffRoles = hasCapability(session, "staff.role.assign", branchId);
   const canApproveStaffRoles = hasCapability(session, "staff.role.approve", branchId);
   const canManageStaffAccounts = hasCapability(session, "staff.account.manage", branchId);
@@ -782,15 +785,30 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     const form = new FormData(event.currentTarget);
     const contactId = taskContactId || String(form.get("contact_id") ?? "");
     const taskNote = String(form.get("task_note") ?? "").trim();
+    const selectedTarget = String(form.get("task_assignment_target") ?? (canSelfAssignTask ? "self" : "")).trim();
     const rawPriority = Number(form.get("priority") ?? 2);
     const dueInput = String(form.get("due_at") ?? "");
     if (!contactId) {
       setActionError("Search for and select a contact before creating the follow-up.");
       return;
     }
-    // Without membership/assignment projections, only self-assignment can be constructed safely.
-    if (!canSelfAssignTask) {
-      setActionError("Task creation for this scope requires an authorised team or staff assignment target.");
+    let assignment:
+      | { assignee_user_id: string }
+      | { assignee_profile_id: string }
+      | { team_id: string };
+    if (selectedTarget === "self" && canSelfAssignTask) {
+      assignment = { assignee_user_id: session.user.id };
+    } else if (selectedTarget.startsWith("staff:") && canAssignFollowUpToStaff) {
+      const profileId = selectedTarget.slice("staff:".length);
+      const target = staffMembers.find((member) => member.id === profileId && member.account_status === "active" && member.roles.length > 0);
+      if (!target) { setActionError("Choose an active staff member in the current assignment scope."); return; }
+      assignment = { assignee_profile_id: profileId };
+    } else if (selectedTarget.startsWith("team:") && canAssignFollowUp) {
+      const teamId = selectedTarget.slice("team:".length);
+      if (!teams.some((team) => team.id === teamId && team.is_active)) { setActionError("Choose an active team in the current assignment scope."); return; }
+      assignment = { team_id: teamId };
+    } else {
+      setActionError("Choose an assignment target permitted by your current role.");
       return;
     }
     const parsedDueDate = dueInput ? new Date(dueInput) : null;
@@ -798,19 +816,23 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     const taskPayload = {
       branch_id: branchId,
       contact_id: contactId,
-      assignee_user_id: session.user.id,
       priority: Number.isInteger(rawPriority) && rawPriority >= 1 && rawPriority <= 5 ? rawPriority : 2,
       task_note: taskNote || null,
       due_at: parsedDueDate ? parsedDueDate.toISOString() : null,
     };
-    const fingerprint = JSON.stringify(taskPayload);
+    const fingerprint = JSON.stringify({ ...taskPayload, ...assignment });
     if (!taskRequestRef.current || taskRequestRef.current.fingerprint !== fingerprint) {
       taskRequestRef.current = { fingerprint, id: crypto.randomUUID() };
     }
-    const input: TaskCreateInput = {
-      ...taskPayload,
-      client_request_id: taskRequestRef.current.id,
-    };
+    const clientRequestId = taskRequestRef.current.id;
+    let input: TaskCreateInput;
+    if ("assignee_user_id" in assignment) {
+      input = { ...taskPayload, assignee_user_id: assignment.assignee_user_id, client_request_id: clientRequestId };
+    } else if ("assignee_profile_id" in assignment) {
+      input = { ...taskPayload, assignee_profile_id: assignment.assignee_profile_id, client_request_id: clientRequestId };
+    } else {
+      input = { ...taskPayload, team_id: assignment.team_id, client_request_id: clientRequestId };
+    }
     setSaving(true); setActionError("");
     try {
       const result = await api.createFollowUpTask(input);
@@ -1124,17 +1146,17 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
           {page === "Follow-up" && canReadTasks && <div className="cmi-panel">
             <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h3>Follow-up tasks</h3><p>Filter tasks in your current branch and assignment scope. Counts reflect the loaded records.</p></div>
-              {canSelfAssignTask && <button className="cmi-button cmi-button-primary" onClick={() => {
+              {canCreateTaskFromWorkspace && <button className="cmi-button cmi-button-primary" onClick={() => {
                 setTaskContactId("");
                 setTaskContactQuery("");
                 setTaskContactResults([]);
                 setTaskContactError("");
                 setShowTaskForm((value) => !value);
               }} disabled={!canReadContacts}><Plus size={16} />New task</button>}
-              {canCreateTasks && canSelfAssignTask && !canReadContacts && <div className="cmi-task-prerequisite" role="note">
+              {canCreateTasks && canCreateTaskFromWorkspace && !canReadContacts && <div className="cmi-task-prerequisite" role="note">
                 <span>Your current role cannot search the contact directory. Ask an authorised coordinator to grant the required contact access.</span>
               </div>}
-              {canCreateTasks && !canSelfAssignTask && <span className="cmi-scope-note">Task creation is granted, but a supported team assignment target is not available in this workspace.</span>}
+              {canCreateTasks && !canCreateTaskFromWorkspace && <span className="cmi-scope-note">Task creation is granted, but no active assignment target is available in your current scope. Ask an authorised team leader to confirm team membership.</span>}
             </div>
             {showTaskForm && canCreateTasks && <form className="cmi-form-grid" onSubmit={createTask}>
               <div className="cmi-field-wide cmi-task-contact-picker">
@@ -1171,6 +1193,12 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                   Change selected contact
                 </button>}
               </div>
+              {canAssignFollowUp && <label>Assign responsibility<select name="task_assignment_target" defaultValue={canSelfAssignTask ? "self" : teams.find((team) => team.is_active) ? `team:${teams.find((team) => team.is_active)!.id}` : ""} required>
+                {canSelfAssignTask && <option value="self">Keep responsibility with me</option>}
+                {canAssignFollowUpToStaff && <optgroup label="Staff members">{staffMembers.filter((member) => member.account_status === "active" && member.roles.length > 0).map((member) => <option key={`staff:${member.id}`} value={`staff:${member.id}`}>{member.full_name} · {member.roles.map((role) => role.name).join(", ")}</option>)}</optgroup>}
+                <optgroup label="Teams">{teams.filter((team) => team.is_active).map((team) => <option key={`team:${team.id}`} value={`team:${team.id}`}>{team.name}</option>)}</optgroup>
+              </select></label>}
+              {!canAssignFollowUp && <p className="cmi-field-wide cmi-scope-note">This task will be assigned to you within your current access scope.</p>}
               <label>Priority<select name="priority" defaultValue="2"><option value="1">Urgent</option><option value="2">Normal</option><option value="3">Low</option><option value="4">Very low</option><option value="5">Minimal</option></select></label>
               <label>Due date and time<input type="datetime-local" name="due_at" /></label>
               <label className="cmi-field-wide">Operational note <span>Do not enter pastoral narratives or sensitive identity data</span><textarea name="task_note" rows={3} maxLength={1000} /></label>
