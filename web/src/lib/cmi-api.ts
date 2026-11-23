@@ -495,10 +495,9 @@ export interface ContactInteractionCreateInput {
   next_action_at?: string | null;
 }
 
-export interface ContactAssignmentInput {
-  assignee_profile_id: string;
-  reason: string;
-}
+export type ContactAssignmentInput =
+  | { assignee_profile_id: string; team_id?: never; reason: string }
+  | { team_id: string; assignee_profile_id?: never; reason: string };
 export interface ContactAssignmentResult {
   assignment_id: string;
   assignee_profile_id: string | null;
@@ -944,13 +943,15 @@ export class CmiApiClient {
 
   assignContact(branchId: string, contactId: string, input: ContactAssignmentInput) {
     const reason = input.reason.trim();
-    if (!input.assignee_profile_id.trim() || reason.length < 10 || reason.length > 500) {
-      throw new TypeError("A staff assignment target and a reason of 10–500 characters are required.");
+    const staffTarget = "assignee_profile_id" in input ? input.assignee_profile_id.trim() : "";
+    const teamTarget = "team_id" in input ? input.team_id.trim() : "";
+    if (!!staffTarget === !!teamTarget || reason.length < 10 || reason.length > 500) {
+      throw new TypeError("Choose exactly one active staff member or team and provide a reason of 10–500 characters.");
     }
     return this.request<ContactAssignmentResult>(
       "staff-operations",
       `/contacts/${encodeURIComponent(contactId)}/assign`,
-      { method: "POST", query: { branch_id: branchId }, body: { assignee_profile_id: input.assignee_profile_id, reason } },
+      { method: "POST", query: { branch_id: branchId }, body: staffTarget ? { assignee_profile_id: staffTarget, reason } : { team_id: teamTarget, reason } },
     );
   }
 
