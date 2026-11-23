@@ -790,7 +790,10 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       setActionError("Search for and select a contact before creating the follow-up.");
       return;
     }
-    let assignment: Pick<TaskCreateInput, "assignee_user_id" | "assignee_profile_id" | "team_id">;
+    let assignment:
+      | { assignee_user_id: string }
+      | { assignee_profile_id: string }
+      | { team_id: string };
     if (selectedTarget === "self" && canSelfAssignTask) {
       assignment = { assignee_user_id: session.user.id };
     } else if (selectedTarget.startsWith("staff:") && canAssignFollowUpToStaff) {
@@ -811,19 +814,23 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     const taskPayload = {
       branch_id: branchId,
       contact_id: contactId,
-      ...assignment,
       priority: Number.isInteger(rawPriority) && rawPriority >= 1 && rawPriority <= 5 ? rawPriority : 2,
       task_note: taskNote || null,
       due_at: parsedDueDate ? parsedDueDate.toISOString() : null,
     };
-    const fingerprint = JSON.stringify(taskPayload);
+    const fingerprint = JSON.stringify({ ...taskPayload, ...assignment });
     if (!taskRequestRef.current || taskRequestRef.current.fingerprint !== fingerprint) {
       taskRequestRef.current = { fingerprint, id: crypto.randomUUID() };
     }
-    const input: TaskCreateInput = {
-      ...taskPayload,
-      client_request_id: taskRequestRef.current.id,
-    };
+    const clientRequestId = taskRequestRef.current.id;
+    let input: TaskCreateInput;
+    if ("assignee_user_id" in assignment) {
+      input = { ...taskPayload, assignee_user_id: assignment.assignee_user_id, client_request_id: clientRequestId };
+    } else if ("assignee_profile_id" in assignment) {
+      input = { ...taskPayload, assignee_profile_id: assignment.assignee_profile_id, client_request_id: clientRequestId };
+    } else {
+      input = { ...taskPayload, team_id: assignment.team_id, client_request_id: clientRequestId };
+    }
     setSaving(true); setActionError("");
     try {
       const result = await api.createFollowUpTask(input);
