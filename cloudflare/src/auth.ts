@@ -41,6 +41,26 @@ export function verifyLegacyBcryptPassword(password: string, hash: string): Prom
   return bcryptCompare(password, compatibleHash);
 }
 
+/**
+ * Better Auth rate-limit policy.
+ *
+ * Session hydration is a read path polled by the browser and must not create a
+ * persistent D1 rate-limit write on every page load/focus event. Keep the
+ * database-backed limits on credential and password-recovery mutations.
+ */
+export const betterAuthRateLimitOptions = {
+  enabled: true,
+  storage: "database",
+  window: 60,
+  max: 30,
+  customRules: {
+    "/get-session": false,
+    "/sign-in/email": { window: 60, max: 5 },
+    "/forget-password": { window: 60, max: 3 },
+    "/reset-password": { window: 60, max: 5 },
+  },
+} as const;
+
 /** Build Better Auth per request so the instance always uses the current Cloudflare D1 binding. */
 export function createAuth(env: AuthEnvironment) {
   if (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32) throw new Error("BETTER_AUTH_SECRET_MISSING_OR_TOO_SHORT");
@@ -95,13 +115,7 @@ export function createAuth(env: AuthEnvironment) {
       defaultCookieAttributes: { httpOnly: true, secure: secureCookies, sameSite: "lax", path: "/" },
       ipAddress: { ipAddressHeaders: ["cf-connecting-ip"] },
     },
-    rateLimit: {
-      enabled: true,
-      storage: "database",
-      window: 60,
-      max: 30,
-      customRules: { "/sign-in/email": { window: 60, max: 5 }, "/forget-password": { window: 60, max: 3 }, "/reset-password": { window: 60, max: 5 } },
-    },
+    rateLimit: betterAuthRateLimitOptions,
   });
 }
 
