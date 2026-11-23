@@ -18,7 +18,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: pcg-missions-d1-restore-rehearsal
+  # Preview release uses the persistent non-production D1; restore rehearsal uses
+  # a disposable database. Keep their queues independent so a long quota wait
+  # cannot block authentication deployment verification.
+  group: pcg-missions-preview-release
   cancel-in-progress: false
 
 jobs:
