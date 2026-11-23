@@ -5196,7 +5196,23 @@ export default {
         return json(405, { ok: false, error: { code: "METHOD_NOT_ALLOWED" } }, requestId, origin);
       }
       try {
-        return withSecurityHeaders(await createAuth(env).handler(request), origin);
+        const authResponse = await createAuth(env).handler(request);
+        if (authResponse.status >= 500 && env.APP_ENV !== "production") {
+          const responseBody = await authResponse.clone().text();
+          const diagnosticCode = /no such table|no such column|sqlite_error/i.test(responseBody)
+            ? "D1_SCHEMA_ERROR"
+            : `BETTER_AUTH_HTTP_${authResponse.status}`;
+          console.error("BETTER_AUTH_HANDLER_RESPONSE_FAILED", diagnosticCode, responseBody.slice(0, 300));
+          return json(503, {
+            ok: false,
+            error: {
+              code: "AUTH_SERVICE_UNAVAILABLE",
+              diagnostic_code: diagnosticCode,
+              diagnostic_detail: responseBody.slice(0, 300),
+            },
+          }, requestId, origin);
+        }
+        return withSecurityHeaders(authResponse, origin);
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
         const diagnosticCode = /^[A-Z0-9_]+$/.test(message)
@@ -5209,7 +5225,10 @@ export default {
           ok: false,
           error: {
             code: "AUTH_SERVICE_UNAVAILABLE",
-            ...(env.APP_ENV === "non-production" ? { diagnostic_code: diagnosticCode } : {}),
+            ...(env.APP_ENV !== "production" ? {
+              diagnostic_code: diagnosticCode,
+              diagnostic_detail: message.slice(0, 300),
+            } : {}),
           },
         }, requestId, origin);
       }
