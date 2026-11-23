@@ -224,7 +224,7 @@ jobs:
             wait "$WORKER_PID" 2>/dev/null || true
           }
           trap cleanup EXIT
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://127.0.0.1:8787/health >/dev/null; then
               echo "Temporary authenticated Worker is healthy."
               set +e
@@ -260,7 +260,7 @@ jobs:
           echo "$RESTORE_RESPONSE" | jq -e '.success == true' >/dev/null
           echo "$RESTORE_RESPONSE" | jq -r '.result.message'
 
-          for attempt in $(seq 1 12); do
+          for _ in $(seq 1 12); do
             VERIFY="$(npx wrangler d1 execute "$DB_NAME" --remote --json --config wrangler.restore-rehearsal.toml \
               --command "SELECT (SELECT schema_version FROM app_meta WHERE id=1) AS schema_version, (SELECT environment FROM app_meta WHERE id=1) AS environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='restore_rehearsal_probe') AS probe_table_count, (SELECT COUNT(*) FROM staff_profile) AS qa_profile_count, (SELECT COUNT(*) FROM ministry_report) AS qa_report_count, (SELECT COUNT(*) FROM event) AS qa_event_count;")"
             SCHEMA="$(echo "$VERIFY" | jq -r '.[0].results[0].schema_version // empty')"
