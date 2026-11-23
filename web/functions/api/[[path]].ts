@@ -103,9 +103,10 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
       if (value) responseHeaders.set(name, value);
     }
 
+    const singleSetCookie = upstream.headers.get("set-cookie");
     const cookieHeaders = typeof upstream.headers.getSetCookie === "function"
       ? upstream.headers.getSetCookie()
-      : (upstream.headers.get("set-cookie") ? [upstream.headers.get("set-cookie")] : []);
+      : (singleSetCookie ? [singleSetCookie] : []);
     for (const cookie of cookieHeaders) responseHeaders.append("Set-Cookie", cookie);
 
     responseHeaders.set("Cache-Control", "no-store, max-age=0");
