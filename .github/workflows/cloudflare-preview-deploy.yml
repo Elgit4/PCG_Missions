@@ -89,11 +89,6 @@ jobs:
           if-no-files-found: error
           retention-days: 2
 
-      - name: Install PostgreSQL client for the one-time credential bridge
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes postgresql-client
-
       - name: Apply forward-only schema 46 to the isolated EU preview D1
         shell: bash
         run: |
