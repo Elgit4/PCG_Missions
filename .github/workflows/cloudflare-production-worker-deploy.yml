@@ -198,6 +198,12 @@ jobs:
               (SELECT COUNT(*) FROM staff_profile WHERE account_status='active' AND deactivated_at IS NULL) AS active_staff_profiles,
               (SELECT COUNT(*) FROM user) AS auth_users,
               (SELECT COUNT(DISTINCT userId) FROM account WHERE password IS NOT NULL) AS password_users,
+              (SELECT COUNT(*) FROM staff_profile s
+                LEFT JOIN user u ON u.id=s.auth_user_id
+                LEFT JOIN account credential ON credential.userId=u.id
+                  AND credential.providerId='credential' AND credential.password IS NOT NULL
+                WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                  AND (u.id IS NULL OR credential.id IS NULL)) AS active_staff_without_credential,
               (SELECT COUNT(DISTINCT s.id) FROM staff_role_assignment a JOIN role r ON r.id=a.role_id
                 JOIN staff_profile s ON s.id=a.staff_profile_id JOIN user u ON u.id=s.auth_user_id
                 JOIN account credential ON credential.userId=u.id AND credential.password IS NOT NULL
@@ -209,7 +215,8 @@ jobs:
                     AND datetime(s.password_setup_expires_at)>datetime('now')))) AS active_admin_pastor_ready,
               (SELECT COUNT(DISTINCT r.code) FROM staff_role_assignment a JOIN role r ON r.id=a.role_id
                 JOIN staff_profile s ON s.id=a.staff_profile_id
-                WHERE a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                WHERE r.code IN ('admin_pastor','coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor')
+                  AND a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
                   AND datetime(a.starts_at)<=datetime('now')
                   AND s.account_status='active' AND s.deactivated_at IS NULL) AS assigned_role_codes,
               (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
@@ -246,6 +253,7 @@ jobs:
             active_staff_profiles: Number(row.active_staff_profiles),
             auth_users: Number(row.auth_users),
             password_users: Number(row.password_users),
+            active_staff_without_credential: Number(row.active_staff_without_credential),
             active_admin_pastor_ready: Number(row.active_admin_pastor_ready),
             assigned_role_codes: Number(row.assigned_role_codes),
             active_profiles_without_role: Number(row.active_profiles_without_role),
@@ -258,16 +266,17 @@ jobs:
             process.exit(1);
           }
           const fullRosterReady =
-            summary.active_staff_profiles === 6 &&
+            summary.active_staff_profiles >= 6 &&
             summary.assigned_role_codes === 6 &&
             summary.active_profiles_without_role === 0 &&
             summary.assignments_on_inactive_profiles === 0 &&
+            summary.active_staff_without_credential === 0 &&
             summary.invalid_first_login_setups === 0;
           if (!fullRosterReady) {
-            console.log("::warning::Production will enter Admin/Pastor bootstrap mode. The Admin/Pastor must provision the remaining staff accounts, assign the six roles, and resolve stale/inactive assignments and expired first-login credentials before full ministry-team operations.");
-          } else {
-            console.log("All six production staff roles are assigned to active, credential-ready staff accounts.");
+            console.error("Production cutover blocked: provision all six staff accounts, assign all six roles, ensure every active profile has a Cloudflare password credential, and resolve inactive assignments or expired first-login setup windows before production migration.");
+            process.exit(1);
           }
+          console.log("Production staff roster gate passed: six or more active profiles, all six role codes effectively assigned, credential accounts present, and no stale/expired account setups.");
           NODE
 
       - name: Verify existing production Worker secrets without exposing values
