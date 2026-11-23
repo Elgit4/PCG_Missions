@@ -8,7 +8,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pcg-missions-d1-restore-rehearsal
+  group: pcg-missions-d1-restore-rehearsal-v2
   # Never cancel a live restore rehearsal: it may leave a remote D1 database behind.
   cancel-in-progress: false
 
