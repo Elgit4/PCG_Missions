@@ -11,7 +11,9 @@ function section(startMarker, endMarker) {
   return source.slice(start, end);
 }
 
-test("contact and follow-up updates accept D1 trigger side effects without reporting false conflicts", () => {
+test("contact capture and follow-up updates accept D1 trigger side effects without false conflicts", () => {
+  const capture = section("async function createContact(", "async function updateContact(");
+  assert.match(capture, /results\.some\(\(result\) => \(result\.meta\?\.changes \?\? 0\) < 1\)/);
   const contact = section("async function updateContact(", "async function assignContact(");
   assert.match(contact, /result\.meta\?\.changes \?\? 0\) < 1/);
   const updateTask = section("async function updateFollowupTask(", "async function reassignFollowupTask(");
