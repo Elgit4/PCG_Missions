@@ -4742,7 +4742,7 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     const teamIds=team?await reportTeamIds(env,context.staff.profileId,String(row.branch_id),new Date().toISOString()):[];
     if(!branch&&!(team&&row.team_id&&teamIds.includes(String(row.team_id)))) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     console.log("REPORT_REVIEW_PRECONDITION", JSON.stringify({reportId:reportIdForReview,status:row.status,actorProfileId:context.staff.profileId,authorProfileId:row.author_profile_id}));
-    if(row.status!=="submitted") return json(409,{ok:false,error:{code:"REPORT_NOT_SUBMITTED"}},requestId,origin);
+    if(row.status!=="submitted") return json(409,{ok:false,error:{code:"REPORT_NOT_SUBMITTED",...(env.APP_ENV!=="production"?{observed_status:row.status}: {})}},requestId,origin);
     const now=new Date().toISOString();
     const actionId=crypto.randomUUID();
     const nextStatus=decision==="comment"?"submitted":decision;
