@@ -1,0 +1,14 @@
+name: PCG Missions One-time Authenticated Acceptance
+
+on:
+  push:
+    branches:
+      - test/one-time-authenticated-acceptance
+
+permissions:
+  contents: read
+
+jobs:
+  authenticated-acceptance:
+    uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
+    secrets: inherit
