@@ -374,14 +374,33 @@ const closeoutSubmit = await api(adminCookie, `/api/v1/events/${eventId}/closeou
 });
 if (closeoutSubmit.status !== 201) throw new Error(`Event closeout submission failed: ${closeoutSubmit.status} ${JSON.stringify(closeoutSubmit.payload)}`);
 
+const closeoutReturn = await api(reviewerCookie, `/api/v1/events/${eventId}/closeout/review`, "POST", {
+  idempotency_key: `qa-closeout-return-${runId}`,
+  decision: "returned",
+  reason: "Synthetic acceptance return: clarify final attendance and transport counts.",
+});
+if (closeoutReturn.status !== 200 || closeoutReturn.payload?.data?.closeout?.status !== "returned") {
+  throw new Error(`Event closeout return failed: ${closeoutReturn.status} ${JSON.stringify(closeoutReturn.payload)}`);
+}
+
+const closeoutResubmit = await api(adminCookie, `/api/v1/events/${eventId}/closeout/submit`, "POST", {
+  idempotency_key: `qa-closeout-resubmit-${runId}`,
+  summary_notes: "Corrected synthetic closeout after reviewer feedback.",
+});
+if (closeoutResubmit.status !== 201 || closeoutResubmit.payload?.data?.closeout?.status !== "submitted") {
+  throw new Error(`Event closeout resubmission failed: ${closeoutResubmit.status} ${JSON.stringify(closeoutResubmit.payload)}`);
+}
+
 const closeoutReview = await api(reviewerCookie, `/api/v1/events/${eventId}/closeout/review`, "POST", {
-  idempotency_key: `qa-closeout-review-${runId}`,
+  idempotency_key: `qa-closeout-approve-${runId}`,
   decision: "approved",
   reason: null,
 });
-if (closeoutReview.status !== 200) throw new Error(`Event closeout review failed: ${closeoutReview.status} ${JSON.stringify(closeoutReview.payload)}`);
+if (closeoutReview.status !== 200 || closeoutReview.payload?.data?.closeout?.status !== "approved") {
+  throw new Error(`Event closeout review failed: ${closeoutReview.status} ${JSON.stringify(closeoutReview.payload)}`);
+}
 
-console.log("EVENT_REGISTRATION_CHECKIN_CLOSEOUT_PASSED");
+console.log("EVENT_REGISTRATION_CHECKIN_CLOSEOUT_RETURN_RESUBMIT_PASSED");
 
 const report = await api(workerCookie, "/api/v1/reports", "POST", {
   branch_id: branchId,
@@ -417,18 +436,43 @@ console.log("REPORT_D1_STATUS_AFTER_SELF_REVIEW", JSON.stringify(await d1("SELEC
 
 console.log("REPORT_SUBMIT_AND_SELF_REVIEW_BOUNDARY_PASSED");
 
+const reportReturn = await api(reviewerCookie, `/api/v1/reports/${reportId}/review`, "POST", {
+  decision: "returned",
+  comment: "Synthetic acceptance return: clarify the follow-up completion count.",
+});
+if (reportReturn.status !== 200 || reportReturn.payload?.data?.report?.status !== "returned") {
+  throw new Error(`Ministry report return failed: ${reportReturn.status} ${JSON.stringify(reportReturn.payload)}`);
+}
+
+const reportResubmit = await api(workerCookie, `/api/v1/reports/${reportId}/resubmit`, "POST", {
+  contacts_captured: 1,
+  gospel_presentations: 1,
+  decisions_for_christ: 1,
+  followup_required: 1,
+  followup_completed: 1,
+  visits_completed: 0,
+  calls_completed: 0,
+  events_supported: 0,
+  attendance_count: 0,
+});
+if (reportResubmit.status !== 200 || reportResubmit.payload?.data?.report?.status !== "submitted") {
+  throw new Error(`Ministry report resubmission failed: ${reportResubmit.status} ${JSON.stringify(reportResubmit.payload)}`);
+}
+
 const reportReview = await api(reviewerCookie, `/api/v1/reports/${reportId}/review`, "POST", {
   decision: "approved",
-  comment: "Synthetic authenticated acceptance approval",
+  comment: "Synthetic authenticated approval after corrected resubmission",
 });
-if (reportReview.status !== 200) throw new Error(`Ministry report review failed: ${reportReview.status} ${JSON.stringify(reportReview.payload)}`);
+if (reportReview.status !== 200 || reportReview.payload?.data?.report?.status !== "approved") {
+  throw new Error(`Ministry report review failed: ${reportReview.status} ${JSON.stringify(reportReview.payload)}`);
+}
 
 const reportState = (await d1("SELECT status FROM ministry_report WHERE id=?", [reportId]))[0];
-const reviewHistory = (await d1("SELECT decision FROM report_review_event WHERE report_id=?", [reportId]))[0];
+const reviewHistory = (await d1("SELECT decision FROM report_review_event WHERE report_id=? ORDER BY created_at ASC", [reportId])).map((row) => row.decision);
 const registrationState = (await d1("SELECT status FROM event_registration WHERE id=?", [registrationId]))[0];
 const checkinCount = (await d1("SELECT COUNT(*) AS count FROM event_checkin WHERE event_id=?", [eventId]))[0]?.count;
 const closeoutState = (await d1("SELECT status FROM event_closeout WHERE event_id=?", [eventId]))[0];
-const closeoutHistory = (await d1("SELECT COUNT(*) AS count FROM event_closeout_event e JOIN event_closeout c ON c.id=e.closeout_id WHERE c.event_id=?", [eventId]))[0]?.count;
+const closeoutHistory = (await d1("SELECT action FROM event_closeout_event e JOIN event_closeout c ON c.id=e.closeout_id WHERE c.event_id=? ORDER BY e.created_at ASC", [eventId])).map((row) => row.action);
 const eventNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='event_assigned' ORDER BY created_at DESC LIMIT 1", [worker.userId]))[0];
 const reportNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='report_reviewed' ORDER BY created_at DESC LIMIT 1", [worker.userId]))[0];
 const followupState = (await d1("SELECT status FROM followup_task WHERE id=?", [followupTaskId]))[0];
@@ -850,11 +894,16 @@ console.log("CALENDAR_ENTRY_LIFECYCLE_PASSED");
 
 const checks = {
   reportApproved: reportState?.status === "approved",
-  reportReviewHistory: reviewHistory?.decision === "approved",
+  reportReturnedAndResubmitted: reviewHistory.length === 3 &&
+    ["returned", "resubmitted", "approved"].every((decision) => reviewHistory.includes(decision)),
+  reportReviewHistory: reviewHistory.includes("approved"),
   eventRegistrationAttended: registrationState?.status === "attended",
   eventCheckinPersisted: Number(checkinCount) === 1,
   eventCloseoutApproved: closeoutState?.status === "approved",
-  eventCloseoutAudit: Number(closeoutHistory) === 2,
+  eventCloseoutReturnedAndResubmitted: closeoutHistory.length === 4 &&
+    closeoutHistory.filter((action) => action === "submitted").length === 2 &&
+    closeoutHistory.includes("returned") && closeoutHistory.includes("approved"),
+  eventCloseoutAudit: closeoutHistory.length === 4,
   eventAssignmentNotificationTargetsEvent: eventNotice?.target_type === "event" && eventNotice?.target_id === eventId,
   reportReviewNotificationTargetsReport: reportNotice?.target_type === "ministry_report" && reportNotice?.target_id === reportId,
   followupTaskCompleted: followupState?.status === "completed" && Number(followupEventCount) === 3,
