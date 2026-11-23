@@ -1122,7 +1122,7 @@ class AuthorizationQueryTests(unittest.TestCase):
             resource_type, record_id, record_id, self.NOW, self.NOW,
             resource_type, record_id, record_id,
             resource_type, record_id, resource_type, record_id,
-            self.NOW, self.NOW, actor_profile,
+            self.NOW, self.NOW, resource_type, record_id, actor_profile,
         )
         self.assertEqual(query.count("?"), len(values), "SQL placeholders and D1 bind values must match")
         return self.db.execute(query, values).fetchone()
