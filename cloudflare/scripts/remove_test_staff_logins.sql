@@ -29,6 +29,64 @@ WHERE id = 'd5c922ca-0e64-4a65-b14e-128c9131f79c'
   AND auth_user_id = 'a75f19b8-be85-4a90-835c-d8848bad8bc1'
   AND account_status = 'active';
 
+-- 5. Preserve the profile/user IDs for all foreign keys, but erase staff PII
+--    and make both profiles permanently ineligible for login.
+UPDATE staff_profile
+SET full_name = 'Removed test account',
+    email = NULL,
+    phone_e164 = NULL,
+    must_change_password = 1,
+    password_setup_expires_at = NULL,
+    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+WHERE id IN (
+  'd5c922ca-0e64-4a65-b14e-128c9131f79c',
+  'd9c55d3f-ec29-457f-a131-621a72d326e9'
+)
+  AND account_status = 'inactive';
+
+-- 6. Remove every login credential/session and any residual email verification
+--    material. Delete the Better Auth credentials only, not the user/profile rows.
+DELETE FROM session
+WHERE userId IN (
+  'a75f19b8-be85-4a90-835c-d8848bad8bc1',
+  'b831e1e5-e2f5-4257-bd90-e7c84c4e6c91'
+);
+
+DELETE FROM account
+WHERE userId IN (
+  'a75f19b8-be85-4a90-835c-d8848bad8bc1',
+  'b831e1e5-e2f5-4257-bd90-e7c84c4e6c91'
+);
+
+DELETE FROM verification
+WHERE lower(identifier) IN (
+  'eltech6363@gmail.com',
+  'nanaseiboateng15@gmail.com'
+);
+
+DELETE FROM staff_push_subscription
+WHERE staff_profile_id IN (
+  'd5c922ca-0e64-4a65-b14e-128c9131f79c',
+  'd9c55d3f-ec29-457f-a131-621a72d326e9'
+);
+
+-- 7. Retain auth user IDs as tombstones, but anonymise the user rows and release
+--    both original addresses so the normal Admin/Pastor "Create staff account"
+--    workflow can provision those addresses again from scratch.
+UPDATE "user"
+SET name = 'Removed test account',
+    email = 'removed+' || id || '@invalid.example',
+    emailVerified = 0,
+    image = NULL,
+    updatedAt = CAST(strftime('%s','now') AS INTEGER) * 1000
+WHERE id IN (
+  'a75f19b8-be85-4a90-835c-d8848bad8bc1',
+  'b831e1e5-e2f5-4257-bd90-e7c84c4e6c91'
+);
+
+-- Completion audits are appended only after profile anonymisation, credential/session
+-- deletion and email release have all succeeded. A partially failed run can be retried
+-- without recording a false 'completed' state.
 -- 3. Append the completed operation to staff access audit. The earlier preliminary
 --    audit entries are append-only and remain; these new rows explicitly record
 --    that the reset is now complete, not merely requested.
@@ -92,57 +150,4 @@ WHERE EXISTS (
     AND account_status = 'inactive'
 );
 
--- 5. Preserve the profile/user IDs for all foreign keys, but erase staff PII
---    and make both profiles permanently ineligible for login.
-UPDATE staff_profile
-SET full_name = 'Removed test account',
-    email = NULL,
-    phone_e164 = NULL,
-    must_change_password = 1,
-    password_setup_expires_at = NULL,
-    updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
-WHERE id IN (
-  'd5c922ca-0e64-4a65-b14e-128c9131f79c',
-  'd9c55d3f-ec29-457f-a131-621a72d326e9'
-)
-  AND account_status = 'inactive';
 
--- 6. Remove every login credential/session and any residual email verification
---    material. Delete the Better Auth credentials only, not the user/profile rows.
-DELETE FROM session
-WHERE userId IN (
-  'a75f19b8-be85-4a90-835c-d8848bad8bc1',
-  'b831e1e5-e2f5-4257-bd90-e7c84c4e6c91'
-);
-
-DELETE FROM account
-WHERE userId IN (
-  'a75f19b8-be85-4a90-835c-d8848bad8bc1',
-  'b831e1e5-e2f5-4257-bd90-e7c84c4e6c91'
-);
-
-DELETE FROM verification
-WHERE lower(identifier) IN (
-  'eltech6363@gmail.com',
-  'nanaseiboateng15@gmail.com'
-);
-
-DELETE FROM staff_push_subscription
-WHERE staff_profile_id IN (
-  'd5c922ca-0e64-4a65-b14e-128c9131f79c',
-  'd9c55d3f-ec29-457f-a131-621a72d326e9'
-);
-
--- 7. Retain auth user IDs as tombstones, but anonymise the user rows and release
---    both original addresses so the normal Admin/Pastor "Create staff account"
---    workflow can provision those addresses again from scratch.
-UPDATE "user"
-SET name = 'Removed test account',
-    email = 'removed+' || id || '@invalid.example',
-    emailVerified = 0,
-    image = NULL,
-    updatedAt = CAST(strftime('%s','now') AS INTEGER) * 1000
-WHERE id IN (
-  'a75f19b8-be85-4a90-835c-d8848bad8bc1',
-  'b831e1e5-e2f5-4257-bd90-e7c84c4e6c91'
-);
