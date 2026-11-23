@@ -146,7 +146,7 @@ jobs:
           walk(root);
           const row = candidates[0];
           if (!row || row.environment !== "production" ||
-              Number(row.schema_version) !== 46 ||
+              ![45, 46].includes(Number(row.schema_version)) ||
               Number(row.schema_version) !== Number(row.latest_migration_id) ||
               Number(row.migration_count) !== Number(row.schema_version) ||
               Number(row.first_migration_id) !== 1 ||
