@@ -123,9 +123,9 @@ jobs:
             exit "$migration_status"
           fi
           npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
-            --command "SELECT CASE WHEN schema_version=47 AND environment='non-production' THEN 'SCHEMA_46_READY' ELSE 'SCHEMA_INVALID' END AS status FROM app_meta WHERE id=1;"
+            --command "SELECT CASE WHEN schema_version=47 AND environment='non-production' THEN 'SCHEMA_47_READY' ELSE 'SCHEMA_INVALID' END AS status FROM app_meta WHERE id=1;"
           npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
-            --command "SELECT CASE WHEN COUNT(*)=47 THEN 'MIGRATION_LEDGER_46_READY' ELSE 'MIGRATION_LEDGER_INVALID' END AS status FROM d1_migrations;"
+            --command "SELECT CASE WHEN COUNT(*)=47 THEN 'MIGRATION_LEDGER_47_READY' ELSE 'MIGRATION_LEDGER_INVALID' END AS status FROM d1_migrations;"
           echo "Remote D1 binding enabled for the authenticated Worker acceptance run."
 
       - name: Verify D1 write budget before authenticated acceptance
@@ -197,7 +197,7 @@ jobs:
           BOOKMARK="$(echo "$RESPONSE" | jq -r '.result.bookmark')"
           test -n "$BOOKMARK" && test "$BOOKMARK" != "null"
           echo "value=$BOOKMARK" >> "$GITHUB_OUTPUT"
-          echo "Captured schema 46 pre-acceptance bookmark."
+          echo "Captured schema 47 pre-acceptance bookmark."
 
       - name: Run authenticated API acceptance against temporary Worker
         working-directory: cloudflare
@@ -265,13 +265,13 @@ jobs:
             PROFILES="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_profile_count // empty')"
             REPORTS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_report_count // empty')"
             EVENTS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_event_count // empty')"
-            if [ "$SCHEMA" = "47" ] && [ "$ENVIRONMENT" = "non-production" ] && [ "$MIGRATIONS" = "46" ] && [ "$PROBE" = "0" ] && [ "$PROFILES" = "0" ] && [ "$REPORTS" = "0" ] && [ "$EVENTS" = "0" ]; then
-              echo "RESTORE_REHEARSAL_PASSED: schema 46 and all 47 migration records preserved; synthetic identities, report/event records and post-bookmark probe removed."
+            if [ "$SCHEMA" = "47" ] && [ "$ENVIRONMENT" = "non-production" ] && [ "$MIGRATIONS" = "47" ] && [ "$PROBE" = "0" ] && [ "$PROFILES" = "0" ] && [ "$REPORTS" = "0" ] && [ "$EVENTS" = "0" ]; then
+              echo "RESTORE_REHEARSAL_PASSED: schema 47 and all 47 migration records preserved; synthetic identities, report/event records and post-bookmark probe removed."
               exit 0
             fi
             sleep 5
           done
-          echo "D1 restore verification did not return to the pre-acceptance schema 46 bookmark." >&2
+          echo "D1 restore verification did not return to the pre-acceptance schema 47 bookmark." >&2
           exit 1
 
       - name: Delete isolated rehearsal database
