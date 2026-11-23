@@ -1407,7 +1407,7 @@ async function listContacts(
         OR c.first_name LIKE ?
         OR COALESCE(c.last_name, '') LIKE ?
         OR COALESCE(c.preferred_name, '') LIKE ?
-        OR COALESCE(c.email_normalized, '') LIKE ?
+        OR (? = 1 AND COALESCE(c.email_normalized, '') LIKE ?)
         OR (? = 1 AND (${phoneMatchSql}))
       )
       AND (${readPredicate.sql})
@@ -1421,8 +1421,9 @@ async function listContacts(
     privateScope ? 1 : 0, ...privatePredicate.values,
     context.activeBranch.branchId,
     ...(status === "all" ? [] : [status]),
-    searchPattern, searchPattern, searchPattern, searchPattern, searchPattern,
-    phonePatterns.length ? 1 : 0,
+    searchPattern, searchPattern, searchPattern, searchPattern,
+    detailScope ? 1 : 0, searchPattern,
+    detailScope && phonePatterns.length ? 1 : 0,
     ...phonePatterns.flatMap((pattern) => [pattern, pattern]),
     ...readPredicate.values,
     limit, offset,
