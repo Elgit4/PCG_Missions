@@ -147,6 +147,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [savingReassignmentId, setSavingReassignmentId] = useState<string | null>(null);
   const [resetRequests, setResetRequests] = useState<StaffPasswordResetRequest[]>([]);
   const [staffMembers, setStaffMembers] = useState<StaffDirectoryEntry[]>([]);
+  const [followUpTeams, setFollowUpTeams] = useState<Array<{ id: string; name: string }>>([]);
   const [showStaffForm, setShowStaffForm] = useState(false);
   const [credentialHandoff, setCredentialHandoff] = useState<{
     email: string;
@@ -308,6 +309,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setTasksHasMore(false);
     setResetRequests([]);
     setStaffMembers([]);
+    setFollowUpTeams([]);
     setShowStaffForm(false);
     setStaffStatusEdit(null);
     setStaffStatusReason("");
@@ -406,6 +408,17 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       setRevocationRequests([]);
     }
 
+    if (canAssignFollowUp) {
+      requests.push(api.listFollowUpAssignmentTeams(branchId)
+        .then((result) => { if (current) setFollowUpTeams(result.data); })
+        .catch((error: unknown) => {
+          if (!current) return;
+          if (error instanceof CmiApiError && error.status === 401) expireSession();
+          else setLoadError(messageFor(error));
+        }));
+    } else {
+      setFollowUpTeams([]);
+    }
     if (canReadStaffDirectory) {
       requests.push(api.listStaffDirectory(branchId, { limit: 50, offset: 0 })
         .then((result) => { if (current) setStaffMembers(result.data); })
@@ -422,7 +435,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       current = false;
       paginationVersion.current += 1;
     };
-  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, canApproveStaffRoles, debouncedQuery, expireSession]);
+  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, canApproveStaffRoles, canAssignFollowUp, debouncedQuery, expireSession]);
 
   const visibleContacts = contacts;
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
@@ -446,13 +459,14 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setLoadingMore(false);
     setRefreshing(true); setActionError("");
     try {
-      const [contactResult, taskResult, resetResult, staffResult, elevationResult, revocationResult] = await Promise.all([
+      const [contactResult, taskResult, resetResult, staffResult, elevationResult, revocationResult, teamResult] = await Promise.all([
         canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0, search: debouncedQuery || undefined }) : Promise.resolve(null),
         canReadTasks ? api.listFollowUpTasks(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
         canManagePasswordResets ? api.listStaffPasswordResetRequests(branchId) : Promise.resolve(null),
         canReadStaffDirectory ? api.listStaffDirectory(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
         canApproveStaffRoles ? api.listAdminElevationRequests(branchId) : Promise.resolve(null),
         canApproveStaffRoles ? api.listAdminRevocationRequests(branchId) : Promise.resolve(null),
+        canAssignFollowUp ? api.listFollowUpAssignmentTeams(branchId) : Promise.resolve(null),
       ]);
       if (contactResult) {
         setContacts(contactResult.data);
@@ -466,6 +480,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       if (staffResult) setStaffMembers(staffResult.data);
       if (elevationResult) setElevationRequests(elevationResult.data);
       if (revocationResult) setRevocationRequests(revocationResult.data);
+      if (teamResult) setFollowUpTeams(teamResult.data);
     } catch (error) { handleActionError(error); }
     finally { setRefreshing(false); }
   };
@@ -808,17 +823,20 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     event.preventDefault();
     if (!canAssignFollowUp || !branchId || savingReassignmentId) return;
     const form = new FormData(event.currentTarget);
-    const assigneeProfileId = String(form.get("assignee_profile_id") ?? "").trim();
+    const assignmentTarget = String(form.get("assignment_target") ?? "").trim();
+    const [targetType, targetId] = assignmentTarget.split(":", 2);
     const reason = String(form.get("reason") ?? "").trim();
-    if (!assigneeProfileId || reason.length < 10 || reason.length > 500) {
-      setActionError("Choose an active staff member and provide a reason of 10–500 characters.");
+    if (!targetId || !["staff", "team"].includes(targetType) || reason.length < 10 || reason.length > 500) {
+      setActionError("Choose an active staff member or team and provide a reason of 10–500 characters.");
       return;
     }
     setSavingReassignmentId(task.id);
     setActionError("");
     setActionNotice("");
     try {
-      const input: TaskReassignmentInput = { assignee_profile_id: assigneeProfileId, reason };
+      const input: TaskReassignmentInput = targetType === "team"
+        ? { team_id: targetId, reason }
+        : { assignee_profile_id: targetId, reason };
       const result = await api.reassignFollowUpTask(branchId, task.id, input);
       setTasks((current) => current.map((item) => item.id === task.id ? result.data : item));
       setReassigningTaskId(null);
@@ -1183,9 +1201,9 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                 {canAssignFollowUp && (task.status === "open" || task.status === "in_progress") && <div className="cmi-task-handoff">
                   <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setReassigningTaskId((current) => current === task.id ? null : task.id)} aria-expanded={reassigningTaskId === task.id}> {reassigningTaskId === task.id ? "Close handoff" : "Reassign"}</button>
                   {reassigningTaskId === task.id && <form className="cmi-form-grid" onSubmit={(event) => void reassignTask(task, event)}>
-                    <label>New responsible staff member<select name="assignee_profile_id" required defaultValue=""><option value="">Choose active staff</option>{staffMembers.filter((member) => member.account_status === "active" && member.roles.length > 0).map((member) => <option key={member.id} value={member.id}>{member.full_name} · {member.roles.map((role) => role.name).join(", ")}</option>)}</select></label>
+                    <label>New responsibility target<select name="assignment_target" required defaultValue=""><option value="">Choose active staff or team</option><optgroup label="Staff members">{staffMembers.filter((member) => member.account_status === "active" && member.roles.length > 0).map((member) => <option key={`staff:${member.id}`} value={`staff:${member.id}`}>{member.full_name} · {member.roles.map((role) => role.name).join(", ")}</option>)}</optgroup><optgroup label="Teams">{followUpTeams.map((team) => <option key={`team:${team.id}`} value={`team:${team.id}`}>{team.name}</option>)}</optgroup></select></label>
                     <label>Reason for handoff<textarea name="reason" required minLength={10} maxLength={500} rows={2} placeholder="Record why responsibility is changing (10–500 characters)." /></label>
-                    <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setReassigningTaskId(null)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={savingReassignmentId === task.id || !staffMembers.some((member) => member.account_status === "active" && member.roles.length > 0)}>{savingReassignmentId === task.id ? "Transferring…" : "Confirm handoff"}</button></div>
+                    <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setReassigningTaskId(null)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={savingReassignmentId === task.id || (!staffMembers.some((member) => member.account_status === "active" && member.roles.length > 0) && followUpTeams.length === 0)}>{savingReassignmentId === task.id ? "Transferring…" : "Confirm handoff"}</button></div>
                   </form>}
                 </div>}
               </article>;
