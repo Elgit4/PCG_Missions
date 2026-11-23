@@ -102,8 +102,8 @@ jobs:
           npx wrangler d1 migrations apply "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml 2>&1 | tee /tmp/pcg-d1-migrations.log
           migration_status=${PIPESTATUS[0]}
           set -e
-          if [[ "$migration_status" -ne 0 ]] && grep -q "code: 7500" /tmp/pcg-d1-migrations.log; then
-            reset_at="$(date -u -d 'tomorrow 00:05:00' +%s)"
+          if [[ "$migration_status" -ne 0 ]] && grep -Eiq "7500|daily row write limit" /tmp/pcg-d1-migrations.log; then
+            reset_at="$(date -u -d '00:05 tomorrow' +%s)"
             now="$(date -u +%s)"
             wait_seconds=$((reset_at - now))
             if [[ "$wait_seconds" -le 0 || "$wait_seconds" -gt 18000 ]]; then
