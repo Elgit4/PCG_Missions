@@ -841,8 +841,12 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     const assignmentTarget = String(form.get("assignment_target") ?? "").trim();
     const [targetType, targetId] = assignmentTarget.split(":", 2);
     const reason = String(form.get("reason") ?? "").trim();
-    if (!targetId || !["staff", "team"].includes(targetType) || reason.length < 10 || reason.length > 500) {
-      setActionError("Choose an active staff member or team and provide a reason of 10–500 characters.");
+    const validStaffTarget = targetType === "staff" && canAssignFollowUpToStaff &&
+      staffMembers.some((member) => member.id === targetId && member.account_status === "active" && member.roles.length > 0);
+    const validTeamTarget = targetType === "team" &&
+      followUpTeams.some((team) => team.id === targetId);
+    if ((!validStaffTarget && !validTeamTarget) || reason.length < 10 || reason.length > 500) {
+      setActionError("Choose an active staff member or team in your authorised scope and provide a reason of 10–500 characters.");
       return;
     }
     setSavingReassignmentId(task.id);
