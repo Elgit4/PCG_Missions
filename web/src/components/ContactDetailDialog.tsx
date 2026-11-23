@@ -19,6 +19,7 @@ import type {
   ContactInteractionCreateInput,
   ContactNote,
   ContactRecord,
+  StaffDirectoryEntry,
   CmiApiClient,
 } from "../lib/cmi-api";
 
@@ -34,6 +35,8 @@ interface ContactDetailDialogProps {
   canCreateNotes: boolean;
   canRecordInteraction: boolean;
   canCreateFollowUp: boolean;
+  canAssignContact: boolean;
+  staffMembers: StaffDirectoryEntry[];
   onCreateFollowUp: (contact: ContactRecord) => void;
   onSessionExpired: () => void;
 }
@@ -79,6 +82,8 @@ export function ContactDetailDialog({
   canCreateNotes,
   canRecordInteraction,
   canCreateFollowUp,
+  canAssignContact,
+  staffMembers,
   onCreateFollowUp,
   onSessionExpired,
 }: ContactDetailDialogProps) {
@@ -93,6 +98,9 @@ export function ContactDetailDialog({
   const [showInteractionForm, setShowInteractionForm] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [savingInteraction, setSavingInteraction] = useState(false);
+  const [savingAssignment, setSavingAssignment] = useState(false);
+  const [assignmentTarget, setAssignmentTarget] = useState("");
+  const [assignmentReason, setAssignmentReason] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const identityVisible = canReadIdentity && !contact.identity_redacted;
 
@@ -180,6 +188,26 @@ export function ContactDetailDialog({
     }
   };
 
+  const assignContact = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const reason = assignmentReason.trim();
+    if (!canAssignContact || !assignmentTarget || reason.length < 10 || reason.length > 500 || savingAssignment) return;
+    setSavingAssignment(true);
+    setActionError("");
+    setNotice("");
+    try {
+      await api.assignContact(branchId, contact.id, { assignee_profile_id: assignmentTarget, reason });
+      setAssignmentReason("");
+      setNotice("Contact assignment updated.");
+      setRefreshKey((value) => value + 1);
+    } catch (error) {
+      if (error instanceof CmiApiError && error.status === 401) onSessionExpired();
+      setActionError(actionErrorMessage(error));
+    } finally {
+      setSavingAssignment(false);
+    }
+  };
+
   const createInteraction = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!canRecordInteraction || savingInteraction) return;
@@ -260,6 +288,29 @@ export function ContactDetailDialog({
               )}
               {!identityVisible && <p className="cmi-detail-privacy"><ShieldCheck size={14} />Phone and email are hidden because this account does not have identity-read permission.</p>}
             </section>
+
+            {canAssignContact && <section className="cmi-detail-section">
+              <div className="cmi-detail-section-heading">
+                <div><p className="cmi-eyebrow">RESPONSIBILITY</p><h3>Assign contact</h3></div>
+              </div>
+              <form className="cmi-detail-form" onSubmit={assignContact}>
+                <label htmlFor="cmi-contact-assignee">Follow-up staff member</label>
+                <select id="cmi-contact-assignee" value={assignmentTarget} onChange={(event) => setAssignmentTarget(event.target.value)} required>
+                  <option value="">Choose an active staff member</option>
+                  {staffMembers.filter((member) => member.account_status === "active" && member.roles.length > 0).map((member) =>
+                    <option key={member.id} value={member.id}>{member.full_name} · {member.roles.map((role) => role.name).join(", ")}</option>
+                  )}
+                </select>
+                <label htmlFor="cmi-contact-assignment-reason">Reason for assignment</label>
+                <textarea id="cmi-contact-assignment-reason" value={assignmentReason} onChange={(event) => setAssignmentReason(event.target.value)} minLength={10} maxLength={500} rows={2} required placeholder="Record why this staff member is taking responsibility (10–500 characters)." />
+                <div className="cmi-detail-form-footer">
+                  <small>Only staff with an active role in this branch can be assigned. The server rechecks branch access and records the change in the assignment history.</small>
+                  <button type="submit" className="cmi-button cmi-button-primary" disabled={!assignmentTarget || assignmentReason.trim().length < 10 || savingAssignment || staffMembers.length === 0}>
+                    {savingAssignment ? "Assigning…" : "Assign contact"}
+                  </button>
+                </div>
+              </form>
+            </section>}
 
             <section className="cmi-detail-section">
               <div className="cmi-detail-section-heading">
