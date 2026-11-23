@@ -2466,6 +2466,10 @@ async function createFollowupTask(
       AND (actor_assignment.ends_at IS NULL OR actor_assignment.ends_at > ?)
       AND actor_grant.scope_mode = '${createScope}'
   )`;
+  const assignmentCapabilityPredicate = canSelfAssign ? "? = ?" : actorCapabilityPredicate("followup.assign");
+  const assignmentCapabilityValues = canSelfAssign
+    ? [assigneeUserId, context.staff.userId]
+    : [context.staff.userId, now, now];
   try {
     const statements: D1PreparedStatement[] = [
       env.DB.prepare(`
@@ -2808,10 +2812,7 @@ async function reassignFollowupTask(
           AND target_team.is_active = 1
           ${access.decision.scopeMode === "team" ? "AND target_team.id = ?" : ""}
       )`;
-  const assignmentCapabilityPredicate = canSelfAssign ? "? = ?" : actorCapabilityPredicate("followup.assign");
-  const assignmentCapabilityValues = canSelfAssign
-    ? [assigneeUserId, context.staff.userId]
-    : [context.staff.userId, now, now];
+
   const targetValues = nextAssignee !== null
     ? access.decision.scopeMode === "team" ? [nextAssignee, now, now, teamId, now, now] : [nextAssignee, now, now]
     : access.decision.scopeMode === "team" ? [nextTeam, teamId] : [nextTeam];
