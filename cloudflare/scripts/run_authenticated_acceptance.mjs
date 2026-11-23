@@ -138,6 +138,12 @@ const unassigned = await insertUser("field_worker", "unassigned", admin.profileI
 const teamLeader = await insertUser("team_leader", "team-leader", admin.profileId);
 const followupVolunteer = await insertUser("follow_up_volunteer", "followup-volunteer", admin.profileId);
 const prayerIntercessor = await insertUser("prayer_intercessor", "prayer-intercessor", admin.profileId);
+const firstLoginUser = await insertUser("field_worker", "first-login", admin.profileId);
+await d1(
+  "UPDATE staff_profile SET must_change_password=1, password_setup_expires_at=? WHERE id=?",
+  [new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), firstLoginUser.profileId],
+);
+const resetTarget = await insertUser("field_worker", "reset-target", admin.profileId);
 const teamId = randomUUID();
 const outsideTeamId = randomUUID();
 await d1(
@@ -435,6 +441,164 @@ const inboxAfterReadAll = await api(workerCookie, "/api/v1/notifications?branch_
 if (inboxAfterReadAll.payload?.data?.unread_count !== 0) throw new Error("Notification unread count did not reach zero after read-all");
 
 
+
+const authenticatedSessionResponse = await fetchWithTimeout(workerUrl + "/api/auth/get-session", {
+  headers: { origin, cookie: adminCookie },
+});
+const authenticatedSessionPayload = await authenticatedSessionResponse.json().catch(() => null);
+if (authenticatedSessionResponse.status !== 200 ||
+    authenticatedSessionPayload?.user?.id !== admin.userId ||
+    !authenticatedSessionPayload?.session?.id) {
+  throw new Error("Authenticated Better Auth session retrieval failed.");
+}
+console.log("AUTHENTICATED_SESSION_RETRIEVAL_PASSED");
+
+// Exercise a genuine first-login password gate and prove that the old credential is no longer valid.
+const firstLoginCookie = await signIn(firstLoginUser, "First-login Field Worker");
+const firstLoginPassword = "PcgQa-First-" + randomBytes(18).toString("base64url") + "-9!aA";
+const firstLoginChange = await api(firstLoginCookie, "/api/v1/auth/password/change", "POST", {
+  password: firstLoginPassword,
+});
+if (firstLoginChange.status !== 200 ||
+    firstLoginChange.payload?.data?.password_changed !== true ||
+    firstLoginChange.payload?.data?.must_change_password !== false) {
+  throw new Error("Forced first-login password change failed: " + firstLoginChange.status + " " + JSON.stringify(firstLoginChange.payload));
+}
+const firstLoginState = (await d1(
+  "SELECT must_change_password,password_setup_expires_at FROM staff_profile WHERE id=?",
+  [firstLoginUser.profileId],
+))[0];
+if (Number(firstLoginState?.must_change_password) !== 0 || firstLoginState?.password_setup_expires_at !== null) {
+  throw new Error("Forced first-login password gate was not cleared after password replacement.");
+}
+const firstLoginOldAttempt = await fetchWithTimeout(workerUrl + "/api/auth/sign-in/email", {
+  method: "POST",
+  headers: { origin, "content-type": "application/json" },
+  body: JSON.stringify({ email: firstLoginUser.email, password: firstLoginUser.password, rememberMe: false }),
+});
+if (firstLoginOldAttempt.status !== 401) {
+  throw new Error("Old first-login credential was not rejected after password change: " + firstLoginOldAttempt.status);
+}
+const firstLoginUpdatedCookie = await signIn(
+  { ...firstLoginUser, password: firstLoginPassword },
+  "First-login replacement credential",
+);
+const firstLoginUpdatedMe = await api(firstLoginUpdatedCookie, "/api/v1/me");
+if (firstLoginUpdatedMe.status !== 200 || firstLoginUpdatedMe.payload?.ok !== true) {
+  throw new Error("Replacement first-login credential could not establish an authenticated staff session.");
+}
+console.log("FORCED_FIRST_PASSWORD_CHANGE_PASSED");
+
+// Exercise the complete staff-request -> Admin/Pastor approval -> one-time credential -> forced-change flow.
+const resetTargetCookie = await signIn(resetTarget, "Password-reset target");
+const resetRequestResponse = await fetchWithTimeout(workerUrl + "/api/v1/auth/password-reset-requests", {
+  method: "POST",
+  headers: {
+    origin,
+    "content-type": "application/json",
+    "cf-connecting-ip": "192.0.2.23",
+  },
+  body: JSON.stringify({ email: resetTarget.email }),
+});
+const resetRequestPayload = await resetRequestResponse.json().catch(() => null);
+if (resetRequestResponse.status !== 200 || resetRequestPayload?.ok !== true) {
+  throw new Error("Staff password-reset request failed: " + resetRequestResponse.status + " " + JSON.stringify(resetRequestPayload));
+}
+const pendingResetList = await api(adminCookie, "/api/v1/admin/password-reset-requests");
+if (pendingResetList.status !== 200 || !Array.isArray(pendingResetList.payload?.data)) {
+  throw new Error("Admin/Pastor could not list pending password-reset requests.");
+}
+const pendingReset = pendingResetList.payload.data.find((item) => item.email === resetTarget.email);
+if (!pendingReset?.id) throw new Error("Staff password-reset request was not visible to the Admin/Pastor.");
+const resetApproval = await api(
+  adminCookie,
+  "/api/v1/admin/password-reset-requests/" + pendingReset.id + "/approve",
+  "POST",
+  {
+    branch_id: branchId,
+    reason: "Synthetic acceptance verifies the approved password recovery lifecycle.",
+  },
+);
+const temporaryPassword = resetApproval.payload?.data?.temporary_password;
+if (resetApproval.status !== 200 ||
+    resetApproval.payload?.data?.status !== "approved" ||
+    typeof temporaryPassword !== "string" ||
+    resetApproval.payload?.data?.temporary_password_sent !== false ||
+    resetApproval.payload?.data?.manual_handoff_required !== true ||
+    resetApproval.payload?.data?.must_change_password !== true) {
+  throw new Error("Admin/Pastor password-reset approval failed or returned an unsafe handoff result: " +
+    resetApproval.status + " " + JSON.stringify(resetApproval.payload));
+}
+const resetOldSession = await api(resetTargetCookie, "/api/v1/me");
+if (resetOldSession.status !== 401) {
+  throw new Error("Password reset did not revoke the target staff member's pre-existing session.");
+}
+const resetOldCredentialAttempt = await fetchWithTimeout(workerUrl + "/api/auth/sign-in/email", {
+  method: "POST",
+  headers: { origin, "content-type": "application/json" },
+  body: JSON.stringify({ email: resetTarget.email, password: resetTarget.password, rememberMe: false }),
+});
+if (resetOldCredentialAttempt.status !== 401) {
+  throw new Error("Old password was not rejected after Admin/Pastor reset: " + resetOldCredentialAttempt.status);
+}
+const temporaryCookie = await signIn(
+  { ...resetTarget, password: temporaryPassword },
+  "Admin-approved temporary password",
+);
+const resetPassword = "PcgQa-Reset-" + randomBytes(18).toString("base64url") + "-9!aA";
+const resetPasswordChange = await api(temporaryCookie, "/api/v1/auth/password/change", "POST", {
+  password: resetPassword,
+});
+if (resetPasswordChange.status !== 200 ||
+    resetPasswordChange.payload?.data?.password_changed !== true ||
+    resetPasswordChange.payload?.data?.must_change_password !== false) {
+  throw new Error("Admin-approved temporary password could not be replaced: " +
+    resetPasswordChange.status + " " + JSON.stringify(resetPasswordChange.payload));
+}
+const resetTargetState = (await d1(
+  "SELECT must_change_password,password_setup_expires_at FROM staff_profile WHERE id=?",
+  [resetTarget.profileId],
+))[0];
+const resetRequestState = (await d1(
+  "SELECT status FROM staff_password_reset_request WHERE id=?",
+  [pendingReset.id],
+))[0];
+const resetAuditEvents = await d1(
+  "SELECT event_type FROM staff_password_reset_audit WHERE request_id=? ORDER BY created_at",
+  [pendingReset.id],
+);
+if (Number(resetTargetState?.must_change_password) !== 0 ||
+    resetTargetState?.password_setup_expires_at !== null ||
+    resetRequestState?.status !== "completed" ||
+    !["requested", "approved", "reset_completed"].every((eventType) =>
+      resetAuditEvents.some((row) => row.event_type === eventType))) {
+  throw new Error("Password-reset completion, forced-change flag or audit history did not persist correctly.");
+}
+const resetUpdatedCookie = await signIn(
+  { ...resetTarget, password: resetPassword },
+  "Password-reset replacement credential",
+);
+const resetUpdatedMe = await api(resetUpdatedCookie, "/api/v1/me");
+if (resetUpdatedMe.status !== 200 || resetUpdatedMe.payload?.ok !== true) {
+  throw new Error("Replacement password could not establish a staff session after recovery.");
+}
+console.log("ADMIN_APPROVED_PASSWORD_RESET_AND_FORCED_CHANGE_PASSED");
+
+// A successful UI logout must be backed by server-side session revocation.
+const signOutResponse = await fetchWithTimeout(workerUrl + "/api/auth/sign-out", {
+  method: "POST",
+  headers: { origin, cookie: resetUpdatedCookie, "content-type": "application/json" },
+  body: JSON.stringify({}),
+});
+if (!signOutResponse.ok) {
+  throw new Error("Better Auth server sign-out failed: " + signOutResponse.status + " " + await signOutResponse.text());
+}
+const afterSignOut = await api(resetUpdatedCookie, "/api/v1/me");
+if (afterSignOut.status !== 401) {
+  throw new Error("Server-confirmed sign-out did not revoke the authenticated session.");
+}
+console.log("SERVER_CONFIRMED_SIGN_OUT_PASSED");
+
 const checks = {
   reportApproved: reportState?.status === "approved",
   reportReviewHistory: reviewHistory?.decision === "approved",
@@ -453,6 +617,15 @@ const checks = {
   selfReviewDenied: selfReview.status === 403,
   unassignedRegistrationDenied: unassignedRegistration.status === 403,
   unassignedCheckinDenied: unassignedCheckin.status === 403,
+  authenticatedSessionRetrieved: authenticatedSessionResponse.status === 200 && Boolean(authenticatedSessionPayload?.session?.id),
+  firstLoginPasswordChanged: Number(firstLoginState?.must_change_password) === 0 && firstLoginState?.password_setup_expires_at === null,
+  firstLoginOldPasswordRejected: firstLoginOldAttempt.status === 401,
+  passwordResetCompleted: resetRequestState?.status === "completed" &&
+    ["requested", "approved", "reset_completed"].every((eventType) => resetAuditEvents.some((row) => row.event_type === eventType)),
+  passwordResetRevokedOldSession: resetOldSession.status === 401,
+  passwordResetOldPasswordRejected: resetOldCredentialAttempt.status === 401,
+  passwordResetReplacementAccepted: resetUpdatedMe.status === 200,
+  serverConfirmedSignOut: signOutResponse.ok && afterSignOut.status === 401,
 };
 const failed = Object.entries(checks).filter(([, value]) => !value).map(([key]) => key);
 if (failed.length) throw new Error(`Authenticated API acceptance failed: ${failed.join(", ")}`);
