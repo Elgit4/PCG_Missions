@@ -107,6 +107,17 @@ describe("Cloudflare Worker API client", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it("loads only server-authorized follow-up team assignment targets", async () => {
+    const fetcher = vi.fn(async () => response([{ id: "team-1", name: "Welcome Team" }]));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    const result = await api.listFollowUpAssignmentTeams("branch-1");
+    expect(result.data).toEqual([{ id: "team-1", name: "Welcome Team" }]);
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URL(url).pathname).toBe("/api/v1/followup/assignment-teams");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(init.credentials).toBe("include");
+  });
+
   it("routes follow-up handoffs through the branch-scoped Worker assignment endpoint", async () => {
     const fetcher = vi.fn(async () => response({ id: "task-1", assignee_user_id: "staff-user-2" }));
     const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
@@ -122,6 +133,25 @@ describe("Cloudflare Worker API client", () => {
       assignee_profile_id: "staff-profile-2",
       reason: "Transfer to the assigned field worker for continuity.",
     });
+  });
+
+  it("supports team-targeted follow-up handoffs without accepting both target types", async () => {
+    const fetcher = vi.fn(async () => response({ id: "task-1", team_id: "team-2", assignee_user_id: null }));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await api.reassignFollowUpTask("branch-1", "task-1", {
+      team_id: "team-2",
+      reason: "Transfer responsibility to the active Welcome Team.",
+    });
+    const [, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({
+      team_id: "team-2",
+      reason: "Transfer responsibility to the active Welcome Team.",
+    });
+    expect(() => api.reassignFollowUpTask("branch-1", "task-1", {
+      team_id: "team-2",
+      assignee_profile_id: "staff-2",
+      reason: "Invalid dual assignment target.",
+    } as never)).toThrow(/Exactly one task reassignment target/);
   });
 
   it("routes calendar cancellation through the branch-scoped Cloudflare Worker endpoint", async () => {
