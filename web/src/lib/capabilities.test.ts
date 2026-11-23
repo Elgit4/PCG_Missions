@@ -67,7 +67,7 @@ describe("capability-driven staff navigation", () => {
     expect(getAvailableStaffPages(assignedPrayerAccess, "branch-a")).toContain("Prayer");
   });
 
-  it("opens ministry reports only with the explicit D-12 own or review grants", () => {
+  it("opens ministry reports only with the scoped read or review grants", () => {
     const ownReportAccess = {
       ...baseSession,
       capabilities: [
