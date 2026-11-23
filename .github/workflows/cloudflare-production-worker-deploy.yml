@@ -62,6 +62,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           git fetch origin migration/cloudflare-auth-consolidation --quiet
@@ -74,13 +75,13 @@ jobs:
             local workflow_file="$1"
             local label="$2"
             local runs accepted sha
-            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq --arg workflow ".github/workflows/${workflow_file}" '.workflow_runs[] | select(.path == $workflow) | select(.conclusion == "success") | .head_sha')"
+            runs="$(gh api "repos/${REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq --arg workflow ".github/workflows/${workflow_file}" '.workflow_runs[] | select(.path == $workflow) | select(.conclusion == "success") | .head_sha')"
             accepted=""
             while IFS= read -r sha; do
               [[ -z "$sha" ]] && continue
               if git cat-file -e "${sha}^{commit}" 2>/dev/null &&
-                 git grep -q 'drizzleAdapter' "$sha" -- src/auth.ts &&
-                 git grep -q 'authSchema' "$sha" -- src/auth.ts &&
+                 git grep -q 'drizzleAdapter' "$sha" -- cloudflare/src/auth.ts &&
+                 git grep -q 'authSchema' "$sha" -- cloudflare/src/auth.ts &&
                  git merge-base --is-ancestor "$sha" "$GITHUB_SHA"; then
                 accepted="$sha"
                 break
