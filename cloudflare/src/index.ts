@@ -1579,7 +1579,7 @@ async function createContact(
         access.staff.userId, now, now,
       ),
     ]);
-    if (results.some((result) => !result.success) || results.some((result) => (result.meta?.changes ?? 0) !== 1)) {
+    if (results.some((result) => !result.success) || results.some((result) => (result.meta?.changes ?? 0) < 1)) {
       throw new Error("CONTACT_CAPTURE_BATCH_FAILED");
     }
   } catch {
