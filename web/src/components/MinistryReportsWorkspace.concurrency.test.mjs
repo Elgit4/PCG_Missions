@@ -42,7 +42,7 @@ it("uses the canonical Cloudflare scoped report capabilities throughout the UI",
   expect(source).toContain('hasCapability(session, "report.submit.scoped", branchId)');
   expect(source).toContain('hasCapability(session, "report.review.scoped", branchId)');
   expect(capabilitySource).toContain('hasCapability(session, "report.read.scoped", branchId)');
-  expect(capabilitySource).toContain('hasCapability(session, "report.submit.scoped", branchId)');
+  expect(capabilitySource).not.toContain('hasCapability(session, "report.submit.scoped", branchId)');
   expect(capabilitySource).toContain('hasCapability(session, "report.review.scoped", branchId)');
   expect(source).not.toContain("report.submit.own");
   expect(source).not.toContain("report.review.branch");
