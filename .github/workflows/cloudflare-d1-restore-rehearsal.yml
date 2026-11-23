@@ -3,12 +3,17 @@ name: Cloudflare D1 Restore and Authenticated API Rehearsal
 on:
   workflow_call:
   workflow_dispatch:
+  push:
+    branches:
+      - migration/cloudflare-auth-consolidation
+    paths:
+      - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: pcg-missions-d1-restore-rehearsal-v2
+  group: pcg-missions-d1-restore-rehearsal-v3
   # Never cancel a live restore rehearsal: it may leave a remote D1 database behind.
   cancel-in-progress: false
 
