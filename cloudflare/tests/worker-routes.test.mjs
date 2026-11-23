@@ -358,6 +358,7 @@ const OWN_AREA_ID = "50000000-0000-4000-8000-000000000001";
 const OTHER_AREA_ID = "50000000-0000-4000-8000-000000000002";
 const COVERED_STAFF_ID = "20000000-0000-4000-8000-000000000002";
 const OTHER_STAFF_ID = "20000000-0000-4000-8000-000000000003";
+const UNASSIGNED_STAFF_ID = "20000000-0000-4000-8000-000000000004";
 const CONTACT_ID = "80000000-0000-4000-8000-000000000001";
 
 function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
@@ -527,6 +528,15 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         },
         async all() {
           calls.push({ kind: "all", sql: this.sql, values: this.values });
+          if (this.sql.includes("FROM staff_profile sp") && this.sql.includes("roles_json")) {
+            return { results: [{
+              id: UNASSIGNED_STAFF_ID,
+              full_name: "Unassigned Worker",
+              account_status: "active",
+              last_active_at: null,
+              roles_json: "[]",
+            }] };
+          }
           if (this.sql.includes("FROM calendar_entry")) return { results: calendarEntryRow ? [calendarEntryRow] : [] };
           if (this.sql.includes("FROM event_staff_assignment a")) return { results: eventStaffAssignment ? [eventStaffAssignment] : [] };
           if (this.sql.includes("FROM event_team_assignment a")) return { results: eventTeamAssignment ? [eventTeamAssignment] : [] };
@@ -1888,20 +1898,29 @@ test("staff role assignment and Admin/Pastor review endpoints enforce their capa
 });
 
 
-test("staff directory preserves branch history and exposes active assignment identifiers for role management", async () => {
+test("staff directory includes branch-linked profiles with no role assignment and preserves branch isolation", async () => {
   const fixture = authorizedDirectoryEnv("admin_pastor");
   const response = await worker.fetch(new Request("https://worker.example/api/v1/staff?limit=50&offset=0", {
     headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID },
   }), fixture.env);
   assert.equal(response.status, 200);
   const payload = await response.json();
-  assert.deepEqual(payload.data, []);
+  assert.deepEqual(payload.data, [{
+    id: UNASSIGNED_STAFF_ID,
+    full_name: "Unassigned Worker",
+    account_status: "active",
+    roles: [],
+  }]);
   const query = fixture.calls.find((call) => call.kind === "all" && call.sql.includes("FROM staff_profile sp") && call.sql.includes("roles_json"));
   assert.ok(query);
   assert.match(query.sql, /json_object\('assignment_id', sra2\.id/);
-  const branchHistoryPredicate = query.sql.slice(query.sql.indexOf("WHERE EXISTS"));
+  const branchHistoryPredicate = query.sql.slice(query.sql.indexOf("WHERE ("));
   assert.match(branchHistoryPredicate, /sra\.branch_id = \?/);
+  assert.match(branchHistoryPredicate, /FROM staff_access_audit saa/);
+  assert.match(branchHistoryPredicate, /saa\.target_profile_id = sp\.id/);
+  assert.match(branchHistoryPredicate, /saa\.branch_id = \?/);
   assert.doesNotMatch(branchHistoryPredicate, /sra\.revoked_at IS NULL/);
+  assert.equal(query.values[4], BRANCH_ID, "the account-audit lookup must be restricted to the active branch");
 });
 
 test("Admin/Pastor role approval queues return the standard data envelope", async () => {

@@ -970,17 +970,25 @@ async function listStaffDirectory(
                AND (sra2.ends_at IS NULL OR sra2.ends_at > ?)
            ) AS roles_json
     FROM staff_profile sp
-    WHERE EXISTS (
-      SELECT 1 FROM staff_role_assignment sra
-      JOIN role r ON r.id = sra.role_id AND r.is_active = 1
-      WHERE sra.staff_profile_id = sp.id
-        AND sra.branch_id = ?
+    WHERE (
+      EXISTS (
+        SELECT 1 FROM staff_role_assignment sra
+        JOIN role r ON r.id = sra.role_id AND r.is_active = 1
+        WHERE sra.staff_profile_id = sp.id
+          AND sra.branch_id = ?
+      )
+      OR EXISTS (
+        SELECT 1 FROM staff_access_audit saa
+        WHERE saa.target_profile_id = sp.id
+          AND saa.branch_id = ?
+      )
     )
       AND (? = '' OR sp.full_name LIKE ?)
     ORDER BY sp.full_name COLLATE NOCASE
     LIMIT ? OFFSET ?
   `).bind(
     access.activeBranch.branchId, now, now,
+    access.activeBranch.branchId,
     access.activeBranch.branchId,
     search, search ? `%${search}%` : "",
     limit, offset,
