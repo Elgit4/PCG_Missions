@@ -526,8 +526,8 @@ if (resetApproval.status !== 200 ||
     resetApproval.payload?.data?.temporary_password_sent !== false ||
     resetApproval.payload?.data?.manual_handoff_required !== true ||
     resetApproval.payload?.data?.must_change_password !== true) {
-  throw new Error("Admin/Pastor password-reset approval failed or returned an unsafe handoff result: " +
-    resetApproval.status + " " + JSON.stringify(resetApproval.payload));
+  throw new Error("Admin/Pastor password-reset approval failed or returned an unsafe handoff result: HTTP " +
+    resetApproval.status + " code=" + (resetApproval.payload?.error?.code ?? "unexpected_response"));
 }
 const resetOldSession = await api(resetTargetCookie, "/api/v1/me");
 if (resetOldSession.status !== 401) {
