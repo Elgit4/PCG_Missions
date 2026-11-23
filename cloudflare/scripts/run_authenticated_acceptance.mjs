@@ -1,14 +1,17 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { execFileSync } from "node:child_process";
 import { hash } from "bcryptjs";
 
-const databaseName = process.env.DB_NAME;
+const databaseId = process.env.DB_ID;
+const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+const apiToken = process.env.CLOUDFLARE_API_TOKEN;
 const workerUrl = (process.env.WORKER_URL || "http://127.0.0.1:8787").replace(/\/$/, "");
 const origin = "http://localhost:8787";
 const runId = process.env.GITHUB_RUN_ID || "local";
 const fetchWithTimeout = (url, init = {}) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
 
-if (!databaseName) throw new Error("Missing local D1 acceptance database name");
+if (!databaseId || !accountId || !apiToken) {
+  throw new Error("Missing Cloudflare D1 acceptance credentials");
+}
 
 function sqlLiteral(value) {
   if (value === null || value === undefined) return "NULL";
@@ -28,14 +31,22 @@ function bindSql(sql, params) {
 }
 
 async function d1(sql, params = []) {
-  const statement = bindSql(sql, params);
-  const output = execFileSync("npx", [
-    "wrangler", "d1", "execute", databaseName, "--local", "--json",
-    "--config", "wrangler.restore-rehearsal.toml", "--command", statement,
-  ], { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] });
-  const payload = JSON.parse(output);
-  if (Array.isArray(payload)) return payload[0]?.results ?? [];
-  return payload.results ?? payload.result?.[0]?.results ?? [];
+  const response = await fetchWithTimeout(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ sql: bindSql(sql, params) }),
+    },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || payload?.success !== true) {
+    throw new Error(`Cloudflare D1 acceptance query failed (${response.status}): ${JSON.stringify(payload?.errors ?? payload).slice(0, 600)}`);
+  }
+  return payload.result?.[0]?.results ?? [];
 }
 
 async function insertUser(roleCode, label, assignerProfileId, bootstrapAdmin = false) {
