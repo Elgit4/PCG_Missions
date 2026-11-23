@@ -1,112 +1,116 @@
-# PCG Missions — Cloudflare non-production migration
+# PCG Missions — Cloudflare Runtime
 
-This is an isolated Cloudflare Workers + D1 implementation track. It is not connected to the live frontend and does not replace the production Supabase backend yet.
+> **Current deployment reference — 23 November 2026.** This file replaces the original bootstrap-era status below, which described schema 15 and an undeployed Worker. Those statements are obsolete.
 
-## Current non-production environment
+The production application is hosted on Cloudflare Pages, with the authenticated API and staff operations on a Cloudflare Worker backed by Cloudflare D1. The current migration candidate is maintained on \`migration/cloudflare-auth-consolidation\`.
 
-- D1 database: `pcg-missions-dev`
-- Database ID: `376a6782-d059-41f9-9e09-f93718fef2bb`
-- Jurisdiction: EU (`eu`), primary region `EEUR`
-- Schema version: 15
-- Migration ledger: 15 applied migrations
-- Application tables: 69
-- Full API Worker: not deployed yet
-- Diagnostic Worker: `pcg-missions-d1-smoke` deployed with read-only `GET /health` and the EU D1 binding
-- Diagnostic URL: https://pcg-missions-d1-smoke.pcg-missions-nonprod.workers.dev/health
-- Production Supabase, Vercel, DNS and live data: unchanged
+## Live environment snapshot
 
-The database was created with an EU jurisdiction. This setting is fixed at creation time. EU D1 placement does not, by itself, guarantee EU-only processing for Worker execution, logs, email delivery, analytics or third-party providers; those require separate data-location review.
+| Component | Production | Preview |
+|---|---|---|
+| Pages | \`pcg-missions.pages.dev\` | Migration-branch preview deployment |
+| Pages production branch | \`main\` | Candidate branch |
+| Automatic Pages production deployments | Disabled; guarded manual release | Preview workflow |
+| API Worker | \`pcg-missions-api-production\` | \`pcg-missions-api-preview\` |
+| Authentication | Better Auth on the production Worker | Better Auth on the preview Worker |
+| Database | \`pcg-missions-production\` | \`pcg-missions-migration-test\` |
+| D1 jurisdiction | EU | EU |
+| D1 schema | **45** | **46** |
+| Applied migration ledger | 45 migrations | 46 migrations |
 
-## Implemented backend foundations
+Production and preview are separate environments. The production Worker is bound to the production D1 database; the preview Worker is bound to the isolated preview D1 database. The Pages production configuration points to the production Worker, while preview points to the preview Worker.
 
-- Six fixed roles with least-privilege, branch-scoped capability grants.
-- Better Auth `1.7.22` integration code, D1-backed sessions and database-backed rate limiting.
-- Invitation-only staff onboarding; the invitee establishes their own password.
-- Audited staff deactivation, suspension and reactivation, with immediate session revocation.
-- Two-person Admin/Pastor elevation and revocation, including last-Admin protection.
-- Branch/team/assignment-scoped contact and follow-up handlers.
-- Explicit-share prayer workflows: metadata-only Admin/Pastor queue, assigned intercessor narrative reads, reasoned share revocation and transactionally paired audit records.
-- Append-only access, role, account, contact-assignment and follow-up event ledgers.
+The production Pages hostname is currently the Cloudflare \`pages.dev\` hostname; no custom domain is attached. Automatic production deployments remain disabled deliberately. The guarded production workflow performs the reviewed Worker and Pages deployment in sequence.
 
-The prayer/care, events/attendance/transport and calendar/announcement/content schemas are present in D1. Not all of those domains have Worker handlers yet.
+## Runtime architecture
 
-## Worker endpoints implemented in source
+- **Cloudflare Pages** serves the responsive web application and same-origin API/auth proxy.
+- **Cloudflare Worker** owns Better Auth staff authentication, session validation, capability checks, and the application API.
+- **Cloudflare D1** is the primary operational database for church, branch, staff identity, role/capability, contacts, follow-up, events, reports, announcements, notifications, audit, and other application records.
+- **Supabase Storage** is retained only for the private event-flyer media bucket. Its URL and service-role credential remain Worker-only and are not used for application authentication or the operational database.
+- **SMS/Arkesel** remains intentionally disabled. Routine deployment, testing, and acceptance must not send SMS.
+- Staff accounts are provisioned by authorised administrators. Public self-registration is not part of the staff authentication flow.
 
-- `GET /health` and `GET /api/v1/health` — non-production database readiness.
-- `/api/auth/*` — Better Auth endpoints for provisioned accounts.
-- `GET /api/v1/me` — verified staff context, branch assignments and capability metadata.
-- `GET /api/v1/staff` and `GET /api/v1/staff/audit` — scoped staff directory and governance audit.
-- `POST/GET /api/v1/staff/invitations`, `POST /api/v1/staff/invitations/{id}/revoke`, `POST /api/v1/staff/invitations/accept` — invitation lifecycle.
-- `POST /api/v1/staff/{profileId}/deactivate|suspend|reactivate` — audited account lifecycle.
-- `POST/DELETE /api/v1/staff/roles` — standard role assignment and revocation.
-- `GET/POST /api/v1/staff/role-elevations` and `POST /api/v1/staff/role-elevations/{id}/approve|reject` — two-person elevation.
-- `GET/POST /api/v1/staff/role-revocations` and `POST /api/v1/staff/role-revocations/{id}/approve|reject` — two-person revocation.
-- `GET/POST /api/v1/contacts`, `GET/PATCH /api/v1/contacts/{id}`, and contact notes, interactions and assignment routes.
-- `GET/POST /api/v1/followup/tasks`, `PATCH /api/v1/followup/tasks/{id}` and task assignment routes.
-- `GET /api/v1/pastoral/prayer/queue` — metadata-only assignment queue.
-- `GET /api/v1/pastoral/prayer/assigned` — narrative reads only for an actively assigned intercessor with a matching explicit share.
-- `POST /api/v1/pastoral/prayer/requests/{id}/shares` and `POST /api/v1/pastoral/prayer/requests/{id}/shares/{shareId}/revoke` — explicit share grant/revocation.
-- `PATCH /api/v1/pastoral/prayer/requests/{id}` — assigned intercessor status update.
+The six standard staff roles are:
 
-These are source-code routes, not a live service yet: the full Cloudflare API Worker has not been deployed. The separate diagnostic Worker exposes only a read-only health check and does not serve these API routes.
+1. Admin/Pastor
+2. Coordinator
+3. Team Leader
+4. Field Worker
+5. Follow-up Volunteer
+6. Prayer Intercessor
 
-## Not enabled yet
+Authorisation is capability-based and branch/team scoped. Sensitive pastoral access is separately restricted and audited.
 
-- Pastoral-care narrative read/write endpoints; the care domain remains restricted pending explicit care-reader capability approval.
-- Event lifecycle APIs, capacity enforcement, registrations, transport reservations, check-in and closeout.
-- Calendar and announcement management APIs.
-- Public-content editing and read projections.
-- Reporting, analytics and full Supabase export/import reconciliation.
-- Public registration, public prayer intake, offline access, SMS and email notifications.
-- Invitation/password-reset email delivery. Invitation tokens are currently returned once for authorized manual delivery; password reset fails closed until a provider is configured.
+## Current production release gate
 
-## Private event media
+The production D1 database currently has schema 45, while preview has schema 46. Migration 0046 is a forward-only capability repair and has not been applied to production.
 
-Event flyers use the private Supabase Storage bucket `pcg-missions-event-media`; Cloudflare R2 is not used. The Worker checks the authenticated staff session, active branch and `events.manage` capability before accepting an upload. It accepts PNG, JPEG and WebP files up to 5 MiB, stores objects under branch/event-scoped keys, keeps the bucket private, and returns 15-minute signed preview URLs. Preview reads are also checked against the staff session and branch scope.
+The guarded release workflow requires all of the following before any production mutation:
 
-The Worker requires these bindings on the non-production preview script:
-- `SUPABASE_URL` — non-secret project URL, already configured in Wrangler.
-- `SUPABASE_SERVICE_ROLE_KEY` — Worker Secret only. Never put this value in Wrangler vars, GitHub source, browser configuration or chat.
+- Six configured role definitions and at least one credential-ready, active Admin/Pastor.
+- At least six active staff profiles.
+- All six standard role codes effectively assigned to active staff.
+- No active staff profile without an effective role.
+- No active role assignment attached to an inactive staff profile.
+- A valid Better Auth credential for every active staff profile.
+- No expired or missing first-login password setup window.
 
-Configure the secret securely for the preview Worker with Cloudflare's dashboard (Workers & Pages → pcg-missions-api-preview → Settings → Variables and Secrets → Add → Secret; name it exactly `SUPABASE_SERVICE_ROLE_KEY`). Do not add it to the production Worker until the production cutover is separately approved. The bucket is private and limited to JPEG, PNG, WebP and AVIF at 10 MiB; the application deliberately enforces the smaller 5 MiB flyer limit.
+**Do not run the production release workflow until the roster gate passes and the authenticated acceptance and restore rehearsal have succeeded.** A green CI result or healthy Worker endpoint is not a substitute for those checks.
 
-## Local development
+## Development and verification
 
 From the repository root:
 
-```bash
-cd cloudflare
-npm install
-npx wrangler d1 migrations apply pcg-missions-dev --local
+\`\`\`bash
+python -m unittest discover -s cloudflare/tests -p "test_*.py" -v
+\`\`\`
+
+From \`cloudflare/\`:
+
+\`\`\`bash
+npm install --no-package-lock --ignore-scripts --no-audit --no-fund
 npm run typecheck
-npx wrangler dev --local
-```
+npm test
+\`\`\`
 
-Local D1 is isolated from the remote EU database. Do not add `--remote` for routine local development.
+The frontend checks are run from \`web/\`:
 
-For local Better Auth testing, create an untracked `.dev.vars` file:
+\`\`\`bash
+npm ci
+npm run typecheck
+npm run lint
+npm test
+npm run build
+\`\`\`
 
-```dotenv
-BETTER_AUTH_SECRET=replace-with-at-least-32-random-characters
-BETTER_AUTH_URL=http://localhost:8787
-BETTER_AUTH_TRUSTED_ORIGINS=http://localhost:5173
-```
+Do not use a production database for synthetic fixtures. Authenticated acceptance and restore tests must use the isolated temporary D1 database created by the restore-rehearsal workflow.
 
-Use a generated secret and never commit `.dev.vars`. For a Cloudflare preview, set secrets and origins only on the non-production Worker.
+## Release workflows
 
-## Verification
+| Workflow | Purpose |
+|---|---|
+| \`.github/workflows/cloudflare-d1-foundation.yml\` | SQLite/D1 security invariants, Worker type-check, Better Auth integration tests, and acceptance-harness syntax |
+| \`.github/workflows/cmi-web-ci.yml\` | Frontend type-check, lint, tests, and production build |
+| \`.github/workflows/cloudflare-preview-deploy.yml\` | Forward-only preview migration, preview Worker deployment, and health/session/anonymous-boundary smoke checks |
+| \`.github/workflows/cloudflare-d1-restore-rehearsal.yml\` | Isolated D1 Time Travel restore rehearsal and synthetic authenticated API acceptance |
+| \`.github/workflows/cloudflare-production-worker-deploy.yml\` | Guarded production roster preflight, current-source checks, restore/acceptance dependency, forward-only production migration, Worker and Pages deployment, and production smoke tests |
 
-The latest GitHub Actions run, [43469371911](https://github.com/Elgit4/PCG_Missions/actions/runs/43469371911), passed:
+The production workflow is manually dispatched from \`migration/cloudflare-auth-consolidation\` and requires the exact confirmation string \`DEPLOY-PRODUCTION\`. It uses the GitHub \`production\` environment and the \`CLOUDFLARE_API_TOKEN\` secret. Never put credentials in source files, workflow arguments, or logs.
 
-- 56 Python/SQLite migration and authorization tests.
-- Worker and Better Auth TypeScript type-check.
+## Operational rules
 
-The remote EU D1 database reports schema version 15, all 15 migration records, 69 application tables and no foreign-key violations. A separate diagnostic Worker has been uploaded with the D1 binding and its `workers.dev` route enabled. Its public HTTP response and the full API runtime still require verification; this is not a substitute for Better Auth runtime compatibility testing.
+- Keep production D1 migrations forward-only. Never run a restore against the live production database as part of routine deployment.
+- Preserve the current production D1 Time Travel bookmark and retain independent backups before storing irreplaceable ministry records.
+- Keep \`BETTER_AUTH_SECRET\` and \`SUPABASE_SERVICE_ROLE_KEY\` as Worker secrets only.
+- Keep query-string redaction enabled in Worker observability configuration.
+- Keep SMS disabled until the provider, consent, template, opt-out, retry, and delivery-audit workflows have been explicitly accepted.
+- Do not remove the private flyer Storage dependency until its objects have been migrated and verified in a replacement.
+- Treat the six-role roster, real staff sign-in, password-change, session-refresh, sign-out, branch isolation, and feature-level acceptance as release gates.
 
-## Safety boundary
+## Operational references
 
-- No production D1 database is configured.
-- No production route or DNS is configured.
-- No Supabase or Vercel production setting is changed.
-- No production records or credentials are copied.
-- No frontend cutover or production deployment has occurred.
+- [Production readiness evidence](./PRODUCTION_READINESS.md)
+- [Operations runbook](./OPERATIONS_RUNBOOK.md)
+- [Cloudflare migration plan](../docs/29_CMI_CLOUDFLARE_MIGRATION_PLAN.md)
+- [Current release-readiness continuation audit](../docs/47_PRODUCTION_READINESS_CONTINUATION_2026-11-23.md)
