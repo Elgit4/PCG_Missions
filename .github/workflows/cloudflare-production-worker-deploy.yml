@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   production-roster-preflight:
-    name: Require complete six-role production roster before restore rehearsal
+    name: Require exactly one retained Admin/Pastor production account before restore rehearsal
     if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -51,7 +51,7 @@ jobs:
             SELECT
               (SELECT COUNT(*) FROM role WHERE code IN ('admin_pastor','coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor')) AS configured_role_catalogue,
               (SELECT COUNT(*) FROM staff_profile WHERE account_status='active' AND deactivated_at IS NULL) AS active_staff_profiles,
-              (SELECT COUNT(*) FROM user) AS auth_users,
+              (SELECT COUNT(*) FROM user WHERE email NOT LIKE 'removed+%@invalid.example') AS auth_users,
               (SELECT COUNT(DISTINCT userId) FROM account WHERE password IS NOT NULL) AS password_users,
               (SELECT COUNT(*) FROM staff_profile s
                 LEFT JOIN user u ON u.id=s.auth_user_id
@@ -120,18 +120,20 @@ jobs:
             console.error("Production cutover blocked: six role definitions and one credential-ready active Admin/Pastor account are required.");
             process.exit(1);
           }
-          const fullRosterReady =
-            summary.active_staff_profiles >= 6 &&
-            summary.assigned_role_codes === 6 &&
+          const singleOwnerReady =
+            summary.auth_users === 1 &&
+            summary.password_users === 1 &&
+            summary.active_staff_profiles === 1 &&
+            summary.assigned_role_codes === 1 &&
             summary.active_profiles_without_role === 0 &&
             summary.assignments_on_inactive_profiles === 0 &&
             summary.active_staff_without_credential === 0 &&
             summary.invalid_first_login_setups === 0;
-          if (!fullRosterReady) {
+          if (!singleOwnerReady) {
             console.error("Production cutover blocked: provision all six staff accounts, assign all six roles, ensure every active profile has a Cloudflare password credential, and resolve inactive assignments or expired first-login setup windows before production migration.");
             process.exit(1);
           }
-          console.log("Production staff roster gate passed: six or more active profiles, all six role codes effectively assigned, credential accounts present, and no stale/expired account setups.");
+          console.log("Production single-owner gate passed: exactly one live identity, one active Admin/Pastor profile and credential, no other active staff profiles, no stale assignments, and no expired first-login setup.");
           NODE
 
 
