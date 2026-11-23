@@ -1358,6 +1358,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         canCreateFollowUp={canCreateTasks && canSelfAssignTask}
         canAssignContact={canAssignContacts}
         staffMembers={staffMembers}
+        teams={teams}
         onCreateFollowUp={(contact) => {
           setTaskContactId(contact.id);
           setTaskContactQuery(displayName(contact));
