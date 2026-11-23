@@ -455,6 +455,15 @@ console.log("AUTHENTICATED_SESSION_RETRIEVAL_PASSED");
 
 // Exercise a genuine first-login password gate and prove that the old credential is no longer valid.
 const firstLoginCookie = await signIn(firstLoginUser, "First-login Field Worker");
+const firstLoginProtectedRead = await api(
+  firstLoginCookie,
+  "/api/v1/notifications?branch_id=" + branchId + "&limit=50",
+);
+if (firstLoginProtectedRead.status !== 403 ||
+    firstLoginProtectedRead.payload?.error?.code !== "PASSWORD_CHANGE_REQUIRED") {
+  throw new Error("First-login account was not blocked from normal staff operations before password replacement: HTTP " +
+    firstLoginProtectedRead.status + " code=" + (firstLoginProtectedRead.payload?.error?.code ?? "unexpected_response"));
+}
 const firstLoginPassword = "PcgQa-First-" + randomBytes(18).toString("base64url") + "-9!aA";
 const firstLoginChange = await api(firstLoginCookie, "/api/v1/auth/password/change", "POST", {
   password: firstLoginPassword,
