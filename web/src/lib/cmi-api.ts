@@ -1059,8 +1059,8 @@ export class CmiApiClient {
       "pastoral-operations",
       "/prayer/requests/assigned",
       {
+        branchId,
         query: {
-          branch_id: branchId,
           limit: options.limit ?? 25,
           offset: options.offset ?? 0,
         },
