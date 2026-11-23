@@ -1657,6 +1657,22 @@ test("Coordinator contact search matches normalized phone numbers as well as nam
   assert.ok(query.values.includes("%233241234567%"));
 });
 
+test("Coordinator with identity-read capability can search by email", async () => {
+  const { env, calls } = authorizedDirectoryEnv("coordinator", [
+    ["contacts.read", "branch"],
+    ["contacts.contact_details.read", "branch"],
+  ]);
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/contacts?search=ama%40example.com",
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  assert.equal(response.status, 200);
+  const query = calls.find((call) => call.kind === "all" && call.sql.includes("FROM contact c") && call.sql.includes("SELECT c.id"));
+  assert.ok(query);
+  assert.equal(query.values[11], 1, "email search must be enabled for contact identity-read");
+  assert.ok(query.values.includes("%ama@example.com%"));
+});
+
 test("ordinary name searches keep the optional phone predicate valid without phone parameters", async () => {
   const { env, calls } = authorizedDirectoryEnv("coordinator", [
     ["contacts.read", "branch"],
