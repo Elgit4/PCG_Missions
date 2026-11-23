@@ -53,7 +53,7 @@ jobs:
 
           deadline=$((SECONDS + 18000))
           while (( SECONDS < deadline )); do
-            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/cloudflare-d1-restore-rehearsal.yml/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq '.workflow_runs[] | select(.conclusion == "success") | .head_sha')"
+            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq '.workflow_runs[] | select(.path == ".github/workflows/cloudflare-d1-restore-rehearsal.yml") | select(.conclusion == "success") | .head_sha')"
             while IFS= read -r sha; do
               [[ -z "$sha" ]] && continue
               if git cat-file -e "${sha}^{commit}" 2>/dev/null &&
