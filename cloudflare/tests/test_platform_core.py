@@ -1510,7 +1510,7 @@ class AuthorizationQueryTests(unittest.TestCase):
         self.db.execute(
             """INSERT INTO calendar_entry
                (id,branch_id,entry_type,title,starts_at,scope_type,created_by,updated_by,created_at,updated_at)
-               VALUES ('calendar-cancel-1','authz-branch','service','Sunday Service',?,'branch',?,?,?,?,?)""",
+               VALUES ('calendar-cancel-1','authz-branch','service','Sunday Service',?,'branch',?,?,?,?)""",
             (self.NOW, admin_user, admin_user, self.NOW, self.NOW),
         )
 
