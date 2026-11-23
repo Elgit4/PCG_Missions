@@ -629,6 +629,16 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     return null;
   }
 
+  if (functionName === "content-operations") {
+    if ((suffix === "/sermons" || suffix === "/welcome-messages") && (verb === "GET" || verb === "POST")) {
+      return "/api/v1/content" + suffix;
+    }
+    if (/^\/(sermons|welcome-messages)\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) {
+      return "/api/v1/content" + suffix;
+    }
+    return null;
+  }
+
   if (functionName === "calendar-operations") {
     if (suffix === "/entries" && (verb === "GET" || verb === "POST")) return "/api/v1/calendar/entries";
     if (/^\/entries\/[^/]+\/cancel$/.test(suffix) && verb === "POST") return "/api/v1" + suffix.replace("/entries/", "/calendar/entries/");
@@ -1295,12 +1305,6 @@ export class CmiApiClient {
       method: "PATCH", query: { branch_id: branchId }, body: input,
     });
   }
-  archiveAnnouncementDraft(branchId: string, announcementId: string) {
-    return this.request<{ announcement_id: string; status: string }>("announcement-operations", "/announcements/" + encodeURIComponent(announcementId) + "/archive", {
-      method: "POST", query: { branch_id: branchId },
-    });
-  }
-
   listSermonDrafts(branchId: string, options: { limit?: number; offset?: number } = {}) {
     return this.request<SermonDraftRecord[]>("content-operations", "/sermons", {
       query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0 },
