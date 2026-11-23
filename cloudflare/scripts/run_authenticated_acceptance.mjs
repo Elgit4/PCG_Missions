@@ -108,6 +108,7 @@ await d1(
 const admin = await insertUser("admin_pastor", "admin", null, true);
 const worker = await insertUser("field_worker", "worker", admin.profileId);
 const reviewer = await insertUser("coordinator", "reviewer", admin.profileId);
+const unassigned = await insertUser("field_worker", "unassigned", admin.profileId);
 
 const unauthenticated = await fetch(`${workerUrl}/api/v1/me`);
 if (unauthenticated.status !== 401) throw new Error(`Unauthenticated /api/v1/me expected 401, got ${unauthenticated.status}`);
@@ -115,6 +116,7 @@ if (unauthenticated.status !== 401) throw new Error(`Unauthenticated /api/v1/me 
 const adminCookie = await signIn(admin, "Admin/Pastor");
 const workerCookie = await signIn(worker, "Field Worker");
 const reviewerCookie = await signIn(reviewer, "Coordinator");
+const unassignedCookie = await signIn(unassigned, "Unassigned Field Worker");
 
 for (const [cookie, label] of [[adminCookie, "Admin/Pastor"], [workerCookie, "Field Worker"], [reviewerCookie, "Coordinator"]]) {
   const me = await api(cookie, "/api/v1/me");
@@ -134,6 +136,15 @@ const assignment = await api(adminCookie, `/api/v1/events/${eventId}/staff-assig
 });
 if (assignment.status !== 201) throw new Error(`Event assignment failed: ${assignment.status} ${JSON.stringify(assignment.payload)}`);
 
+const unassignedRegistration = await api(unassignedCookie, `/api/v1/events/${eventId}/registrations`, "POST", {
+  idempotency_key: `qa-unassigned-register-${runId}`,
+  attendee_name: "Unauthorized QA Guest",
+  attendee_phone: null,
+});
+if (unassignedRegistration.status !== 403 || unassignedRegistration.payload?.error?.code !== "EVENT_REGISTRATION_NOT_AUTHORIZED") {
+  throw new Error(`Unassigned Field Worker registration was not denied: ${unassignedRegistration.status} ${JSON.stringify(unassignedRegistration.payload)}`);
+}
+
 const registration = await api(workerCookie, `/api/v1/events/${eventId}/registrations`, "POST", {
   idempotency_key: `qa-register-${runId}`,
   attendee_name: "Synthetic QA Guest",
@@ -142,6 +153,13 @@ const registration = await api(workerCookie, `/api/v1/events/${eventId}/registra
 if (registration.status !== 201) throw new Error(`Event registration failed: ${registration.status} ${JSON.stringify(registration.payload)}`);
 const registrationId = registration.payload?.data?.registration?.id;
 if (!registrationId) throw new Error("Event registration response did not include a registration id");
+
+const unassignedCheckin = await api(unassignedCookie, `/api/v1/events/${eventId}/registrations/${registrationId}/check-in`, "POST", {
+  idempotency_key: `qa-unassigned-checkin-${runId}`,
+});
+if (unassignedCheckin.status !== 403 || unassignedCheckin.payload?.error?.code !== "EVENT_CHECKIN_NOT_AUTHORIZED") {
+  throw new Error(`Unassigned Field Worker check-in was not denied: ${unassignedCheckin.status} ${JSON.stringify(unassignedCheckin.payload)}`);
+}
 
 const checkin = await api(workerCookie, `/api/v1/events/${eventId}/registrations/${registrationId}/check-in`, "POST", {
   idempotency_key: `qa-checkin-${runId}`,
@@ -215,6 +233,8 @@ const checks = {
   eventAssignmentNotificationTargetsEvent: eventNotice?.target_type === "event" && eventNotice?.target_id === eventId,
   reportReviewNotificationTargetsReport: reportNotice?.target_type === "ministry_report" && reportNotice?.target_id === reportId,
   selfReviewDenied: selfReview.status === 403,
+  unassignedRegistrationDenied: unassignedRegistration.status === 403,
+  unassignedCheckinDenied: unassignedCheckin.status === 403,
 };
 const failed = Object.entries(checks).filter(([, value]) => !value).map(([key]) => key);
 if (failed.length) throw new Error(`Authenticated API acceptance failed: ${failed.join(", ")}`);
