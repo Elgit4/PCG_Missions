@@ -3,7 +3,8 @@
 **Audit date:** 23 November 2026  
 **Repository:** `Elgit4/PCG_Missions`  
 **Audited source branch:** `migration/cloudflare-auth-consolidation`  
-**Audited source head:** `c1acfc3d98f2352ee03259c9df8804f5620d4647`  
+**Source baseline inspected:** `c1acfc3d98f2352ee03259c9df8804f5620d4647`  
+**Current migration head after accepted fixes:** `64c057327b2c19ca58471bee072408c022018b84`  
 **Primary integration PR:** [#102](https://github.com/Elgit4/PCG_Missions/pull/102)  
 **Audit type:** Source-to-runtime feature wiring review; not production acceptance or security certification.
 
@@ -15,7 +16,7 @@ The audit does **not** support a claim that every visible feature is fully wired
 
 1. Private sermon and welcome-message draft operations are exposed in the UI but are not wired into the audited migration branch. [PR #112](https://github.com/Elgit4/PCG_Missions/pull/112) contains the implementation but is not merged and currently reports a merge conflict.
 2. The announcement workspace still exposes an archive action even though the approved API contract is draft-only and has no archive endpoint. PR #112 removes this unsupported action.
-3. Calendar cancellation is exposed by the UI and API client but has no Worker route/handler on the audited branch. [PR #119](https://github.com/Elgit4/PCG_Missions/pull/119) adds the missing state transition, reason, authorization and audit behavior; its latest CI run is pending.
+3. Calendar cancellation was missing on the audited baseline. [PR #119](https://github.com/Elgit4/PCG_Missions/pull/119) is now merged into the migration branch after the Worker type-check, D1 Foundation tests and CMI web CI passed. Production remains unchanged.
 4. Contact assignment is implemented in the Worker but is not exposed by the browser API client or workspace. New contacts are automatically assigned to the capturing staff member, so the approved Missions Leader/Admin manual-assignment workflow is not available end to end.
 5. Follow-up task creation in the workspace is self-assignment only. Team/staff assignment targets and reassignment controls are not exposed in the UI, despite backend reassignment support.
 6. Staff role administration is not complete in the audited branch's UI. [PR #114](https://github.com/Elgit4/PCG_Missions/pull/114) contains the role-management interface and client wiring but remains a draft.
@@ -57,7 +58,7 @@ No production records, staff credentials, secrets, or real visitor/pastoral data
 | Pastoral care | Restricted audited read path exists with reason-coded access. | Read-only and intentionally restricted; full care-management lifecycle is not enabled. |
 | Events | Private event drafts, flyer operations, staff/team assignments, staff registration/capacity, check-in and closeout/review routes are present. | Substantial implementation. PR #117 covers the registration actor-schema regression; PR #118 restores canonical report/event capabilities. Browser acceptance remains open. |
 | Calendar — create/list/update | Branch-scoped create/list/update operations and optimistic update checks exist. | Implemented in source. |
-| Calendar — cancellation | UI calls `cancelCalendarEntry`, but the audited Worker only handles GET/PATCH on a calendar item and has no cancellation handler. | Broken on audited base branch. PR #119 adds the route, capability/reason checks, concurrency guard and audit-trigger coverage; CI is still being rerun after a test-fixture correction. |
+| Calendar — cancellation | UI calls `cancelCalendarEntry`; the Worker now has the POST cancellation route, capability/reason checks, concurrency guard and audit-trigger coverage. | Implemented in the current migration branch by merged PR #119; not yet deployed to production. |
 | Announcements | Private draft list/detail/create/edit operations exist; publishing and delivery are disabled. | Draft operations are present. The UI's archive/delete action is unsupported and must be removed. PR #112 contains that correction. |
 | Sermons/welcome messages | UI and API client expose private draft operations, but the audited Worker route adapter/dispatcher does not contain the corresponding content routes. | Broken on audited base branch. PR #112 adds Worker/D1 handlers, client mapping and tests; it is unmerged and needs rebasing/porting. |
 | Teams/service areas | Branch-scoped team and service-area administration routes and workspace components exist. | Implemented in source; role-specific authenticated acceptance remains open. |
@@ -93,7 +94,7 @@ No production records, staff credentials, secrets, or real visitor/pastoral data
 
 **Impact:** Authorized staff cannot cancel calendar entries from the workspace.
 
-**Correction:** PR #119 adds a branch-scoped, capability-checked POST cancellation endpoint, a required reason, optimistic state transition, cancelled-entry filtering and Worker/API/SQLite regression tests. Its first SQLite test run exposed that the focused test fixture did not replay migration 0024; the fixture was corrected and the latest CI run is in progress. Do not merge until the latest D1 Foundation and web CI checks pass.
+**Correction:** PR #119 added a branch-scoped, capability-checked POST cancellation endpoint, a required reason, optimistic state transition, cancelled-entry filtering and Worker/API/SQLite regression tests. The first SQLite run exposed that the focused fixture did not replay migration 0024; the fixture was corrected. The rerun passed: Cloudflare D1 Foundation run [45251797673](https://github.com/Elgit4/PCG_Missions/actions/runs/45251797673) and CMI web CI run [45251797679](https://github.com/Elgit4/PCG_Missions/actions/runs/45251797679). PR #119 was then merged into the migration branch. Production was not deployed.
 
 ### P1 — Contact assignment UI missing
 
@@ -172,9 +173,11 @@ Production Pages automatic deployments remain disabled and production remains on
 | [#116](https://github.com/Elgit4/PCG_Missions/pull/116) | Merged | Reports/events/notification producer improvements. |
 | [#117](https://github.com/Elgit4/PCG_Missions/pull/117) | Merged | Event registration actor-schema regression coverage. |
 | [#118](https://github.com/Elgit4/PCG_Missions/pull/118) | Merged | Restores canonical report/event capability alignment. |
-| [#119](https://github.com/Elgit4/PCG_Missions/pull/119) | Open; CI rerun required | Calendar cancellation end-to-end correction. |
+| [#119](https://github.com/Elgit4/PCG_Missions/pull/119) | Merged | Calendar cancellation end-to-end correction; D1 Foundation and web CI passed after fixture correction. |
+| [#120](https://github.com/Elgit4/PCG_Missions/pull/120) | Open | This audit report. |
+| [#121](https://github.com/Elgit4/PCG_Missions/pull/121) | Open; CI in progress | Current-head port of private content draft routes and removal of unsupported announcement archival. |
 
-The latest PR #119 run before the test-fixture correction failed the SQLite Foundation job because the focused authorization test fixture had not replayed migration 0024. The fixture was corrected to apply the calendar cancellation/audit migration. The rerun must pass before PR #119 is accepted.
+PR #119's first SQLite Foundation run failed because the focused authorization fixture had not replayed migration 0024. The fixture was corrected to apply the calendar cancellation/audit migration; the rerun passed and PR #119 was merged. PR #121's Cloudflare D1 Foundation and CMI web CI checks are running. Its Vercel preview status is currently failing because of a build-rate-limit/plan restriction; this is not a failure of the repository's test workflows.
 
 ## 8. Required closure sequence
 
