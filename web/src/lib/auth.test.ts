@@ -27,6 +27,27 @@ describe("Cloudflare Better Auth browser client", () => {
     expect(fetcher.mock.calls[0]?.[0]).toBe("/api/auth/get-session");
   });
 
+  it("performs an explicit POST only when Better Auth says the session needs refresh", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        ...sessionPayload(),
+        needsRefresh: true,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(sessionPayload()), { status: 200 }));
+    const client = new PcgAuthClient(fetcher as typeof fetch);
+    const session = await client.getSession();
+    expect(session?.user.id).toBe("staff-user-1");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const first = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    const second = fetcher.mock.calls[1] as unknown as [string, RequestInit];
+    expect(first[0]).toBe("/api/auth/get-session");
+    expect(first[1].method).toBe("GET");
+    expect(second[0]).toBe("/api/auth/get-session");
+    expect(second[1].method).toBe("POST");
+    expect(JSON.parse(String(second[1].body))).toEqual({});
+    expect(new Headers(second[1].headers).get("Content-Type")).toBe("application/json");
+  });
+
   it("returns null when there is no active session", async () => {
     const fetcher = vi.fn(async (..._args: Parameters<typeof fetch>) => new Response("null", { status: 200 }));
     await expect(new PcgAuthClient(fetcher as typeof fetch).getSession()).resolves.toBeNull();
