@@ -16,6 +16,8 @@ test("report review writes author notification in the same D1 batch as the revie
   assert.match(review, /JOIN staff_profile author ON author\.id=mr\.author_profile_id/);
   assert.match(review, /'report_reviewed'/);
   assert.match(review, /ministry-report:/);
+  assert.match(review, /WHERE mr\.id=\? AND mr\.branch_id=\? AND mr\.last_action_id=\? AND mr\.last_action_by=\? AND mr\.status=\?/);
+  assert.doesNotMatch(review, /changes\(\)\s*=\s*1/);
   assert.match(review, /await env\.DB\.batch\(reviewStatements\)/);
   assert.match(review, /reviewResults\[0\].*changes/s);
   assert.match(review, /reviewResults\[1\].*changes/s);
