@@ -17,9 +17,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  production-worker:
-    name: Validate, migrate and deploy the production Worker
+  restore-rehearsal:
+    name: Full D1 restore and six-role authenticated acceptance
     if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
+    uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
+    secrets: inherit
+
+  production-worker:
+    needs: restore-rehearsal
+    name: Validate, migrate and deploy the production Worker
+    if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' && needs.restore-rehearsal.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     environment: production
@@ -100,8 +107,9 @@ jobs:
 
           require_successful_current_code_run "cloudflare-d1-foundation.yml" "Cloudflare D1 Foundation" "cloudflare"
           require_successful_current_code_run "cmi-web-ci.yml" "CMI web CI" "web"
-          # The preview workflow includes the full isolated D1 restore rehearsal,
-          # six-role authenticated acceptance, preview Worker deployment and session smoke test.
+          # The preview workflow proves the preview Worker deployment, health, anonymous boundary and session endpoint.
+          # The dependent restore-rehearsal job above runs the full isolated D1 restore and six-role authenticated acceptance
+          # before this production job can start.
           require_successful_current_code_run "cloudflare-preview-deploy.yml" "Cloudflare Auth Preview Release" "cloudflare"
 
       - name: Verify deployed preview authentication before production mutation
@@ -410,15 +418,6 @@ jobs:
         run: npx wrangler deploy --env production
 
       - name: Deploy reviewed frontend and Pages Functions to production
-        working-directory: web
-        run: |
-          ../cloudflare/node_modules/.bin/wrangler pages deploy dist \
-            --project-name pcg-missions \
-            --branch main \
-            --commit-hash "$GITHUB_SHA" \
-            --commit-message "PCG Missions production release $GITHUB_SHA"
-
-      - name: Deploy reviewed frontend assets to Pages production
         working-directory: web
         run: |
           ../cloudflare/node_modules/.bin/wrangler pages deploy dist \
