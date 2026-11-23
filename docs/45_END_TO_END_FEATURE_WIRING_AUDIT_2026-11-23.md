@@ -1,189 +1,140 @@
-# PCG Missions — End-to-End Feature Wiring Audit
+# PCG Missions — End-to-End Feature Wiring and Production Readiness Audit
 
 **Audit date:** 23 November 2026  
 **Repository:** `Elgit4/PCG_Missions`  
-**Audited source branch:** `migration/cloudflare-auth-consolidation`  
-**Source baseline inspected:** `c1acfc3d98f2352ee03259c9df8804f5620d4647`  
-**Current migration head after accepted fixes:** `e296ab24eb81a5f97f02bcda5b871b459c8ee3ec`  
-**Primary integration PR:** [#102](https://github.com/Elgit4/PCG_Missions/pull/102)  
-**Audit type:** Source-to-runtime feature wiring review; not production acceptance or security certification.
+**Integration branch:** `migration/cloudflare-auth-consolidation`  
+**Source baseline inspected:** `7ca4243a18ae2aef878ceae6cddbc61c71e6a1b1`  
+**Primary migration PR:** [#102](https://github.com/Elgit4/PCG_Missions/pull/102)  
+**Audit type:** Source-to-runtime feature wiring review, production configuration inspection and release-gate verification. This is not a claim of completed production acceptance.
 
 ## 1. Executive assessment
 
-PCG Missions has a substantial Cloudflare implementation: Better Auth, D1-backed staff identity and authorization, branch-scoped Worker APIs, a React staff workspace, contact and follow-up workflows, event operations, typed reports, team/service-area administration, restricted pastoral reads and an in-app notification centre.
+The main feature-wiring defects identified in the earlier audit have been corrected in the Cloudflare migration branch:
 
-The audit does **not** support a claim that every visible feature is fully wired. Several user-facing controls or workflows still call missing Worker routes, and some backend capabilities have no corresponding browser workflow. The most important remaining gaps are:
+- Staff role administration and audited role assignment/revocation are merged.
+- Contact assignment to an authorized staff member or team is merged.
+- Follow-up creation and handoff support self, staff-profile and team targets, with server-side scope enforcement and reasoned reassignment.
+- Calendar cancellation, private content drafts, announcement action cleanup, contact search, event/report capability alignment and notification producer fixes are merged.
+- Better Auth now uses the supported Drizzle D1 adapter rather than passing the raw D1 binding as its database.
+- Production credential rows currently match the production Better Auth user rows.
 
-1. Private sermon and welcome-message draft operations are now wired through the Worker, API adapter and UI by merged [PR #121](https://github.com/Elgit4/PCG_Missions/pull/121). Cloudflare D1 Foundation and CMI web CI passed; production remains unchanged.
-2. The unsupported announcement archive/delete action and stale API method were removed by PR #121. Publishing and delivery remain disabled.
-3. Calendar cancellation was completed by merged [PR #119](https://github.com/Elgit4/PCG_Missions/pull/119), including authorization, reason, concurrency and audit handling. Cloudflare D1 Foundation and CMI web CI passed; production remains unchanged.
-4. Contact assignment is implemented in the Worker but is not exposed by the browser API client or workspace. New contacts are automatically assigned to the capturing staff member, so the approved Missions Leader/Admin manual-assignment workflow is not available end to end.
-5. Follow-up task creation in the workspace is self-assignment only. Team/staff assignment targets and reassignment controls are not exposed in the UI, despite backend reassignment support.
-6. Staff role administration is not complete in the audited branch's UI. [PR #114](https://github.com/Elgit4/PCG_Missions/pull/114) contains the role-management interface and client wiring but remains a draft.
-7. The production environment is not ready for unrestricted operational use: production is on D1 schema 45, preview is on schema 46, and only one production staff profile has an effective role assignment.
+**The source-level wiring gaps are closed. Production is not yet signed off.** Two infrastructure-dependent runtime rehearsals remain blocked by the Cloudflare account's daily D1 row-write quota, and production is still on schema 45 while the reviewed migration branch is on schema 46. The guarded production release workflow is being completed so that one controlled release updates both the Worker and Pages frontend.
 
-**Overall verdict: substantial implementation; several feature-wiring gaps remain; not ready for final product sign-off.**
+No production migration, production Worker deployment, production Pages deployment, production staff-account creation or SMS activation has been performed as part of this audit.
 
-## 2. Audit method and evidence boundary
+## 2. Verified corrective work
 
-The review traced representative operations through:
-- React workspace and interaction handlers;
-- typed API client methods and the `workerApiPath` adapter;
-- Cloudflare Worker route dispatch and handler functions;
-- authorization/capability and branch-scope checks;
-- D1 writes, concurrency predicates and audit triggers;
-- regression tests and current pull-request/CI evidence.
-
-A passing type-check or unit suite is not treated as proof that a browser action reaches a valid Worker route. Source tests and isolated D1 lifecycle tests are not treated as authenticated browser acceptance.
-
-No production records, staff credentials, secrets, or real visitor/pastoral data were changed during this audit. No production migration or deployment was performed.
-
-## 3. Feature-by-feature assessment
-
-| Feature | Source assessment | End-to-end status |
+| PR | Status | Result |
 |---|---|---|
-| Better Auth sign-in/session | Better Auth uses D1-backed sessions and HttpOnly cookies. Staff context checks active profile, active role assignment, branch access and first-password-change expiry. | Implemented in source; authenticated acceptance for all intended staff roles remains open. |
-| Account provisioning | Authorized staff provisioning creates Better Auth identity/credential records and staff profile/role assignment; temporary credentials require manual private handoff and first-login password change. | Implemented in source; sender/email delivery is not verified and manual handoff remains the operational path. |
-| Password reset | Staff request and Admin/Pastor approval/reset paths exist; password change revokes existing sessions. | Implemented in source; live account-recovery acceptance remains open. |
-| Six-role authorization | Six fixed roles, capability catalogue, scoped grants, active assignment windows, branch checks, team-leader membership checks, assigned-contact/task checks and explicit pastoral-share checks exist. | Strong server-side foundation; role-specific authenticated acceptance remains open. |
-| Staff role administration | Worker role assignment/elevation/revocation operations exist. The audited browser workspace does not yet expose the complete multi-role workflow. | Partially wired. PR #114 adds the UI/client work and is still draft. |
-| Contacts — capture | Contact creation validates input, uses an idempotency receipt and creates a capture record plus an initial assignment in a D1 batch. | Implemented, but initial assignment is automatic to the capturing staff member. |
-| Contacts — list/search | Branch-scoped list and restricted projections are implemented. The audited branch search only matches first/last name. | Search gap fixed in source by merged PR #113, including privacy-gated email and normalized Ghanaian phone search; not yet a production deployment. |
-| Contacts — detail/history | Contact detail, ordinary notes and interaction history have Worker/API/UI paths with scoped reads and writes. | Implemented in source; authenticated role acceptance remains open. |
-| Contacts — assignment | Worker `POST /api/v1/contacts/{id}/assign` exists and applies assignment authorization/audit logic. The browser API adapter and workspace have no matching assignment method/control. | Backend-only; manual Missions Leader/Admin assignment is not end-to-end. |
-| Contact duplicates/merge | Safe duplicate merge is explicitly not implemented. Restricted prayer/care relationships make a casual merge unsafe. | Intentionally deferred; PR #115 documents the safety boundary, not an enabled feature. |
-| Follow-up — list/create/update | Branch/assigned/team scopes, idempotent creation, status transitions, due dates, task notes and assignment-aware reads exist. | Implemented in source for the exposed self-assignment workflow; authenticated role acceptance remains open. |
-| Follow-up — assignment/handoff | Worker reassignment and API-client reassignment operations exist, but the workspace exposes only self-assignment and has no staff/team assignment picker or reassignment action. | Partially wired; shared assignment and handoff requirements are not complete in the UI. |
-| Prayer requests | Assigned intercessor inbox and audited restricted reads are present. The workspace is explicitly read-only. | Implemented within the approved read-only boundary; request creation/assignment and pastoral mutations remain disabled. |
-| Pastoral care | Restricted audited read path exists with reason-coded access. | Read-only and intentionally restricted; full care-management lifecycle is not enabled. |
-| Events | Private event drafts, flyer operations, staff/team assignments, staff registration/capacity, check-in and closeout/review routes are present. | Substantial implementation. PR #117 covers the registration actor-schema regression; PR #118 restores canonical report/event capabilities. Browser acceptance remains open. |
-| Calendar — create/list/update | Branch-scoped create/list/update operations and optimistic update checks exist. | Implemented in source. |
-| Calendar — cancellation | UI calls `cancelCalendarEntry`; the Worker now has the POST cancellation route, capability/reason checks, concurrency guard and audit-trigger coverage. | Implemented in the current migration branch by merged PR #119; not yet deployed to production. |
-| Announcements | Private draft list/detail/create/edit operations exist; publishing and delivery are disabled. | Draft operations are present; unsupported archive/delete action removed by merged PR #121. Publishing/delivery remain disabled. |
-| Sermons/welcome messages | UI, API client and Worker now expose private draft list/create/detail/edit routes with branch/capability checks and creator-only access. | Implemented in the current migration branch by merged PR #121; not yet deployed to production. |
-| Teams/service areas | Branch-scoped team and service-area administration routes and workspace components exist. | Implemented in source; role-specific authenticated acceptance remains open. |
-| Ministry reports | Typed report submission, list/detail, review/return and resubmission routes exist. Report/event capabilities were realigned in PR #118. | Implemented in source with D1 lifecycle regression coverage; authenticated browser acceptance remains open. |
-| Notifications | Private inbox/read-state routes and assignment/review notification producers exist. PR #116 adds/repairs report and event recipient triggers. | Implemented in source; trigger-to-recipient acceptance in authenticated browser sessions remains open. |
-| Public visitor site | Public-content projection is read-only and separates published content from private staff drafts. | Implemented within current scope. Public registration and public prayer intake remain disabled. |
-| Event flyer storage | Private event-flyer storage remains server-mediated; Supabase is retained only for this object-storage path. | Implemented in source; Supabase Auth/Postgres are not the operational identity/database plane. |
-| SMS/communications | SMS dispatch, campaigns and automation are disabled; no SMS role grants are provisioned. | Intentionally disabled. Do not enable as part of this audit. |
-| Offline workflows | Staff business data/offline capture and sync remain disabled. | Intentionally disabled pending encryption, device-binding, expiry and conflict-recovery controls. |
-| Exports/publication | Publishing, broad exports and other high-risk delivery paths remain approval-gated. | Intentionally disabled until separate authorization and acceptance gates pass. |
+| [#113](https://github.com/Elgit4/PCG_Missions/pull/113) | Merged | Contact search supports preferred names, privacy-gated email and normalized Ghanaian phone numbers. |
+| [#116](https://github.com/Elgit4/PCG_Missions/pull/116) | Merged | Report/event notification producers and recipient selection improved. |
+| [#119](https://github.com/Elgit4/PCG_Missions/pull/119) | Merged | Calendar cancellation route, reason, authorization, concurrency and audit behavior completed. |
+| [#121](https://github.com/Elgit4/PCG_Missions/pull/121) | Merged | Sermon/welcome-message private draft routes connected; unsupported announcement archive action removed. |
+| [#123](https://github.com/Elgit4/PCG_Missions/pull/123) | Merged | Branch-scoped staff directory and audited role assignment/elevation/revocation UI completed. |
+| [#124](https://github.com/Elgit4/PCG_Missions/pull/124) | Merged | Contact assignment plus team/staff follow-up creation and handoff UI completed. |
+| [#126](https://github.com/Elgit4/PCG_Missions/pull/126) | Merged | Credential-import verification checks existing credential hashes without exposing credential material. |
+| [#128](https://github.com/Elgit4/PCG_Missions/pull/128) | Merged | Better Auth uses a Drizzle adapter for Cloudflare D1 and an explicit schema for the existing auth tables. |
+| [#130](https://github.com/Elgit4/PCG_Missions/pull/130) | Open | Guarded production release now builds and preflights Pages, applies schema 46, deploys Worker and Pages, then verifies both. |
 
-## 4. Confirmed defects and corrective work
+The relevant D1 Foundation and CMI web CI checks passed for the merged feature corrections. PR #128's type-check and Worker/SQLite tests passed. The runtime session smoke test is still being investigated under the confirmed D1 quota restriction; passing source tests are not being represented as proof of a working live login.
 
-### Closed in migration branch — Visitor content draft routes
+## 3. Feature-by-feature status
 
-**Evidence on the source baseline:** `OperationsWorkspace` called the sermon and welcome-message draft methods, but the API adapter and Worker dispatcher did not map/serve those requests.
+| Feature | Current implementation status | Runtime/operational qualification |
+|---|---|---|
+| Better Auth login/session | D1 Drizzle adapter, credential accounts, session hooks and HttpOnly cookie handling are implemented. | Preview Worker health passes. Anonymous `/api/auth/get-session` currently fails at a D1 `rateLimit` insert while the account-wide daily row-write quota is exhausted. Re-run after quota reset before sign-off. |
+| Account provisioning | Better Auth user/credential creation, staff profile creation, first-login password change and manual private credential handoff are implemented. | Production has 3 users and 3 credential accounts. Email delivery is not configured; manual handoff remains the documented path. |
+| Password recovery | Staff reset request and Admin/Pastor approval/reset paths are implemented; password change revokes sessions. | Authenticated production recovery acceptance remains pending. |
+| Six-role authorization | Six fixed roles, capability catalogue, scoped grants, assignment windows, branch checks, team membership checks and restricted pastoral access are implemented. | Production has only 2 effective role assignments across 2 active staff profiles. Do not create fictitious identities or infer that all six roles are staffed. |
+| Staff role administration | Branch-scoped directory, role assignment, dual-control Admin/Pastor elevation and audited revocation are implemented. | Source tests pass. Role-by-role authenticated acceptance remains pending. |
+| Contact capture | Validated, idempotent contact creation with capture history and initial assignment is implemented. | The current initial assignment-to-capturer behavior is retained. Manual reassignment is now available to authorized staff. |
+| Contact assignment | Typed client, contact UI, staff/team targets, reason and server-side scope enforcement are implemented. | Merged PR #124; authenticated browser acceptance remains pending. |
+| Contact search/detail/history | Search, privacy-gated projections, notes and activity history are wired. | Merged PR #113; role-specific acceptance remains pending. |
+| Contact duplicate merge | Not implemented. | Intentionally disabled: merging can affect restricted prayer/pastoral relationships and requires a separately approved lifecycle contract. |
+| Follow-up task creation | Self, staff-profile and team targets are exposed according to capability and scope. | Merged PR #124; Worker revalidates target and contact/team scope. |
+| Follow-up reassignment/handoff | Staff/team target picker, mandatory reason and server-side reassignment authorization are implemented. | Merged PR #124; authenticated handoff and audit-history acceptance remains pending. |
+| Prayer requests | Assigned intercessor reads are restricted and audited. | Read-only boundary is intentional; creation/assignment and broad pastoral mutations remain disabled. |
+| Pastoral care | Reason-coded restricted read path exists. | Read-only and intentionally restricted. |
+| Events and attendance | Drafts, assignments, capacity, registration, check-in and closeout/review routes exist. | Source and D1 lifecycle coverage exist; authenticated browser acceptance remains pending. |
+| Calendar | Create/list/update and cancellation paths are wired with optimistic concurrency and audit history. | Merged PR #119; production deployment pending. |
+| Announcements | Private draft list/detail/create/edit paths exist. | Publishing, delivery and archival remain disabled; unsupported archive action was removed. |
+| Sermons and welcome messages | Private draft list/create/detail/edit paths are wired through UI, API and Worker. | Merged PR #121; production deployment pending. |
+| Teams and service areas | Branch/team-scoped administration routes and workspace are implemented. | Role-specific acceptance remains pending. |
+| Ministry reports | Typed submission, review, return and resubmission routes are implemented. | Capability alignment fixed; authenticated review lifecycle acceptance remains pending. |
+| Notifications | Inbox/read-state routes and contact/task/event/report producers are implemented. | Trigger-to-recipient acceptance across real authenticated roles remains pending. |
+| Event flyer storage | Server-mediated event flyer storage remains on Supabase Storage. | This is the only retained Supabase application data path. Supabase Auth/Postgres are not the operational identity/database plane. |
+| SMS | Dispatch and automation are disabled. | Intentionally disabled; do not enable during release. |
+| Offline workflows | Business-data offline capture/sync is disabled. | Intentionally disabled pending device binding, encryption, expiry and conflict recovery. |
+| Public registration, publishing and broad exports | Not enabled. | Intentionally disabled pending separate authorization and privacy gates. |
 
-**Impact:** Draft listing/creation/editing failed before reaching a supported Worker route.
+## 4. Current infrastructure evidence
 
-**Correction:** Merged PR #121 adds `/api/v1/content/sermons` and `/api/v1/content/welcome-messages`, Better Auth cookie routing, branch-scoped `content.manage.draft` checks, creator-only draft reads/edits, bounded validation and regression tests. Cloudflare D1 Foundation and CMI web CI passed. The current migration branch is corrected; production has not been deployed.
+### Production D1 and identity
 
-### Closed in migration branch — Unsupported announcement archival
-
-**Evidence on the source baseline:** The Operations workspace called `archiveAnnouncementDraft`, but the Worker only implemented draft list/detail/create/edit. The approved announcement contract excludes archival/deletion.
-
-**Impact:** The archive action could not complete and advertised a lifecycle operation the backend intentionally does not support.
-
-**Correction:** Merged PR #121 removed the archive/delete control and stale API method. Do not add archival without a separately approved lifecycle contract.
-
-### Closed in migration branch — Calendar cancellation
-
-**Evidence on the source baseline:** The UI called `api.cancelCalendarEntry`, but the API adapter did not map the `/entries/{id}/cancel` suffix and the Worker had no POST cancellation route, despite D1 migration 0024 defining cancellation state and append-only audit triggers.
-
-**Impact:** Authorized staff could not cancel calendar entries from the workspace.
-
-**Correction:** Merged PR #119 added a branch-scoped, capability-checked POST cancellation endpoint, required reason, optimistic state transition, cancelled-entry filtering and Worker/API/SQLite regression tests. The initial SQLite fixture omission was corrected; D1 Foundation run [45251797673](https://github.com/Elgit4/PCG_Missions/actions/runs/45251797673) and CMI web CI run [45251797679](https://github.com/Elgit4/PCG_Missions/actions/runs/45251797679) passed. The migration branch is corrected; production has not been deployed.
-
-### P1 — Contact assignment UI missing
-
-**Evidence:** The Worker implements `POST /api/v1/contacts/{id}/assign`, but `CmiApiClient` and the contact workspace do not expose it. Contact creation currently inserts an assignment to the capturing staff member in the same D1 batch.
-
-**Impact:** Missions Leader/Admin cannot manually allocate a newly registered visitor to the appropriate follow-up worker from the UI.
-
-**Correction:** Add a typed client method and a capability-gated assignment control to the contact profile/workspace. Preserve the Worker-derived actor/branch, require a reason, show assignment history and prevent cross-branch targets. Confirm whether auto-assignment to the capturer should remain as a temporary holding assignment or be replaced by an explicit unassigned/triage state; do not silently change this product rule.
-
-### P1 — Follow-up assignment and handoff UI incomplete
-
-**Evidence:** `StaffWorkspace.createTask` sets `assignee_user_id` to the current user and explicitly comments that only self-assignment can be constructed safely. The Worker and API client have reassignment operations, but the UI does not expose a staff/team target picker or reassignment action.
-
-**Impact:** Team leaders/coordinators cannot use the full shared-responsibility and handoff workflow from the workspace. Team-scoped task creation is not completed by the current UI.
-
-**Correction:** Build an authorized staff/team assignment picker using current branch memberships, add a reasoned reassignment flow, show assignment history, and test that assigned-scope roles cannot assign outside their allowed records. Do not accept arbitrary profile/team IDs as authorization evidence.
-
-### P1 — Staff role administration UI incomplete
-
-**Evidence:** Worker role assignment and dual-control Admin/Pastor elevation/revocation endpoints exist, but the audited Staff workspace does not expose the complete role lifecycle.
-
-**Correction:** Complete review of PR #114, which adds role assignment and dual-control elevation/revocation UI. Before merge, fix its staff-directory role-history projection: the draft subquery aggregates assignments without a current-branch predicate and the UI does not distinguish revoked/expired assignments from active ones. Ensure only current-branch assignment history is returned and expose revocation/expiry state so stale assignments cannot be presented as active removable roles. Keep Admin/Pastor elevation under distinct approval; do not make it an ordinary role dropdown action.
-
-### P2 — Contact search enhancement
-
-**Evidence:** The audited baseline searched first and last names only.
-
-**Correction:** PR #113 was merged into the migration branch at `c1acfc3d98f2352ee03259c9df8804f5620d4647`. It adds preferred-name, privacy-gated email and normalized phone search, including local Ghanaian 0-prefixed and E.164 +233 representations. This closes the source-branch search gap but does not by itself prove the production deployment is updated.
-
-## 5. Security and data-integrity observations
-
-Positive source controls observed:
-- Better Auth session cookies are HttpOnly and the browser API client does not send Supabase bearer tokens or service-role credentials.
-- Staff operations derive actor identity from the authenticated session; caller-supplied actor IDs are not trusted.
-- Branch context is checked against active branch assignments and capability grants.
-- Assigned/team scopes are evaluated server-side against current contact/task assignments and team membership.
-- Sensitive prayer/care reads use explicit restricted access and reason-coded audit paths; ordinary contact projections do not expose pastoral narratives.
-- Contact and follow-up creation use idempotency keys/receipts.
-- Calendar, report, event and role lifecycle paths use optimistic predicates or transactional batches where required.
-- Append-only audit tables/triggers exist for sensitive or important state changes.
-
-Remaining verification:
-- Run authenticated positive and negative browser acceptance for all six roles, including branch switching, assignment expiry/revocation and session expiry.
-- Verify every visible button against its API route and every route against its Worker handler and D1 transaction.
-- Confirm notification recipients for task/contact/event/report operations with synthetic multi-role staff fixtures.
-- Test rate limits, malformed payloads, duplicate request replay, optimistic conflicts and branch mismatch at the Worker boundary.
-- Reconcile production staff identities before importing real contacts or pastoral data.
-
-## 6. Deployment and production readiness
-
-The Cloudflare production baseline is live, but preview and production are not at the same schema version.
-
-| Item | Preview | Production |
+| Measure | Preview | Production |
 |---|---:|---:|
-| D1 schema | 46 | 45 |
-| Active capability definitions | 89 | 89 |
-| Role-capability grants | 140 | 128 |
-| Staff profiles / Better Auth users / credential accounts | 3 / 3 / 3 | 3 / 3 / 3 |
-| Effective active role assignments | Test/preview fixtures | 1 |
+| D1 schema version | 46 | 45 |
+| Better Auth users | 3 | 3 |
+| Credential accounts | 3 | 3 |
+| Active staff profiles | Test fixtures | 2 |
+| Effective active role assignments | Test fixtures | 2 |
+| Role catalogue | 6 roles | 6 roles |
 
-Production has one active staff profile with an effective Admin/Pastor assignment. A separate active profile has no effective role assignment and an expired first-login setup window; a Team Leader assignment belongs to an inactive profile. The production business tables checked for contacts, follow-up tasks, events, reports and announcements were empty at the last documented inspection.
+Production has 3 Better Auth user rows and 3 credential account rows. Two staff profiles are active and two role assignments are currently effective. The effective assignments observed are Admin/Pastor and Team Leader. The other four roles are not currently represented by effective production staff assignments.
 
-The isolated EU D1 schema-46 Time Travel rehearsal passed. That is not a production-data restoration rehearsal. Production currently has a Time Travel bookmark, but recovery of actual production records has not been rehearsed.
+The production business tables inspected for contacts, follow-up tasks, events, reports and notifications were empty at the time of inspection. No real visitor or pastoral records were modified.
 
-Production Pages automatic deployments remain disabled and production remains on the existing schema-45 Worker/database baseline. Do not apply schema 46, deploy the migration branch or import real congregant data until all acceptance, privacy, staff-account and recovery gates are approved.
+### Better Auth runtime issue
 
-## 7. Pull-request and verification ledger
+The raw-D1 database adapter defect was corrected in PR #128. The preview Worker health endpoint now reports ready on schema 46. The remaining anonymous session smoke test reaches Better Auth's D1-backed rate-limit insert and fails while Cloudflare reports the account-wide free-tier daily row-write limit has been exceeded.
 
-| PR | Status at audit | Audit relevance |
-|---|---|---|
-| [#102](https://github.com/Elgit4/PCG_Missions/pull/102) | Open, Draft | Main Cloudflare migration integration; source branch under review. |
-| [#112](https://github.com/Elgit4/PCG_Missions/pull/112) | Closed; superseded | Replaced by current-head PR #121. |
-| [#113](https://github.com/Elgit4/PCG_Missions/pull/113) | Merged into migration branch | Contact search by preferred name, email and phone. |
-| [#114](https://github.com/Elgit4/PCG_Missions/pull/114) | Open, Draft | Staff role administration UI and dual-control flows. |
-| [#115](https://github.com/Elgit4/PCG_Missions/pull/115) | Open, Draft | Documents safe contact duplicate-merge boundary; does not implement merge. |
-| [#116](https://github.com/Elgit4/PCG_Missions/pull/116) | Merged | Reports/events/notification producer improvements. |
-| [#117](https://github.com/Elgit4/PCG_Missions/pull/117) | Merged | Event registration actor-schema regression coverage. |
-| [#118](https://github.com/Elgit4/PCG_Missions/pull/118) | Merged | Restores canonical report/event capability alignment. |
-| [#119](https://github.com/Elgit4/PCG_Missions/pull/119) | Merged | Calendar cancellation end-to-end correction; D1 Foundation and web CI passed after fixture correction. |
-| [#120](https://github.com/Elgit4/PCG_Missions/pull/120) | Open | This audit report. |
-| [#121](https://github.com/Elgit4/PCG_Missions/pull/121) | Merged | Private content draft Worker/API wiring and removal of unsupported announcement archival; D1 Foundation and web CI passed. |
+The preview database contains the expected `user`, `session`, `account`, `verification` and `rateLimit` tables. The session smoke test must be repeated after the daily quota reset. If it still fails after quota reset, inspect the underlying D1 adapter error before any production release.
 
-PR #119's first SQLite Foundation run failed because the focused authorization fixture had not replayed migration 0024. The fixture was corrected; the rerun passed and PR #119 was merged. PR #121's Cloudflare D1 Foundation and CMI web CI checks also passed. Its Vercel preview status failed because of a build-rate-limit/plan restriction; this is separate from the passing repository test workflows.
+### D1 restore and authenticated API rehearsal
 
-## 8. Required closure sequence
+The restore workflow previously failed because Cloudflare returned D1 error 7500 (account daily row-write quota exceeded) while applying the isolated rehearsal migration chain. The workflow's quota detection was corrected to recognize both the numeric code and the quota message and wait until 00:05 UTC before retrying. The latest rehearsal is queued; no successful restore rehearsal is claimed yet.
 
-1. Complete review and acceptance of PR #114; fix branch-scoped role-history projection and distinguish active, expired and revoked assignments before merging.
-2. Implement contact assignment UI and confirm the product rule for initial capture assignment.
-3. Implement follow-up staff/team assignment and reassignment UI with scope-aware options and audit history.
-4. Run full authenticated browser acceptance with synthetic accounts for all six roles across contacts, follow-up, teams, events, calendar, announcements, content, reports, prayer reads and notifications.
-5. Rehearse production-data recovery, reconcile staff identities, approve privacy/retention/incident procedures, then separately authorize schema-46 production migration and cutover.
-6. Keep SMS, public registration, Transport, offline workflows, publishing and unapproved exports disabled until their dedicated gates pass.
+### Production deployment
+
+- Production D1 remains schema 45; preview is schema 46.
+- The production Worker has not yet received the reviewed schema-46 migration and latest migration-branch Worker bundle.
+- Migration-branch Pages deployments are previews. The production Pages deployment remains on the existing production release.
+- Production Pages automatic Git deployments are disabled. PR #130 adds a guarded Direct Upload release path so the reviewed Pages frontend and Functions are deployed after the Worker.
+- PR #130 does not trigger a production release merely by merging. Production requires the exact confirmation or the separate release marker after rehearsals pass.
+
+## 5. Security and operational boundaries
+
+Controls retained in the reviewed source:
+- Actor identity is derived from Better Auth sessions, not caller-supplied actor IDs.
+- Branch and team scopes are revalidated in the Worker.
+- Staff assignment targets are checked against active staff/role projections; team targets are checked against current authorized team scope.
+- Pastoral/prayer reads remain restricted and reason-coded.
+- Contact and task creation are idempotent.
+- Sensitive role, assignment, calendar, event and report changes retain audit history and concurrency protections.
+- Browser code does not receive Supabase service-role credentials.
+- Supabase remains for event-flyer object storage only.
+- SMS, public registration, offline sync, publishing and broad exports remain disabled.
+
+## 6. Required release sequence
+
+1. Let the isolated D1 restore/authenticated API rehearsal retry after the UTC quota reset; require it to pass.
+2. Re-run the preview Better Auth session smoke test after quota reset; require HTTP 200 from `/api/auth/get-session` and preserve the anonymous `/api/v1/me` 401 boundary.
+3. Merge PR #130 only after Cloudflare D1 Foundation and CMI web CI pass.
+4. Trigger the guarded production release only after the rehearsals pass. The workflow must:
+   - verify the exact production D1 target and existing Worker secrets;
+   - build and test the Pages frontend before production mutation;
+   - verify Pages upload permission using a preview-only deployment;
+   - capture a production D1 Time Travel bookmark;
+   - apply only pending forward-only migrations and require schema/ledger 46;
+   - deploy the Worker, then Pages assets and Functions;
+   - require schema 46 from both direct Worker and same-origin Pages health checks, plus session and CORS smoke tests.
+5. After cutover, complete authenticated browser acceptance with actual authorized staff accounts for all six roles, including branch switching, role expiry/revocation, contact assignment, follow-up handoff, events, reports, notifications and restricted pastoral reads.
+6. Reconcile staff profiles and effective role assignments before importing real visitor or pastoral data. Do not create placeholder users or grant roles merely to make a test matrix look complete.
+
+## 7. Final verdict
+
+**Feature wiring:** The previously identified contact assignment, follow-up assignment/handoff and staff role administration gaps are corrected in the migration branch. Calendar and content route gaps are also corrected.
+
+**Production readiness:** Not yet signed off. The remaining gates are infrastructure/runtime verification (D1 quota reset, authenticated restore rehearsal and session smoke test), merging the guarded Worker+Pages release workflow, schema-46 production cutover, and final authenticated acceptance with the real staff roster.
+
+No production migration or deployment should be inferred from the successful preview builds or CI checks.
