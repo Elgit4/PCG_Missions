@@ -130,10 +130,10 @@ jobs:
             summary.active_staff_without_credential === 0 &&
             summary.invalid_first_login_setups === 0;
           if (!singleOwnerReady) {
-            console.error("Production cutover blocked: provision all six staff accounts, assign all six roles, ensure every active profile has a Cloudflare password credential, and resolve inactive assignments or expired first-login setup windows before production migration.");
+            console.error("Production cutover blocked: retain exactly one non-anonymized login identity with one active Admin/Pastor profile and credential; resolve stale assignments or expired first-login setup windows before production migration.");
             process.exit(1);
           }
-          console.log("Production single-owner gate passed: exactly one live identity, one active Admin/Pastor profile and credential, no other active staff profiles, no stale assignments, and no expired first-login setup.");
+          console.log("Production single-owner gate passed: exactly one non-anonymized login identity, one active Admin/Pastor profile and credential, no other active staff profiles, no stale assignments, and no expired first-login setup.");
           NODE
 
 
