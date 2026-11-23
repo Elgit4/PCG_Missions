@@ -1033,16 +1033,20 @@ async function changeStaffAccountStatus(
     SELECT sp.id, sp.account_status
     FROM staff_profile sp
     WHERE sp.id = ?
-      AND EXISTS (
-        SELECT 1 FROM staff_role_assignment target_assignment
-        WHERE target_assignment.staff_profile_id = sp.id
-          AND target_assignment.branch_id = ?
-          AND target_assignment.revoked_at IS NULL
-          AND target_assignment.starts_at <= ?
-          AND (target_assignment.ends_at IS NULL OR target_assignment.ends_at > ?)
+      AND (
+        EXISTS (
+          SELECT 1 FROM staff_role_assignment target_assignment
+          WHERE target_assignment.staff_profile_id = sp.id
+            AND target_assignment.branch_id = ?
+        )
+        OR EXISTS (
+          SELECT 1 FROM staff_access_audit target_audit
+          WHERE target_audit.target_profile_id = sp.id
+            AND target_audit.branch_id = ?
+        )
       )
     LIMIT 1
-  `).bind(targetProfileId, access.activeBranch.branchId, now, now).first<{
+  `).bind(targetProfileId, access.activeBranch.branchId, access.activeBranch.branchId).first<{
     id: string; account_status: string;
   }>();
   if (!target) return json(404, { ok: false, error: { code: "STAFF_PROFILE_NOT_FOUND_IN_BRANCH" } }, requestId, origin);
