@@ -55,7 +55,7 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("summary.invalid_first_login_setups === 0", self.production)
         self.assertIn("if (!rosterReady)", self.production)
         self.assertIn("Production cutover blocked:", self.production)
-        self.assertIn("Additional staff accounts may be added through the normal staff onboarding workflow", self.production)
+        self.assertIn("Additional staff accounts may be added through staff account creation and first-login onboarding", self.production)
         self.assertNotIn("Production will enter Admin/Pastor bootstrap mode.", self.production)
 
     def test_routine_preview_does_not_import_from_legacy_postgres_or_probe_rate_limit_writes(self):
