@@ -2691,6 +2691,44 @@ async function updateFollowupTask(
 }
 
 
+async function listFollowupAssignmentTeams(
+  request: Request,
+  env: Env,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const access = await authorizeRequestCapability(request, env, "followup.assign");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const now = new Date().toISOString();
+  let rows;
+  if (access.decision.scopeMode === "branch") {
+    rows = await env.DB.prepare(`
+      SELECT id, name
+      FROM team
+      WHERE branch_id = ? AND is_active = 1
+      ORDER BY name COLLATE NOCASE
+    `).bind(access.activeBranch.branchId).all<{ id: string; name: string }>();
+  } else if (access.decision.scopeMode === "team") {
+    rows = await env.DB.prepare(`
+      SELECT t.id, t.name
+      FROM team t
+      JOIN staff_team_membership tm
+        ON tm.team_id = t.id AND tm.branch_id = t.branch_id
+      WHERE t.branch_id = ? AND t.is_active = 1
+        AND tm.staff_profile_id = ? AND tm.membership_role = 'leader'
+        AND tm.revoked_at IS NULL
+        AND tm.starts_at <= ?
+        AND (tm.ends_at IS NULL OR tm.ends_at > ?)
+      ORDER BY t.name COLLATE NOCASE
+    `).bind(
+      access.activeBranch.branchId, access.staff.profileId, now, now,
+    ).all<{ id: string; name: string }>();
+  } else {
+    return json(200, { ok: true, data: [] }, requestId, origin);
+  }
+  return json(200, { ok: true, data: rows.results ?? [] }, requestId, origin);
+}
+
 async function reassignFollowupTask(
   request: Request,
   env: Env,
@@ -6101,6 +6139,9 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
     }
 
 
+    if (url.pathname === "/api/v1/followup/assignment-teams" && request.method === "GET") {
+      return listFollowupAssignmentTeams(request, env, requestId, origin);
+    }
     if (url.pathname === "/api/v1/followup/tasks" && request.method === "GET") {
       return listFollowupTasks(request, env, requestId, origin);
     }
