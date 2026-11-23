@@ -47,8 +47,10 @@ export const verification = sqliteTable("verification", {
 });
 
 export const rateLimit = sqliteTable("rateLimit", {
-  id: text("id").primaryKey(),
-  key: text("key").notNull(),
+  // Better Auth's rate-limit create operation does not supply an ID. Generate it
+  // in the Drizzle layer so D1 receives all four non-null values on INSERT.
+  id: text("id").primaryKey().notNull().$defaultFn(() => crypto.randomUUID()),
+  key: text("key").notNull().unique(),
   count: integer("count").notNull(),
   lastRequest: integer("lastRequest").notNull(),
 });
