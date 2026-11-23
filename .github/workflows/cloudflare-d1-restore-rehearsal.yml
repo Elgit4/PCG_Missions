@@ -119,8 +119,10 @@ jobs:
           set -euo pipefail
           cd cloudflare
           nohup npx wrangler dev --remote --config wrangler.restore-rehearsal.toml \
-            --ip 0.0.0.0 --port 8787 > "$RUNNER_TEMP/pcg-acceptance-worker.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/pcg-acceptance-worker.pid"
+            --ip 0.0.0.0 --port 8787 </dev/null > "$RUNNER_TEMP/pcg-acceptance-worker.log" 2>&1 &
+          WORKER_PID=$!
+          disown "$WORKER_PID" 2>/dev/null || true
+          echo "$WORKER_PID" > "$RUNNER_TEMP/pcg-acceptance-worker.pid"
           for attempt in $(seq 1 40); do
             if curl --silent --fail --connect-timeout 2 --max-time 5 http://localhost:8787/health >/dev/null; then
               echo "Temporary authenticated Worker is healthy."
@@ -144,7 +146,9 @@ jobs:
         shell: bash
         run: |
           if [ -f "$RUNNER_TEMP/pcg-acceptance-worker.pid" ]; then
-            kill "$(cat "$RUNNER_TEMP/pcg-acceptance-worker.pid")" 2>/dev/null || true
+            WORKER_PID="$(cat "$RUNNER_TEMP/pcg-acceptance-worker.pid")"
+            pkill -P "$WORKER_PID" 2>/dev/null || true
+            kill "$WORKER_PID" 2>/dev/null || true
           fi
 
       - name: Restore to pre-acceptance bookmark and verify
