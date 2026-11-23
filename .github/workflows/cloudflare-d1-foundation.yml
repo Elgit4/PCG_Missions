@@ -6,6 +6,7 @@ on:
       - "cloudflare/**"
       - ".github/workflows/cloudflare-d1-foundation.yml"
       - ".github/workflows/cloudflare-preview-deploy.yml"
+      - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
       - ".github/workflows/cloudflare-production-worker-deploy.yml"
   push:
     branches: [main, 'migration/**', 'feat/**']
@@ -13,6 +14,7 @@ on:
       - "cloudflare/**"
       - ".github/workflows/cloudflare-d1-foundation.yml"
       - ".github/workflows/cloudflare-preview-deploy.yml"
+      - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
 
 permissions:
   contents: read
