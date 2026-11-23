@@ -109,6 +109,25 @@ jobs:
           npm run typecheck
           npm test
 
+      - name: Build and verify Pages frontend before production mutation
+        working-directory: web
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Verify Pages upload permission with a non-production preflight deployment
+        working-directory: web
+        run: |
+          ../cloudflare/node_modules/.bin/wrangler pages project list
+          ../cloudflare/node_modules/.bin/wrangler pages deploy dist \
+            --project-name pcg-missions \
+            --branch "production-preflight-${GITHUB_RUN_ID}" \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-message "PCG Missions non-production Pages upload preflight"
+
       - name: Verify exact production D1 target and environment before mutation
         shell: bash
         run: |
@@ -127,7 +146,7 @@ jobs:
           walk(root);
           const row = candidates[0];
           if (!row || row.environment !== "production" ||
-              Number(row.schema_version) < 45 ||
+              Number(row.schema_version) !== 46 ||
               Number(row.schema_version) !== Number(row.latest_migration_id) ||
               Number(row.migration_count) !== Number(row.schema_version) ||
               Number(row.first_migration_id) !== 1 ||
@@ -285,6 +304,15 @@ jobs:
 
       - name: Deploy reviewed Worker code to production
         run: npx wrangler deploy --env production
+
+      - name: Deploy reviewed frontend assets to Pages production
+        working-directory: web
+        run: |
+          ../cloudflare/node_modules/.bin/wrangler pages deploy dist \
+            --project-name pcg-missions \
+            --branch main \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-message "PCG Missions production release $GITHUB_SHA"
 
       - name: Verify direct Worker and same-origin Pages production endpoints
         shell: bash
