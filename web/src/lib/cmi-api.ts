@@ -529,8 +529,9 @@ interface TaskCreateBase {
   task_note?: string | null;
 }
 export type TaskAssignmentTarget =
-  | { assignee_user_id: string; team_id?: never }
-  | { team_id: string; assignee_user_id?: never };
+  | { assignee_user_id: string; assignee_profile_id?: never; team_id?: never }
+  | { assignee_profile_id: string; assignee_user_id?: never; team_id?: never }
+  | { team_id: string; assignee_user_id?: never; assignee_profile_id?: never };
 export type TaskCreateInput = TaskCreateBase & TaskAssignmentTarget;
 export type TaskReassignmentInput =
   | { assignee_profile_id: string; team_id?: never; reason: string }
@@ -559,11 +560,11 @@ function parseJson(text: string): unknown {
   try { return JSON.parse(text) as unknown; } catch { return null; }
 }
 function assertExactlyOneTaskTarget(
-  input: { assignee_user_id?: unknown; team_id?: unknown },
+  input: { assignee_user_id?: unknown; assignee_profile_id?: unknown; team_id?: unknown },
 ): asserts input is TaskAssignmentTarget {
-  const hasAssignee = typeof input.assignee_user_id === "string" && input.assignee_user_id.trim().length > 0;
-  const hasTeam = typeof input.team_id === "string" && input.team_id.trim().length > 0;
-  if (hasAssignee === hasTeam) {
+  const targets = [input.assignee_user_id, input.assignee_profile_id, input.team_id]
+    .filter((value) => typeof value === "string" && value.trim().length > 0);
+  if (targets.length !== 1) {
     throw new TypeError("Exactly one non-empty task assignment target is required.");
   }
 }
@@ -943,15 +944,21 @@ export class CmiApiClient {
 
   assignContact(branchId: string, contactId: string, input: ContactAssignmentInput) {
     const reason = input.reason.trim();
-    const staffTarget = typeof input.assignee_profile_id === "string" ? input.assignee_profile_id.trim() : "";
-    const teamTarget = typeof input.team_id === "string" ? input.team_id.trim() : "";
-    if (!!staffTarget === !!teamTarget || reason.length < 10 || reason.length > 500) {
+    if (reason.length < 10 || reason.length > 500) {
       throw new TypeError("Choose exactly one active staff member or team and provide a reason of 10–500 characters.");
+    }
+    let body: { assignee_profile_id: string; reason: string } | { team_id: string; reason: string };
+    if (typeof input.assignee_profile_id === "string" && input.assignee_profile_id.trim()) {
+      body = { assignee_profile_id: input.assignee_profile_id.trim(), reason };
+    } else if (typeof input.team_id === "string" && input.team_id.trim()) {
+      body = { team_id: input.team_id.trim(), reason };
+    } else {
+      throw new TypeError("Choose exactly one active staff member or team.");
     }
     return this.request<ContactAssignmentResult>(
       "staff-operations",
       `/contacts/${encodeURIComponent(contactId)}/assign`,
-      { method: "POST", query: { branch_id: branchId }, body: staffTarget ? { assignee_profile_id: staffTarget, reason } : { team_id: teamTarget, reason } },
+      { method: "POST", query: { branch_id: branchId }, body },
     );
   }
 
