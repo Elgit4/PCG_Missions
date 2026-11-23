@@ -1885,12 +1885,16 @@ async function assignContact(
   } catch {
     return json(409, { ok: false, error: { code: "CONTACT_ASSIGNMENT_CONFLICT" } }, requestId, origin);
   }
-  return json(201, {
-    ok: true,
+  const assignment = {
     assignment_id: assignmentId,
     assignee_profile_id: assigneeProfileId || null,
     team_id: selectedTeamId,
     starts_at: transitionAt,
+  };
+  return json(201, {
+    ok: true,
+    data: assignment,
+    ...assignment,
   }, requestId, origin);
 }
 
