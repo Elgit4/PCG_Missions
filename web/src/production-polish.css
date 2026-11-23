@@ -617,7 +617,7 @@ html[data-theme="dark"] .cmi-success-note {
 
 html[data-theme="dark"] .cmi-alert {
   border-color: #75404d;
-  background: #3a222a;
+  background: #26313e;
   color: #ffc2cc;
 }
 
@@ -1116,7 +1116,7 @@ html[data-theme="dark"] .cmi-nav button:hover {
 }
 
 html[data-theme="dark"] .cmi-nav button.active {
-  background: #3a202b !important;
+  background: #26313e !important;
   border-color: #75404d;
   color: #ffe5e9 !important;
   box-shadow: inset 3px 0 0 #e15a70;
@@ -1208,7 +1208,7 @@ html[data-theme="dark"] .cmi-mobile-nav-items button svg {
 }
 
 html[data-theme="dark"] .cmi-mobile-nav-items button.active {
-  background: #3a202b !important;
+  background: #26313e !important;
   color: #ffe5e9 !important;
 }
 
@@ -1243,13 +1243,13 @@ html[data-theme="dark"] .cmi-workspace .cmi-sidebar .cmi-nav button:not(.active)
 html[data-theme="dark"] .cmi-workspace .cmi-sidebar .cmi-nav button.active,
 html[data-theme="dark"] .cmi-workspace .cmi-sidebar .cmi-nav button.active .cmi-nav-desktop-label {
   color: #ffe5e9 !important;
-  background-color: #3a202b !important;
+  background-color: #26313e !important;
 }
 
 html[data-theme="dark"] .cmi-workspace .cmi-mobile-nav .cmi-mobile-nav-items > button.active,
 html[data-theme="dark"] .cmi-workspace .cmi-mobile-nav .cmi-mobile-nav-items > button[aria-controls="cmi-mobile-more-list"].active {
   color: #ffe5e9 !important;
-  background-color: #3a202b !important;
+  background-color: #26313e !important;
   background-image: none !important;
   opacity: 1 !important;
 }
@@ -1266,7 +1266,7 @@ html[data-theme="dark"] .cmi-workspace .cmi-structure-tabs > button {
 
 html[data-theme="dark"] .cmi-workspace .cmi-structure-tabs > button.active {
   border-color: #75404d !important;
-  background-color: #3a202b !important;
+  background-color: #26313e !important;
   color: #ffe5e9 !important;
 }
 
@@ -1289,7 +1289,7 @@ html[data-theme="dark"] .cmi-workspace .cmi-mobile-more button {
 
 html[data-theme="dark"] .cmi-workspace .cmi-mobile-more button.active {
   border-color: #75404d !important;
-  background-color: #3a202b !important;
+  background-color: #26313e !important;
   color: #ffe5e9 !important;
 }
 
