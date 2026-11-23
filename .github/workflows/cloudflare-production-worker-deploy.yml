@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   production-roster-preflight:
-    name: Require exactly one retained Admin/Pastor production account before restore rehearsal
+    name: Require active Admin/Pastor owner and clean onboarded staff roster before restore rehearsal
     if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -120,20 +120,17 @@ jobs:
             console.error("Production cutover blocked: six role definitions and one credential-ready active Admin/Pastor account are required.");
             process.exit(1);
           }
-          const singleOwnerReady =
-            summary.auth_users === 1 &&
-            summary.password_users === 1 &&
-            summary.active_staff_profiles === 1 &&
-            summary.assigned_role_codes === 1 &&
+          const rosterReady =
+            summary.active_staff_profiles >= 1 &&
             summary.active_profiles_without_role === 0 &&
             summary.assignments_on_inactive_profiles === 0 &&
             summary.active_staff_without_credential === 0 &&
             summary.invalid_first_login_setups === 0;
-          if (!singleOwnerReady) {
-            console.error("Production cutover blocked: retain exactly one non-anonymized login identity with one active Admin/Pastor profile and credential; resolve stale assignments or expired first-login setup windows before production migration.");
+          if (!rosterReady) {
+            console.error("Production cutover blocked: require one credential-ready active Admin/Pastor owner; every other active staff account must have a valid credential and effective role. Resolve stale assignments and expired first-login setups before production migration. Additional staff accounts may be added through the normal staff onboarding workflow after cutover.");
             process.exit(1);
           }
-          console.log("Production single-owner gate passed: exactly one non-anonymized login identity, one active Admin/Pastor profile and credential, no other active staff profiles, no stale assignments, and no expired first-login setup.");
+          console.log("Production staff readiness gate passed: at least one credential-ready active Admin/Pastor owner; all active staff have credentials and effective roles; no stale assignments or expired first-login setups.");
           NODE
 
 
