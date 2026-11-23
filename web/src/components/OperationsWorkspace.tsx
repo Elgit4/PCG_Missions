@@ -215,7 +215,7 @@ export function OperationsWorkspace({
     setNotice("");
     try {
       if (section === "Events") await api.cancelEventDraft(branchId, id);
-      else if (section === "Calendar") await api.cancelCalendarEntry(branchId, id, "Removed by an authorized branch administrator.");
+      else if (section === "Calendar") await api.cancelCalendarEntry(branchId, id, "Removed by an authorized administrator.");
       setNotice(section === "Events" ? "Event cancelled and removed from active drafts." : "Calendar entry cancelled and removed from the active calendar.");
       await loadRecords();
     } catch (cause) {
@@ -280,7 +280,7 @@ export function OperationsWorkspace({
         const start = branchLocalInputToIso(String(form.get("starts_at") ?? ""), timeZone);
         const endValue = String(form.get("ends_at") ?? "");
         const end = endValue ? branchLocalInputToIso(endValue, timeZone) : null;
-        if (!start || (endValue && !end)) throw new Error("Enter a valid calendar date and time in the branch time zone.");
+        if (!start || (endValue && !end)) throw new Error("Enter a valid calendar date and time in the selected local time zone.");
         if (end && Date.parse(end) <= Date.parse(start)) throw new Error("The end must be later than the start.");
         const input = {
           entry_type: String(form.get("entry_type") ?? "other") as "service" | "event" | "other",
