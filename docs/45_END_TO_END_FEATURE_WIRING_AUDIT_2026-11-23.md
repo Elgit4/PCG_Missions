@@ -72,29 +72,29 @@ No production records, staff credentials, secrets, or real visitor/pastoral data
 
 ## 4. Confirmed defects and corrective work
 
-### P1 — Visitor content draft routes missing
+### Closed in migration branch — Visitor content draft routes
 
-**Evidence:** `web/src/components/OperationsWorkspace.tsx` calls `listSermonDrafts` and `listWelcomeMessageDrafts`. Those methods call logical `content-operations`, but the audited `workerApiPath` and Worker dispatcher do not map/serve those requests.
+**Evidence on the source baseline:** `OperationsWorkspace` called the sermon and welcome-message draft methods, but the API adapter and Worker dispatcher did not map/serve those requests.
 
-**Impact:** Sermon and welcome-message draft listing/creation/editing fail before reaching a supported Worker route.
+**Impact:** Draft listing/creation/editing failed before reaching a supported Worker route.
 
-**Correction:** PR #112 adds `/api/v1/content/sermons` and `/api/v1/content/welcome-messages`, Better Auth cookie routing, branch-scoped `content.manage.draft` checks, creator-only draft reads/edits and validation tests. PR #112 is not merged and must be rebased or ported to the current migration head before this defect can be considered closed.
+**Correction:** Merged PR #121 adds `/api/v1/content/sermons` and `/api/v1/content/welcome-messages`, Better Auth cookie routing, branch-scoped `content.manage.draft` checks, creator-only draft reads/edits, bounded validation and regression tests. Cloudflare D1 Foundation and CMI web CI passed. The current migration branch is corrected; production has not been deployed.
 
-### P1 — Unsupported announcement archival
+### Closed in migration branch — Unsupported announcement archival
 
-**Evidence:** The audited Operations workspace still calls `archiveAnnouncementDraft`, but the Worker only implements draft list/detail/create/edit. The approved announcement contract excludes archival/deletion.
+**Evidence on the source baseline:** The Operations workspace called `archiveAnnouncementDraft`, but the Worker only implemented draft list/detail/create/edit. The approved announcement contract excludes archival/deletion.
 
-**Impact:** The archive action cannot complete and advertises a lifecycle operation the backend intentionally does not support.
+**Impact:** The archive action could not complete and advertised a lifecycle operation the backend intentionally does not support.
 
-**Correction:** PR #121 removed the archive/delete control and stale API method. Do not add archival without a separately approved lifecycle contract.
+**Correction:** Merged PR #121 removed the archive/delete control and stale API method. Do not add archival without a separately approved lifecycle contract.
 
-### P1 — Calendar cancellation missing
+### Closed in migration branch — Calendar cancellation
 
-**Evidence:** The UI calls `api.cancelCalendarEntry`; the API adapter does not map the `/entries/{id}/cancel` suffix; the Worker has no POST cancellation route even though D1 schema migration 0024 adds cancellation state and append-only change-audit triggers.
+**Evidence on the source baseline:** The UI called `api.cancelCalendarEntry`, but the API adapter did not map the `/entries/{id}/cancel` suffix and the Worker had no POST cancellation route, despite D1 migration 0024 defining cancellation state and append-only audit triggers.
 
-**Impact:** Authorized staff cannot cancel calendar entries from the workspace.
+**Impact:** Authorized staff could not cancel calendar entries from the workspace.
 
-**Correction:** PR #121 ported the private draft handlers onto the current migration head, added client routing and tests, and removed the unsupported archive control. Cloudflare D1 Foundation run [45252636408](https://github.com/Elgit4/PCG_Missions/actions/runs/45252636408) and CMI web CI run [45252636316](https://github.com/Elgit4/PCG_Missions/actions/runs/45252636316) passed. The Vercel preview check failed because of the account's build-rate-limit/plan restriction; this did not fail the repository's Worker, D1 or frontend test workflows. PR #121 was merged into the migration branch. Production was not deployed.
+**Correction:** Merged PR #119 added a branch-scoped, capability-checked POST cancellation endpoint, required reason, optimistic state transition, cancelled-entry filtering and Worker/API/SQLite regression tests. The initial SQLite fixture omission was corrected; D1 Foundation run [45251797673](https://github.com/Elgit4/PCG_Missions/actions/runs/45251797673) and CMI web CI run [45251797679](https://github.com/Elgit4/PCG_Missions/actions/runs/45251797679) passed. The migration branch is corrected; production has not been deployed.
 
 ### P1 — Contact assignment UI missing
 
@@ -120,7 +120,7 @@ No production records, staff credentials, secrets, or real visitor/pastoral data
 
 ### P2 — Contact search enhancement
 
-**Evidence:** The audited branch originally searched first and last names only.
+**Evidence:** The audited baseline searched first and last names only.
 
 **Correction:** PR #113 was merged into the migration branch at `c1acfc3d98f2352ee03259c9df8804f5620d4647`. It adds preferred-name, privacy-gated email and normalized phone search, including local Ghanaian 0-prefixed and E.164 +233 representations. This closes the source-branch search gap but does not by itself prove the production deployment is updated.
 
@@ -181,13 +181,9 @@ PR #119's first SQLite Foundation run failed because the focused authorization f
 
 ## 8. Required closure sequence
 
-1. Get PR #119's current Cloudflare D1 Foundation and CMI web CI runs green; resolve any remaining test failures; merge to the migration branch only.
-2. Rebase/port PR #112 onto the latest migration head; verify Worker route tests, client routing, creator-only draft access and announcement UI behavior; merge only after checks pass.
-3. Complete review and acceptance of PR #114; verify standard role assignment, role revocation, dual-control Admin/Pastor elevation/revocation and branch history.
-4. Implement contact assignment UI and confirm the product rule for initial capture assignment.
-5. Implement follow-up staff/team assignment and reassignment UI with scope-aware options and audit history.
-6. Run full browser acceptance with synthetic accounts for all six roles across contacts, follow-up, teams, events, calendar, announcements, content, reports, prayer reads and notifications.
-7. Rehearse production-data recovery, reconcile staff identities, approve privacy/retention/incident procedures, then separately authorize schema-46 production migration and cutover.
-8. Keep SMS, public registration, Transport, offline workflows, publishing and unapproved exports disabled until their dedicated gates pass.
-
-**Sign-off rule:** close a feature only when the visible UI action, client route, Worker handler, capability/branch checks, D1 effect, audit record and user-visible success/error state have all been verified together.
+1. Complete review and acceptance of PR #114; fix branch-scoped role-history projection and distinguish active, expired and revoked assignments before merging.
+2. Implement contact assignment UI and confirm the product rule for initial capture assignment.
+3. Implement follow-up staff/team assignment and reassignment UI with scope-aware options and audit history.
+4. Run full authenticated browser acceptance with synthetic accounts for all six roles across contacts, follow-up, teams, events, calendar, announcements, content, reports, prayer reads and notifications.
+5. Rehearse production-data recovery, reconcile staff identities, approve privacy/retention/incident procedures, then separately authorize schema-46 production migration and cutover.
+6. Keep SMS, public registration, Transport, offline workflows, publishing and unapproved exports disabled until their dedicated gates pass.
