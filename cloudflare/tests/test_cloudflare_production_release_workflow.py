@@ -22,7 +22,7 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("production-roster-preflight:", self.production)
         self.assertIn("restore-rehearsal:\n    needs: production-roster-preflight", self.production)
         self.assertIn("production-worker:\n    needs: restore-rehearsal", self.production)
-        self.assertIn("Require exactly one retained Admin/Pastor production account before restore rehearsal", self.production)
+        self.assertIn("Require active Admin/Pastor owner and clean onboarded staff roster before restore rehearsal", self.production)
 
     def test_production_accepts_null_for_anonymous_better_auth_session(self):
         self.assertIn(
@@ -55,7 +55,7 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("summary.invalid_first_login_setups === 0", self.production)
         self.assertIn("if (!rosterReady)", self.production)
         self.assertIn("Production cutover blocked:", self.production)
-        self.assertIn("Additional staff accounts may be added through the normal staff onboarding workflow", self.production)
+        self.assertIn("Additional staff accounts may be added through staff account creation and first-login onboarding", self.production)
         self.assertNotIn("Production will enter Admin/Pastor bootstrap mode.", self.production)
 
     def test_routine_preview_does_not_import_from_legacy_postgres_or_probe_rate_limit_writes(self):
