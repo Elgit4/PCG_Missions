@@ -382,6 +382,26 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       setResetRequests([]);
       setResetReasons({});
     }
+    if (canApproveStaffRoles) {
+      requests.push(api.listAdminElevationRequests(branchId)
+        .then((result) => { if (current) setElevationRequests(result.data); })
+        .catch((error: unknown) => {
+          if (!current) return;
+          if (error instanceof CmiApiError && error.status === 401) expireSession();
+          else setLoadError(messageFor(error));
+        }));
+      requests.push(api.listAdminRevocationRequests(branchId)
+        .then((result) => { if (current) setRevocationRequests(result.data); })
+        .catch((error: unknown) => {
+          if (!current) return;
+          if (error instanceof CmiApiError && error.status === 401) expireSession();
+          else setLoadError(messageFor(error));
+        }));
+    } else {
+      setElevationRequests([]);
+      setRevocationRequests([]);
+    }
+
     if (canReadStaffDirectory) {
       requests.push(api.listStaffDirectory(branchId, { limit: 50, offset: 0 })
         .then((result) => { if (current) setStaffMembers(result.data); })
@@ -398,7 +418,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       current = false;
       paginationVersion.current += 1;
     };
-  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, debouncedQuery, expireSession]);
+  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, canApproveStaffRoles, debouncedQuery, expireSession]);
 
   const visibleContacts = contacts;
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
