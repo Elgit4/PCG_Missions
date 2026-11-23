@@ -6347,11 +6347,23 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
         }
 
         let authConfiguration = "ready";
-        try {
-          createAuth(env);
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "";
-          authConfiguration = /^[A-Z0-9_]+$/.test(message) ? message : "AUTH_CONFIGURATION_INVALID";
+        if (!env.BETTER_AUTH_SECRET || env.BETTER_AUTH_SECRET.length < 32) {
+          authConfiguration = "AUTH_SECRET_MISSING_OR_TOO_SHORT";
+        } else if (!env.BETTER_AUTH_URL) {
+          authConfiguration = "AUTH_URL_MISSING";
+        } else {
+          try {
+            new URL(env.BETTER_AUTH_URL);
+            const configuredOrigins = [env.BETTER_AUTH_TRUSTED_ORIGINS ?? "", env.APP_ALLOWED_ORIGINS ?? ""]
+              .flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean);
+            for (const value of configuredOrigins) {
+              const parsed = new URL(value);
+              if (parsed.origin !== value.replace(/\/$/, "")) throw new Error("AUTH_TRUSTED_ORIGIN_MUST_BE_AN_ORIGIN");
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "";
+            authConfiguration = /^[A-Z0-9_]+$/.test(message) ? message : "AUTH_URL_ORIGIN_INVALID";
+          }
         }
         return json(200, {
           ok: true,
