@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveStaffContext } from "../src/staff-context.ts";
+import { authorizeCapability } from "../src/authorization.ts";
 
 const USER_ID = "3c4f4f8d-7d3b-4a9c-8f1a-5a5f4a4b7c21";
 const PROFILE_ID = "4c4f4f8d-7d3b-4a9c-8f1a-5a5f4a4b7c21";
@@ -43,6 +44,40 @@ function fakeEnvironment(overrides = {}) {
     },
   } };
 }
+
+test("assigned-scope contact capture is authorized before a new contact ID exists", async () => {
+  let capturedSql = "";
+  let capturedValues = [];
+  const db = {
+    prepare(sql) {
+      return {
+        bind(...values) { capturedSql = sql; capturedValues = values; return this; },
+        async first() {
+          return capturedValues[2] === "contacts.create" && capturedSql.includes("c.code = 'contacts.create'")
+            ? { scope_mode: "assigned", sensitivity: "normal" }
+            : null;
+        },
+      };
+    },
+  };
+  const allowed = await authorizeCapability(db, {
+    actorProfileId: PROFILE_ID,
+    branchId: BRANCH_ID,
+    capability: "contacts.create",
+    now: "2026-11-23T16:00:00.000Z",
+  });
+  assert.equal(allowed.allowed, true);
+  assert.equal(allowed.scopeMode, "assigned");
+  assert.deepEqual(capturedValues.slice(-2), ["", ""]);
+
+  const denied = await authorizeCapability(db, {
+    actorProfileId: PROFILE_ID,
+    branchId: BRANCH_ID,
+    capability: "contacts.update",
+    now: "2026-11-23T16:00:00.000Z",
+  });
+  assert.equal(denied.allowed, false);
+});
 
 test("resolves a Better Auth cookie session into active D1 staff, role and capability context", async () => {
   const { env, calls } = fakeEnvironment();
