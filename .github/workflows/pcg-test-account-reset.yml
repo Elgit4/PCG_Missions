@@ -123,7 +123,7 @@ jobs:
             local label="$2"
             local scope="$3"
             local accepted=""
-            for attempt in $(seq 1 120); do
+            for _ in $(seq 1 120); do
               runs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100)"
               while IFS= read -r sha; do
                 [[ -z "$sha" ]] && continue
