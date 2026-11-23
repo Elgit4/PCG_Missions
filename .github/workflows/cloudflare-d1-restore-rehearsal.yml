@@ -113,16 +113,27 @@ jobs:
           echo "value=$BOOKMARK" >> "$GITHUB_OUTPUT"
           echo "Captured schema 46 pre-acceptance bookmark."
 
-      - name: Start temporary authenticated Worker against rehearsal D1
+      - name: Run authenticated API acceptance against temporary Worker
+        working-directory: cloudflare
+        env:
+          DB_ID: ${{ steps.database.outputs.id }}
+          WORKER_URL: "http://localhost:8787"
         shell: bash
         run: |
           set -euo pipefail
-          cd cloudflare
-          setsid -f npx wrangler dev --remote --config wrangler.restore-rehearsal.toml \
-            --ip 0.0.0.0 --port 8787 </dev/null > "$RUNNER_TEMP/pcg-acceptance-worker.log" 2>&1
-          for attempt in $(seq 1 20); do
+          npx wrangler dev --remote --config wrangler.restore-rehearsal.toml \
+            --ip 0.0.0.0 --port 8787 </dev/null > "$RUNNER_TEMP/pcg-acceptance-worker.log" 2>&1 &
+          WORKER_PID=$!
+          cleanup() {
+            pkill -P "$WORKER_PID" 2>/dev/null || true
+            kill "$WORKER_PID" 2>/dev/null || true
+            wait "$WORKER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 30); do
             if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://localhost:8787/health >/dev/null; then
               echo "Temporary authenticated Worker is healthy."
+              node scripts/run_authenticated_acceptance.mjs
               exit 0
             fi
             sleep 1
@@ -130,19 +141,6 @@ jobs:
           cat "$RUNNER_TEMP/pcg-acceptance-worker.log"
           echo "Temporary Worker did not become healthy." >&2
           exit 1
-
-      - name: Run authenticated report, event, notification and role-boundary acceptance
-        working-directory: cloudflare
-        env:
-          DB_ID: ${{ steps.database.outputs.id }}
-          WORKER_URL: "http://localhost:8787"
-        run: node scripts/run_authenticated_acceptance.mjs
-
-      - name: Stop temporary authenticated Worker
-        if: always()
-        shell: bash
-        run: |
-          pgrep -f '[w]rangler dev --remote --config wrangler.restore-rehearsal.toml' | xargs -r kill 2>/dev/null || true
 
       - name: Restore to pre-acceptance bookmark and verify
         env:
