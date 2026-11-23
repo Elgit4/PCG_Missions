@@ -1292,6 +1292,34 @@ test("Prayer Intercessor cannot write visitor contact interactions", async (t) =
   );
 });
 
+test("follow-up assignment team candidates require followup.assign and stay within the caller scope", async () => {
+  const denied = authorizedDirectoryEnv("coordinator");
+  const deniedResponse = await worker.fetch(new Request("https://worker.example/api/v1/followup/assignment-teams", {
+    headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID },
+  }), denied.env);
+  assert.equal(deniedResponse.status, 403);
+  assert.equal((await deniedResponse.json()).error.code, "CAPABILITY_DENIED");
+
+  const branchScoped = authorizedDirectoryEnv("coordinator", [["followup.assign", "branch"]]);
+  const branchResponse = await worker.fetch(new Request("https://worker.example/api/v1/followup/assignment-teams", {
+    headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID },
+  }), branchScoped.env);
+  assert.equal(branchResponse.status, 200);
+  assert.deepEqual((await branchResponse.json()).data, [{ id: OWN_TEAM_ID, name: "Welcome Team" }]);
+
+  const teamScoped = authorizedDirectoryEnv("team_leader", [["followup.assign", "team"]]);
+  const teamResponse = await worker.fetch(new Request("https://worker.example/api/v1/followup/assignment-teams", {
+    headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID },
+  }), teamScoped.env);
+  assert.equal(teamResponse.status, 200);
+  assert.deepEqual((await teamResponse.json()).data, []);
+  const teamQuery = teamScoped.calls.find((call) => call.kind === "all" && call.sql.includes("FROM team t"));
+  assert.ok(teamQuery);
+  assert.match(teamQuery.sql, /tm\.membership_role = 'leader'/);
+  assert.match(teamQuery.sql, /tm\.branch_id = t\.branch_id/);
+  assert.match(teamQuery.sql, /tm\.revoked_at IS NULL/);
+});
+
 test("Admin/Pastor can assign a contact to an active staff member and receives the standard data envelope", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
     const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
