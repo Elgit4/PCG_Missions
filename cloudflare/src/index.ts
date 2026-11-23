@@ -2702,7 +2702,7 @@ async function updateFollowupTask(
       return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_CHANGED" } }, requestId, origin);
     }
   } catch (error) {
-    console.error("FOLLOWUP_TASK_UPDATE_CONFLICT", requestId, error instanceof Error ? error.message : String(error));
+    console.error(JSON.stringify({ event: "FOLLOWUP_TASK_UPDATE_CONFLICT", requestId, errorType: error instanceof Error ? error.name : "unknown" }));
     return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_UPDATE_CONFLICT" } }, requestId, origin);
   }
   const updatedTask = await env.DB.prepare(`
@@ -5095,7 +5095,7 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     const team=caps.some(c=>c.code==="report.review.scoped"&&c.scopeMode==="team");
     const teamIds=team?await reportTeamIds(env,context.staff.profileId,String(row.branch_id),new Date().toISOString()):[];
     if(!branch&&!(team&&row.team_id&&teamIds.includes(String(row.team_id)))) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
-    console.log("REPORT_REVIEW_PRECONDITION", JSON.stringify({reportId:reportIdForReview,status:row.status,actorProfileId:context.staff.profileId,authorProfileId:row.author_profile_id}));
+
     if(row.status!=="submitted") return json(409,{ok:false,error:{code:"REPORT_NOT_SUBMITTED",...(env.APP_ENV!=="production"?{observed_status:row.status}: {})}},requestId,origin);
     const now=new Date().toISOString();
     const actionId=crypto.randomUUID();
@@ -5120,7 +5120,7 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
       ),
     ];
     const reviewResults=await env.DB.batch(reviewStatements);
-    console.log("REPORT_REVIEW_BATCH_DIAGNOSTIC", JSON.stringify(reviewResults.map(result=>({success:result.success,changes:result.meta?.changes??null}))));
+
     if(reviewResults.some(result=>!result.success)||
        (reviewResults[0]?.meta?.changes??0)<1||
        (reviewResults[1]?.meta?.changes??0)!==1)
