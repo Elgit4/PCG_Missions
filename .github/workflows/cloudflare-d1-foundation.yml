@@ -5,12 +5,14 @@ on:
     paths:
       - "cloudflare/**"
       - ".github/workflows/cloudflare-d1-foundation.yml"
+      - ".github/workflows/cloudflare-preview-deploy.yml"
       - ".github/workflows/cloudflare-production-worker-deploy.yml"
   push:
     branches: [main, 'migration/**', 'feat/**']
     paths:
       - "cloudflare/**"
       - ".github/workflows/cloudflare-d1-foundation.yml"
+      - ".github/workflows/cloudflare-preview-deploy.yml"
 
 permissions:
   contents: read
