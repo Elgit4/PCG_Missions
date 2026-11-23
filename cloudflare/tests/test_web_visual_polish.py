@@ -32,6 +32,8 @@ class WebVisualPolishTests(unittest.TestCase):
         self.assertNotRegex(self.styles, re.compile(r"\b(?:purple|violet|magenta)\b", re.IGNORECASE))
         self.assertNotRegex(self.styles, re.compile(r"(?:linear|radial|conic)-gradient\s*\(", re.IGNORECASE))
         self.assertNotRegex(self.styles, re.compile(r"backdrop-filter\s*:", re.IGNORECASE))
+        for removed_plum in ("#3a202b", "#3a222a", "#2c2028", "#3c252d", "#3a252d"):
+            self.assertNotIn(removed_plum, self.styles.casefold())
 
         purple_colors = []
         for match in re.finditer(r"#([0-9a-fA-F]{3,8})\b", self.styles):
