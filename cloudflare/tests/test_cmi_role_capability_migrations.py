@@ -149,6 +149,144 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         )
         self.assertEqual(self.db.execute("PRAGMA foreign_key_check").fetchall(), [])
 
+    def test_owner_cleanup_removes_test_logins_but_preserves_staff_history_and_allows_reuse(self):
+        now = "2026-11-23T23:00:00.000Z"
+        owner_profile = "ff3da224-34df-4702-93fd-6011cc52e4e9"
+        owner_user = "ed68338d-3edd-4720-a30a-16f590c8ada2"
+        nyarko_profile = "d5c922ca-0e64-4a65-b14e-128c9131f79c"
+        nyarko_user = "a75f19b8-be85-4a90-835c-d8848bad8bc1"
+        nana_profile = "d9c55d3f-ec29-457f-a131-621a72d326e9"
+        nana_user = "b831e1e5-e2f5-4257-bd90-e7c84c4e6c91"
+        branch_id = "2951a1c3-fb47-49c1-a83a-435daf3419c2"
+
+        self.db.execute(
+            "INSERT INTO church(id,name,created_at,updated_at) VALUES(?,?,?,?)",
+            ("cleanup-church", "Cleanup Church", now, now),
+        )
+        self.db.execute(
+            "INSERT INTO branch(id,church_id,name,timezone,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+            (branch_id, "cleanup-church", "Cleanup Branch", "Africa/Accra", now, now),
+        )
+
+        for user_id, name, email in (
+            (owner_user, "Elvis", "elviskwakuboateng63@gmail.com"),
+            (nyarko_user, "Nyarko", "eltech6363@gmail.com"),
+            (nana_user, "Nana", "nanaseiboateng15@gmail.com"),
+        ):
+            self.db.execute(
+                'INSERT INTO "user"(id,name,email,emailVerified,image,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?)',
+                (user_id, name, email, 1, None, 1, 1),
+            )
+            self.db.execute(
+                "INSERT INTO account(id,accountId,providerId,userId,password,createdAt,updatedAt) VALUES(?,?,'credential',?,?,1,1)",
+                (user_id + ":credential", user_id, user_id, "synthetic-bcrypt-hash"),
+            )
+        for profile_id, user_id, name, email, status, must_change in (
+            (owner_profile, owner_user, "Elvis", "elviskwakuboateng63@gmail.com", "active", 0),
+            (nyarko_profile, nyarko_user, "Nyarko", "eltech6363@gmail.com", "active", 1),
+            (nana_profile, nana_user, "Nana", "nanaseiboateng15@gmail.com", "inactive", 1),
+        ):
+            self.db.execute(
+                """INSERT INTO staff_profile
+                   (id,auth_user_id,full_name,email,account_status,created_at,updated_at,must_change_password)
+                   VALUES(?,?,?,?,?,?,?,?)""",
+                (profile_id, user_id, name, email, status, now, now, must_change),
+            )
+        self.db.executemany(
+            """INSERT INTO session(id,expiresAt,token,createdAt,updatedAt,userId)
+               VALUES(?,?,?,?,?,?)""",
+            (
+                ("nyarko-session", 9999999999, "nyarko-test-session", 1, 1, nyarko_user),
+                ("nana-session", 9999999999, "nana-test-session", 1, 1, nana_user),
+            ),
+        )
+        self.db.execute(
+            "UPDATE staff_admin_bootstrap_state SET remaining_slots=1 WHERE id=1"
+        )
+        admin_role = self.db.execute("SELECT id FROM role WHERE code='admin_pastor'").fetchone()[0]
+        team_role = self.db.execute("SELECT id FROM role WHERE code='team_leader'").fetchone()[0]
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at)
+               VALUES('cleanup-owner-admin-assignment',?,?,?,?,?,?)""",
+            (owner_profile, admin_role, branch_id, owner_profile, now, now),
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at)
+               VALUES('b17e5a7f-a359-49c2-9cb6-a73f0245117d',?,?,?,?,?,?)""",
+            (nana_profile, team_role, branch_id, owner_profile, now, now),
+        )
+        self.db.executemany(
+            """INSERT INTO staff_access_audit
+               (id,branch_id,actor_profile_id,target_profile_id,action,reason,metadata,created_at)
+               VALUES(?,?,?,?,?,?,?,?)""",
+            (
+                ("cleanup-nyarko-created", branch_id, owner_profile, nyarko_profile,
+                 "account_created", "Created test staff account for onboarding verification", "{}", now),
+                ("cleanup-nana-created", branch_id, owner_profile, nana_profile,
+                 "account_created", "Created test staff account for onboarding verification", "{}", now),
+            ),
+        )
+
+        cleanup = Path(__file__).resolve().parents[1] / "scripts" / "remove_test_staff_logins.sql"
+        script = cleanup.read_text(encoding="utf-8")
+        self.db.executescript(script)
+        # A retry must be harmless and must not duplicate the completion audit.
+        self.db.executescript(script)
+
+        self.assertEqual(
+            self.db.execute("SELECT email FROM \"user\" WHERE id=?", (owner_user,)).fetchone()[0],
+            "elviskwakuboateng63@gmail.com",
+        )
+        self.assertEqual(
+            self.db.execute("SELECT account_status FROM staff_profile WHERE id=?", (owner_profile,)).fetchone()[0],
+            "active",
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM staff_role_assignment WHERE staff_profile_id=? AND revoked_at IS NULL", (owner_profile,)).fetchone()[0],
+            1,
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM account WHERE userId=?", (owner_user,)).fetchone()[0],
+            1,
+        )
+
+        for profile_id, user_id in ((nyarko_profile, nyarko_user), (nana_profile, nana_user)):
+            profile = self.db.execute(
+                "SELECT full_name,email,account_status,must_change_password,password_setup_expires_at FROM staff_profile WHERE id=?",
+                (profile_id,),
+            ).fetchone()
+            self.assertEqual(profile, ("Removed test account", None, "inactive", 1, None))
+            user = self.db.execute('SELECT name,email,emailVerified FROM "user" WHERE id=?', (user_id,)).fetchone()
+            self.assertEqual(user, ("Removed test account", "removed+" + user_id + "@invalid.example", 0))
+            self.assertEqual(self.db.execute("SELECT COUNT(*) FROM account WHERE userId=?", (user_id,)).fetchone()[0], 0)
+            self.assertEqual(self.db.execute("SELECT COUNT(*) FROM session WHERE userId=?", (user_id,)).fetchone()[0], 0)
+            self.assertEqual(
+                self.db.execute("SELECT COUNT(*) FROM staff_role_assignment WHERE staff_profile_id=? AND revoked_at IS NULL", (profile_id,)).fetchone()[0],
+                0,
+            )
+
+        self.assertEqual(
+            self.db.execute('SELECT COUNT(*) FROM "user" WHERE email IN (?,?)',
+                            ("eltech6363@gmail.com", "nanaseiboateng15@gmail.com")).fetchone()[0],
+            0,
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM staff_profile WHERE email IN (?,?)",
+                            ("eltech6363@gmail.com", "nanaseiboateng15@gmail.com")).fetchone()[0],
+            0,
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM staff_access_audit WHERE id LIKE 'owner-test-login-removal-complete-%'").fetchone()[0],
+            2,
+        )
+        self.assertEqual(
+            self.db.execute("SELECT COUNT(*) FROM staff_account_audit WHERE target_profile_id=? AND action='account_deactivated'", (nana_profile,)).fetchone()[0],
+            1,
+        )
+        self.assertEqual(self.db.execute("PRAGMA foreign_key_check").fetchall(), [])
+
     def test_report_event_registration_checkin_and_closeout_lifecycle(self):
         now = "2026-11-22T23:00:00.000Z"
         church_id = "acceptance-church"
