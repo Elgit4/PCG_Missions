@@ -1372,6 +1372,21 @@ async function listContacts(
   const privatePredicate = contactScopePredicate(privateScope, "c", context.staff.userId, context.activeBranch.branchId, now);
   const url = new URL(request.url);
   const search = (url.searchParams.get("search") ?? "").trim().slice(0, 100);
+  const searchPattern = search ? "%" + search + "%" : "%%";
+  const phoneSearch = search.replace(/\D/g, "");
+  const phoneSearchCandidates = new Set<string>();
+  if (phoneSearch) phoneSearchCandidates.add(phoneSearch);
+  // Ghanaian staff and visitors commonly enter a local 0-prefixed number while
+  // the contact is stored in E.164 (+233). Match both representations.
+  if (/^0\d{9}$/.test(phoneSearch)) phoneSearchCandidates.add("233" + phoneSearch.slice(1));
+  if (/^233\d{9}$/.test(phoneSearch)) phoneSearchCandidates.add("0" + phoneSearch.slice(3));
+  const phonePatterns = [...phoneSearchCandidates].map((candidate) => "%" + candidate + "%");
+  const phoneMatchSql = phonePatterns.length
+    ? phonePatterns.map(() =>
+      "(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone_e164, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') LIKE ? " +
+      "OR REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(COALESCE(c.phone_display, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', '') LIKE ?)"
+    ).join(" OR ")
+    : "0 = 1";
   const status = url.searchParams.get("status") ?? "active";
   const rawLimit = url.searchParams.get("limit");
   const limit = rawLimit === null ? 50 : Number(rawLimit);
@@ -1397,7 +1412,14 @@ async function listContacts(
     FROM contact c
     WHERE c.branch_id = ?
       AND ${statusPredicate}
-      AND (? = '%%' OR c.first_name LIKE ? OR COALESCE(c.last_name, '') LIKE ?)
+      AND (
+        ? = '%%'
+        OR c.first_name LIKE ?
+        OR COALESCE(c.last_name, '') LIKE ?
+        OR COALESCE(c.preferred_name, '') LIKE ?
+        OR (? = 1 AND COALESCE(c.email_normalized, '') LIKE ?)
+        OR (? = 1 AND (${phoneMatchSql}))
+      )
       AND (${readPredicate.sql})
     ORDER BY c.created_at DESC, c.id DESC
     LIMIT ? OFFSET ?
@@ -1409,9 +1431,10 @@ async function listContacts(
     privateScope ? 1 : 0, ...privatePredicate.values,
     context.activeBranch.branchId,
     ...(status === "all" ? [] : [status]),
-    search ? `%${search}%` : "%%",
-    search ? `%${search}%` : "%%",
-    search ? `%${search}%` : "%%",
+    searchPattern, searchPattern, searchPattern, searchPattern,
+    detailScope ? 1 : 0, searchPattern,
+    detailScope && phonePatterns.length ? 1 : 0,
+    ...phonePatterns.flatMap((pattern) => [pattern, pattern]),
     ...readPredicate.values,
     limit, offset,
   ).all<{

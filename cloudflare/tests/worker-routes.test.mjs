@@ -1645,3 +1645,72 @@ test("expired temporary-password gate blocks Better Auth credential mutation", a
   assert.equal((await response.json()).error.code, "PASSWORD_SETUP_EXPIRED");
   assert.equal(fixture.batches?.length ?? 0, 0);
 });
+
+
+test("Coordinator contact search matches normalized phone numbers as well as names", async () => {
+  const { env, calls } = authorizedDirectoryEnv("coordinator", [
+    ["contacts.read", "branch"],
+    ["contacts.contact_details.read", "branch"],
+    ["contacts.private_fields.read", "branch"],
+  ]);
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/contacts?search=024%20123-4567",
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  assert.equal(response.status, 200);
+  const query = calls.find((call) => call.kind === "all" && call.sql.includes("FROM contact c") && call.sql.includes("SELECT c.id"));
+  assert.ok(query);
+  assert.match(query.sql, /COALESCE\(c\.phone_e164/);
+  assert.match(query.sql, /COALESCE\(c\.phone_display/);
+  assert.ok(query.values.includes("%0241234567%"));
+  assert.ok(query.values.includes("%233241234567%"));
+});
+
+test("Coordinator with identity-read capability can search by email", async () => {
+  const { env, calls } = authorizedDirectoryEnv("coordinator", [
+    ["contacts.read", "branch"],
+    ["contacts.contact_details.read", "branch"],
+  ]);
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/contacts?search=ama%40example.com",
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  assert.equal(response.status, 200);
+  const query = calls.find((call) => call.kind === "all" && call.sql.includes("FROM contact c") && call.sql.includes("SELECT c.id"));
+  assert.ok(query);
+  assert.equal(query.values[11], 1, "email search must be enabled for contact identity-read");
+  assert.ok(query.values.includes("%ama@example.com%"));
+});
+
+test("ordinary name searches keep the optional phone predicate valid without phone parameters", async () => {
+  const { env, calls } = authorizedDirectoryEnv("coordinator", [
+    ["contacts.read", "branch"],
+  ]);
+  const response = await worker.fetch(new Request(
+    "https://worker.example/api/v1/contacts?search=Elvis",
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  assert.equal(response.status, 200);
+  const query = calls.find((call) => call.kind === "all" && call.sql.includes("FROM contact c") && call.sql.includes("SELECT c.id"));
+  assert.ok(query);
+  assert.match(query.sql, /0 = 1/);
+});
+
+test("Field Worker cannot discover contacts by hidden email or phone without identity-read capability", async () => {
+  for (const search of ["hidden@example.test", "024 123-4567"]) {
+    const { env, calls } = authorizedDirectoryEnv("field_worker", [
+      ["contacts.read", "assigned"],
+    ]);
+    const response = await worker.fetch(new Request(
+      "https://worker.example/api/v1/contacts?search=" + encodeURIComponent(search),
+      { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+    ), env);
+    assert.equal(response.status, 200);
+    const query = calls.find((call) => call.kind === "all" && call.sql.includes("FROM contact c") && call.sql.includes("SELECT c.id"));
+    assert.ok(query);
+    assert.match(query.sql, /OR \(\? = 1 AND COALESCE\(c\.email_normalized, ''\) LIKE \?\)/);
+    assert.match(query.sql, /OR \(\? = 1 AND \(/);
+    assert.equal(query.values[11], 0, "email search must be disabled without contact identity-read");
+    assert.equal(query.values[13], 0, "phone search must be disabled without contact identity-read");
+  }
+});
