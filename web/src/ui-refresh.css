@@ -256,9 +256,9 @@ html[data-theme="dark"] .cmi-brand img,html[data-theme="dark"] .cmi-user-avatar,
 html[data-theme="dark"] .cmi-nav button{color:#aab8c9}
 html[data-theme="dark"] .cmi-nav button>svg{color:#91a2b6}
 html[data-theme="dark"] .cmi-nav button:hover{background:#223247;border-color:#304258;color:#f0f4fa}
-html[data-theme="dark"] .cmi-nav button.active{background:#3a202b;border-color:#64303e;color:#ffdce2;box-shadow:inset 3px 0 0 #e15a70}
+html[data-theme="dark"] .cmi-nav button.active{background:#26313e;border-color:#64303e;color:#ffdce2;box-shadow:inset 3px 0 0 #e15a70}
 html[data-theme="dark"] .cmi-nav button.active>svg{color:#f18a9b}
-html[data-theme="dark"] .cmi-nav button em{background:#2c2028;border-color:#68404a;color:#ffbdc8}
+html[data-theme="dark"] .cmi-nav button em{background:#202b38;border-color:#68404a;color:#ffbdc8}
 html[data-theme="dark"] .cmi-sidebar-label,html[data-theme="dark"] .cmi-breadcrumb,html[data-theme="dark"] .cmi-eyebrow,html[data-theme="dark"] .cmi-stat-card span,html[data-theme="dark"] .cmi-stat-card small,html[data-theme="dark"] .cmi-panel-heading p:not(.cmi-eyebrow),html[data-theme="dark"] .cmi-welcome p:not(.cmi-eyebrow),html[data-theme="dark"] .cmi-task-copy p,html[data-theme="dark"] .cmi-task-copy small{color:#9aaabd}
 html[data-theme="dark"] .cmi-access-note,html[data-theme="dark"] .cmi-form-grid,html[data-theme="dark"] .cmi-operations-form,html[data-theme="dark"] .cmi-structure-form,html[data-theme="dark"] .cmi-structure-assignment-form,html[data-theme="dark"] .ministry-report-form-grid,html[data-theme="dark"] .ministry-report-review,html[data-theme="dark"] .ministry-report-history{background:#1e2b3b;border-color:#344458;color:#b6c4d4}
 html[data-theme="dark"] .cmi-user-card{border-top-color:#2b394a}
@@ -281,8 +281,8 @@ html[data-theme="dark"] .cmi-task-status{background:#253244;border-color:#405168
 html[data-theme="dark"] .cmi-task-status.status-open{background:#1c3442;border-color:#315a6c;color:#b4e1f0}
 html[data-theme="dark"] .cmi-task-status.status-in_progress{background:#3a3021;border-color:#6a5635;color:#f1d29b}
 html[data-theme="dark"] .cmi-task-status.status-completed{background:#1d382e;border-color:#315c49;color:#b5e6cc}
-html[data-theme="dark"] .cmi-task-status.status-overdue{background:#3c252d;border-color:#70404d;color:#ffc1cb}
-html[data-theme="dark"] .cmi-alert,html[data-theme="dark"] .cmi-detail-alert{background:#3a222a;border-color:#75404d;color:#ffc2cc}
+html[data-theme="dark"] .cmi-task-status.status-overdue{background:#2b3039;border-color:#70404d;color:#ffc1cb}
+html[data-theme="dark"] .cmi-alert,html[data-theme="dark"] .cmi-detail-alert{background:#29313b;border-color:#75404d;color:#ffc2cc}
 html[data-theme="dark"] .cmi-success-note{background:#1c352c;border-color:#345d4b;color:#b9e8cf}
 html[data-theme="dark"] .cmi-empty-state,html[data-theme="dark"] .cmi-contact-empty,html[data-theme="dark"] .cmi-empty-row,html[data-theme="dark"] .cmi-structure-index-empty,html[data-theme="dark"] .cmi-structure-detail-empty,html[data-theme="dark"] .cmi-structure-empty{background:#1b2938;border-color:#3a4b5f;color:#aebccd}
 html[data-theme="dark"] .cmi-detail-overlay{background:rgb(3 8 15 / 72%)}
@@ -297,9 +297,9 @@ html[data-theme="dark"] .cmi-operations-heading h3,html[data-theme="dark"] .cmi-
 html[data-theme="dark"] .cmi-operations-heading p:not(.cmi-eyebrow),html[data-theme="dark"] .cmi-operations-timezone,html[data-theme="dark"] .cmi-module-boundary-grid small,html[data-theme="dark"] .cmi-scope-note{color:#9aabbe}
 html[data-theme="dark"] .cmi-operations-tabs{border-bottom-color:#344458}
 html[data-theme="dark"] .cmi-operations-tabs button,html[data-theme="dark"] .cmi-structure-tabs button{background:#202e3f;border-color:#3a4a5e;color:#c4d0dd}
-html[data-theme="dark"] .cmi-operations-tabs button.active,html[data-theme="dark"] .cmi-structure-tabs button.active{background:#3a202b;border-color:#75404d;color:#ffd2da}
+html[data-theme="dark"] .cmi-operations-tabs button.active,html[data-theme="dark"] .cmi-structure-tabs button.active{background:#26313e;border-color:#75404d;color:#ffd2da}
 html[data-theme="dark"] .cmi-structure-index-card,html[data-theme="dark"] .cmi-structure-detail,html[data-theme="dark"] .cmi-module-boundary-grid>span,html[data-theme="dark"] .ministry-report-card{background:#1b2938;border-color:#34475c;color:#e1e9f2}
-html[data-theme="dark"] .cmi-structure-index-card.active{background:#3a202b;border-color:#75404d}
+html[data-theme="dark"] .cmi-structure-index-card.active{background:#26313e;border-color:#75404d}
 html[data-theme="dark"] .cmi-structure-role{background:#2b3d50;color:#c7d9ea}
 html[data-theme="dark"] .staff-login-page{background:#101722;color:#e7edf5}
 html[data-theme="dark"] .staff-login-aside{background:#182332;border-right-color:#2d3d50;color:#e7edf5}
@@ -311,24 +311,24 @@ html[data-theme="dark"] .staff-login-aside-content h1 em{color:#f18a9b}
 html[data-theme="dark"] .staff-login-main{background:#101722}
 html[data-theme="dark"] .staff-login-form-wrap{background:#182332;border-color:#344458;box-shadow:0 12px 38px rgb(0 0 0 / 20%)}
 html[data-theme="dark"] .staff-login-security-label,html[data-theme="dark"] .staff-login-lifecycle{background:#202e3f;border-color:#3a4a5e;color:#c7d4e2}
-html[data-theme="dark"] .staff-login-security-label i{background:#3a252d;border-color:#70404d;color:#ffc2cc}
+html[data-theme="dark"] .staff-login-security-label i{background:#2b3039;border-color:#70404d;color:#ffc2cc}
 html[data-theme="dark"] .staff-login-auth-field>span{color:#c3cfdd}
 html[data-theme="dark"] .staff-login-auth-field input,html[data-theme="dark"] .staff-login-password-field input{background:#111c29;border-color:#3a4a5e;color:#edf3fa}
 html[data-theme="dark"] .staff-login-auth-field input::placeholder{color:#8495a9}
 html[data-theme="dark"] .staff-login-password-toggle{color:#a8b8ca}
 html[data-theme="dark"] .staff-login-auth-notice{background:#1e3040;border-color:#3c5a72;color:#c2d9ec}
-html[data-theme="dark"] .staff-login-auth-error,html[data-theme="dark"] .staff-login-config-error{background:#3a222a;border-color:#75404d;color:#ffc2cc}
+html[data-theme="dark"] .staff-login-auth-error,html[data-theme="dark"] .staff-login-config-error{background:#29313b;border-color:#75404d;color:#ffc2cc}
 html[data-theme="dark"] .staff-login-mobile-brand .staff-login-brand-copy strong{color:#edf3fa}
 html[data-theme="dark"] .cmi-theme-toggle{background:#243448;border-color:#40546b;color:#e1eaf4}
 html[data-theme="dark"] .cmi-theme-toggle:hover{background:#30445b;border-color:#58718d;color:#fff}
 html[data-theme="dark"] .cmi-mobile-nav{background:#182332;border-color:#344458}
 html[data-theme="dark"] .cmi-mobile-nav-items button{color:#a8b7c8}
 html[data-theme="dark"] .cmi-mobile-nav-items button svg{color:#a8b7c8}
-html[data-theme="dark"] .cmi-mobile-nav-items button.active{background:#3a202b;color:#ffdce2}
+html[data-theme="dark"] .cmi-mobile-nav-items button.active{background:#26313e;color:#ffdce2}
 html[data-theme="dark"] .cmi-mobile-nav-items button.active svg{color:#f18a9b}
 html[data-theme="dark"] .cmi-mobile-more{background:#182332;border-color:#344458}
 html[data-theme="dark"] .cmi-mobile-more button{background:#223247;color:#d3deea}
-html[data-theme="dark"] .cmi-mobile-more button.active{background:#3a202b;border-color:#75404d;color:#ffdce2}
+html[data-theme="dark"] .cmi-mobile-more button.active{background:#26313e;border-color:#75404d;color:#ffdce2}
 @media(max-width:760px){html[data-theme="dark"] .staff-login-main{background:#101722}}
 @media(prefers-reduced-motion:reduce){.cmi-theme-toggle{transition:none}}
 
