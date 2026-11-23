@@ -626,7 +626,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
                 "", "", "", now, now,
                 "", "", "",
                 "", "", "", "",
-                now, now, profile_id,
+                now, now, "", "", profile_id,
             )
             self.assertEqual(query.count("?"), len(values))
             return self.db.execute(query, values).fetchone()
@@ -751,7 +751,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
                 "", "", "", now, now,
                 "", "", "",
                 "", "", "", "",
-                now, now, profile_id,
+                now, now, "", "", profile_id,
             )
             self.assertEqual(query.count("?"), len(values))
             return self.db.execute(query, values).fetchone()
