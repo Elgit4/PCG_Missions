@@ -71,25 +71,25 @@ describe("capability-driven staff navigation", () => {
     const ownReportAccess = {
       ...baseSession,
       capabilities: [
-        { code: "report.read.own", scope_mode: "self", branch_id: "branch-a" },
+        { code: "report.read.scoped", scope_mode: "self", branch_id: "branch-a" },
       ],
     };
     const teamReportAccess = {
       ...baseSession,
       capabilities: [
-        { code: "report.review.team", scope_mode: "team", branch_id: "branch-a" },
+        { code: "report.review.scoped", scope_mode: "team", branch_id: "branch-a" },
       ],
     };
     const branchReportAccess = {
       ...baseSession,
       capabilities: [
-        { code: "report.review.branch", scope_mode: "branch", branch_id: "branch-a" },
+        { code: "report.review.scoped", scope_mode: "branch", branch_id: "branch-a" },
       ],
     };
     const submitOnly = {
       ...baseSession,
       capabilities: [
-        { code: "report.submit.own", scope_mode: "self", branch_id: "branch-a" },
+        { code: "report.submit.scoped", scope_mode: "self", branch_id: "branch-a" },
       ],
     };
     const prayerIntercessor = {
