@@ -4765,6 +4765,7 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
       ),
     ];
     const reviewResults=await env.DB.batch(reviewStatements);
+    console.log("REPORT_REVIEW_BATCH_DIAGNOSTIC", JSON.stringify(reviewResults.map(result=>({success:result.success,changes:result.meta?.changes??null}))));
     if(reviewResults.some(result=>!result.success)||
        (reviewResults[0]?.meta?.changes??0)!==1||
        (reviewResults[1]?.meta?.changes??0)!==1)
