@@ -38,8 +38,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ! grep -q 'diagnostic_detail' src/index.ts
-          grep -q 'D1_RATE_LIMIT_WRITE_FAILED' src/index.ts
+          ! grep -q 'diagnostic_detail' cloudflare/src/index.ts
+          grep -q 'D1_RATE_LIMIT_WRITE_FAILED' cloudflare/src/index.ts
           echo "Authentication diagnostics expose stable error codes only; SQL parameters and client addresses are not returned."
 
       - name: Set up Node.js
