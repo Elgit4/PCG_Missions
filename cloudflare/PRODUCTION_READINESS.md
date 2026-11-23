@@ -102,4 +102,4 @@ Do not silence these responses in monitoring. Confirm the current UI no longer g
 
 ## Go-live rule
 
-Keep SMS disabled. Do not run destructive D1 restores, delete audit records, remove storage secrets or retire Supabase media storage as part of a routine release. Production migrations must be forward-only, tested and applied by the guarded production deployment workflow. See [OPERATIONS_RUNBOOK.md](./OPERATIONS_RUNBOOK.md).
+Keep SMS disabled. Pages automatic production deployments are disabled and the production branch is set to `main`; do not re-enable them or create a production Pages deployment until the cutover is explicitly approved. Do not run destructive D1 restores, delete audit records, remove storage secrets or retire Supabase media storage as part of a routine release. Production migrations must be forward-only, tested and applied by the guarded production deployment workflow. The current production D1 remains on schema 45. See [OPERATIONS_RUNBOOK.md](./OPERATIONS_RUNBOOK.md).
