@@ -32,18 +32,21 @@ function StaffApp() {
 
   const messageFor = useCallback((cause: unknown): string => cause instanceof AuthClientError ? cause.message : formatApplicationError(cause, "We could not complete the sign-in request. Please try again."), []);
 
-  const clearAuthentication = useCallback(async () => {
+  const clearAuthentication = useCallback(async (clearLocalOnFailure = true): Promise<boolean> => {
+    let serverConfirmed = false;
     try {
-      await auth?.signOut();
+      await auth.signOut();
+      serverConfirmed = true;
     } catch {
-      // Authentication state is cleared locally even if browser storage or
-      // the optional server-side global sign-out request is unavailable.
-    } finally {
-      setStaffSession(null);
-      setView("sign-in");
-      setNotice("");
-      setWorkspaceRetryAvailable(false);
+      // HttpOnly Better Auth cookies cannot be cleared by JavaScript. Explicit
+      // sign-out keeps the authenticated workspace open until the server confirms.
+      if (!clearLocalOnFailure) return false;
     }
+    setStaffSession(null);
+    setView("sign-in");
+    setNotice("");
+    setWorkspaceRetryAvailable(false);
+    return serverConfirmed;
   }, [auth]);
 
   const loadStaffSession = useCallback(async () => {
@@ -239,9 +242,22 @@ function StaffApp() {
 
   const signOut = async () => {
     setBusy(true);
-    await clearAuthentication();
     setError("");
-    setBusy(false);
+    try {
+      const confirmed = await clearAuthentication(false);
+      if (!confirmed) {
+        throw new AuthClientError(
+          0,
+          "SIGN_OUT_NOT_CONFIRMED",
+          "We could not confirm sign-out with the secure service. Your session may still be active. Check your connection and retry; do not leave this device unattended.",
+        );
+      }
+    } catch (cause) {
+      setError(messageFor(cause));
+      throw cause;
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (initializing) {
@@ -277,6 +293,7 @@ function StaffApp() {
           <div className="staff-login-form-wrap staff-login-auth-wrap">
             <div className="staff-login-security-label">WORKSPACE ACCESS CHECK</div>
             <h1 id="workspace-context-title">Workspace access needs review</h1>
+            {error && <p role="alert">{error}</p>}
             <p role="alert">
               {staffSession.branches.length === 0
                 ? "This account has no active workspace assignment. Ask an administrator to assign the correct workspace before signing in again."
@@ -284,7 +301,7 @@ function StaffApp() {
                 ? "This account has more than one active workspace assignment. Ask an administrator to confirm the correct workspace before signing in again."
                 : "This account's workspace assignment could not be verified. Ask an administrator to review the assignment before signing in again."}
             </p>
-            <button type="button" className="cmi-button cmi-button-primary" onClick={() => void signOut()} disabled={busy}>
+            <button type="button" className="cmi-button cmi-button-primary" onClick={() => { void signOut().catch(() => undefined); }} disabled={busy}>
               Sign out
             </button>
           </div>
