@@ -73,6 +73,20 @@ describe("Cloudflare Worker API client", () => {
     expect(init.credentials).toBe("include");
   });
 
+  it("routes calendar cancellation through the branch-scoped Cloudflare Worker endpoint", async () => {
+    const fetcher = vi.fn(async () => response({ entry_id: "entry-1", status: "cancelled" }));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await api.cancelCalendarEntry("branch-1", "entry-1", "Service moved to a different venue.");
+
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    const parsed = new URL(url);
+    expect(parsed.pathname).toBe("/api/v1/calendar/entries/entry-1/cancel");
+    expect(parsed.searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(init.credentials).toBe("include");
+    expect(JSON.parse(String(init.body))).toEqual({ reason: "Service moved to a different venue." });
+  });
+
   it("sends assigned Prayer inbox branch scope only in the trusted header", async () => {
     const fetcher = vi.fn(async () => response({ requests: [], total: 0, limit: 25, offset: 0 }));
     const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
