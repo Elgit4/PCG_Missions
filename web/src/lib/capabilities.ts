@@ -52,9 +52,9 @@ export function canOpenStaffPage(
   if (session.staff.account_status !== "active") return false;
   if (page === "Overview") return true;
   if (page === "Reports") {
-    return hasCapability(session, "report.read.own", branchId) ||
-      hasCapability(session, "report.review.branch", branchId) ||
-      hasCapability(session, "report.review.team", branchId);
+    return hasCapability(session, "report.read.scoped", branchId) ||
+      hasCapability(session, "report.submit.scoped", branchId) ||
+      hasCapability(session, "report.review.scoped", branchId);
   }
 
   const required = PAGE_CAPABILITIES[page] ?? [];
