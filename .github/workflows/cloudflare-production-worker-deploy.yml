@@ -147,10 +147,17 @@ jobs:
     uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
     secrets: inherit
 
-  production-worker:
+  production-data-restore-rehearsal:
     needs: restore-rehearsal
-    name: Validate, migrate and deploy the production Worker
+    name: Clone and recover real production D1 data in an isolated EU database
     if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' && needs.restore-rehearsal.result == 'success' }}
+    uses: ./.github/workflows/cloudflare-production-data-restore-rehearsal.yml
+    secrets: inherit
+
+  production-worker:
+    needs: production-data-restore-rehearsal
+    name: Validate, migrate and deploy the production Worker
+    if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' && needs.restore-rehearsal.result == 'success' && needs.production-data-restore-rehearsal.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     environment: production
