@@ -66,7 +66,7 @@ function makePastoralEnv(options = {}) {
           return { success: true, results: allowed ? [{ id: CARE_ID, branch_id: BRANCH_ID, status: "active", reviewed_at: null, created_at: "2026-11-19T08:00:00.000Z", updated_at: "2026-11-20T08:00:00.000Z" }] : [] };
         }
         if (s.sql.includes("FROM care_interaction ci")) return { success: true, results: recordExists ? [{ id: "60000000-0000-4000-8000-000000000001", interaction_type: "visit", outcome_code: "completed", restricted_note: "Synthetic restricted note", occurred_at: "2026-11-20T10:00:00.000Z" }] : [] };
-        const needsAssignment = s.sql.includes("prayer_assignment") || s.sql.includes("EXISTS (SELECT 1 FROM care_assignment");
+        const needsAssignment = s.sql.includes("EXISTS (SELECT 1 FROM prayer_assignment") || s.sql.includes("JOIN prayer_assignment") || s.sql.includes("EXISTS (SELECT 1 FROM care_assignment");
         return { success: true, meta: { changes: recordExists && (!needsAssignment || assignmentExists) ? 1 : 0 } };
       });
     },
