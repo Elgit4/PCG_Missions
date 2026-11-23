@@ -24,7 +24,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  restore-rehearsal:
+    uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
+    secrets: inherit
+
   validate-migrate-deploy:
+    needs: restore-rehearsal
     runs-on: ubuntu-latest
     timeout-minutes: 360
     defaults:
@@ -39,37 +44,6 @@ jobs:
         with:
           ref: migration/cloudflare-auth-consolidation
           fetch-depth: 0
-
-      - name: Wait for authenticated D1 restore rehearsal on reviewed code
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          if ! grep -q 'drizzleAdapter' src/auth.ts || ! grep -q 'authSchema' src/auth.ts; then
-            echo "::error title=Authentication adapter missing::The preview branch does not contain the reviewed Drizzle-backed Better Auth implementation."
-            exit 1
-          fi
-
-          deadline=$((SECONDS + 18000))
-          while (( SECONDS < deadline )); do
-            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq '.workflow_runs[] | select(.path == ".github/workflows/cloudflare-d1-restore-rehearsal.yml") | select(.conclusion == "success") | .head_sha')"
-            while IFS= read -r sha; do
-              [[ -z "$sha" ]] && continue
-              if git cat-file -e "${sha}^{commit}" 2>/dev/null &&
-                 git grep -q 'drizzleAdapter' "$sha" -- src/auth.ts &&
-                 git grep -q 'authSchema' "$sha" -- src/auth.ts &&
-                 git merge-base --is-ancestor "$sha" "$GITHUB_SHA"; then
-                echo "Authenticated D1 restore rehearsal accepted at $sha."
-                exit 0
-              fi
-            done <<< "$runs"
-            echo "Waiting for a successful schema 46 restore and six-role authenticated acceptance run..."
-            sleep 60
-          done
-          echo "::error title=Authenticated restore rehearsal not complete::Preview deployment is blocked until the reviewed code passes the isolated D1 restore and six-role acceptance rehearsal."
-          exit 1
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
