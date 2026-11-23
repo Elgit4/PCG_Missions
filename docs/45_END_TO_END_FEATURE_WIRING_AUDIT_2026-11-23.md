@@ -201,6 +201,10 @@ This section supersedes earlier statements in this audit where later merged pull
 - **Better Auth D1 adapter — PR #128 merged.** Better Auth now receives a Drizzle D1 database through its supported SQLite adapter rather than the raw D1 binding. The adapter schema maps the existing `user`, `session`, `account`, `verification` and `rateLimit` tables. Dependency pin was aligned to Drizzle ORM 0.45.4, matching Better Auth 1.7.22 peer requirements.
 - **CI evidence for PR #128:** Cloudflare Worker type-check and SQLite foundation tests passed; CMI web CI passed after merge.
 
+- **Preview credential bridge — PR #126 merged.** Credential hashes are now verified inside D1 using parameterized equality checks; no password hashes are returned to or logged by the GitHub runner.
+- **Six-role acceptance and restore retry — PR #127 merged.** The isolated rehearsal harness now covers all six roles, team assignment/handoff boundaries, assigned-only visibility and Prayer Intercessor denials. It retries only Cloudflare D1 error 7500 after the UTC reset; the rehearsal itself has not yet passed.
+- **Preview diagnostics — PR #129 merged.** Non-production health exposes sanitized Better Auth diagnostics and the preview release health gate checks auth configuration without exposing secrets or SQL parameters.
+
 ### Current live environment evidence
 
 | Area | Observed state | Acceptance |
