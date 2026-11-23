@@ -3914,6 +3914,245 @@ async function handleAnnouncementItem(request: Request, env: Env, announcementId
   return json(200, { ok: true, data: { ...updated, is_public: false } }, requestId, origin);
 }
 
+type ContentDraftResource = "sermons" | "welcome-messages";
+type ContentDraftInput = {
+  branch_id?: string;
+  title?: string;
+  body?: string;
+  public_slug?: string;
+  display_order?: number;
+};
+type ContentDraftRow = {
+  id: string;
+  branch_id: string;
+  title: string;
+  body: string;
+  public_slug?: string | null;
+  display_order?: number | null;
+  status: string;
+  published_at: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+function contentDraftTable(resource: ContentDraftResource): "sermon" | "welcome_message" {
+  return resource === "sermons" ? "sermon" : "welcome_message";
+}
+
+function contentDraftColumns(resource: ContentDraftResource): string {
+  return resource === "sermons"
+    ? "id,branch_id,title,body,public_slug,status,published_at,created_by,created_at,updated_at"
+    : "id,branch_id,title,body,display_order,status,published_at,created_by,created_at,updated_at";
+}
+
+function visibleContentDraft(row: ContentDraftRow): Omit<ContentDraftRow, "created_by"> {
+  const { created_by: _createdBy, ...visible } = row;
+  return visible;
+}
+
+function parseContentDraftInput(
+  value: unknown,
+  resource: ContentDraftResource,
+  patch = false,
+): { ok: true; value: ContentDraftInput } | { ok: false } {
+  if (!isPlainObject(value)) return { ok: false };
+  const allowed = patch
+    ? (resource === "sermons" ? ["title", "body", "public_slug"] : ["title", "body", "display_order"])
+    : (resource === "sermons"
+      ? ["branch_id", "title", "body", "public_slug"]
+      : ["branch_id", "title", "body", "display_order"]);
+  if (Object.keys(value).length === 0 || Object.keys(value).some((key) => !allowed.includes(key))) {
+    return { ok: false };
+  }
+
+  const parsed: ContentDraftInput = {};
+  if (!patch) {
+    if (!isUuidValue(value.branch_id)) return { ok: false };
+    parsed.branch_id = value.branch_id;
+  }
+  if (!patch || "title" in value) {
+    if (typeof value.title !== "string") return { ok: false };
+    const title = value.title.trim();
+    if (title.length < 2 || title.length > 180) return { ok: false };
+    parsed.title = title;
+  }
+  if (!patch || "body" in value) {
+    if (typeof value.body !== "string") return { ok: false };
+    const body = value.body.trim();
+    const maxLength = resource === "sermons" ? 30000 : 12000;
+    if (body.length < 1 || body.length > maxLength) return { ok: false };
+    parsed.body = body;
+  }
+  if (resource === "sermons" && (!patch || "public_slug" in value)) {
+    if (typeof value.public_slug !== "string") return { ok: false };
+    const slug = value.public_slug.trim();
+    if (slug.length < 2 || slug.length > 120 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+      return { ok: false };
+    }
+    parsed.public_slug = slug;
+  }
+  if (resource === "welcome-messages" && (!patch || "display_order" in value)) {
+    const order = patch ? value.display_order : (value.display_order === undefined ? 0 : value.display_order);
+    if (typeof order !== "number" || !Number.isInteger(order) || order < 0 || order > 10000) {
+      return { ok: false };
+    }
+    parsed.display_order = order;
+  }
+  return { ok: true, value: parsed };
+}
+
+function parseContentListQuery(url: URL, activeBranchId: string):
+  | { ok: true; branchId: string; limit: number; offset: number }
+  | { ok: false } {
+  const keys = [...url.searchParams.keys()];
+  const branchIds = url.searchParams.getAll("branch_id");
+  const limits = url.searchParams.getAll("limit");
+  const offsets = url.searchParams.getAll("offset");
+  const branchId = branchIds[0] ?? "";
+  const limit = limits.length ? Number(limits[0]) : 25;
+  const offset = offsets.length ? Number(offsets[0]) : 0;
+  if (
+    keys.some((key) => !["branch_id", "limit", "offset"].includes(key)) ||
+    branchIds.length !== 1 || limits.length > 1 || offsets.length > 1 ||
+    !isUuidValue(branchId) || branchId !== activeBranchId ||
+    !Number.isInteger(limit) || limit < 1 || limit > 50 ||
+    !Number.isInteger(offset) || offset < 0 || offset > 5000
+  ) return { ok: false };
+  return { ok: true, branchId, limit, offset };
+}
+
+function parseContentItemBranch(url: URL, activeBranchId: string): string | null {
+  const branchIds = url.searchParams.getAll("branch_id");
+  if (
+    branchIds.length !== 1 ||
+    [...url.searchParams.keys()].some((key) => key !== "branch_id") ||
+    !isUuidValue(branchIds[0]) ||
+    branchIds[0] !== activeBranchId
+  ) return null;
+  return branchIds[0];
+}
+
+async function handleContentCollection(
+  request: Request,
+  env: Env,
+  resource: ContentDraftResource,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const method = request.method.toUpperCase();
+  if (method !== "GET" && method !== "POST") {
+    return json(405, { ok: false, error: { code: "METHOD_NOT_ALLOWED" } }, requestId, origin);
+  }
+  const access = await authorizeRequestCapability(request, env, "content.manage.draft");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const table = contentDraftTable(resource);
+  const columns = contentDraftColumns(resource);
+
+  if (method === "GET") {
+    const query = parseContentListQuery(new URL(request.url), access.activeBranch.branchId);
+    if (!query.ok) return json(400, { ok: false, error: { code: "INVALID_CONTENT_QUERY" } }, requestId, origin);
+    const rows = await env.DB.prepare(
+      "SELECT " + columns + " FROM " + table +
+      " WHERE branch_id=? AND status='draft' AND created_by=?" +
+      " ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?",
+    ).bind(query.branchId, access.staff.userId, query.limit, query.offset).all<ContentDraftRow>();
+    return json(200, { ok: true, data: (rows.results ?? []).map(visibleContentDraft) }, requestId, origin);
+  }
+
+  const body = await readJsonBody(request, 32_768);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const parsed = parseContentDraftInput(body.value, resource);
+  if (!parsed.ok || !parsed.value.branch_id) {
+    return json(400, { ok: false, error: { code: "INVALID_CONTENT_DRAFT" } }, requestId, origin);
+  }
+  if (parsed.value.branch_id !== access.activeBranch.branchId) {
+    return json(403, { ok: false, error: { code: "BRANCH_NOT_AUTHORIZED" } }, requestId, origin);
+  }
+
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  try {
+    const insertSql = resource === "sermons"
+      ? "INSERT INTO sermon (id,branch_id,title,body,public_slug,status,published_at,created_by,updated_by,created_at,updated_at) VALUES (?,?,?,?,?,'draft',NULL,?,?,?,?)"
+      : "INSERT INTO welcome_message (id,branch_id,title,body,display_order,status,published_at,created_by,updated_by,created_at,updated_at) VALUES (?,?,?,?,?,'draft',NULL,?,?,?,?)";
+    const values = resource === "sermons"
+      ? [id, parsed.value.branch_id, parsed.value.title, parsed.value.body, parsed.value.public_slug, access.staff.userId, access.staff.userId, now, now]
+      : [id, parsed.value.branch_id, parsed.value.title, parsed.value.body, parsed.value.display_order, access.staff.userId, access.staff.userId, now, now];
+    const result = await env.DB.prepare(insertSql).bind(...values).run();
+    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+      return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
+    }
+    const row = await env.DB.prepare(
+      "SELECT " + columns + " FROM " + table + " WHERE id=? AND branch_id=? AND created_by=? AND status='draft'",
+    ).bind(id, access.activeBranch.branchId, access.staff.userId).first<ContentDraftRow>();
+    if (!row) return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
+    return json(201, { ok: true, data: visibleContentDraft(row) }, requestId, origin);
+  } catch (error) {
+    if (String(error).includes("UNIQUE constraint failed: sermon.public_slug")) {
+      return json(409, { ok: false, error: { code: "CONTENT_SLUG_CONFLICT" } }, requestId, origin);
+    }
+    return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
+  }
+}
+
+async function handleContentItem(
+  request: Request,
+  env: Env,
+  resource: ContentDraftResource,
+  contentId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  const method = request.method.toUpperCase();
+  if (method !== "GET" && method !== "PATCH") {
+    return json(405, { ok: false, error: { code: "METHOD_NOT_ALLOWED" } }, requestId, origin);
+  }
+  if (!isUuidValue(contentId)) return json(400, { ok: false, error: { code: "INVALID_CONTENT_ID" } }, requestId, origin);
+  const access = await authorizeRequestCapability(request, env, "content.manage.draft");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+  const branchId = parseContentItemBranch(new URL(request.url), access.activeBranch.branchId);
+  if (!branchId) return json(400, { ok: false, error: { code: "INVALID_CONTENT_QUERY" } }, requestId, origin);
+  const table = contentDraftTable(resource);
+  const columns = contentDraftColumns(resource);
+  const current = await env.DB.prepare(
+    "SELECT " + columns + " FROM " + table +
+    " WHERE id=? AND branch_id=? AND status='draft' AND created_by=? LIMIT 1",
+  ).bind(contentId, branchId, access.staff.userId).first<ContentDraftRow>();
+  if (!current) return json(404, { ok: false, error: { code: "CONTENT_NOT_FOUND" } }, requestId, origin);
+  if (method === "GET") return json(200, { ok: true, data: visibleContentDraft(current) }, requestId, origin);
+
+  const body = await readJsonBody(request, 32_768);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  const parsed = parseContentDraftInput(body.value, resource, true);
+  if (!parsed.ok) return json(400, { ok: false, error: { code: "INVALID_CONTENT_DRAFT" } }, requestId, origin);
+  const fields = Object.entries(parsed.value).filter(([key]) => key !== "branch_id");
+  const assignments = fields.map(([key]) => key + "=?");
+  assignments.push("updated_by=?", "updated_at=?");
+  const now = new Date().toISOString();
+  const values = fields.map(([, value]) => value);
+  values.push(access.staff.userId, now, contentId, branchId, access.staff.userId, current.updated_at);
+  let result: { success: boolean; meta?: { changes?: number } };
+  try {
+    result = await env.DB.prepare(
+      "UPDATE " + table + " SET " + assignments.join(", ") +
+      " WHERE id=? AND branch_id=? AND created_by=? AND status='draft' AND updated_at=?",
+    ).bind(...values).run();
+  } catch (error) {
+    if (String(error).includes("UNIQUE constraint failed: sermon.public_slug")) {
+      return json(409, { ok: false, error: { code: "CONTENT_SLUG_CONFLICT" } }, requestId, origin);
+    }
+    return json(500, { ok: false, error: { code: "CONTENT_UPDATE_FAILED" } }, requestId, origin);
+  }
+  if (!result.success) return json(500, { ok: false, error: { code: "CONTENT_UPDATE_FAILED" } }, requestId, origin);
+  if ((result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "CONTENT_NOT_EDITABLE" } }, requestId, origin);
+  const updated = await env.DB.prepare(
+    "SELECT " + columns + " FROM " + table + " WHERE id=? AND branch_id=? AND created_by=? AND status='draft'",
+  ).bind(contentId, branchId, access.staff.userId).first<ContentDraftRow>();
+  if (!updated) return json(404, { ok: false, error: { code: "CONTENT_NOT_FOUND" } }, requestId, origin);
+  return json(200, { ok: true, data: visibleContentDraft(updated) }, requestId, origin);
+}
+
 type CalendarEntryRow = {
   id: string;
   branch_id: string;
@@ -5752,6 +5991,18 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
       try { announcementId = decodeURIComponent(announcementMatch[1]); }
       catch { return json(400, { ok: false, error: { code: "INVALID_ANNOUNCEMENT_ID" } }, requestId, origin); }
       return handleAnnouncementItem(request, env, announcementId, requestId, origin);
+    }
+
+    const contentCollectionMatch = url.pathname.match(/^\/api\/v1\/content\/(sermons|welcome-messages)$/);
+    if (contentCollectionMatch && (request.method === "GET" || request.method === "POST")) {
+      return handleContentCollection(request, env, contentCollectionMatch[1] as ContentDraftResource, requestId, origin);
+    }
+    const contentItemMatch = url.pathname.match(/^\/api\/v1\/content\/(sermons|welcome-messages)\/([^/]+)$/);
+    if (contentItemMatch && (request.method === "GET" || request.method === "PATCH")) {
+      let contentId: string;
+      try { contentId = decodeURIComponent(contentItemMatch[2]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CONTENT_ID" } }, requestId, origin); }
+      return handleContentItem(request, env, contentItemMatch[1] as ContentDraftResource, contentId, requestId, origin);
     }
 
     if (url.pathname === "/api/v1/calendar/entries" && (request.method === "GET" || request.method === "POST")) {
