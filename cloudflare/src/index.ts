@@ -2645,7 +2645,7 @@ async function updateFollowupTask(
   try {
     const results = await env.DB.batch([
       env.DB.prepare(`
-        UPDATE followup_task ft
+        UPDATE followup_task AS ft
         SET ${assignments.join(", ")}
         WHERE ft.id = ? AND ft.branch_id = ? AND ft.status = ?
           AND (${predicate.sql})
