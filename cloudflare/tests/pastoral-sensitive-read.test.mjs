@@ -52,7 +52,8 @@ function makePastoralEnv(options = {}) {
         }
         if (s.sql.includes("SELECT p.id, p.branch_id, p.request_text") ||
             s.sql.includes("SELECT prayer_request.id, prayer_request.request_text")) {
-          const allowed = recordExists && assignmentExists;
+          const requiresAssignment = s.sql.includes("EXISTS (SELECT 1 FROM prayer_assignment") || s.sql.includes("JOIN prayer_assignment");
+          const allowed = recordExists && (!requiresAssignment || assignmentExists);
           return { success: true, results: allowed ? [{
             id: PRAYER_ID, branch_id: BRANCH_ID, request_text: "Synthetic prayer narrative",
             status: "assigned", sensitivity: "highly_restricted", expires_at: null,
