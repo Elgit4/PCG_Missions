@@ -228,7 +228,11 @@ async function assignStaffRole(
         target.id, reason, metadata, now,
       ),
     ]);
-    if (results.some((result) => !result.success)) throw new Error("ROLE_ASSIGNMENT_BATCH_FAILED");
+    if (results.some((result) => !result.success) ||
+        (results[0]?.meta?.changes ?? 0) !== 1 ||
+        (results[1]?.meta?.changes ?? 0) !== 1) {
+      throw new Error("ROLE_ASSIGNMENT_BATCH_FAILED");
+    }
   } catch {
     return json(409, { ok: false, error: { code: "ROLE_ASSIGNMENT_CONFLICT" } }, requestId, origin);
   }
@@ -311,7 +315,9 @@ async function revokeStaffRole(
         existing.id, access.activeBranch.branchId, now, access.staff.profileId,
       ),
     ]);
-    if (results.some((result) => !result.success) || (results[0]?.meta?.changes ?? 0) !== 1) {
+    if (results.some((result) => !result.success) ||
+        (results[0]?.meta?.changes ?? 0) !== 1 ||
+        (results[1]?.meta?.changes ?? 0) !== 1) {
       return json(409, { ok: false, error: { code: "ROLE_ASSIGNMENT_CHANGED" } }, requestId, origin);
     }
   } catch {
