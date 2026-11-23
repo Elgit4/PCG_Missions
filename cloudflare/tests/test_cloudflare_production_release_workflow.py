@@ -22,7 +22,7 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("production-roster-preflight:", self.production)
         self.assertIn("restore-rehearsal:\n    needs: production-roster-preflight", self.production)
         self.assertIn("production-worker:\n    needs: restore-rehearsal", self.production)
-        self.assertIn("Require complete six-role production roster before restore rehearsal", self.production)
+        self.assertIn("Require exactly one retained Admin/Pastor production account before restore rehearsal", self.production)
 
     def test_production_accepts_null_for_anonymous_better_auth_session(self):
         self.assertIn(
@@ -31,7 +31,7 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         )
         self.assertNotIn("if(p===null || (typeof p!==\"object\"))", self.production)
 
-    def test_production_cutover_is_blocked_until_six_role_roster_is_ready(self):
+    def test_production_cutover_requires_exactly_one_owner_account(self):
         required_roles = (
             "admin_pastor",
             "coordinator",
@@ -44,14 +44,17 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
             self.assertIn("'" + role + "'", self.production)
 
         self.assertIn("summary.configured_role_catalogue !== 6", self.production)
-        self.assertIn("summary.active_staff_profiles >= 6", self.production)
-        self.assertIn("summary.assigned_role_codes === 6", self.production)
+        self.assertIn("summary.auth_users === 1", self.production)
+        self.assertIn("summary.password_users === 1", self.production)
+        self.assertIn("summary.active_staff_profiles === 1", self.production)
+        self.assertIn("summary.assigned_role_codes === 1", self.production)
         self.assertIn("summary.active_profiles_without_role === 0", self.production)
         self.assertIn("summary.assignments_on_inactive_profiles === 0", self.production)
         self.assertIn("summary.active_staff_without_credential === 0", self.production)
         self.assertIn("summary.invalid_first_login_setups === 0", self.production)
-        self.assertIn("if (!fullRosterReady)", self.production)
+        self.assertIn("if (!singleOwnerReady)", self.production)
         self.assertIn("Production cutover blocked:", self.production)
+        self.assertIn("exactly one non-anonymized login identity", self.production)
         self.assertNotIn("Production will enter Admin/Pastor bootstrap mode.", self.production)
 
     def test_routine_preview_does_not_import_from_legacy_postgres_or_probe_rate_limit_writes(self):
