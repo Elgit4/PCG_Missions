@@ -4,6 +4,8 @@ import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/fraunces";
 import "./styles.css";
 import "../production.css";
+import "./ui-refresh.css";
+import "./production-polish.css";
 import App from "./App";
 import { ThemeProvider } from "./lib/theme";
 
