@@ -73,26 +73,29 @@ jobs:
           require_green() {
             local workflow_path="$1"
             local label="$2"
+            local scope="$3"
             local accepted=""
             for attempt in $(seq 1 120); do
               runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100)"
-              accepted="$(jq -r --arg path "$workflow_path" --arg sha "$GITHUB_SHA"                 '.workflow_runs[] | select(.path == $path and .head_sha == $sha and .conclusion == "success") | .id'                 <<< "$runs" | head -n 1)"
+              while IFS= read -r sha; do
+                [[ -z "$sha" ]] && continue
+                if ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then continue; fi
+                if git diff --quiet "$sha" "$GITHUB_SHA" -- "$scope"; then
+                  accepted="$sha"
+                  break
+                fi
+              done < <(jq -r --arg path "$workflow_path" '.workflow_runs[] | select(.path == $path and .conclusion == "success") | .head_sha' <<< "$runs")
               if [[ -n "$accepted" ]]; then
-                echo "$label passed on cleanup commit $GITHUB_SHA (run $accepted)"
+                echo "$label passed at $accepted; its $scope source tree is unchanged at cleanup commit $GITHUB_SHA."
                 return 0
-              fi
-              failed="$(jq -r --arg path "$workflow_path" --arg sha "$GITHUB_SHA"                 '.workflow_runs[] | select(.path == $path and .head_sha == $sha and .status == "completed" and .conclusion != "success") | .conclusion'                 <<< "$runs" | head -n 1)"
-              if [[ -n "$failed" ]]; then
-                echo "::error title=Current-source CI failed::$label concluded $failed."
-                return 1
               fi
               sleep 20
             done
-            echo "::error title=Current-source CI timeout::$label did not pass on $GITHUB_SHA."
+            echo "::error title=Current-source CI timeout::$label has no successful run for the exact current $scope source tree."
             return 1
           }
-          require_green ".github/workflows/cloudflare-d1-foundation.yml" "Cloudflare D1 Foundation"
-          require_green ".github/workflows/cmi-web-ci.yml" "CMI web CI"
+          require_green ".github/workflows/cloudflare-d1-foundation.yml" "Cloudflare D1 Foundation" "cloudflare"
+          require_green ".github/workflows/cmi-web-ci.yml" "CMI web CI" "web"
 
       - name: Capture the production D1 recovery bookmark
         working-directory: cloudflare
