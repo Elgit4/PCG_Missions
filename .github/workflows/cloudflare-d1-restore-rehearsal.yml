@@ -36,6 +36,14 @@ jobs:
         with:
           ref: migration/cloudflare-auth-consolidation
 
+      - name: Require the reviewed Better Auth D1 adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'drizzleAdapter' cloudflare/src/auth.ts
+          grep -q 'authSchema' cloudflare/src/auth.ts
+          echo "Authenticated restore rehearsal is testing the Drizzle-backed Better Auth implementation."
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -121,6 +129,61 @@ jobs:
           npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
             --command "SELECT CASE WHEN COUNT(*)=46 THEN 'MIGRATION_LEDGER_46_READY' ELSE 'MIGRATION_LEDGER_INVALID' END AS status FROM d1_migrations;"
           echo "Remote D1 binding enabled for the authenticated Worker acceptance run."
+
+      - name: Verify D1 write budget before authenticated acceptance
+        working-directory: cloudflare
+        env:
+          DB_NAME: ${{ steps.database.outputs.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_id="pcg-rate-limit-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          probe_key="pcg-rate-limit-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          insert_sql="INSERT INTO rateLimit (id,key,count,lastRequest) VALUES ('${probe_id}','${probe_key}',1,$(date -u +%s%3N))"
+          delete_sql="DELETE FROM rateLimit WHERE id='${probe_id}'"
+
+          wait_for_quota_reset() {
+            reset_at="$(date -u -d '00:05 tomorrow' +%s)"
+            now="$(date -u +%s)"
+            wait_seconds=$((reset_at - now))
+            if [[ "$wait_seconds" -le 0 || "$wait_seconds" -gt 18000 ]]; then
+              echo "::error title=D1 free-tier daily write limit::Cloudflare D1 row-write quota is exhausted outside the supported five-hour wait window."
+              return 1
+            fi
+            echo "::warning title=D1 daily write quota exhausted::Waiting until 00:05 UTC before retrying the authenticated acceptance write probe."
+            sleep "$wait_seconds"
+          }
+
+          run_probe_sql() {
+            local sql="$1"
+            local log_file="$2"
+            set +e
+            npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml --command "$sql" 2>&1 | tee "$log_file"
+            local status=${PIPESTATUS[0]}
+            set -e
+            if [[ "$status" -ne 0 ]] && grep -Eiq "7500|daily row write limit|free tier" "$log_file"; then
+              return 75
+            fi
+            return "$status"
+          }
+
+          if run_probe_sql "$insert_sql" /tmp/pcg-restore-write-probe-insert.log; then
+            :
+          else
+            status=$?
+            if [[ "$status" -ne 75 ]]; then exit "$status"; fi
+            wait_for_quota_reset
+            run_probe_sql "$insert_sql" /tmp/pcg-restore-write-probe-insert-retry.log
+          fi
+
+          if run_probe_sql "$delete_sql" /tmp/pcg-restore-write-probe-delete.log; then
+            :
+          else
+            status=$?
+            if [[ "$status" -ne 75 ]]; then exit "$status"; fi
+            wait_for_quota_reset
+            run_probe_sql "$delete_sql" /tmp/pcg-restore-write-probe-delete-retry.log
+          fi
 
       - name: Capture pre-acceptance Time Travel bookmark
         id: bookmark
