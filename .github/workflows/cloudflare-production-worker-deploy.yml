@@ -227,6 +227,9 @@ jobs:
               if [[ "$scope" == "cloudflare" ]] && ! git diff --quiet "$sha" "$GITHUB_SHA" -- cloudflare; then
                 continue
               fi
+              if [[ "$scope" == "cloudflare-runtime" ]] && ! git diff --quiet "$sha" "$GITHUB_SHA" -- cloudflare/src cloudflare/migrations cloudflare/package.json cloudflare/package-lock.json cloudflare/wrangler.toml; then
+                continue
+              fi
               if [[ "$scope" == "web" ]] && ! git diff --quiet "$sha" "$GITHUB_SHA" -- web; then
                 continue
               fi
@@ -245,7 +248,7 @@ jobs:
           # The preview workflow proves the preview Worker deployment, health, anonymous boundary and session endpoint.
           # The dependent restore-rehearsal job above runs the full isolated D1 restore and six-role authenticated acceptance
           # before this production job can start.
-          require_successful_current_code_run "cloudflare-preview-deploy.yml" "Cloudflare Auth Preview Release" "cloudflare"
+          require_successful_current_code_run "cloudflare-preview-deploy.yml" "Cloudflare Auth Preview Release" "cloudflare-runtime"
 
       - name: Verify deployed preview authentication before production mutation
         shell: bash
