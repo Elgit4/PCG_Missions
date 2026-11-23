@@ -79,7 +79,20 @@ async function insertUser(roleCode, label, assignerProfileId, bootstrapAdmin = f
   return { userId, profileId, email, password };
 }
 
+let lastSignInAttemptAt = 0;
+async function waitForSignInRateLimitSlot() {
+  // Better Auth limits /sign-in/email per client IP. This isolated rehearsal
+  // uses many synthetic accounts from one local Worker IP, so pace every
+  // positive and negative attempt without weakening the production policy.
+  if (lastSignInAttemptAt > 0) {
+    const remaining = 12_500 - (Date.now() - lastSignInAttemptAt);
+    if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
+  }
+  lastSignInAttemptAt = Date.now();
+}
+
 async function signIn(identity, label) {
+  await waitForSignInRateLimitSlot();
   const response = await fetchWithTimeout(`${workerUrl}/api/auth/sign-in/email`, {
     method: "POST",
     headers: { origin, "content-type": "application/json" },
@@ -138,6 +151,12 @@ const unassigned = await insertUser("field_worker", "unassigned", admin.profileI
 const teamLeader = await insertUser("team_leader", "team-leader", admin.profileId);
 const followupVolunteer = await insertUser("follow_up_volunteer", "followup-volunteer", admin.profileId);
 const prayerIntercessor = await insertUser("prayer_intercessor", "prayer-intercessor", admin.profileId);
+const firstLoginUser = await insertUser("field_worker", "first-login", admin.profileId);
+await d1(
+  "UPDATE staff_profile SET must_change_password=1, password_setup_expires_at=? WHERE id=?",
+  [new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), firstLoginUser.profileId],
+);
+const resetTarget = await insertUser("field_worker", "reset-target", admin.profileId);
 const teamId = randomUUID();
 const outsideTeamId = randomUUID();
 await d1(
@@ -435,6 +454,400 @@ const inboxAfterReadAll = await api(workerCookie, "/api/v1/notifications?branch_
 if (inboxAfterReadAll.payload?.data?.unread_count !== 0) throw new Error("Notification unread count did not reach zero after read-all");
 
 
+
+const authenticatedSessionResponse = await fetchWithTimeout(workerUrl + "/api/auth/get-session", {
+  headers: { origin, cookie: adminCookie },
+});
+const authenticatedSessionPayload = await authenticatedSessionResponse.json().catch(() => null);
+if (authenticatedSessionResponse.status !== 200 ||
+    authenticatedSessionPayload?.user?.id !== admin.userId ||
+    !authenticatedSessionPayload?.session?.id) {
+  throw new Error("Authenticated Better Auth session retrieval failed.");
+}
+console.log("AUTHENTICATED_SESSION_RETRIEVAL_PASSED");
+
+// Exercise a genuine first-login password gate and prove that the old credential is no longer valid.
+const firstLoginCookie = await signIn(firstLoginUser, "First-login Field Worker");
+const firstLoginSessionResponse = await fetchWithTimeout(workerUrl + "/api/v1/me", {
+  headers: { origin, cookie: firstLoginCookie },
+});
+const firstLoginSessionPayload = await firstLoginSessionResponse.json().catch(() => null);
+if (firstLoginSessionResponse.status !== 200 ||
+    firstLoginSessionPayload?.data?.must_change_password !== true ||
+    !Array.isArray(firstLoginSessionPayload?.data?.branches) ||
+    firstLoginSessionPayload.data.branches.length !== 0) {
+  throw new Error("First-login session hydration did not preserve the forced-password-change state.");
+}
+const firstLoginProtectedRead = await api(
+  firstLoginCookie,
+  "/api/v1/notifications?branch_id=" + branchId + "&limit=50",
+);
+if (firstLoginProtectedRead.status !== 403 ||
+    firstLoginProtectedRead.payload?.error?.code !== "BRANCH_NOT_AUTHORIZED") {
+  throw new Error("First-login account was not blocked from branch-scoped staff operations before password replacement: HTTP " +
+    firstLoginProtectedRead.status + " code=" + (firstLoginProtectedRead.payload?.error?.code ?? "unexpected_response"));
+}
+const firstLoginPassword = "PcgQa-First-" + randomBytes(18).toString("base64url") + "-9!aA";
+const firstLoginChange = await api(firstLoginCookie, "/api/v1/auth/password/change", "POST", {
+  password: firstLoginPassword,
+});
+if (firstLoginChange.status !== 200 ||
+    firstLoginChange.payload?.data?.password_changed !== true ||
+    firstLoginChange.payload?.data?.must_change_password !== false) {
+  throw new Error("Forced first-login password change failed: " + firstLoginChange.status + " " + JSON.stringify(firstLoginChange.payload));
+}
+const firstLoginState = (await d1(
+  "SELECT must_change_password,password_setup_expires_at FROM staff_profile WHERE id=?",
+  [firstLoginUser.profileId],
+))[0];
+if (Number(firstLoginState?.must_change_password) !== 0 || firstLoginState?.password_setup_expires_at !== null) {
+  throw new Error("Forced first-login password gate was not cleared after password replacement.");
+}
+await waitForSignInRateLimitSlot();
+const firstLoginOldAttempt = await fetchWithTimeout(workerUrl + "/api/auth/sign-in/email", {
+  method: "POST",
+  headers: { origin, "content-type": "application/json" },
+  body: JSON.stringify({ email: firstLoginUser.email, password: firstLoginUser.password, rememberMe: false }),
+});
+if (firstLoginOldAttempt.status !== 401) {
+  throw new Error("Old first-login credential was not rejected after password change: " + firstLoginOldAttempt.status);
+}
+const firstLoginUpdatedCookie = await signIn(
+  { ...firstLoginUser, password: firstLoginPassword },
+  "First-login replacement credential",
+);
+const firstLoginUpdatedMe = await api(firstLoginUpdatedCookie, "/api/v1/me");
+if (firstLoginUpdatedMe.status !== 200 || firstLoginUpdatedMe.payload?.ok !== true) {
+  throw new Error("Replacement first-login credential could not establish an authenticated staff session.");
+}
+console.log("FORCED_FIRST_PASSWORD_CHANGE_PASSED");
+
+// Exercise the complete staff-request -> Admin/Pastor approval -> one-time credential -> forced-change flow.
+const resetTargetCookie = await signIn(resetTarget, "Password-reset target");
+const resetRequestResponse = await fetchWithTimeout(workerUrl + "/api/v1/auth/password-reset-requests", {
+  method: "POST",
+  headers: {
+    origin,
+    "content-type": "application/json",
+    "cf-connecting-ip": "192.0.2.23",
+  },
+  body: JSON.stringify({ email: resetTarget.email }),
+});
+const resetRequestPayload = await resetRequestResponse.json().catch(() => null);
+if (resetRequestResponse.status !== 200 || resetRequestPayload?.ok !== true) {
+  throw new Error("Staff password-reset request failed: " + resetRequestResponse.status + " " + JSON.stringify(resetRequestPayload));
+}
+const pendingResetList = await api(adminCookie, "/api/v1/admin/password-reset-requests");
+if (pendingResetList.status !== 200 || !Array.isArray(pendingResetList.payload?.data)) {
+  throw new Error("Admin/Pastor could not list pending password-reset requests.");
+}
+const pendingReset = pendingResetList.payload.data.find((item) => item.email === resetTarget.email);
+if (!pendingReset?.id) throw new Error("Staff password-reset request was not visible to the Admin/Pastor.");
+const resetApproval = await api(
+  adminCookie,
+  "/api/v1/admin/password-reset-requests/" + pendingReset.id + "/approve",
+  "POST",
+  {
+    branch_id: branchId,
+    reason: "Synthetic acceptance verifies the approved password recovery lifecycle.",
+  },
+);
+const temporaryPassword = resetApproval.payload?.data?.temporary_password;
+if (resetApproval.status !== 200 ||
+    resetApproval.payload?.data?.status !== "approved" ||
+    typeof temporaryPassword !== "string" ||
+    resetApproval.payload?.data?.temporary_password_sent !== false ||
+    resetApproval.payload?.data?.manual_handoff_required !== true ||
+    resetApproval.payload?.data?.must_change_password !== true) {
+  throw new Error("Admin/Pastor password-reset approval failed or returned an unsafe handoff result: HTTP " +
+    resetApproval.status + " code=" + (resetApproval.payload?.error?.code ?? "unexpected_response"));
+}
+const resetOldSession = await api(resetTargetCookie, "/api/v1/me");
+if (resetOldSession.status !== 401) {
+  throw new Error("Password reset did not revoke the target staff member's pre-existing session.");
+}
+await waitForSignInRateLimitSlot();
+const resetOldCredentialAttempt = await fetchWithTimeout(workerUrl + "/api/auth/sign-in/email", {
+  method: "POST",
+  headers: { origin, "content-type": "application/json" },
+  body: JSON.stringify({ email: resetTarget.email, password: resetTarget.password, rememberMe: false }),
+});
+if (resetOldCredentialAttempt.status !== 401) {
+  throw new Error("Old password was not rejected after Admin/Pastor reset: " + resetOldCredentialAttempt.status);
+}
+const temporaryCookie = await signIn(
+  { ...resetTarget, password: temporaryPassword },
+  "Admin-approved temporary password",
+);
+const resetPassword = "PcgQa-Reset-" + randomBytes(18).toString("base64url") + "-9!aA";
+const resetPasswordChange = await api(temporaryCookie, "/api/v1/auth/password/change", "POST", {
+  password: resetPassword,
+});
+if (resetPasswordChange.status !== 200 ||
+    resetPasswordChange.payload?.data?.password_changed !== true ||
+    resetPasswordChange.payload?.data?.must_change_password !== false) {
+  throw new Error("Admin-approved temporary password could not be replaced: " +
+    resetPasswordChange.status + " " + JSON.stringify(resetPasswordChange.payload));
+}
+const resetTargetState = (await d1(
+  "SELECT must_change_password,password_setup_expires_at FROM staff_profile WHERE id=?",
+  [resetTarget.profileId],
+))[0];
+const resetRequestState = (await d1(
+  "SELECT status FROM staff_password_reset_request WHERE id=?",
+  [pendingReset.id],
+))[0];
+const resetAuditEvents = await d1(
+  "SELECT event_type FROM staff_password_reset_audit WHERE request_id=? ORDER BY created_at",
+  [pendingReset.id],
+);
+if (Number(resetTargetState?.must_change_password) !== 0 ||
+    resetTargetState?.password_setup_expires_at !== null ||
+    resetRequestState?.status !== "completed" ||
+    !["requested", "approved", "reset_completed"].every((eventType) =>
+      resetAuditEvents.some((row) => row.event_type === eventType))) {
+  throw new Error("Password-reset completion, forced-change flag or audit history did not persist correctly.");
+}
+const resetUpdatedCookie = await signIn(
+  { ...resetTarget, password: resetPassword },
+  "Password-reset replacement credential",
+);
+const resetUpdatedMe = await api(resetUpdatedCookie, "/api/v1/me");
+if (resetUpdatedMe.status !== 200 || resetUpdatedMe.payload?.ok !== true) {
+  throw new Error("Replacement password could not establish a staff session after recovery.");
+}
+console.log("ADMIN_APPROVED_PASSWORD_RESET_AND_FORCED_CHANGE_PASSED");
+
+// A successful UI logout must be backed by server-side session revocation.
+const signOutResponse = await fetchWithTimeout(workerUrl + "/api/auth/sign-out", {
+  method: "POST",
+  headers: { origin, cookie: resetUpdatedCookie, "content-type": "application/json" },
+  body: JSON.stringify({}),
+});
+if (!signOutResponse.ok) {
+  throw new Error("Better Auth server sign-out failed: " + signOutResponse.status + " " + await signOutResponse.text());
+}
+const afterSignOut = await api(resetUpdatedCookie, "/api/v1/me");
+if (afterSignOut.status !== 401) {
+  throw new Error("Server-confirmed sign-out did not revoke the authenticated session.");
+}
+
+console.log("SERVER_CONFIRMED_SIGN_OUT_PASSED");
+
+// Exercise team and service-area administration through the same Worker routes
+// used by the staff workspace, including audited membership and coverage changes.
+const createdTeam = await api(adminCookie, "/api/v1/teams", "POST", {
+  branch_id: branchId,
+  name: "QA Acceptance Team " + runId,
+  description: "Temporary API acceptance team",
+});
+if (createdTeam.status !== 201 || !createdTeam.payload?.data?.id) {
+  throw new Error("Admin/Pastor could not create a team through the staff API: HTTP " +
+    createdTeam.status + " code=" + (createdTeam.payload?.error?.code ?? "unexpected_response"));
+}
+const managedTeamId = createdTeam.payload.data.id;
+const listedTeams = await api(adminCookie, "/api/v1/teams?branch_id=" + branchId);
+if (listedTeams.status !== 200 ||
+    !(listedTeams.payload?.data?.teams ?? []).some((team) => team.id === managedTeamId)) {
+  throw new Error("Created team did not appear in the authenticated team directory.");
+}
+const memberAdd = await api(
+  adminCookie,
+  "/api/v1/teams/" + managedTeamId + "/members?branch_id=" + branchId,
+  "POST",
+  { staff_profile_id: unassigned.profileId, membership_role: "member" },
+);
+if (memberAdd.status !== 201 || !memberAdd.payload?.data?.id) {
+  throw new Error("Admin/Pastor could not add an active branch staff member to a team.");
+}
+const managedMembershipId = memberAdd.payload.data.id;
+const memberRoleUpdate = await api(
+  adminCookie,
+  "/api/v1/teams/" + managedTeamId + "/members/" + managedMembershipId + "?branch_id=" + branchId,
+  "PATCH",
+  { membership_role: "leader" },
+);
+if (memberRoleUpdate.status !== 200 || memberRoleUpdate.payload?.data?.membership_role !== "leader") {
+  throw new Error("Team membership role update did not persist.");
+}
+const memberRevoke = await api(
+  adminCookie,
+  "/api/v1/teams/" + managedTeamId + "/members/" + managedMembershipId + "/revoke?branch_id=" + branchId,
+  "POST",
+);
+if (memberRevoke.status !== 200) throw new Error("Team membership revocation failed.");
+const membershipAudit = await d1(
+  "SELECT action FROM team_management_audit WHERE target_id=? ORDER BY created_at",
+  [managedMembershipId],
+);
+const membershipState = (await d1(
+  "SELECT revoked_at FROM staff_team_membership WHERE id=?",
+  [managedMembershipId],
+))[0];
+if (!membershipState?.revoked_at ||
+    !["team.member.added", "team.member.role_changed", "team.member.revoked"].every((action) =>
+      membershipAudit.some((item) => item.action === action))) {
+  throw new Error("Team membership history or audit trail was not preserved after revocation.");
+}
+
+const createdArea = await api(adminCookie, "/api/v1/areas", "POST", {
+  branch_id: branchId,
+  name: "QA Service Area " + runId,
+  code: "QA" + String(runId).slice(-6),
+});
+if (createdArea.status !== 201 || !createdArea.payload?.data?.id) {
+  throw new Error("Admin/Pastor could not create a service area through the staff API.");
+}
+const managedAreaId = createdArea.payload.data.id;
+const listedAreas = await api(adminCookie, "/api/v1/areas?branch_id=" + branchId);
+if (listedAreas.status !== 200 ||
+    !(listedAreas.payload?.data?.areas ?? []).some((area) => area.id === managedAreaId)) {
+  throw new Error("Created service area did not appear in the authenticated service-area directory.");
+}
+const coverageAdd = await api(
+  adminCookie,
+  "/api/v1/areas/" + managedAreaId + "/coverage?branch_id=" + branchId,
+  "POST",
+  { staff_profile_id: unassigned.profileId },
+);
+if (coverageAdd.status !== 201 || !coverageAdd.payload?.data?.id) {
+  throw new Error("Active staff member could not be assigned to service-area coverage.");
+}
+const managedCoverageId = coverageAdd.payload.data.id;
+const coverageRevoke = await api(
+  adminCookie,
+  "/api/v1/areas/" + managedAreaId + "/coverage/" + managedCoverageId + "/revoke?branch_id=" + branchId,
+  "POST",
+);
+if (coverageRevoke.status !== 200) throw new Error("Service-area coverage revocation failed.");
+const coverageAudit = await d1(
+  "SELECT action FROM team_management_audit WHERE target_id=? ORDER BY created_at",
+  [managedCoverageId],
+);
+const coverageState = (await d1(
+  "SELECT revoked_at FROM staff_area_coverage WHERE id=?",
+  [managedCoverageId],
+))[0];
+if (!coverageState?.revoked_at ||
+    !["area.coverage.added", "area.coverage.revoked"].every((action) =>
+      coverageAudit.some((item) => item.action === action))) {
+  throw new Error("Service-area coverage history or audit trail was not preserved.");
+}
+console.log("TEAM_AND_SERVICE_AREA_ADMINISTRATION_PASSED");
+
+// Exercise announcements and church-content drafts end-to-end. Drafts must
+// remain private and must not be mistaken for public/published content.
+const announcementCreate = await api(adminCookie, "/api/v1/announcements", "POST", {
+  branch_id: branchId,
+  title: "QA announcement " + runId,
+  body: "Temporary announcement draft for authenticated API acceptance.",
+});
+if (announcementCreate.status !== 201 ||
+    announcementCreate.payload?.data?.status !== "draft" ||
+    announcementCreate.payload?.data?.is_public !== false) {
+  throw new Error("Announcement draft creation failed or exposed an unpublished draft.");
+}
+const announcementId = announcementCreate.payload.data.id;
+const announcementList = await api(adminCookie, "/api/v1/announcements?branch_id=" + branchId + "&limit=50&offset=0");
+if (announcementList.status !== 200 ||
+    !(announcementList.payload?.data ?? []).some((item) => item.id === announcementId)) {
+  throw new Error("Created announcement draft did not appear in the authenticated draft list.");
+}
+const announcementUpdate = await api(
+  adminCookie,
+  "/api/v1/announcements/" + announcementId + "?branch_id=" + branchId,
+  "PATCH",
+  { title: "QA announcement revised " + runId, body: "Updated synthetic announcement draft." },
+);
+if (announcementUpdate.status !== 200 ||
+    announcementUpdate.payload?.data?.status !== "draft" ||
+    announcementUpdate.payload?.data?.is_public !== false ||
+    announcementUpdate.payload?.data?.title !== "QA announcement revised " + runId) {
+  throw new Error("Announcement draft update changed publication state or failed to persist.");
+}
+
+const sermonCreate = await api(adminCookie, "/api/v1/content/sermons", "POST", {
+  branch_id: branchId,
+  title: "QA sermon draft " + runId,
+  body: "Temporary sermon content draft for API acceptance only.",
+  public_slug: "qa-acceptance-" + runId,
+});
+if (sermonCreate.status !== 201 || sermonCreate.payload?.data?.status !== "draft") {
+  throw new Error("Sermon draft creation failed.");
+}
+const sermonId = sermonCreate.payload.data.id;
+const sermonList = await api(adminCookie, "/api/v1/content/sermons?branch_id=" + branchId + "&limit=50&offset=0");
+if (sermonList.status !== 200 ||
+    !(sermonList.payload?.data ?? []).some((item) => item.id === sermonId && item.status === "draft")) {
+  throw new Error("Created sermon draft did not appear in the authenticated content list.");
+}
+const sermonUpdate = await api(
+  adminCookie,
+  "/api/v1/content/sermons/" + sermonId + "?branch_id=" + branchId,
+  "PATCH",
+  { title: "QA sermon draft revised " + runId, body: "Updated temporary sermon draft." },
+);
+if (sermonUpdate.status !== 200 || sermonUpdate.payload?.data?.status !== "draft" ||
+    sermonUpdate.payload?.data?.title !== "QA sermon draft revised " + runId) {
+  throw new Error("Sermon draft update failed or changed its publication state.");
+}
+const contentState = (await d1(
+  "SELECT status,published_at FROM sermon WHERE id=?",
+  [sermonId],
+))[0];
+if (contentState?.status !== "draft" || contentState?.published_at !== null) {
+  throw new Error("Sermon draft was unexpectedly published during draft operations.");
+}
+console.log("ANNOUNCEMENT_AND_CONTENT_DRAFT_LIFECYCLE_PASSED");
+
+// Exercise calendar entry create, update, list and reason-coded cancellation.
+const calendarStart = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+const calendarEnd = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+const calendarCreate = await api(adminCookie, "/api/v1/calendar/entries", "POST", {
+  branch_id: branchId,
+  entry_type: "other",
+  title: "QA calendar entry " + runId,
+  starts_at: calendarStart,
+  ends_at: calendarEnd,
+});
+if (calendarCreate.status !== 201 || !calendarCreate.payload?.data?.id) {
+  throw new Error("Calendar entry creation failed.");
+}
+const calendarEntryId = calendarCreate.payload.data.id;
+const calendarList = await api(adminCookie, "/api/v1/calendar/entries?branch_id=" + branchId + "&limit=100&offset=0");
+if (calendarList.status !== 200 ||
+    !(calendarList.payload?.data ?? []).some((item) => item.id === calendarEntryId)) {
+  throw new Error("Created calendar entry did not appear in the branch calendar.");
+}
+const calendarUpdate = await api(
+  adminCookie,
+  "/api/v1/calendar/entries/" + calendarEntryId + "?branch_id=" + branchId,
+  "PATCH",
+  { title: "QA calendar entry revised " + runId },
+);
+if (calendarUpdate.status !== 200 ||
+    calendarUpdate.payload?.data?.title !== "QA calendar entry revised " + runId) {
+  throw new Error("Calendar entry update failed.");
+}
+const calendarCancel = await api(
+  adminCookie,
+  "/api/v1/calendar/entries/" + calendarEntryId + "/cancel?branch_id=" + branchId,
+  "POST",
+  { reason: "Synthetic acceptance cancellation verifies the audited calendar lifecycle." },
+);
+const calendarState = (await d1(
+  "SELECT status,cancellation_reason,cancelled_by FROM calendar_entry WHERE id=?",
+  [calendarEntryId],
+))[0];
+if (calendarCancel.status !== 200 ||
+    calendarCancel.payload?.data?.status !== "cancelled" ||
+    calendarState?.status !== "cancelled" ||
+    calendarState?.cancellation_reason !== "Synthetic acceptance cancellation verifies the audited calendar lifecycle." ||
+    !calendarState?.cancelled_by) {
+  throw new Error("Calendar cancellation did not persist its reason and actor audit fields.");
+}
+console.log("CALENDAR_ENTRY_LIFECYCLE_PASSED");
+
 const checks = {
   reportApproved: reportState?.status === "approved",
   reportReviewHistory: reviewHistory?.decision === "approved",
@@ -453,6 +866,22 @@ const checks = {
   selfReviewDenied: selfReview.status === 403,
   unassignedRegistrationDenied: unassignedRegistration.status === 403,
   unassignedCheckinDenied: unassignedCheckin.status === 403,
+  authenticatedSessionRetrieved: authenticatedSessionResponse.status === 200 && Boolean(authenticatedSessionPayload?.session?.id),
+  firstLoginSessionGate: firstLoginSessionResponse.status === 200 && firstLoginSessionPayload?.data?.must_change_password === true && firstLoginProtectedRead.status === 403,
+  firstLoginPasswordChanged: Number(firstLoginState?.must_change_password) === 0 && firstLoginState?.password_setup_expires_at === null,
+  firstLoginOldPasswordRejected: firstLoginOldAttempt.status === 401,
+  passwordResetCompleted: resetRequestState?.status === "completed" &&
+    ["requested", "approved", "reset_completed"].every((eventType) => resetAuditEvents.some((row) => row.event_type === eventType)),
+  passwordResetRevokedOldSession: resetOldSession.status === 401,
+  passwordResetOldPasswordRejected: resetOldCredentialAttempt.status === 401,
+  passwordResetReplacementAccepted: resetUpdatedMe.status === 200,
+  serverConfirmedSignOut: signOutResponse.ok && afterSignOut.status === 401,
+  teamAndServiceAreaAdministration: membershipState?.revoked_at !== null && coverageState?.revoked_at !== null &&
+    ["team.member.added", "team.member.role_changed", "team.member.revoked"].every((action) => membershipAudit.some((item) => item.action === action)) &&
+    ["area.coverage.added", "area.coverage.revoked"].every((action) => coverageAudit.some((item) => item.action === action)),
+  announcementDraftLifecycle: announcementUpdate.status === 200 && announcementUpdate.payload?.data?.status === "draft" && announcementUpdate.payload?.data?.is_public === false,
+  sermonDraftLifecycle: sermonUpdate.status === 200 && contentState?.status === "draft" && contentState?.published_at === null,
+  calendarEntryLifecycle: calendarCancel.status === 200 && calendarState?.status === "cancelled" && Boolean(calendarState?.cancelled_by),
 };
 const failed = Object.entries(checks).filter(([, value]) => !value).map(([key]) => key);
 if (failed.length) throw new Error(`Authenticated API acceptance failed: ${failed.join(", ")}`);
