@@ -205,8 +205,8 @@ export function OperationsWorkspace({
   };
 
   const deleteRecord = async (id: string, title: string) => {
-    if (!canManage || mutationInFlight.current || saving || deletingId) return;
-    const verb = section === "Announcements" ? "archive" : "cancel";
+    if (!canManage || (section !== "Events" && section !== "Calendar") || mutationInFlight.current || saving || deletingId) return;
+    const verb = section === "Events" ? "cancel" : "remove";
     if (!window.confirm(`Delete “${title}”? This will ${verb} the record and preserve its audit history. It cannot be undone here.`)) return;
     mutationInFlight.current = true;
     setDeletingId(id);
@@ -216,8 +216,7 @@ export function OperationsWorkspace({
     try {
       if (section === "Events") await api.cancelEventDraft(branchId, id);
       else if (section === "Calendar") await api.cancelCalendarEntry(branchId, id, "Removed by an authorized branch administrator.");
-      else if (section === "Announcements") await api.archiveAnnouncementDraft(branchId, id);
-      setNotice(section === "Announcements" ? "Announcement archived." : section === "Events" ? "Event cancelled and removed from active drafts." : "Calendar entry cancelled and removed from the active calendar.");
+      setNotice(section === "Events" ? "Event cancelled and removed from active drafts." : "Calendar entry cancelled and removed from the active calendar.");
       await loadRecords();
     } catch (cause) {
       if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
@@ -585,7 +584,7 @@ export function OperationsWorkspace({
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.updated_at, timeZone)} · {shortText(item.body)}</p></div>
                 <span className="cmi-task-status status-open">Private draft</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
-                {canManage && <button type="button" className="cmi-button cmi-button-danger" onClick={() => void deleteRecord(item.id,item.title)} disabled={deletingId!==null} aria-label={"Delete " + item.title}>{deletingId===item.id ? "Deleting…" : <><Trash2 size={14} />Delete</>}</button>}
+
               </article>
             ))}
             {!announcements.length && <p className="cmi-detail-muted">No announcement drafts are visible in this branch.</p>}

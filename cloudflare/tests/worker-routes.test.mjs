@@ -417,6 +417,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
   let followupTaskStatus = "open";
   let calendarEntryRow = null;
   let announcementRow = null;
+  const contentRows = [];
   let eventRow = { id: "40000000-0000-4000-8000-000000000001", branch_id: BRANCH_ID, title: "Missions Conference", starts_at: "2026-12-01T09:00:00.000Z", ends_at: "2026-12-01T17:00:00.000Z", status: "draft", visibility: "private", registration_state: "closed", capacity: 100 };
   let eventStaffAssignment = null;
   let eventTeamAssignment = null;
@@ -430,6 +431,9 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         async first() {
           calls.push({ kind: "first", sql: this.sql, values: this.values });
           if (this.sql.includes("FROM calendar_entry")) return calendarEntryRow;
+          if (this.sql.includes("FROM sermon") || this.sql.includes("FROM welcome_message")) {
+            return contentRows.find((row) => row.id === this.values[0] && row.branch_id === this.values[1] && row.created_by === this.values[2]) ?? null;
+          }
           if (this.sql.includes("SELECT req.id, req.target_profile_id") && this.sql.includes("FROM staff_password_reset_request")) return resetRequest;
           if (this.sql.includes("SELECT id,branch_id,title,starts_at,ends_at,status") && this.sql.includes("FROM event")) return eventRow;
           if (this.sql.includes("SELECT id,account_status FROM staff_profile")) return { id: STAFF_PROFILE_ID, account_status: "active" };
@@ -523,6 +527,9 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           if (this.sql.includes("FROM event_team_assignment a")) return { results: eventTeamAssignment ? [eventTeamAssignment] : [] };
           if (this.sql.includes("SELECT DISTINCT sp.auth_user_id,sp.full_name")) return { results: [{ auth_user_id: AUTH_USER_ID, full_name: "Test Staff" }] };
           if (this.sql.includes("SELECT id,name FROM team WHERE branch_id")) return { results: [{ id: OWN_TEAM_ID, name: "Welcome Team" }] };
+          if (this.sql.includes("FROM sermon") || this.sql.includes("FROM welcome_message")) {
+            return { results: contentRows.filter((row) => row.branch_id === this.values[0] && row.created_by === this.values[1]) };
+          }
           if (this.sql.includes("FROM announcement")) return { results: announcementRow ? [announcementRow] : [] };
           if (this.sql.includes("SELECT DISTINCT b.id, b.name, b.timezone")) {
             return { results: [{ id: BRANCH_ID, name: "Main Branch", timezone: "Africa/Accra" }] };
@@ -599,6 +606,22 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
               const [entry_type, title, starts_at, ends_at, , updated_at] = this.values;
               calendarEntryRow = { ...calendarEntryRow, entry_type, title, starts_at, ends_at, updated_at };
             }
+          } else if (this.sql.includes("INSERT INTO sermon")) {
+            const [id, branch_id, title, body, public_slug, created_by, , created_at, updated_at] = this.values;
+            contentRows.push({ id, branch_id, title, body, public_slug, status: "draft", published_at: null, created_by, created_at, updated_at });
+          } else if (this.sql.includes("INSERT INTO welcome_message")) {
+            const [id, branch_id, title, body, display_order, created_by, , created_at, updated_at] = this.values;
+            contentRows.push({ id, branch_id, title, body, display_order, status: "draft", published_at: null, created_by, created_at, updated_at });
+          } else if (this.sql.startsWith("UPDATE sermon SET") || this.sql.startsWith("UPDATE welcome_message SET")) {
+            const setClause = this.sql.split(" SET ")[1].split(" WHERE ")[0];
+            const columns = setClause.split(", ").map((part) => part.split("=")[0]);
+            const rowId = this.values[this.values.length - 4];
+            const row = contentRows.find((item) => item.id === rowId && item.created_by === this.values[this.values.length - 2]);
+            if (row) {
+              columns.slice(0, -2).forEach((column, index) => { row[column] = this.values[index]; });
+              row.updated_by = this.values[columns.length - 2];
+              row.updated_at = this.values[columns.length - 1];
+            }
           } else if (this.sql.includes("INSERT INTO announcement")) {
             const [id, branch_id, title, body, created_by, updated_by, created_at, updated_at] = this.values;
             announcementRow = { id, branch_id, title, body, is_public: 0, status: "draft", created_by, created_at, updated_at };
@@ -635,6 +658,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
     calls,
     batches,
     get writes() { return writes; },
+    contentRows,
     setCalendarEntryRow(row) { calendarEntryRow = row; },
     get calendarEntryRow() { return calendarEntryRow; },
     env: {
@@ -1784,4 +1808,151 @@ test("Field Worker cannot discover contacts by hidden email or phone without ide
     assert.equal(query.values[11], 0, "email search must be disabled without contact identity-read");
     assert.equal(query.values[13], 0, "phone search must be disabled without contact identity-read");
   }
+});
+
+test("content draft routes reject anonymous access before querying D1", async () => {
+  const { env, calls } = fakeEnv();
+  const branch = "30000000-0000-4000-8000-000000000001";
+  const sermon = await worker.fetch(new Request(`https://worker.example/api/v1/content/sermons?branch_id=${branch}`), env);
+  const welcome = await worker.fetch(new Request(`https://worker.example/api/v1/content/welcome-messages?branch_id=${branch}`), env);
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/content/sermons", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ branch_id: branch, title: "A sermon", body: "Private draft", public_slug: "a-sermon" }),
+  }), env);
+  for (const response of [sermon, welcome, create]) {
+    const payload = await response.json();
+    assert.equal(response.status, 401);
+    assert.equal(payload.error.code, "UNAUTHENTICATED");
+  }
+  assert.equal(calls.length, 0);
+});
+
+
+
+test("Admin/Pastor can create and list only their own private sermon drafts in the active branch", async () => {
+  const { env, contentRows } = authorizedDirectoryEnv("admin_pastor", [
+    ["content.manage.draft", "branch"],
+    ["content.manage", "branch"],
+  ]);
+  contentRows.push({
+    id: "81000000-0000-4000-8000-000000000002",
+    branch_id: BRANCH_ID,
+    title: "Another author's sermon",
+    body: "Must not be visible.",
+    public_slug: "another-authors-sermon",
+    status: "draft",
+    published_at: null,
+    created_by: "10000000-0000-4000-8000-000000000099",
+    created_at: "2026-11-22T00:00:00.000Z",
+    updated_at: "2026-11-22T00:00:00.000Z",
+  });
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/content/sermons", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Faith and Service",
+      body: "A private sermon draft.",
+      public_slug: "faith-and-service",
+    }),
+  }), env);
+  const created = await create.json();
+  assert.equal(create.status, 201);
+  assert.equal(created.data.status, "draft");
+  assert.equal(created.data.published_at, null);
+  assert.equal("created_by" in created.data, false);
+
+  const list = await worker.fetch(new Request(
+    "https://worker.example/api/v1/content/sermons?branch_id=" + BRANCH_ID,
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  const listed = await list.json();
+  assert.equal(list.status, 200);
+  assert.equal(listed.data.length, 1);
+  assert.equal(listed.data[0].title, "Faith and Service");
+
+  const update = await worker.fetch(new Request(
+    "https://worker.example/api/v1/content/sermons/" + created.data.id + "?branch_id=" + BRANCH_ID,
+    {
+      method: "PATCH",
+      headers: {
+        Cookie: "better-auth.session_token=verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: "Faithful Service" }),
+    },
+  ), env);
+  const updated = await update.json();
+  assert.equal(update.status, 200);
+  assert.equal(updated.data.title, "Faithful Service");
+
+  const otherAuthor = await worker.fetch(new Request(
+    "https://worker.example/api/v1/content/sermons/81000000-0000-4000-8000-000000000002?branch_id=" + BRANCH_ID,
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  assert.equal(otherAuthor.status, 404);
+});
+
+
+test("Coordinator without the draft capability cannot create visitor content", async () => {
+  const { env, calls } = authorizedDirectoryEnv("coordinator");
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/content/welcome-messages", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Welcome",
+      body: "A private welcome message.",
+      display_order: 0,
+    }),
+  }), env);
+  const payload = await response.json();
+  assert.equal(response.status, 403);
+  assert.equal(payload.error.code, "CAPABILITY_DENIED");
+  assert.equal(calls.some((call) => call.kind === "run"), false);
+});
+
+test("Admin/Pastor can create and list private welcome-message drafts in the active branch", async () => {
+  const { env } = authorizedDirectoryEnv("admin_pastor", [
+    ["content.manage.draft", "branch"],
+    ["content.manage", "branch"],
+  ]);
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/content/welcome-messages", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Welcome to PCG Missions",
+      body: "We are glad you are here.",
+      display_order: 2,
+    }),
+  }), env);
+  const created = await create.json();
+  assert.equal(create.status, 201);
+  assert.equal(created.data.status, "draft");
+  assert.equal(created.data.published_at, null);
+  assert.equal(created.data.display_order, 2);
+
+  const list = await worker.fetch(new Request(
+    "https://worker.example/api/v1/content/welcome-messages?branch_id=" + BRANCH_ID,
+    { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), env);
+  const listed = await list.json();
+  assert.equal(list.status, 200);
+  assert.equal(listed.data.length, 1);
+  assert.equal(listed.data[0].title, "Welcome to PCG Missions");
 });
