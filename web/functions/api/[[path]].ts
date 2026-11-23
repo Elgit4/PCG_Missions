@@ -12,6 +12,8 @@ const FORWARDED_HEADERS = [
   "accept",
   "content-type",
   "cookie",
+  // Set by Cloudflare at the Pages edge; the Worker uses it for credential rate limits.
+  "cf-connecting-ip",
   "origin",
   "user-agent",
   "x-branch-id",
@@ -101,9 +103,10 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
       if (value) responseHeaders.set(name, value);
     }
 
+    const singleSetCookie = upstream.headers.get("set-cookie");
     const cookieHeaders = typeof upstream.headers.getSetCookie === "function"
       ? upstream.headers.getSetCookie()
-      : (upstream.headers.get("set-cookie") ? [upstream.headers.get("set-cookie")] : []);
+      : (singleSetCookie ? [singleSetCookie] : []);
     for (const cookie of cookieHeaders) responseHeaders.append("Set-Cookie", cookie);
 
     responseHeaders.set("Cache-Control", "no-store, max-age=0");
