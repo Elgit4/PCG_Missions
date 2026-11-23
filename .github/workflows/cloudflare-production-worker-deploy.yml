@@ -17,13 +17,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  restore-rehearsal:
-    if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
-    uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
-    secrets: inherit
-
   production-worker:
-    needs: restore-rehearsal
     name: Validate, migrate and deploy the production Worker
     if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
     runs-on: ubuntu-latest
@@ -63,6 +57,52 @@ jobs:
           test "$CONFIRMATION" = "DEPLOY-PRODUCTION"
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           npx --yes wrangler@4.166.0 whoami
+
+      - name: Require current preview, Worker and frontend acceptance before production mutation
+        working-directory: .
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          require_successful_current_code_run() {
+            local workflow_file="$1"
+            local label="$2"
+            local scope="$3"
+            local jq_filter runs accepted sha
+            jq_filter=".workflow_runs[] | select(.path == \".github/workflows/${workflow_file}\" and .conclusion == \"success\") | .head_sha"
+            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq "$jq_filter")"
+            accepted=""
+            while IFS= read -r sha; do
+              [[ -z "$sha" ]] && continue
+              if ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                continue
+              fi
+              if ! git merge-base --is-ancestor "$sha" "$GITHUB_SHA"; then
+                continue
+              fi
+              if [[ "$scope" == "cloudflare" ]] && ! git diff --quiet "$sha" "$GITHUB_SHA" -- cloudflare; then
+                continue
+              fi
+              if [[ "$scope" == "web" ]] && ! git diff --quiet "$sha" "$GITHUB_SHA" -- web; then
+                continue
+              fi
+              accepted="$sha"
+              break
+            done <<< "$runs"
+            if [[ -z "$accepted" ]]; then
+              echo "::error title=Production acceptance gate blocked::$label has no successful run against the exact current $scope source tree."
+              exit 1
+            fi
+            echo "$label accepted at $accepted"
+          }
+
+          require_successful_current_code_run "cloudflare-d1-foundation.yml" "Cloudflare D1 Foundation" "cloudflare"
+          require_successful_current_code_run "cmi-web-ci.yml" "CMI web CI" "web"
+          # The preview workflow includes the full isolated D1 restore rehearsal,
+          # six-role authenticated acceptance, preview Worker deployment and session smoke test.
+          require_successful_current_code_run "cloudflare-preview-deploy.yml" "Cloudflare Auth Preview Release" "cloudflare"
 
       - name: Verify deployed preview authentication before production mutation
         shell: bash
