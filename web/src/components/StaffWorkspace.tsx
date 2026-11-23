@@ -215,9 +215,9 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canSelfAssignTask = !!taskCreateGrant &&
     (taskCreateGrant.scope_mode === "assigned" || taskCreateGrant.scope_mode === "branch");
   const canUpdateTasks = hasCapability(session, "followup.task.update.scoped", branchId);
-  const canAssignFollowUp = hasCapability(session, "followup.assign", branchId) && canReadStaffDirectory;
   const canManagePasswordResets = hasCapability(session, "staff.password_reset.manage", branchId);
   const canReadStaffDirectory = hasCapability(session, "staff.directory.read", branchId);
+  const canAssignFollowUp = hasCapability(session, "followup.assign", branchId) && canReadStaffDirectory;
   const canAssignContacts = hasCapability(session, "contacts.assign", branchId) && canReadStaffDirectory;
   const canManageStaffAccounts = hasCapability(session, "staff.account.manage", branchId);
   const canCreateStaffAccounts = hasCapability(session, "staff.account.manage", branchId) && hasCapability(session, "access.role.assign", branchId);
