@@ -5100,7 +5100,7 @@ async function listAssignedPrayerRequests(
   const context = await resolveStaffContext(request, env);
   if (context.state !== "authenticated") return mapCapabilityFailure(context.state, requestId, origin);
   if (!context.activeBranch) return mapCapabilityFailure("branch_required", requestId, origin);
-  if (!hasScopedGrant(context, "prayer.request.read", "explicit_share")) {
+  if (!hasScopedGrant(context, "prayer.request.read.assigned", "assigned")) {
     return json(403, { ok: false, error: { code: "PRAYER_ASSIGNMENT_READ_NOT_AUTHORIZED" } }, requestId, origin);
   }
   const url = new URL(request.url);
@@ -5114,19 +5114,12 @@ async function listAssignedPrayerRequests(
     return json(400, { ok: false, error: { code: "INVALID_ASSIGNED_PRAYER_QUERY" } }, requestId, origin);
   }
   const now = new Date().toISOString();
-  const activeShareAndAssignment = `
+  const activeAssignment = `
     prayer_assignment.intercessor_user_id = ?
     AND prayer_assignment.branch_id = prayer_request.branch_id
     AND prayer_assignment.revoked_at IS NULL
     AND prayer_assignment.starts_at <= ?
     AND (prayer_assignment.ends_at IS NULL OR prayer_assignment.ends_at > ?)
-    AND staff_record_share.staff_profile_id = ?
-    AND staff_record_share.record_type = 'prayer_request'
-    AND staff_record_share.record_id = prayer_request.id
-    AND staff_record_share.branch_id = prayer_request.branch_id
-    AND staff_record_share.revoked_at IS NULL
-    AND staff_record_share.starts_at <= ?
-    AND (staff_record_share.ends_at IS NULL OR staff_record_share.ends_at > ?)
     AND EXISTS (
       SELECT 1
       FROM staff_role_assignment ra
@@ -5138,8 +5131,8 @@ async function listAssignedPrayerRequests(
         AND ra.revoked_at IS NULL
         AND ra.starts_at <= ?
         AND (ra.ends_at IS NULL OR ra.ends_at > ?)
-        AND cap.code = 'prayer.request.read'
-        AND rc.scope_mode = 'explicit_share'
+        AND cap.code = 'prayer.request.read.assigned'
+        AND rc.scope_mode = 'assigned'
     )
   `;
   const batch = await env.DB.batch([
@@ -5148,42 +5141,38 @@ async function listAssignedPrayerRequests(
         (id, prayer_request_id, branch_id, actor_user_id, action, reason, request_id, accessed_at, safe_metadata)
       SELECT 'prayer-read-' || lower(hex(randomblob(16))), prayer_request.id,
              prayer_request.branch_id, ?, 'read',
-             'Assigned intercessor read through explicit share', ?, ?,
-             json_object('access_mode', 'explicit_share')
+             'Assigned intercessor read through active assignment', ?, ?,
+             json_object('access_mode', 'assigned')
       FROM prayer_request
       JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
-      JOIN staff_record_share ON staff_record_share.record_id = prayer_request.id
-      WHERE prayer_request.branch_id = ?
+            WHERE prayer_request.branch_id = ?
         AND prayer_request.status IN ('assigned','in_progress','answered')
         AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
-        AND ${activeShareAndAssignment}
+        AND ${activeAssignment}
       ORDER BY prayer_request.created_at DESC, prayer_request.id DESC
       LIMIT ? OFFSET ?
     `).bind(
       context.staff.userId, requestId, now, context.activeBranch.branchId, now,
-      context.staff.userId, now, now, context.staff.profileId, now, now,
-      context.staff.profileId, now, now, limit, offset,
+      context.staff.userId, now, now, context.staff.profileId, now, now, limit, offset,
     ),
     env.DB.prepare(`
       INSERT INTO sensitive_record_access_audit
         (id, branch_id, actor_profile_id, record_type, record_id, action, purpose, share_reference, created_at)
       SELECT 'prayer-read-meta-' || lower(hex(randomblob(16))),
              prayer_request.branch_id, ?, 'prayer_request', prayer_request.id,
-             'read', 'Assigned intercessor accessed narrative through explicit share',
-             staff_record_share.id, ?
+             'read', 'Assigned intercessor accessed narrative through active assignment',
+             prayer_assignment.id, ?
       FROM prayer_request
       JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
-      JOIN staff_record_share ON staff_record_share.record_id = prayer_request.id
-      WHERE prayer_request.branch_id = ?
+            WHERE prayer_request.branch_id = ?
         AND prayer_request.status IN ('assigned','in_progress','answered')
         AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
-        AND ${activeShareAndAssignment}
+        AND ${activeAssignment}
       ORDER BY prayer_request.created_at DESC, prayer_request.id DESC
       LIMIT ? OFFSET ?
     `).bind(
       context.staff.profileId, now, context.activeBranch.branchId, now,
-      context.staff.userId, now, now, context.staff.profileId, now, now,
-      context.staff.profileId, now, now, limit, offset,
+      context.staff.userId, now, now, context.staff.profileId, now, now, limit, offset,
     ),
     env.DB.prepare(`
       SELECT prayer_request.id, prayer_request.request_text, prayer_request.status,
@@ -5191,17 +5180,15 @@ async function listAssignedPrayerRequests(
              prayer_request.answered_at, prayer_request.created_at, prayer_request.updated_at
       FROM prayer_request
       JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
-      JOIN staff_record_share ON staff_record_share.record_id = prayer_request.id
-      WHERE prayer_request.branch_id = ?
+            WHERE prayer_request.branch_id = ?
         AND prayer_request.status IN ('assigned','in_progress','answered')
         AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
-        AND ${activeShareAndAssignment}
+        AND ${activeAssignment}
       ORDER BY prayer_request.created_at DESC, prayer_request.id DESC
       LIMIT ? OFFSET ?
     `).bind(
       context.activeBranch.branchId, now,
-      context.staff.userId, now, now, context.staff.profileId, now, now,
-      context.staff.profileId, now, now, limit, offset,
+      context.staff.userId, now, now, context.staff.profileId, now, now, limit, offset,
     ),
   ]);
   const rows = (batch[2] as unknown as {
@@ -5216,15 +5203,13 @@ async function listAssignedPrayerRequests(
     SELECT COUNT(*) AS total
     FROM prayer_request
     JOIN prayer_assignment ON prayer_assignment.prayer_request_id = prayer_request.id
-    JOIN staff_record_share ON staff_record_share.record_id = prayer_request.id
-    WHERE prayer_request.branch_id = ?
+        WHERE prayer_request.branch_id = ?
       AND prayer_request.status IN ('assigned','in_progress','answered')
       AND (prayer_request.expires_at IS NULL OR prayer_request.expires_at > ?)
-      AND ${activeShareAndAssignment}
+      AND ${activeAssignment}
   `).bind(
     context.activeBranch.branchId, now,
     context.staff.userId, now, now, context.staff.profileId, now, now,
-    context.staff.profileId, now, now,
   ).first<{ total: number }>();
   return json(200, {
     ok: true,
