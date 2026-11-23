@@ -78,7 +78,7 @@ class SupabaseRuntimeBoundaryTests(unittest.TestCase):
 
     def test_public_content_projection_uses_cloudflare_d1_not_supabase(self):
         public_content = (WORKER_SOURCE / "public-content.ts").read_text(encoding="utf-8")
-        self.assertIn("env.DB.prepare", public_content)
+        self.assertIn("db.prepare", public_content)
         self.assertNotIn("SUPABASE_URL", public_content)
         self.assertNotIn("SUPABASE_SERVICE_ROLE_KEY", public_content)
 
