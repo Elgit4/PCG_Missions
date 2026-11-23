@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-const stylesheet = readFileSync(new URL('./staff-login-brand.css', import.meta.url), 'utf8');
+const stylesheet = readFileSync(new URL('../production.css', import.meta.url), 'utf8');
 
 describe('staff login brand accents', () => {
   it('uses the muted-gold brand accent for normal emphasis and access markers', () => {

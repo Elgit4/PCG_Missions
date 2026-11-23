@@ -5,7 +5,7 @@
 
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(29);
+select plan(30);
 
 select has_table('public', 'contact', 'contact table exists');
 select has_table('public', 'contact_capture', 'contact capture table exists');
@@ -57,7 +57,7 @@ select extensions.ok(
 
 select extensions.is(
   (select count(*)::integer from public.role_capability),
-  76,
+  80,
   'the owner-directed visitor MVP role baseline remains present'
 );
 
@@ -281,6 +281,19 @@ select extensions.throws_ok(
         'completed'
       ) $q$,
   '23514', null, 'completed task must include a completion timestamp'
+);
+
+
+select extensions.ok(
+  has_table_privilege('service_role','public.contact_note','SELECT')
+  and has_table_privilege('service_role','public.contact_note','INSERT')
+  and has_table_privilege('service_role','public.contact_interaction','SELECT')
+  and has_table_privilege('service_role','public.contact_interaction','INSERT')
+  and not has_table_privilege('anon','public.contact_note','SELECT')
+  and not has_table_privilege('authenticated','public.contact_note','SELECT')
+  and not has_table_privilege('anon','public.contact_interaction','SELECT')
+  and not has_table_privilege('authenticated','public.contact_interaction','SELECT'),
+  'Edge Functions can read and write contact notes/interactions while browser roles remain denied'
 );
 
 select * from finish();

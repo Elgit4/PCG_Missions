@@ -12,8 +12,8 @@ select ok(
 );
 select is(
   (select count(*)::integer from public.role_capability),
-  76,
-  'the owner-directed visitor MVP baseline contains 76 least-privilege grants'
+  80,
+  'the owner-directed visitor MVP baseline contains 80 least-privilege grants'
 );
 select ok(
   not exists (
@@ -411,10 +411,6 @@ select ok(
         c.code in (
           'announcement.publish.scoped',
           'content.publish',
-          'event.registration.manage.scoped',
-          'event.checkin.scoped',
-          'event.closeout.submit',
-          'event.closeout.review',
           'report.export.scoped',
           'contact.export.scoped',
           'prayer.oversight.manage',
@@ -423,7 +419,7 @@ select ok(
         or c.code like 'sms.%'
       )
   ),
-  'Private-draft and team-management grants do not enable publication, registration, attendance, exports, pastoral mutation or SMS'
+  'Private-draft and team-management grants do not enable publication, exports, pastoral mutation or SMS; event workflows are granted separately'
 );
 
 select is(

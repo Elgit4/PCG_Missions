@@ -1,5 +1,5 @@
 begin;
-select plan(31);
+select plan(32);
 
 select has_table('public','team_management_audit','Team administration audit ledger exists');
 select ok(
@@ -353,6 +353,14 @@ select throws_ok(
   '23514',
   'TEAM_HAS_ACTIVE_MEMBERS',
   'A team with active members cannot be deactivated'
+);
+
+
+select ok(
+  has_table_privilege('service_role','public.staff_team_membership','SELECT')
+  and not has_table_privilege('anon','public.staff_team_membership','SELECT')
+  and not has_table_privilege('authenticated','public.staff_team_membership','SELECT'),
+  'Team Edge Function can list memberships without granting browser table access'
 );
 
 select * from finish();

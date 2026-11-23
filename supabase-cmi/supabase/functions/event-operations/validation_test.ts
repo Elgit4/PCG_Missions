@@ -4,9 +4,16 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   isUuid,
+  parseEventCheckin,
+  parseEventCloseoutReview,
+  parseEventCloseoutSubmit,
   parseEventCreate,
   parseEventListQuery,
   parseEventPatch,
+  parseEventRegistrationCancel,
+  parseEventStaffAssignment,
+  parseEventStaffRegistration,
+  parseEventTeamAssignment,
 } from "./validation.ts";
 
 const branchId = "10000000-0000-4000-8000-000000000001";
@@ -27,6 +34,7 @@ Deno.test("creates a private draft event with the Accra timezone default", () =>
     ends_at: "2026-11-15T12:00:00.000Z",
     timezone: "Africa/Accra",
     location: null,
+    capacity: null,
   });
 });
 
@@ -60,7 +68,7 @@ Deno.test("rejects missing branch IDs and malformed UUIDs", () => {
   );
 });
 
-Deno.test("rejects caller-controlled lifecycle and capacity fields", () => {
+Deno.test("rejects caller-controlled event lifecycle fields", () => {
   const base = {
     branch_id: branchId,
     title: "Sunday Outreach",
@@ -72,7 +80,6 @@ Deno.test("rejects caller-controlled lifecycle and capacity fields", () => {
       "status",
       "visibility",
       "registration_state",
-      "capacity",
       "created_by",
     ]
   ) {
@@ -81,6 +88,30 @@ Deno.test("rejects caller-controlled lifecycle and capacity fields", () => {
       { ok: false, error: "Unsupported event field." },
     );
   }
+});
+
+Deno.test("accepts finite event capacity and rejects invalid capacity values", () => {
+  const base = {
+    branch_id: branchId,
+    title: "Sunday Outreach",
+    starts_at: "2026-11-15T08:00:00Z",
+    ends_at: "2026-11-15T12:00:00Z",
+  };
+  const valid = parseEventCreate({ ...base, capacity: 120 });
+  assert(valid.ok);
+  assertEquals(valid.value.capacity, 120);
+  assertEquals(
+    parseEventCreate({ ...base, capacity: 0 }),
+    { ok: false, error: "Capacity must be a positive whole number or blank." },
+  );
+  assertEquals(
+    parseEventCreate({ ...base, capacity: 1.5 }),
+    { ok: false, error: "Capacity must be a positive whole number or blank." },
+  );
+  assertEquals(
+    parseEventCreate({ ...base, capacity: "120" }),
+    { ok: false, error: "Capacity must be a positive whole number or blank." },
+  );
 });
 
 Deno.test("rejects invalid title and description lengths", () => {
@@ -223,5 +254,196 @@ Deno.test("rejects duplicate and unsupported event-list parameters", () => {
       new URL(`https://example.test/events?branch_id=${branchId}&status=draft`),
     ),
     { ok: false, error: "Unsupported query parameter." },
+  );
+});
+
+Deno.test("validates staff event assignments and excludes transport", () => {
+  const input = {
+    staff_auth_user_id: "20000000-0000-4000-8000-000000000002",
+    assignment_role: "checkin",
+    starts_at: "2026-11-20T08:00:00Z",
+    ends_at: "2026-11-20T12:00:00Z",
+  };
+  const result = parseEventStaffAssignment(input);
+  assert(result.ok);
+  assertEquals(result.value.starts_at, "2026-11-20T08:00:00.000Z");
+  assertEquals(result.value.ends_at, "2026-11-20T12:00:00.000Z");
+  assertEquals(
+    parseEventStaffAssignment({ ...input, assignment_role: "transport" }),
+    {
+      ok: false,
+      error: "Invalid staff assignment role.",
+    },
+  );
+  assertEquals(
+    parseEventStaffAssignment({ ...input, branch_id: branchId }),
+    {
+      ok: false,
+      error: "Unsupported staff assignment field.",
+    },
+  );
+});
+
+Deno.test("validates team event assignments and excludes transport", () => {
+  const input = {
+    team_id: "30000000-0000-4000-8000-000000000003",
+    assignment_role: "ushering",
+    starts_at: "2026-11-20T08:00:00+00:00",
+  };
+  const result = parseEventTeamAssignment(input);
+  assert(result.ok);
+  assertEquals(result.value.ends_at, null);
+  assertEquals(
+    parseEventTeamAssignment({ ...input, assignment_role: "transport" }),
+    {
+      ok: false,
+      error: "Invalid team assignment role.",
+    },
+  );
+});
+
+Deno.test("rejects invalid assignment dates and caller-controlled actors", () => {
+  assertEquals(
+    parseEventStaffAssignment({
+      staff_auth_user_id: "20000000-0000-4000-8000-000000000002",
+      assignment_role: "support",
+      starts_at: "2026-11-20T08:00:00Z",
+      ends_at: "2026-11-20T07:00:00Z",
+    }),
+    { ok: false, error: "ends_at must be later than starts_at." },
+  );
+  assertEquals(
+    parseEventTeamAssignment({
+      team_id: "30000000-0000-4000-8000-000000000003",
+      assignment_role: "support",
+      starts_at: "2026-11-20T08:00:00Z",
+      assigned_by: "20000000-0000-4000-8000-000000000002",
+    }),
+    { ok: false, error: "Unsupported team assignment field." },
+  );
+});
+
+Deno.test("validates minimized staff event registration input", () => {
+  const input = {
+    idempotency_key: "61000000-0000-4000-8000-000000000099",
+    attendee_name: "Synthetic Attendee",
+    attendee_phone: "+233241234567",
+  };
+  const result = parseEventStaffRegistration(input);
+  assert(result.ok);
+  assertEquals(result.value.attendee_name, "Synthetic Attendee");
+  assertEquals(result.value.attendee_phone, "+233241234567");
+  assertEquals(
+    parseEventStaffRegistration({
+      ...input,
+      contact_id: branchId,
+    }).ok,
+    false,
+  );
+  assertEquals(
+    parseEventStaffRegistration({
+      ...input,
+      attendee_phone: "0241234567",
+    }).ok,
+    false,
+  );
+  assertEquals(
+    parseEventStaffRegistration({
+      ...input,
+      idempotency_key: "not-a-uuid",
+    }).ok,
+    false,
+  );
+  assertEquals(
+    parseEventStaffRegistration({
+      ...input,
+      attendee_name: " ",
+    }).ok,
+    false,
+  );
+});
+
+Deno.test("validates a minimal event registration cancellation request", () => {
+  const valid = parseEventRegistrationCancel({
+    idempotency_key: "61000000-0000-4000-8000-000000000100",
+  });
+  assert(valid.ok);
+  assertEquals(
+    parseEventRegistrationCancel({ idempotency_key: "not-a-uuid" }).ok,
+    false,
+  );
+  assertEquals(
+    parseEventRegistrationCancel({
+      idempotency_key: "61000000-0000-4000-8000-000000000100",
+      status: "cancelled",
+    }).ok,
+    false,
+  );
+});
+
+Deno.test("validates an idempotent event check-in request", () => {
+  const valid = parseEventCheckin({
+    idempotency_key: "61000000-0000-4000-8000-000000000104",
+  });
+  assert(valid.ok);
+  assertEquals(parseEventCheckin({ idempotency_key: "bad" }).ok, false);
+  assertEquals(
+    parseEventCheckin({
+      idempotency_key: "61000000-0000-4000-8000-000000000104",
+      recorded_by: branchId,
+    }).ok,
+    false,
+  );
+});
+
+Deno.test("validates event closeout submission fields and notes", () => {
+  const input = parseEventCloseoutSubmit({
+    idempotency_key: "61000000-0000-4000-8000-000000000106",
+    summary_notes: "Synthetic closeout notes",
+  });
+  assert(input.ok);
+  assertEquals(input.value.summary_notes, "Synthetic closeout notes");
+  assertEquals(
+    parseEventCloseoutSubmit({
+      idempotency_key: "61000000-0000-4000-8000-000000000106",
+      submitted_by: branchId,
+    }).ok,
+    false,
+  );
+  assertEquals(
+    parseEventCloseoutSubmit({
+      idempotency_key: "61000000-0000-4000-8000-000000000106",
+      summary_notes: "x".repeat(4001),
+    }).ok,
+    false,
+  );
+});
+
+Deno.test("requires independent closeout review decision and return reason", () => {
+  const approved = parseEventCloseoutReview({
+    idempotency_key: "61000000-0000-4000-8000-000000000107",
+    decision: "approved",
+  });
+  const returned = parseEventCloseoutReview({
+    idempotency_key: "61000000-0000-4000-8000-000000000108",
+    decision: "returned",
+    reason: "Please reconcile the registration total.",
+  });
+  assert(approved.ok);
+  assert(returned.ok);
+  assertEquals(
+    parseEventCloseoutReview({
+      idempotency_key: "61000000-0000-4000-8000-000000000109",
+      decision: "returned",
+    }).ok,
+    false,
+  );
+  assertEquals(
+    parseEventCloseoutReview({
+      idempotency_key: "61000000-0000-4000-8000-000000000110",
+      decision: "approved",
+      actor_user_id: branchId,
+    }).ok,
+    false,
   );
 });

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
+import { createAllowedOrigins } from "../_shared/cors.ts";
 import {
   type CanonicalJson,
   createRequestDigest,
@@ -36,11 +37,8 @@ const FOLLOWUP_IDEMPOTENCY_HMAC_KEY =
 const FOLLOWUP_IDEMPOTENCY_KEY_VERSION = Number(
   Deno.env.get("CMI_FOLLOWUP_IDEMPOTENCY_KEY_VERSION") ?? "1",
 );
-const allowedOrigins = new Set(
-  (Deno.env.get("CMI_ALLOWED_ORIGINS") ?? "https://pcg-missions.vercel.app")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+const allowedOrigins = createAllowedOrigins(
+  Deno.env.get("CMI_ALLOWED_ORIGINS"),
 );
 
 function createServiceClient() {
@@ -1431,8 +1429,22 @@ Deno.serve(async (request: Request) => {
         .range(params.offset, params.offset + params.limit - 1);
       if (ids !== null) query = query.in("id", ids);
       if (params.search) {
-        const safeSearch = params.search.replace(/[%,()_]/g, " ").trim();
-        if (safeSearch) query = query.ilike("first_name", `%${safeSearch}%`);
+        // Name search is available to every contact reader. Phone search is
+        // added only for branch-wide identity readers so assigned workers
+        // cannot probe phone numbers belonging to contacts outside their
+        // identity visibility grant.
+        const safeSearch = params.search.replace(/[%,()_"\\]/g, " ").trim();
+        if (safeSearch) {
+          const term = `%${safeSearch}%`;
+          const fields = [
+            "first_name.ilike." + term,
+            "last_name.ilike." + term,
+          ];
+          if (identityIds === null) {
+            fields.push("phone_e164.ilike." + term);
+          }
+          query = query.or(fields.join(","));
+        }
       }
       const { data, error, count } = await query;
       if (error) throw new Error("CONTACT_LIST_FAILED");

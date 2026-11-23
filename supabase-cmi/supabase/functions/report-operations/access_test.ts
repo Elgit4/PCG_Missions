@@ -1,6 +1,8 @@
 import {
   canReadReport,
   canReviewReport,
+  hasEligibleReportEventAssignment,
+  isReportEventAssignmentEligible,
   canSelectReportEvent,
   canSelectReportTeam,
   canSubmitOwnReport,
@@ -91,4 +93,25 @@ Deno.test("team and event references require active assignment", () => {
   if (!canSelectReportEvent(true, false)) throw new Error("staff-assigned event should be selectable");
   if (!canSelectReportEvent(false, true)) throw new Error("team-assigned event should be selectable");
   if (canSelectReportEvent(false, false)) throw new Error("unassigned event must be rejected");
+  if (isReportEventAssignmentEligible("transport")) {
+    throw new Error("Transport assignments must not enable event reports");
+  }
+  for (const unknownRole of ["", "admin", "viewer", "unknown-role"]) {
+    if (isReportEventAssignmentEligible(unknownRole)) {
+      throw new Error("Unknown event assignment roles must be denied");
+    }
+  }
+  if (!isReportEventAssignmentEligible("owner") ||
+    !isReportEventAssignmentEligible("organizer") ||
+    !isReportEventAssignmentEligible("checkin") ||
+    !isReportEventAssignmentEligible("ushering") ||
+    !isReportEventAssignmentEligible("support")) {
+    throw new Error("Support assignments should remain eligible");
+  }
+  if (hasEligibleReportEventAssignment(["transport"])) {
+    throw new Error("Transport-only event assignment must be rejected");
+  }
+  if (!hasEligibleReportEventAssignment(["transport", "support"])) {
+    throw new Error("A non-Transport assignment must remain eligible alongside Transport");
+  }
 });

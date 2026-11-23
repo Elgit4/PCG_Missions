@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import {
   BookOpen,
   CalendarClock,
@@ -8,7 +8,11 @@ import {
   Plus,
   RefreshCw,
   ShieldCheck,
+  Trash2,
   X,
+  Users,
+  ClipboardList,
+  ClipboardCheck,
 } from "lucide-react";
 import {
   CmiApiClient,
@@ -21,6 +25,10 @@ import {
 } from "../lib/cmi-api";
 import { hasCapability } from "../lib/capabilities";
 import { formatBranchDate, toBranchLocalInput, branchLocalInputToIso } from "../lib/branch-time";
+import { formatApplicationError } from "../lib/error-messages";
+import { EventAssignmentsPanel } from "./EventAssignmentsPanel";
+import { EventRegistrationsPanel } from "./EventRegistrationsPanel";
+import { EventCloseoutPanel } from "./EventCloseoutPanel";
 
 type OperationsSection = "Events" | "Calendar" | "Announcements" | "Content";
 type ContentKind = "sermons" | "welcome-messages";
@@ -28,7 +36,6 @@ type ContentKind = "sermons" | "welcome-messages";
 interface OperationsWorkspaceProps {
   section: OperationsSection;
   branchId: string;
-  branchName: string;
   timeZone: string;
   api: CmiApiClient;
   session: import("../lib/cmi-api").StaffSession;
@@ -41,22 +48,12 @@ function shortText(value: string, max = 150): string {
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof CmiApiError) {
-    if (error.status === 401) return "Your staff session has expired. Sign in again.";
-    if (error.status === 403) return "Your account does not have the required permission for this operation.";
-    if (error.status === 404) return "This record is no longer available in your branch.";
-    if (error.status === 409) return "This record changed before the save completed. Refresh and try again.";
-    if (error.status === 422) return error.message;
-    if (error.status === 0) return "The service could not be reached. Check your connection and retry.";
-    return error.message + (error.requestId ? " (Reference: " + error.requestId + ")" : "");
-  }
-  return "The operation could not be completed. Please try again.";
+  return formatApplicationError(error);
 }
 
 export function OperationsWorkspace({
   section,
   branchId,
-  branchName,
   timeZone,
   api,
   session,
@@ -72,8 +69,25 @@ export function OperationsWorkspace({
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [flyerFile, setFlyerFile] = useState<File | null>(null);
+  const [flyerPreview, setFlyerPreview] = useState<string | null>(null);
+  const [existingFlyerUrl, setExistingFlyerUrl] = useState<string | null>(null);
+  const [assignmentEvent, setAssignmentEvent] = useState<EventDraftRecord | null>(null);
+  const [registrationEvent, setRegistrationEvent] = useState<EventDraftRecord | null>(null);
+  const [closeoutEvent, setCloseoutEvent] = useState<EventDraftRecord | null>(null);
+  const loadVersion = useRef(0);
+  const flyerPreviewRequest = useRef(0);
+  const mutationInFlight = useRef(false);
+
+  useEffect(() => {
+    if (!flyerFile) { setFlyerPreview(null); return; }
+    const preview = URL.createObjectURL(flyerFile);
+    setFlyerPreview(preview);
+    return () => URL.revokeObjectURL(preview);
+  }, [flyerFile]);
 
   const canRead = section === "Events"
     ? hasCapability(session, "event.read.scoped", branchId)
@@ -82,6 +96,15 @@ export function OperationsWorkspace({
     : section === "Announcements"
     ? hasCapability(session, "announcement.read.scoped", branchId)
     : hasCapability(session, "content.manage.draft", branchId);
+
+  const canManageRegistrations = section === "Events" &&
+    hasCapability(session, "event.registration.manage.scoped", branchId);
+  const canCheckIn = section === "Events" &&
+    hasCapability(session, "event.checkin.scoped", branchId);
+  const canSubmitCloseout = section === "Events" &&
+    hasCapability(session, "event.closeout.submit", branchId);
+  const canReviewCloseout = section === "Events" &&
+    hasCapability(session, "event.closeout.review", branchId);
 
   const canManage = section === "Events"
     ? hasCapability(session, "event.manage.scoped", branchId)
@@ -92,6 +115,7 @@ export function OperationsWorkspace({
     : hasCapability(session, "content.manage.draft", branchId);
 
   const loadRecords = useCallback(async () => {
+    const requestId = ++loadVersion.current;
     setError("");
     if (!canRead) {
       setEvents([]);
@@ -106,58 +130,109 @@ export function OperationsWorkspace({
     try {
       if (section === "Events") {
         const result = await api.listEventDrafts(branchId, { limit: 50, offset: 0 });
+        if (requestId !== loadVersion.current) return;
         setEvents(result.data);
       } else if (section === "Calendar") {
         const result = await api.listCalendarEntries(branchId, { limit: 50, offset: 0 });
+        if (requestId !== loadVersion.current) return;
         setEntries(result.data);
       } else if (section === "Announcements") {
         const result = await api.listAnnouncementDrafts(branchId, { limit: 50, offset: 0 });
+        if (requestId !== loadVersion.current) return;
         setAnnouncements(result.data);
       } else if (contentKind === "sermons") {
         const result = await api.listSermonDrafts(branchId, { limit: 50, offset: 0 });
+        if (requestId !== loadVersion.current) return;
         setSermons(result.data);
       } else {
         const result = await api.listWelcomeMessageDrafts(branchId, { limit: 50, offset: 0 });
+        if (requestId !== loadVersion.current) return;
         setWelcomeMessages(result.data);
       }
     } catch (cause) {
+      if (requestId !== loadVersion.current) return;
       if (cause instanceof CmiApiError && cause.status === 401) {
         onSessionExpired();
       } else {
         setError(errorMessage(cause));
       }
     } finally {
-      setLoading(false);
+      if (requestId === loadVersion.current) setLoading(false);
     }
   }, [api, branchId, canRead, contentKind, onSessionExpired, section]);
 
   useEffect(() => {
     void loadRecords();
+    return () => { loadVersion.current += 1; };
   }, [loadRecords]);
 
   const beginCreate = () => {
+    flyerPreviewRequest.current += 1;
     setEditingId(null);
+    setFlyerFile(null);
+    setExistingFlyerUrl(null);
     setShowForm(true);
     setError("");
     setNotice("");
   };
 
   const beginEdit = (id: string) => {
+    const previewRequestId = ++flyerPreviewRequest.current;
     setEditingId(id);
+    setFlyerFile(null);
+    setExistingFlyerUrl(null);
+    const event = section === "Events" ? events.find((item) => item.id === id) : undefined;
+    if (event?.flyer_mime_type) {
+      void api.getEventFlyerPreview(branchId, id).then((result) => {
+        if (previewRequestId === flyerPreviewRequest.current) setExistingFlyerUrl(result.data.signed_url);
+      }).catch((cause: unknown) => {
+        if (previewRequestId !== flyerPreviewRequest.current) return;
+        if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+        setExistingFlyerUrl(null);
+      });
+    }
     setShowForm(true);
     setError("");
     setNotice("");
   };
 
   const cancelEdit = () => {
+    flyerPreviewRequest.current += 1;
     setEditingId(null);
+    setFlyerFile(null);
+    setExistingFlyerUrl(null);
     setShowForm(false);
+  };
+
+  const deleteRecord = async (id: string, title: string) => {
+    if (!canManage || (section !== "Events" && section !== "Calendar") || mutationInFlight.current || saving || deletingId) return;
+    const verb = section === "Events" ? "cancel" : "remove";
+    if (!window.confirm(`Delete “${title}”? This will ${verb} the record and preserve its audit history. It cannot be undone here.`)) return;
+    mutationInFlight.current = true;
+    setDeletingId(id);
+    setSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      if (section === "Events") await api.cancelEventDraft(branchId, id);
+      else if (section === "Calendar") await api.cancelCalendarEntry(branchId, id, "Removed by an authorized administrator.");
+      setNotice(section === "Events" ? "Event cancelled and removed from active drafts." : "Calendar entry cancelled and removed from the active calendar.");
+      await loadRecords();
+    } catch (cause) {
+      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+      else setError(errorMessage(cause));
+    } finally {
+      mutationInFlight.current = false;
+      setDeletingId(null);
+      setSaving(false);
+    }
   };
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canManage || saving) return;
+    if (mutationInFlight.current || !canManage || saving) return;
     const form = new FormData(event.currentTarget);
+    mutationInFlight.current = true;
     setSaving(true);
     setError("");
     setNotice("");
@@ -165,8 +240,16 @@ export function OperationsWorkspace({
       if (section === "Events") {
         const start = branchLocalInputToIso(String(form.get("starts_at") ?? ""), timeZone);
         const end = branchLocalInputToIso(String(form.get("ends_at") ?? ""), timeZone);
-        if (!start || !end) throw new Error("Enter valid start and end times in the branch time zone.");
+        if (!start || !end) throw new Error("Enter valid start and end times in the selected local time zone.");
         if (Date.parse(end) <= Date.parse(start)) throw new Error("The event end must be later than its start.");
+        const capacityValue = String(form.get("capacity") ?? "").trim();
+        const capacity = capacityValue === "" ? null : Number(capacityValue);
+        if (
+          capacity !== null &&
+          (!Number.isSafeInteger(capacity) || capacity < 1 || capacity > 2147483647)
+        ) {
+          throw new Error("Capacity must be a positive whole number.");
+        }
         const input = {
           title: String(form.get("title") ?? "").trim(),
           description: String(form.get("description") ?? "").trim() || null,
@@ -174,14 +257,30 @@ export function OperationsWorkspace({
           ends_at: end,
           timezone: timeZone,
           location: String(form.get("location") ?? "").trim() || null,
+          capacity,
         };
-        if (editingId) await api.updateEventDraft(branchId, editingId, input);
-        else await api.createEventDraft({ branch_id: branchId, ...input });
+        let savedEventId = editingId;
+        if (editingId) {
+          await api.updateEventDraft(branchId, editingId, input);
+        } else {
+          const created = await api.createEventDraft({ branch_id: branchId, ...input });
+          savedEventId = created.data.id;
+        }
+        const selectedFlyer = flyerFile;
+        if (savedEventId && selectedFlyer instanceof File && selectedFlyer.size > 0) {
+          try {
+            await api.uploadEventFlyer(branchId, savedEventId, selectedFlyer);
+          } catch (uploadError) {
+            await loadRecords();
+            setEditingId(savedEventId);
+            throw uploadError;
+          }
+        }
       } else if (section === "Calendar") {
         const start = branchLocalInputToIso(String(form.get("starts_at") ?? ""), timeZone);
         const endValue = String(form.get("ends_at") ?? "");
         const end = endValue ? branchLocalInputToIso(endValue, timeZone) : null;
-        if (!start || (endValue && !end)) throw new Error("Enter a valid calendar date and time in the branch time zone.");
+        if (!start || (endValue && !end)) throw new Error("Enter a valid calendar date and time in the selected local time zone.");
         if (end && Date.parse(end) <= Date.parse(start)) throw new Error("The end must be later than the start.");
         const input = {
           entry_type: String(form.get("entry_type") ?? "other") as "service" | "event" | "other",
@@ -220,8 +319,10 @@ export function OperationsWorkspace({
         else await api.createWelcomeMessageDraft({ branch_id: branchId, ...input });
       }
       setEditingId(null);
+      setFlyerFile(null);
+      setExistingFlyerUrl(null);
       setShowForm(false);
-      setNotice("Saved. This item remains a private draft and is not visible to the public.");
+      setNotice(section === "Events" ? "Event draft saved. The flyer, if attached, is stored privately." : "Saved. This item remains a private draft and is not visible to the public.");
       await loadRecords();
     } catch (cause) {
       if (cause instanceof CmiApiError && cause.status === 401) {
@@ -230,6 +331,7 @@ export function OperationsWorkspace({
         setError(errorMessage(cause));
       }
     } finally {
+      mutationInFlight.current = false;
       setSaving(false);
     }
   };
@@ -241,9 +343,9 @@ export function OperationsWorkspace({
   const editingWelcome = section === "Content" && contentKind === "welcome-messages" ? welcomeMessages.find((item) => item.id === editingId) : undefined;
 
   const description = section === "Events"
-    ? "Create and maintain internal event drafts. Registration, transport, capacity and check-in are not enabled in this workspace."
+    ? "Manage events, assigned teams, staff registration and attendance. Completed events can be submitted for independent closeout review."
     : section === "Calendar"
-    ? "Maintain branch calendar entries for services, events and other ministry activities."
+    ? "Maintain calendar entries for services, events and other ministry activities."
     : section === "Announcements"
     ? "Prepare private announcement drafts. Publishing and message delivery are separate, unavailable actions."
     : "Prepare sermon and welcome-message drafts. Publishing remains disabled and is not available from this screen.";
@@ -253,9 +355,9 @@ export function OperationsWorkspace({
       <section className="cmi-panel">
         <div className="cmi-panel-heading cmi-operations-heading">
           <div>
-            <p className="cmi-eyebrow">BRANCH OPERATIONS</p>
+            <p className="cmi-eyebrow">MINISTRY OPERATIONS</p>
             <h3>{section === "Content" ? "Visitor content" : section}</h3>
-            <p>{description} <strong>{branchName}</strong>.</p>
+            <p>{description} Your assigned workspace is applied automatically.</p>
             <small className="cmi-operations-timezone">All dates and times are shown in {timeZone}.</small>
           </div>
           <div className="cmi-operations-actions">
@@ -287,10 +389,39 @@ export function OperationsWorkspace({
               <>
                 <label>Event title<input name="title" required minLength={2} maxLength={220} defaultValue={editingEvent?.title ?? ""} placeholder="e.g. Sunday evangelism outreach" /></label>
                 <label>Location<input name="location" maxLength={250} defaultValue={editingEvent?.location ?? ""} placeholder="Venue or meeting point" /></label>
+                <label>Capacity <span className="cmi-field-optional">Optional · Required for staff registration</span><input name="capacity" type="number" min={1} max={2147483647} step={1} defaultValue={editingEvent?.capacity ?? ""} placeholder="e.g. 120" /></label>
                 <label>Starts at ({timeZone})<input name="starts_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEvent?.starts_at, timeZone)} /></label>
                 <label>Ends at ({timeZone})<input name="ends_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEvent?.ends_at, timeZone)} /></label>
                 <label className="cmi-field-wide">Description<textarea name="description" rows={3} maxLength={12000} defaultValue={editingEvent?.description ?? ""} placeholder="Purpose, audience and instructions for staff." /></label>
-                <p className="cmi-field-wide cmi-scope-note">The server saves this as a private draft with registration closed. Public registration, capacity, transport and attendance are intentionally unavailable.</p>
+                <div className="cmi-field-wide cmi-event-flyer-field">
+                  <label htmlFor="cmi-event-flyer">Event flyer <span className="cmi-field-optional">Optional</span></label>
+                  <input id="cmi-event-flyer" name="flyer" type="file" accept="image/jpeg,image/png,image/webp"
+                    onChange={(change) => { setFlyerFile(change.currentTarget.files?.[0] ?? null); setExistingFlyerUrl(null); }} />
+                  <small>JPEG, PNG or WebP. Maximum file size: 5 MB. The flyer remains private to authorised staff.</small>
+                  {(flyerPreview || existingFlyerUrl) && <div className="cmi-flyer-preview"><img src={flyerPreview ?? existingFlyerUrl ?? ""} alt="Event flyer preview" /><span>{flyerFile?.name ?? "Current event flyer"}</span></div>}
+                  {editingEvent?.flyer_mime_type && !flyerFile && !existingFlyerUrl && <small>Existing flyer attached. Preview is being prepared or is temporarily unavailable.</small>}
+                  {flyerFile && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setFlyerFile(null); setExistingFlyerUrl(null); }}>Remove selected image</button>}
+                  {editingEvent?.flyer_mime_type && <button type="button" className="cmi-button cmi-button-secondary" disabled={saving}
+                    onClick={() => void (async () => {
+                      if (mutationInFlight.current) return;
+                      mutationInFlight.current = true;
+                      setSaving(true);
+                      setError("");
+                      try {
+                        await api.removeEventFlyer(branchId, editingEvent.id);
+                        setExistingFlyerUrl(null);
+                        await loadRecords();
+                        setNotice("The event flyer has been removed.");
+                      } catch (cause) {
+                        if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+                        else setError(errorMessage(cause));
+                      } finally {
+                        mutationInFlight.current = false;
+                        setSaving(false);
+                      }
+                    })()}>Remove current flyer</button>}
+                </div>
+                <p className="cmi-field-wide cmi-scope-note">The server saves this as a private draft with registration closed. Public registration, capacity and attendance are intentionally unavailable.</p>
               </>
             )}
             {section === "Calendar" && (
@@ -299,7 +430,7 @@ export function OperationsWorkspace({
                 <label>Entry type<select name="entry_type" defaultValue={editingEntry?.entry_type ?? "service"}><option value="service">Service</option><option value="event">Event</option><option value="other">Other ministry activity</option></select></label>
                 <label>Starts at ({timeZone})<input name="starts_at" type="datetime-local" required defaultValue={toBranchLocalInput(editingEntry?.starts_at, timeZone)} /></label>
                 <label>Ends at ({timeZone})<input name="ends_at" type="datetime-local" defaultValue={toBranchLocalInput(editingEntry?.ends_at, timeZone)} /></label>
-                <p className="cmi-field-wide cmi-scope-note">Calendar entries are branch-scoped. Leave the end time blank for an entry with no defined end.</p>
+                <p className="cmi-field-wide cmi-scope-note">Calendar entries follow your assigned ministry scope. Leave the end time blank for an entry with no defined end.</p>
               </>
             )}
             {section === "Announcements" && (
@@ -340,12 +471,94 @@ export function OperationsWorkspace({
               <article className="cmi-task-row" key={item.id}>
                 <div className="cmi-task-symbol"><CalendarDays size={18} /></div>
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.starts_at, timeZone)} – {formatBranchDate(item.ends_at, timeZone)}{item.location ? " · " + item.location : ""}</p><small>{shortText(item.description ?? "No description added.")}</small></div>
-                <span className="cmi-task-status status-open">Private draft</span>
-                {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+                <span className="cmi-task-status status-open">{item.status === "draft" ? "Private draft" : item.status === "completed" ? "Completed" : item.status === "cancelled" ? "Cancelled" : item.registration_state === "open" ? "Staff registration open" : "Staff event · Registration closed"}</span>
+                {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setAssignmentEvent(item)} aria-label={"Manage assignments for " + item.title}><Users size={14} />Assignments</button>}
+                {canManageRegistrations && item.status === "draft" && item.visibility === "private" && item.registration_state === "closed" && (
+                  <button type="button" className="cmi-button cmi-button-secondary" disabled={!item.capacity || saving} onClick={async () => {
+                    if (mutationInFlight.current) return;
+                    mutationInFlight.current = true;
+                    setSaving(true); setError(""); setNotice("");
+                    try { await api.openStaffEventRegistration(branchId, item.id); setNotice("Event published to staff visibility. Staff registration is now open."); await loadRecords(); }
+                    catch (cause) {
+                      if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+                      else setError(errorMessage(cause));
+                    }
+                    finally {
+                      mutationInFlight.current = false;
+                      setSaving(false);
+                    }
+                  }} title={!item.capacity ? "Set a finite capacity before opening registration." : "Publish this event to staff only"}>
+                    Open staff registration
+                  </button>
+                )}
+                {canManageRegistrations && item.status === "published" && item.visibility === "staff" && (
+                  <>
+                    <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setRegistrationEvent(item)} aria-label={"Manage registrations for " + item.title}><ClipboardList size={14} />Registrations</button>
+                    {item.registration_state === "open" && <button type="button" className="cmi-button cmi-button-secondary" disabled={saving} onClick={async () => {
+                      if (mutationInFlight.current) return;
+                      mutationInFlight.current = true;
+                      setSaving(true); setError(""); setNotice("");
+                      try { await api.closeStaffEventRegistration(branchId, item.id); setNotice("Staff registration closed."); await loadRecords(); }
+                      catch (cause) {
+                        if (cause instanceof CmiApiError && cause.status === 401) onSessionExpired();
+                        else setError(errorMessage(cause));
+                      }
+                      finally {
+                        mutationInFlight.current = false;
+                        setSaving(false);
+                      }
+                    }}>Close registration</button>}
+                  </>
+                )}
+                {(canSubmitCloseout || canReviewCloseout) && (item.status === "published" || item.status === "completed") && Date.parse(item.ends_at) <= Date.now() && (
+                  <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setCloseoutEvent(item)} aria-label={"Open closeout for " + item.title}><ClipboardCheck size={14} />Closeout</button>
+                )}
+                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+                {canManage && item.status === "draft" && <button type="button" className="cmi-button cmi-button-danger" onClick={() => void deleteRecord(item.id,item.title)} disabled={deletingId!==null} aria-label={"Delete " + item.title}>{deletingId===item.id ? "Deleting…" : <><Trash2 size={14} />Delete</>}</button>}
               </article>
             ))}
-            {!events.length && <p className="cmi-detail-muted">No event drafts are visible in this branch.</p>}
+            {!events.length && <p className="cmi-detail-muted">No event drafts are available yet.</p>}
           </div>
+        )}
+
+        {section === "Events" && canManage && assignmentEvent && (
+          <EventAssignmentsPanel
+            key={assignmentEvent.id}
+            api={api}
+            branchId={branchId}
+            timeZone={timeZone}
+            event={assignmentEvent}
+            onClose={() => setAssignmentEvent(null)}
+            onSessionExpired={onSessionExpired}
+          />
+        )}
+
+        {section === "Events" && canManageRegistrations && registrationEvent && (
+          <EventRegistrationsPanel
+            key={registrationEvent.id + ":" + registrationEvent.registration_state}
+            api={api}
+            branchId={branchId}
+            timeZone={timeZone}
+            event={registrationEvent}
+            canCheckIn={canCheckIn}
+            onClose={() => setRegistrationEvent(null)}
+            onSessionExpired={onSessionExpired}
+          />
+        )}
+
+        {section === "Events" && (canSubmitCloseout || canReviewCloseout) && closeoutEvent && (
+          <EventCloseoutPanel
+            key={closeoutEvent.id}
+            api={api}
+            branchId={branchId}
+            timeZone={timeZone}
+            event={closeoutEvent}
+            currentStaffId={session.user.id}
+            canSubmit={canSubmitCloseout}
+            canReview={canReviewCloseout}
+            onClose={() => setCloseoutEvent(null)}
+            onSessionExpired={onSessionExpired}
+          />
         )}
 
         {section === "Calendar" && canRead && !loading && (
@@ -356,9 +569,10 @@ export function OperationsWorkspace({
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{item.entry_type.replaceAll("_", " ")} · {formatBranchDate(item.starts_at, timeZone)} – {formatBranchDate(item.ends_at, timeZone)}</p></div>
                 <span className="cmi-task-status status-open">Scheduled</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+                {canManage && <button type="button" className="cmi-button cmi-button-danger" onClick={() => void deleteRecord(item.id,item.title)} disabled={deletingId!==null} aria-label={"Delete " + item.title}>{deletingId===item.id ? "Deleting…" : <><Trash2 size={14} />Delete</>}</button>}
               </article>
             ))}
-            {!entries.length && <p className="cmi-detail-muted">No calendar entries are visible in this branch.</p>}
+            {!entries.length && <p className="cmi-detail-muted">No calendar entries are available yet.</p>}
           </div>
         )}
 
@@ -370,9 +584,10 @@ export function OperationsWorkspace({
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.updated_at, timeZone)} · {shortText(item.body)}</p></div>
                 <span className="cmi-task-status status-open">Private draft</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
+
               </article>
             ))}
-            {!announcements.length && <p className="cmi-detail-muted">No announcement drafts are visible in this branch.</p>}
+            {!announcements.length && <p className="cmi-detail-muted">No announcement drafts are available yet.</p>}
           </div>
         )}
 
@@ -386,7 +601,7 @@ export function OperationsWorkspace({
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
-            {!sermons.length && <p className="cmi-detail-muted">No sermon drafts are visible in this branch.</p>}
+            {!sermons.length && <p className="cmi-detail-muted">No sermon drafts are available yet.</p>}
           </div>
         )}
 
@@ -400,11 +615,11 @@ export function OperationsWorkspace({
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
               </article>
             ))}
-            {!welcomeMessages.length && <p className="cmi-detail-muted">No welcome-message drafts are visible in this branch.</p>}
+            {!welcomeMessages.length && <p className="cmi-detail-muted">No welcome-message drafts are available yet.</p>}
           </div>
         )}
 
-        {!canRead && !canManage && <div className="cmi-empty-state"><ShieldCheck size={22} /><strong>This module is not authorised for your account.</strong><p>The sidebar is permission-driven. Ask an administrator to review the role and branch capability assignments.</p></div>}
+        {!canRead && !canManage && <div className="cmi-empty-state"><ShieldCheck size={22} /><strong>This module is not authorised for your account.</strong><p>The sidebar is permission-driven. Ask an administrator to review your staff-role permissions.</p></div>}
       </section>
     </div>
   );

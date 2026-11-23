@@ -1,26 +1,165 @@
 name: Cloudflare Production Worker Deploy
 
 on:
+  workflow_call:
+    inputs:
+      confirm_production:
+        description: Exact confirmation token for the guarded production release
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       confirm_production:
-        description: Select migration/cloudflare-auth-consolidation above, then type DEPLOY-PRODUCTION to authorize a guarded production Worker release
+        description: Type DEPLOY-PRODUCTION to authorize a guarded production Worker release
         required: true
         type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
-  group: pcg-missions-cloudflare-production-worker
+  group: pcg-missions-production-worker-release
   cancel-in-progress: false
 
 jobs:
-  production-worker:
-    name: Validate, migrate and deploy the production Worker
-    if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
+  production-roster-preflight:
+    name: Require active Admin/Pastor owner and clean onboarded staff roster before restore rehearsal
+    if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
+    environment: production
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Check out the reviewed production branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Verify Cloudflare access for the read-only roster preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          npx --yes wrangler@4.166.0 whoami
+
+      - name: Verify production Admin/Pastor bootstrap and report staff roster readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "
+            SELECT
+              (SELECT COUNT(*) FROM role WHERE code IN ('admin_pastor','coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor')) AS configured_role_catalogue,
+              (SELECT COUNT(*) FROM staff_profile WHERE account_status='active' AND deactivated_at IS NULL) AS active_staff_profiles,
+              (SELECT COUNT(*) FROM user WHERE email NOT LIKE 'removed+%@invalid.example') AS auth_users,
+              (SELECT COUNT(DISTINCT userId) FROM account WHERE password IS NOT NULL) AS password_users,
+              (SELECT COUNT(*) FROM staff_profile s
+                LEFT JOIN user u ON u.id=s.auth_user_id
+                LEFT JOIN account credential ON credential.userId=u.id
+                  AND credential.providerId='credential' AND credential.password IS NOT NULL
+                WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                  AND (u.id IS NULL OR credential.id IS NULL)) AS active_staff_without_credential,
+              (SELECT COUNT(DISTINCT s.id) FROM staff_role_assignment a JOIN role r ON r.id=a.role_id
+                JOIN staff_profile s ON s.id=a.staff_profile_id JOIN user u ON u.id=s.auth_user_id
+                JOIN account credential ON credential.userId=u.id AND credential.password IS NOT NULL
+                WHERE r.code='admin_pastor' AND a.revoked_at IS NULL
+                  AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now')
+                  AND s.account_status='active' AND s.deactivated_at IS NULL
+                  AND (s.must_change_password=0 OR (s.password_setup_expires_at IS NOT NULL
+                    AND datetime(s.password_setup_expires_at)>datetime('now')))) AS active_admin_pastor_ready,
+              (SELECT COUNT(DISTINCT r.code) FROM staff_role_assignment a JOIN role r ON r.id=a.role_id
+                JOIN staff_profile s ON s.id=a.staff_profile_id
+                WHERE r.code IN ('admin_pastor','coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor')
+                  AND a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now')
+                  AND s.account_status='active' AND s.deactivated_at IS NULL) AS assigned_role_codes,
+              (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                AND NOT EXISTS (SELECT 1 FROM staff_role_assignment a WHERE a.staff_profile_id=s.id
+                  AND a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now'))) AS active_profiles_without_role,
+              (SELECT COUNT(*) FROM staff_role_assignment a JOIN staff_profile s ON s.id=a.staff_profile_id
+                WHERE a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now')
+                  AND (s.account_status<>'active' OR s.deactivated_at IS NOT NULL)) AS assignments_on_inactive_profiles,
+              (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                AND s.must_change_password=1 AND (s.password_setup_expires_at IS NULL
+                  OR datetime(s.password_setup_expires_at)<datetime('now'))) AS invalid_first_login_setups
+          " > /tmp/pcg-production-staff-roster.json
+
+          node - /tmp/pcg-production-staff-roster.json <<'NODE'
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const candidates = [];
+          const visit = (value) => {
+            if (Array.isArray(value)) return value.forEach(visit);
+            if (!value || typeof value !== "object") return;
+            if (Object.hasOwn(value, "active_admin_pastor_ready")) candidates.push(value);
+            Object.values(value).forEach(visit);
+          };
+          visit(payload);
+          const row = candidates[0];
+          if (!row) {
+            console.error("Production staff-roster query returned no summary row.");
+            process.exit(1);
+          }
+          const summary = {
+            configured_role_catalogue: Number(row.configured_role_catalogue),
+            active_staff_profiles: Number(row.active_staff_profiles),
+            auth_users: Number(row.auth_users),
+            password_users: Number(row.password_users),
+            active_staff_without_credential: Number(row.active_staff_without_credential),
+            active_admin_pastor_ready: Number(row.active_admin_pastor_ready),
+            assigned_role_codes: Number(row.assigned_role_codes),
+            active_profiles_without_role: Number(row.active_profiles_without_role),
+            assignments_on_inactive_profiles: Number(row.assignments_on_inactive_profiles),
+            invalid_first_login_setups: Number(row.invalid_first_login_setups),
+          };
+          console.log(JSON.stringify(summary, null, 2));
+          if (summary.configured_role_catalogue !== 6 || summary.active_admin_pastor_ready < 1) {
+            console.error("Production cutover blocked: six role definitions and one credential-ready active Admin/Pastor account are required.");
+            process.exit(1);
+          }
+          const rosterReady =
+            summary.active_staff_profiles >= 1 &&
+            summary.active_profiles_without_role === 0 &&
+            summary.assignments_on_inactive_profiles === 0 &&
+            summary.active_staff_without_credential === 0 &&
+            summary.invalid_first_login_setups === 0;
+          if (!rosterReady) {
+            console.error("Production cutover blocked: require one credential-ready active Admin/Pastor owner; every other active staff account must have a valid credential and effective role. Resolve stale assignments and expired first-login setups before production migration. Additional staff accounts may be added through staff account creation and first-login onboarding after cutover.");
+            process.exit(1);
+          }
+          console.log("Production staff readiness gate passed: at least one credential-ready active Admin/Pastor owner; all active staff have credentials and effective roles; no stale assignments or expired first-login setups.");
+          NODE
+
+
+  restore-rehearsal:
+    needs: production-roster-preflight
+    name: Full D1 restore and six-role authenticated acceptance
+    if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
+    uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
+    secrets: inherit
+
+  production-data-restore-rehearsal:
+    needs: restore-rehearsal
+    name: Clone and recover real production D1 data in an isolated EU database
+    if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' && needs.restore-rehearsal.result == 'success' }}
+    uses: ./.github/workflows/cloudflare-production-data-restore-rehearsal.yml
+    secrets: inherit
+
+  production-worker:
+    needs: production-data-restore-rehearsal
+    name: Validate, migrate and deploy the production Worker
+    if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' && needs.restore-rehearsal.result == 'success' && needs.production-data-restore-rehearsal.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
     environment: production
     defaults:
       run:
@@ -35,7 +174,7 @@ jobs:
       - name: Check out the reviewed production branch
         uses: actions/checkout@v4
         with:
-          ref: migration/cloudflare-auth-consolidation
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set up Node.js and Python
@@ -52,11 +191,86 @@ jobs:
           CONFIRMATION: ${{ inputs.confirm_production }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = "refs/heads/migration/cloudflare-auth-consolidation"
           test "$CONFIRMATION" = "DEPLOY-PRODUCTION"
           test -n "${CLOUDFLARE_API_TOKEN:-}"
-          npx --yes wrangler@4.46.0 whoami
+          if [[ "$GITHUB_REF" == "refs/heads/migration/cloudflare-auth-consolidation" ]]; then
+            test "$GITHUB_EVENT_NAME" = "workflow_dispatch"
+          elif [[ "$GITHUB_REF" == "refs/heads/main" ]]; then
+            test "$GITHUB_EVENT_NAME" = "push"
+            test -f .github/production/DEPLOY-PRODUCTION
+            test "$(cat .github/production/DEPLOY-PRODUCTION)" = "DEPLOY-PRODUCTION"
+            changed_files="$(git diff-tree --no-commit-id --name-only -r "$GITHUB_SHA" | sed '/^$/d')"
+            test "$changed_files" = ".github/production/DEPLOY-PRODUCTION"
+          else
+            echo "::error title=Production release branch rejected::Only the reviewed migration branch or a one-file production authorization commit on main is allowed."
+            exit 1
+          fi
+          npx --yes wrangler@4.166.0 whoami
 
+      - name: Require current preview, Worker and frontend acceptance before production mutation
+        working-directory: .
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          require_successful_current_code_run() {
+            local workflow_file="$1"
+            local label="$2"
+            local scope="$3"
+            local jq_filter runs accepted sha
+            jq_filter=".workflow_runs[] | select(.path == \".github/workflows/${workflow_file}\" and .conclusion == \"success\") | .head_sha"
+            runs="$(gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq "$jq_filter")"
+            accepted=""
+            while IFS= read -r sha; do
+              [[ -z "$sha" ]] && continue
+              if ! git cat-file -e "${sha}^{commit}" 2>/dev/null; then
+                continue
+              fi
+              if ! git merge-base --is-ancestor "$sha" "$GITHUB_SHA"; then
+                continue
+              fi
+              if [[ "$scope" == "cloudflare" ]] && ! git diff --quiet "$sha" "$GITHUB_SHA" -- cloudflare; then
+                continue
+              fi
+              if [[ "$scope" == "cloudflare-runtime" ]] && ! git diff --quiet "$sha" "$GITHUB_SHA" -- cloudflare/src cloudflare/migrations cloudflare/package.json cloudflare/package-lock.json cloudflare/wrangler.toml; then
+                continue
+              fi
+              if [[ "$scope" == "web" ]] && ! git diff --quiet "$sha" "$GITHUB_SHA" -- web; then
+                continue
+              fi
+              accepted="$sha"
+              break
+            done <<< "$runs"
+            if [[ -z "$accepted" ]]; then
+              echo "::error title=Production acceptance gate blocked::$label has no successful run against the exact current $scope source tree."
+              exit 1
+            fi
+            echo "$label accepted at $accepted"
+          }
+
+          require_successful_current_code_run "cloudflare-d1-foundation.yml" "Cloudflare D1 Foundation" "cloudflare"
+          require_successful_current_code_run "cmi-web-ci.yml" "CMI web CI" "web"
+          # The preview workflow proves the preview Worker deployment, health, anonymous boundary and session endpoint.
+          # The dependent restore-rehearsal job above runs the full isolated D1 restore and six-role authenticated acceptance
+          # before this production job can start.
+          require_successful_current_code_run "cloudflare-preview-deploy.yml" "Cloudflare Auth Preview Release" "cloudflare-runtime"
+
+      - name: Verify deployed preview authentication before production mutation
+        shell: bash
+        run: |
+          set -euo pipefail
+          preview="https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
+          health="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error "$preview/health")"
+          echo "$health"
+          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="non-production" || p.schema_version!==47 || p.auth_configuration!=="ready") process.exit(1)' "$health"
+          me_status="$(curl --silent --show-error -o /tmp/pcg-preview-me.json -w "%{http_code}" "$preview/api/v1/me")"
+          test "$me_status" = "401"
+          session_status="$(curl --silent --show-error -o /tmp/pcg-preview-session.json -w "%{http_code}" "$preview/api/auth/get-session")"
+          test "$session_status" = "200"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/pcg-preview-session.json","utf8")); if(p!==null && (typeof p!=="object" || Array.isArray(p) || p.error)) process.exit(1)'
+          echo "Preview Worker health, anonymous boundary, and Better Auth session endpoint passed."
       - name: Install pinned Worker dependencies
         run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
 
@@ -67,6 +281,25 @@ jobs:
           cd cloudflare
           npm run typecheck
           npm test
+
+      - name: Build and verify Pages frontend before production mutation
+        working-directory: web
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Verify Pages upload permission with a non-production preflight deployment
+        working-directory: web
+        run: |
+          ../cloudflare/node_modules/.bin/wrangler pages project list
+          ../cloudflare/node_modules/.bin/wrangler pages deploy dist \
+            --project-name pcg-missions \
+            --branch "production-preflight-${GITHUB_RUN_ID}" \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-message "PCG Missions non-production Pages upload preflight"
 
       - name: Verify exact production D1 target and environment before mutation
         shell: bash
@@ -86,7 +319,7 @@ jobs:
           walk(root);
           const row = candidates[0];
           if (!row || row.environment !== "production" ||
-              Number(row.schema_version) < 45 ||
+              ![45, 46, 47].includes(Number(row.schema_version)) ||
               Number(row.schema_version) !== Number(row.latest_migration_id) ||
               Number(row.migration_count) !== Number(row.schema_version) ||
               Number(row.first_migration_id) !== 1 ||
@@ -136,7 +369,27 @@ jobs:
           NODE
 
       - name: Apply only pending forward-only production migrations
-        run: npx wrangler d1 migrations apply pcg-missions-production --remote --env production
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          npx wrangler d1 migrations apply pcg-missions-production --remote --env production 2>&1 | tee /tmp/pcg-production-migrations.log
+          migration_status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$migration_status" -ne 0 ]] && grep -Eiq "7500|daily row write limit|free tier" /tmp/pcg-production-migrations.log; then
+            reset_at="$(date -u -d 'tomorrow 00:05:00' +%s)"
+            now="$(date -u +%s)"
+            wait_seconds=$((reset_at - now))
+            if [[ "$wait_seconds" -le 0 || "$wait_seconds" -gt 18000 ]]; then
+              echo "::error title=D1 free-tier daily write limit::Cloudflare D1 returned code 7500. Re-run after the UTC quota reset or use a paid D1 plan."
+              exit 1
+            fi
+            echo "::warning title=D1 daily write quota exhausted::Waiting until 00:05 UTC for the account's daily row-write quota to reset, then retrying the same forward-only production migration."
+            sleep "$wait_seconds"
+            npx wrangler d1 migrations apply pcg-missions-production --remote --env production
+          elif [[ "$migration_status" -ne 0 ]]; then
+            exit "$migration_status"
+          fi
 
       - name: Verify production schema and migration ledger after migration
         shell: bash
@@ -156,7 +409,9 @@ jobs:
           walk(root);
           const row = candidates[0];
           if (!row || row.environment !== "production" ||
-              Number(row.schema_version) < 45 ||
+              Number(row.schema_version) !== 47 ||
+              Number(row.latest_migration_id) !== 47 ||
+              Number(row.migration_count) !== 47 ||
               Number(row.schema_version) !== Number(row.latest_migration_id) ||
               Number(row.migration_count) !== Number(row.schema_version) ||
               Number(row.first_migration_id) !== 1 ||
@@ -170,8 +425,69 @@ jobs:
           }));
           NODE
 
+      - name: Verify production D1 write budget for Better Auth session storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_id="pcg-rate-limit-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          probe_key="pcg-rate-limit-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          insert_sql="INSERT INTO rateLimit (id,key,count,lastRequest) VALUES ('${probe_id}','${probe_key}',1,$(date -u +%s%3N))"
+          delete_sql="DELETE FROM rateLimit WHERE id='${probe_id}'"
+
+          wait_for_quota_reset() {
+            reset_at="$(date -u -d '00:05 tomorrow' +%s)"
+            now="$(date -u +%s)"
+            wait_seconds=$((reset_at - now))
+            if [[ "$wait_seconds" -le 0 || "$wait_seconds" -gt 18000 ]]; then
+              echo "::error title=D1 free-tier daily write limit::Cloudflare D1 row-write quota is exhausted outside the supported five-hour wait window."
+              return 1
+            fi
+            echo "::warning title=D1 daily write quota exhausted::Waiting until 00:05 UTC before retrying the production rate-limit write probe."
+            sleep "$wait_seconds"
+          }
+
+          run_probe_sql() {
+            local sql="$1"
+            local log_file="$2"
+            set +e
+            npx wrangler d1 execute pcg-missions-production --remote --env production --command "$sql" 2>&1 | tee "$log_file"
+            local status=${PIPESTATUS[0]}
+            set -e
+            if [[ "$status" -ne 0 ]] && grep -Eiq "7500|daily row write limit|free tier" "$log_file"; then
+              return 75
+            fi
+            return "$status"
+          }
+
+          if run_probe_sql "$insert_sql" /tmp/pcg-production-write-probe-insert.log; then
+            :
+          else
+            status=$?
+            if [[ "$status" -ne 75 ]]; then exit "$status"; fi
+            wait_for_quota_reset
+            run_probe_sql "$insert_sql" /tmp/pcg-production-write-probe-insert-retry.log
+          fi
+
+          if run_probe_sql "$delete_sql" /tmp/pcg-production-write-probe-delete.log; then
+            :
+          else
+            status=$?
+            if [[ "$status" -ne 75 ]]; then exit "$status"; fi
+            wait_for_quota_reset
+            run_probe_sql "$delete_sql" /tmp/pcg-production-write-probe-delete-retry.log
+          fi
+
       - name: Deploy reviewed Worker code to production
         run: npx wrangler deploy --env production
+
+      - name: Deploy reviewed frontend and Pages Functions to production
+        working-directory: web
+        run: |
+          ../cloudflare/node_modules/.bin/wrangler pages deploy dist \
+            --project-name pcg-missions \
+            --branch main \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-message "PCG Missions production release $GITHUB_SHA"
 
       - name: Verify direct Worker and same-origin Pages production endpoints
         shell: bash
@@ -179,7 +495,7 @@ jobs:
           set -euo pipefail
           direct_health="$(curl --retry 5 --retry-delay 3 --retry-all-errors --fail --silent --show-error --max-time 30 "$WORKER_URL/health")"
           printf '%s\n' "$direct_health"
-          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||!Number.isInteger(p.schema_version)||p.schema_version<45)process.exit(1)' "$direct_health"
+          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==47||p.auth_configuration!=="ready")process.exit(1)' "$direct_health"
 
           for base in "$WORKER_URL" "$PAGES_URL"; do
             status="$(curl --silent --show-error --output /tmp/pcg-me.json --write-out "%{http_code}" --max-time 20 "$base/api/v1/me")"
@@ -191,7 +507,7 @@ jobs:
           test "$session_status" = "200"
 
           api_health="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error --max-time 20 "$PAGES_URL/api/v1/health")"
-          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||!Number.isInteger(p.schema_version)||p.schema_version<45)process.exit(1)' "$api_health"
+          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==47||p.auth_configuration!=="ready")process.exit(1)' "$api_health"
 
           cors_status="$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 20 -X OPTIONS "$WORKER_URL/api/auth/sign-in/email" -H "Origin: https://pcg-missions.pages.dev" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type")"
           test "$cors_status" = "204"

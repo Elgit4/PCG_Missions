@@ -4,10 +4,8 @@ import "@fontsource-variable/dm-sans";
 import "@fontsource-variable/fraunces";
 import "./styles.css";
 import "../production.css";
-import "./desktop-login-fit.css";
 import "./ui-refresh.css";
-import "./visual-system.css";
-import "./staff-login-brand.css";
+import "./production-polish.css";
 import App from "./App";
 import { ThemeProvider } from "./lib/theme";
 
@@ -17,3 +15,9 @@ if (!rootElement) throw new Error("The root application element was not found.")
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode><ThemeProvider><App /></ThemeProvider></React.StrictMode>,
 );
+
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  void navigator.serviceWorker.register("/sw.js").catch(() => {
+    // The staff workspace remains fully online-first if installation is unavailable.
+  });
+}

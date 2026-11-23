@@ -11,6 +11,10 @@ import {
   parseStaffAccountCreate,
 } from "./validation.ts";
 import { generateTemporaryPassword } from "./temporary_password.ts";
+import {
+  canSendPasswordResetNotification,
+  manualCredentialHandoff,
+} from "./credential-delivery.ts";
 import { resolveBootstrapPath } from "./bootstrap_state.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
@@ -22,6 +26,7 @@ const ALLOWED_ORIGINS = new Set(
     .split(",")
     .map((value) => value.trim()).filter(Boolean),
 );
+ALLOWED_ORIGINS.add("https://pcg-missions.pages.dev");
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY") ?? "";
 const EMAIL_FROM = Deno.env.get("CMI_AUTH_EMAIL_FROM") ?? "";
 const APP_URL = (Deno.env.get("CMI_APP_URL") ?? "").replace(/\/+$/, "");
@@ -614,15 +619,7 @@ Deno.serve(async (request: Request) => {
     }
 
     if (request.method === "POST" && action === "request-password-reset") {
-      const configuredNotificationAdmins =
-        (Deno.env.get("CMI_AUTH_ADMIN_EMAILS") ?? "")
-          .split(",").map((value) => normalizeEmail(value)).filter((
-            value,
-          ): value is string => !!value);
-      if (
-        !RESEND_API_KEY || !EMAIL_FROM || !APP_URL.startsWith("https://") ||
-        AUTH_HMAC_KEY.length < 32 || configuredNotificationAdmins.length === 0
-      ) {
+      if (AUTH_HMAC_KEY.length < 32) {
         return fail(
           "AUTH_RECOVERY_NOT_CONFIGURED",
           "Account recovery is not fully configured. Contact a church administrator.",
@@ -669,30 +666,39 @@ Deno.serve(async (request: Request) => {
       ];
       if (record?.matched && record.request_id) {
         let sent = false;
-        try {
-          const name = escapeHtml(record.staff_name ?? "A staff member");
-          const email = escapeHtml(record.staff_email ?? "");
-          const requestLink = `${APP_URL}/?view=access-requests`;
-          await sendEmail(
+        if (
+          canSendPasswordResetNotification({
+            apiKey: RESEND_API_KEY,
+            from: EMAIL_FROM,
+            appUrl: APP_URL,
             recipients,
-            "PCG Missions — staff password reset request",
-            `<p>A staff member has requested help accessing PCG Missions.</p>
-             <p><strong>Staff member:</strong> ${name}<br><strong>Account:</strong> ${email}</p>
-             <p>Review the request in the authenticated staff workspace. Do not reply with or request the user's password.</p>
-             <p><a href="${
-              escapeHtml(requestLink)
-            }">Open password-reset requests</a></p>`,
-            `A staff member has requested help accessing PCG Missions.\nStaff member: ${
-              record.staff_name ?? "A staff member"
-            }\nAccount: ${
-              record.staff_email ?? ""
-            }\nReview the request in the authenticated staff workspace. Do not share or request passwords.\n${requestLink}`,
-          );
-          sent = true;
-        } catch {
-          console.error("staff password-reset notification failed", {
-            request_id: id,
-          });
+          })
+        ) {
+          try {
+            const name = escapeHtml(record.staff_name ?? "A staff member");
+            const email = escapeHtml(record.staff_email ?? "");
+            const requestLink = `${APP_URL}/?view=access-requests`;
+            await sendEmail(
+              recipients,
+              "PCG Missions — staff password reset request",
+              `<p>A staff member has requested help accessing PCG Missions.</p>
+               <p><strong>Staff member:</strong> ${name}<br><strong>Account:</strong> ${email}</p>
+               <p>Review the request in the authenticated staff workspace. Do not reply with or request the user's password.</p>
+               <p><a href="${
+                escapeHtml(requestLink)
+              }">Open password-reset requests</a></p>`,
+              `A staff member has requested help accessing PCG Missions.\nStaff member: ${
+                record.staff_name ?? "A staff member"
+              }\nAccount: ${
+                record.staff_email ?? ""
+              }\nReview the request in the authenticated staff workspace. Do not share or request passwords.\n${requestLink}`,
+            );
+            sent = true;
+          } catch {
+            console.error("staff password-reset notification failed", {
+              request_id: id,
+            });
+          }
         }
         await service.rpc("cmi_mark_staff_password_reset_notification", {
           p_request_id: record.request_id,
@@ -706,7 +712,7 @@ Deno.serve(async (request: Request) => {
           data: {
             accepted: true,
             message:
-              "If this email belongs to an active staff account, the administrators have been notified.",
+              "If this email belongs to an active staff account, the request has been recorded. If you need faster help, contact your church administrator through your usual church channel.",
           },
           request_id: id,
         },
@@ -853,16 +859,6 @@ Deno.serve(async (request: Request) => {
       if (!parsed.ok) {
         return fail("INVALID_REQUEST", parsed.error, 400, origin, id);
       }
-      if (!RESEND_API_KEY || !EMAIL_FROM) {
-        return fail(
-          "AUTH_EMAIL_NOT_CONFIGURED",
-          "Staff invitation email is not configured.",
-          503,
-          origin,
-          id,
-        );
-      }
-
       const temporaryPassword = generateTemporaryPassword();
       const { data: created, error: createError } = await service.auth.admin
         .createUser({
@@ -919,42 +915,11 @@ Deno.serve(async (request: Request) => {
         throw new Error("STAFF_PROFILE_PROVISION_FAILED");
       }
 
-      const safeName = escapeHtml(parsed.value.full_name);
-      const safeEmail = escapeHtml(parsed.value.email);
-      const safePassword = escapeHtml(temporaryPassword);
-      try {
-        await sendEmail(
-          [parsed.value.email],
-          "Your PCG Missions staff account",
-          `<p>Hello ${safeName},</p>
-           <p>An administrator has created your PCG Missions staff account.</p>
-           <p><strong>Sign-in email:</strong> ${safeEmail}</p>
-           <p><strong>One-time temporary password:</strong><br><code>${safePassword}</code></p>
-           <p>Sign in using this email and temporary password. You must choose a new private password immediately after your first sign-in. This temporary password expires in 24 hours.</p>
-           <p>Do not forward this email. If you were not expecting this account, contact your church administrator.</p>`,
-          [
-            `Hello ${parsed.value.full_name},`,
-            "An administrator has created your PCG Missions staff account.",
-            `Sign-in email: ${parsed.value.email}`,
-            `One-time temporary password: ${temporaryPassword}`,
-            "Sign in with this email and temporary password. You must choose a new private password immediately after first sign-in. This temporary password expires in 24 hours.",
-            "Do not forward this email. If you were not expecting this account, contact your church administrator.",
-          ].join("\n"),
-        );
-      } catch {
-        console.error("staff invitation email delivery failed", {
-          request_id: id,
-          staff_profile_id: (provisioned as { staff_profile_id?: string })
-            ?.staff_profile_id,
-        });
-        return fail(
-          "STAFF_INVITATION_EMAIL_FAILED",
-          "The staff account was created, but the invitation email could not be delivered. The administrator should ask the user to submit Forgot password so a temporary password can be issued through the approved recovery process.",
-          503,
-          origin,
-          id,
-        );
-      }
+      // Staff onboarding is intentionally email-free. The authorised
+      // administrator receives this one-time credential in the authenticated
+      // response and must hand it to the intended staff member privately.
+      // Do not send, log, persist or expose the temporary password elsewhere.
+      const invitationEmailSent = false;
 
       return response(
         {
@@ -963,8 +928,10 @@ Deno.serve(async (request: Request) => {
               (provisioned as { staff_profile_id: string }).staff_profile_id,
             email: parsed.value.email,
             role_code: parsed.value.role_code,
-            invitation_email_sent: true,
+            invitation_email_sent: invitationEmailSent,
             must_change_password: true,
+            ...manualCredentialHandoff(invitationEmailSent, temporaryPassword),
+            ...(!invitationEmailSent ? { password_expires_in_hours: 24 } : {}),
           },
           request_id: id,
         },
@@ -1131,6 +1098,7 @@ Deno.serve(async (request: Request) => {
         );
       }
 
+      let temporaryPasswordSent = false;
       try {
         const safeName = escapeHtml(claimed?.target_name ?? "staff member");
         const safePassword = escapeHtml(temporaryPassword);
@@ -1152,17 +1120,11 @@ Deno.serve(async (request: Request) => {
            <p>This temporary password expires within the reset request's validity window. Do not forward it. If you did not request this reset, contact your church administrator immediately.</p>`,
           textBody,
         );
+        temporaryPasswordSent = true;
       } catch {
         console.error("staff temporary password email delivery failed", {
           request_id: id,
         });
-        return fail(
-          "RESET_EMAIL_DELIVERY_FAILED",
-          "The temporary password could not be emailed. The account remains restricted and the request can be retried by an administrator.",
-          503,
-          origin,
-          id,
-        );
       }
 
       const { error: finishError } = await service.rpc(
@@ -1188,8 +1150,13 @@ Deno.serve(async (request: Request) => {
         {
           data: {
             status: "approved",
-            temporary_password_sent: true,
+            email,
+            temporary_password_sent: temporaryPasswordSent,
             must_change_password: true,
+            ...manualCredentialHandoff(
+              temporaryPasswordSent,
+              temporaryPassword,
+            ),
           },
           request_id: id,
         },

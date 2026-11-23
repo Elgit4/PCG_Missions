@@ -1,14 +1,14 @@
+
 /**
- * PCG Missions CMI v2.1 browser API adapter.
+ * PCG Missions browser API adapter.
  *
- * Browser clients use a publishable key and a Supabase Auth access token only.
- * All business authorization is performed by the Edge Functions; this adapter
- * never talks directly to Postgres or carries service-role/provider secrets.
+ * Browser requests use the same-origin Cloudflare Pages gateway and HttpOnly
+ * Better Auth cookies. The Worker enforces D1 role/capability authorization.
+ * The browser never receives Supabase Auth tokens or service-role credentials;
+ * Supabase is retained server-side only for private event-flyer storage.
  */
-export interface CmiApiConfig {
-  supabaseUrl: string;
-  publishableKey: string;
-}
+export interface CmiApiConfig { apiUrl?: string; }
+/** @deprecated Retained only for constructor compatibility; Cloudflare auth uses HttpOnly cookies. */
 export type AccessTokenProvider = () => Promise<string | null>;
 export interface ApiEnvelope<T> {
   data: T;
@@ -48,11 +48,29 @@ export interface StaffSession {
   password_setup_expires_at: string | null;
 }
 
+export interface StaffDirectoryRole {
+  assignment_id: string;
+  code: string;
+  name: string;
+  starts_at: string;
+  ends_at: string | null;
+}
 export interface StaffDirectoryEntry {
   id: string;
   full_name: string;
   account_status: "active" | "inactive";
-  roles: Array<{ code: string; name: string }>;
+  roles: StaffDirectoryRole[];
+}
+export type StandardStaffRoleCode = "coordinator" | "team_leader" | "field_worker" | "follow_up_volunteer" | "prayer_intercessor";
+export interface StaffRoleApprovalRequest {
+  id: string;
+  target_profile_id: string;
+  target_name: string;
+  assignment_id?: string;
+  requested_by: string;
+  requester_name: string;
+  reason: string;
+  requested_at: string;
 }
 
 export interface StaffAccountCreateInput {
@@ -81,11 +99,15 @@ export interface EventDraftRecord {
   ends_at: string;
   timezone: string;
   location: string | null;
-  status: "draft";
-  visibility: "private";
-  registration_state: "closed";
+  capacity: number | null;
+  status: "draft" | "published" | "cancelled" | "completed";
+  visibility: "private" | "staff" | "public";
+  registration_state: "closed" | "open";
   created_at: string;
   updated_at: string;
+  flyer_mime_type?: "image/jpeg" | "image/png" | "image/webp" | null;
+  flyer_size_bytes?: number | null;
+  flyer_updated_at?: string | null;
 }
 export interface EventDraftCreateInput {
   branch_id: string;
@@ -95,8 +117,164 @@ export interface EventDraftCreateInput {
   ends_at: string;
   timezone: string;
   location: string | null;
+  capacity?: number | null;
 }
 export type EventDraftPatchInput = Partial<Omit<EventDraftCreateInput, "branch_id">>;
+
+
+export type EventStaffAssignmentRole = "owner" | "organizer" | "checkin" | "support";
+
+export interface EventRegistrationRecord {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  attendee_name_snapshot: string;
+  attendee_phone_snapshot: string | null;
+  status: "registered" | "cancelled" | "attended" | "no_show";
+  registered_at: string;
+  checked_in_at: string | null;
+}
+export interface EventRegistrationWorkspace {
+  registrations: EventRegistrationRecord[];
+  active_count: number;
+}
+
+export interface EventCheckinRecord {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  registration_id: string;
+  attendee_name_snapshot: string;
+  checked_in_at: string;
+  recorded_by: string;
+  source: "staff";
+}
+export interface EventStaffCheckinResult {
+  checkin: EventCheckinRecord;
+  replayed: boolean;
+  response_status: number;
+}
+
+export interface EventStaffRegistrationInput {
+  idempotency_key: string;
+  attendee_name: string;
+  attendee_phone: string | null;
+}
+export interface EventStaffRegistrationResult {
+  registration: EventRegistrationRecord;
+  replayed: boolean;
+  response_status: number;
+}
+
+export type EventTeamAssignmentRole = "organizer" | "ushering" | "support";
+export interface EventStaffAssignmentInput {
+  staff_auth_user_id: string;
+  assignment_role: EventStaffAssignmentRole;
+  starts_at: string;
+  ends_at: string | null;
+}
+export interface EventTeamAssignmentInput {
+  team_id: string;
+  assignment_role: EventTeamAssignmentRole;
+  starts_at: string;
+  ends_at: string | null;
+}
+export interface EventStaffAssignmentRecord extends EventStaffAssignmentInput {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  staff_name: string;
+  revoked_at: string | null;
+  created_at: string;
+}
+export interface EventTeamAssignmentRecord extends EventTeamAssignmentInput {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  team_name: string;
+  revoked_at: string | null;
+  created_at: string;
+}
+export interface EventAssignmentWorkspace {
+  staff_assignments: EventStaffAssignmentRecord[];
+  team_assignments: EventTeamAssignmentRecord[];
+  staff_candidates: { auth_user_id: string; full_name: string }[];
+  team_candidates: { id: string; name: string }[];
+}
+
+
+export interface EventCloseoutRecord {
+  id: string;
+  event_id: string;
+  branch_id: string;
+  submitted_by: string;
+  submitted_at: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  status: "draft" | "submitted" | "approved" | "returned";
+  attendee_count: number | null;
+  registration_count: number | null;
+  transport_seat_count: number | null;
+  summary_notes: string | null;
+}
+export interface EventCloseoutHistoryRecord {
+  id: string;
+  actor_user_id: string;
+  action: "submitted" | "approved" | "returned" | "reopened";
+  details: Record<string, unknown>;
+  created_at: string;
+}
+export interface EventCloseoutWorkspace {
+  closeout: EventCloseoutRecord | null;
+  history: EventCloseoutHistoryRecord[];
+}
+export interface EventCloseoutSubmissionResult {
+  closeout: EventCloseoutRecord;
+  replayed: boolean;
+  response_status: number;
+}
+
+export interface AssignedPrayerRequestRecord {
+  id: string;
+  branch_id: string;
+  request_text: string;
+  status: "open" | "assigned" | "in_progress" | "answered" | "closed";
+  sensitivity: "restricted" | "highly_restricted";
+  expires_at: string | null;
+  answered_at: string | null;
+  created_at: string;
+  updated_at: string;
+  assignment_starts_at: string;
+  assignment_ends_at: string | null;
+}
+export interface AssignedPrayerInbox {
+  requests: AssignedPrayerRequestRecord[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface StaffNotificationRecord {
+  id: string;
+  category: "followup_assigned" | "event_assigned" | "report_reviewed" | "system";
+  title: string;
+  body: string;
+  target_type: "followup_task" | "event" | "ministry_report" | null;
+  target_id: string | null;
+  created_at: string;
+  read_at: string | null;
+}
+export interface StaffNotificationInbox {
+  notifications: StaffNotificationRecord[];
+  unread_count: number;
+}
+export interface EventFlyerResult {
+  object_path: string;
+  mime_type: "image/jpeg" | "image/png" | "image/webp";
+  size_bytes: number;
+  signed_url: string;
+  signed_url_expires_in: number;
+}
 
 export interface CalendarEntryRecord {
   id: string;
@@ -106,6 +284,7 @@ export interface CalendarEntryRecord {
   starts_at: string;
   ends_at: string | null;
   scope_type: "branch";
+  status: "active" | "cancelled";
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -193,6 +372,7 @@ export interface TeamRecord {
   created_at: string;
   updated_at: string;
   members: TeamMemberRecord[];
+  member_count?: number;
 }
 export interface TeamWorkspaceData { teams: TeamRecord[] }
 export interface TeamCreateInput {
@@ -225,6 +405,7 @@ export interface ServiceAreaRecord {
   created_at: string;
   updated_at: string;
   coverage: AreaCoverageRecord[];
+  coverage_count?: number;
 }
 export interface ServiceAreaWorkspaceData { areas: ServiceAreaRecord[] }
 export type TeamMutationResult = Omit<TeamRecord, "members">;
@@ -314,6 +495,16 @@ export interface ContactInteractionCreateInput {
   next_action_at?: string | null;
 }
 
+export type ContactAssignmentInput =
+  | { assignee_profile_id: string; team_id?: never; reason: string }
+  | { team_id: string; assignee_profile_id?: never; reason: string };
+export interface ContactAssignmentResult {
+  assignment_id: string;
+  assignee_profile_id: string | null;
+  team_id: string | null;
+  starts_at: string;
+}
+
 export interface FollowUpTask {
   id: string;
   branch_id: string;
@@ -338,10 +529,13 @@ interface TaskCreateBase {
   task_note?: string | null;
 }
 export type TaskAssignmentTarget =
-  | { assignee_user_id: string; team_id?: never }
-  | { team_id: string; assignee_user_id?: never };
+  | { assignee_user_id: string; assignee_profile_id?: never; team_id?: never }
+  | { assignee_profile_id: string; assignee_user_id?: never; team_id?: never }
+  | { team_id: string; assignee_user_id?: never; assignee_profile_id?: never };
 export type TaskCreateInput = TaskCreateBase & TaskAssignmentTarget;
-export type TaskReassignmentInput = TaskAssignmentTarget;
+export type TaskReassignmentInput =
+  | { assignee_profile_id: string; team_id?: never; reason: string }
+  | { team_id: string; assignee_profile_id?: never; reason: string };
 export interface TaskUpdateInput {
   priority?: number;
   due_at?: string | null;
@@ -349,10 +543,13 @@ export interface TaskUpdateInput {
   status?: FollowUpTask["status"];
 }
 export interface CmiRequestOptions {
-  method?: "GET" | "POST" | "PATCH";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  /** Branch scope sent as trusted request context, independently of route query parameters. */
+  branchId?: string;
   query?: Record<string, string | number | undefined>;
   body?: unknown;
   authenticated?: boolean;
+  idempotencyKey?: string;
 }
 
 function normalizeBaseUrl(value: string): string {
@@ -363,66 +560,29 @@ function parseJson(text: string): unknown {
   try { return JSON.parse(text) as unknown; } catch { return null; }
 }
 function assertExactlyOneTaskTarget(
-  input: { assignee_user_id?: unknown; team_id?: unknown },
-): asserts input is TaskReassignmentInput {
-  const hasAssignee = typeof input.assignee_user_id === "string" && input.assignee_user_id.trim().length > 0;
-  const hasTeam = typeof input.team_id === "string" && input.team_id.trim().length > 0;
-  if (hasAssignee === hasTeam) {
+  input: { assignee_user_id?: unknown; assignee_profile_id?: unknown; team_id?: unknown },
+): asserts input is TaskAssignmentTarget {
+  const targets = [input.assignee_user_id, input.assignee_profile_id, input.team_id]
+    .filter((value) => typeof value === "string" && value.trim().length > 0);
+  if (targets.length !== 1) {
     throw new TypeError("Exactly one non-empty task assignment target is required.");
   }
 }
 
-function xhrRequest(url: string | URL, init: RequestInit): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    if (typeof XMLHttpRequest === "undefined") {
-      reject(new TypeError("XMLHttpRequest is unavailable in this browser."));
-      return;
-    }
-    const request = new XMLHttpRequest();
-    request.open(init.method ?? "GET", String(url), true);
-    request.timeout = 15000;
-    new Headers(init.headers).forEach((value, key) => request.setRequestHeader(key, value));
-    request.onload = () => {
-      try {
-        if (request.status === 0) {
-          reject(new TypeError("XMLHttpRequest completed without an HTTP response."));
-          return;
-        }
-        const responseHeaders = new Headers();
-        // XHR exposes response headers separated by CRLF. Split on actual
-        // line breaks, not the literal characters "\\r" and "\\n".
-        for (const line of request.getAllResponseHeaders().split(/\r?\n/)) {
-          const separator = line.indexOf(":");
-          if (separator <= 0) continue;
-          const name = line.slice(0, separator).trim();
-          const value = line.slice(separator + 1).trim();
-          if (!name) continue;
-          try {
-            responseHeaders.append(name, value);
-          } catch {
-            // Ignore browser-restricted response headers; preserve status/body.
-          }
-        }
-        resolve(new Response(request.responseText, {
-          status: request.status,
-          statusText: request.statusText,
-          headers: responseHeaders,
-        }));
-      } catch (error) {
-        reject(error instanceof Error ? error : new TypeError("Unable to read the XHR response."));
-      }
-    };
-    request.onerror = () => reject(new TypeError("XMLHttpRequest network error."));
-    request.ontimeout = () => reject(new TypeError("XMLHttpRequest timed out."));
-    request.onabort = () => reject(new TypeError("XMLHttpRequest was aborted."));
-    if (init.body === undefined || init.body === null) request.send();
-    else request.send(init.body as XMLHttpRequestBodyInit);
-  });
+function assertValidTaskReassignment(
+  input: { assignee_profile_id?: unknown; team_id?: unknown; reason?: unknown },
+): asserts input is TaskReassignmentInput {
+  const hasAssignee = typeof input.assignee_profile_id === "string" && input.assignee_profile_id.trim().length > 0;
+  const hasTeam = typeof input.team_id === "string" && input.team_id.trim().length > 0;
+  const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+  if (hasAssignee === hasTeam || reason.length < 10 || reason.length > 500) {
+    throw new TypeError("Exactly one task reassignment target and a reason of 10–500 characters are required.");
+  }
 }
 
 function requestErrorDetail(error: unknown): string {
   if (error instanceof Error) {
-    const message = error.message.replace(/[\\r\\n]+/g, " ").slice(0, 140);
+    const message = error.message.replace(/[\r\n]+/g, " ").slice(0, 140);
     return message ? `${error.name}: ${message}` : error.name;
   }
   return "Unknown network error";
@@ -487,47 +647,148 @@ export interface MinistryReportReviewResult {
   review_history: MinistryReportReviewEvent[];
 }
 
+
+function workerApiPath(functionName: string, suffix: string, method: string): string | null {
+  const verb = method.toUpperCase();
+  if (functionName === "staff-session" && suffix === "") return "/api/v1/me";
+
+  if (functionName === "announcement-operations") {
+    if (suffix === "/announcements" && (verb === "GET" || verb === "POST")) return "/api/v1/announcements";
+    if (/^\/announcements\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix;
+    return null;
+  }
+
+  if (functionName === "content-operations") {
+    if ((suffix === "/sermons" || suffix === "/welcome-messages") && (verb === "GET" || verb === "POST")) {
+      return "/api/v1/content" + suffix;
+    }
+    if (/^\/(sermons|welcome-messages)\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) {
+      return "/api/v1/content" + suffix;
+    }
+    return null;
+  }
+
+  if (functionName === "calendar-operations") {
+    if (suffix === "/entries" && (verb === "GET" || verb === "POST")) return "/api/v1/calendar/entries";
+    if (/^\/entries\/[^/]+\/cancel$/.test(suffix) && verb === "POST") return "/api/v1" + suffix.replace("/entries/", "/calendar/entries/");
+    if (/^\/entries\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix.replace("/entries/", "/calendar/entries/");
+    return null;
+  }
+
+  if (functionName === "event-flyers") {
+    const flyerMatch = suffix.match(/^\/events\/([^/]+)$/);
+    if (flyerMatch && verb === "GET") return `/api/v1/events/${flyerMatch[1]}/flyer`;
+    const removeMatch = suffix.match(/^\/events\/([^/]+)\/remove$/);
+    if (removeMatch && verb === "POST") return `/api/v1/events/${removeMatch[1]}/flyer/remove`;
+    return null;
+  }
+
+  if (functionName === "event-operations") {
+    if (suffix === "/events" && (verb === "GET" || verb === "POST")) return "/api/v1/events";
+    if (/^\/events\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/cancel$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/registrations$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/assignments$/.test(suffix) && verb === "GET") return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/(staff-assignments|team-assignments)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/(staff-assignments|team-assignments)\/[^/]+\/revoke$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/staff-registration\/(open|close)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/registrations\/[^/]+\/(check-in|cancel)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/closeout$/.test(suffix) && verb === "GET") return "/api/v1" + suffix;
+    if (/^\/events\/[^/]+\/closeout\/(submit|review)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    return null;
+  }
+
+  if (functionName === "pastoral-operations") {
+    if (suffix === "/prayer/requests/assigned" && verb === "GET") return "/api/v1/pastoral/prayer/assigned";
+    const prayerRead = suffix.match(/^\/prayer\/requests\/([^/]+)\/read$/);
+    if (prayerRead && verb === "POST") return "/api/v1/pastoral/prayer/requests/" + prayerRead[1] + "/read";
+    const careRead = suffix.match(/^\/care\/records\/([^/]+)\/read$/);
+    if (careRead && verb === "POST") return "/api/v1/pastoral/care/records/" + careRead[1] + "/read";
+    return null;
+  }
+
+  if (functionName === "report-operations") {
+    if ((suffix === "/reports" || suffix === "/teams" || suffix === "/events") && verb === "GET") return "/api/v1" + suffix;
+    if (suffix === "/reports" && verb === "POST") return "/api/v1/reports";
+    if (/^\/reports\/[^/]+$/.test(suffix) && verb === "GET") return "/api/v1" + suffix;
+    if (/^\/reports\/[^/]+\/(review|resubmit)$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    return null;
+  }
+
+  if (functionName === "staff-notifications") {
+    if (suffix === "/notifications" && verb === "GET") return "/api/v1/notifications";
+    if (suffix === "/notifications/read-all" && verb === "POST") return "/api/v1/notifications/read-all";
+    if (/^\/notifications\/[^/]+\/read$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    return null;
+  }
+
+  if (functionName === "team-operations") {
+    if ((suffix === "/teams" || suffix === "/areas") && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
+    if ((/^\/teams\/[^/]+$/.test(suffix) || /^\/areas\/[^/]+$/.test(suffix)) && verb === "PATCH") return "/api/v1" + suffix;
+    if (/^\/teams\/[^/]+\/members$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (/^\/teams\/[^/]+\/members\/[^/]+$/.test(suffix) && verb === "PATCH") return "/api/v1" + suffix;
+    if (/^\/teams\/[^/]+\/members\/[^/]+\/revoke$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (/^\/areas\/[^/]+\/coverage$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (/^\/areas\/[^/]+\/coverage\/[^/]+\/revoke$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    return null;
+  }
+
+  if (functionName === "staff-auth") {
+    if (suffix === "/admin/staff" && verb === "POST") return "/api/v1/staff/accounts";
+    if (suffix === "/admin/password-reset-requests" && verb === "GET") return "/api/v1/admin/password-reset-requests";
+    const resetReview = suffix.match(/^\/admin\/password-reset-requests\/([^/]+)\/(approve|deny)$/);
+    if (resetReview && verb === "POST") return `/api/v1/admin/password-reset-requests/${resetReview[1]}/${resetReview[2]}`;
+    return null;
+  }
+
+  if (functionName === "staff-access-operations") {
+    const statusMatch = suffix.match(/^\/staff\/([^/]+)\/accounts\/(deactivate|reactivate)$/);
+    if (statusMatch && verb === "POST") return `/api/v1/staff/${statusMatch[1]}/${statusMatch[2]}`;
+    return null;
+  }
+
+  if (functionName === "staff-role-operations") {
+    if (suffix === "/staff/roles" && verb === "POST") return "/api/v1/staff/roles";
+    if (/^\/staff\/roles\/[^/]+$/.test(suffix) && verb === "DELETE") return "/api/v1" + suffix;
+    if ((suffix === "/staff/role-elevations" || suffix === "/staff/role-revocations") && (verb === "GET" || verb === "POST")) {
+      return "/api/v1" + suffix;
+    }
+    if (/^\/staff\/role-(elevations|revocations)\/[^/]+\/(approve|reject)$/.test(suffix) && verb === "POST") {
+      return "/api/v1" + suffix;
+    }
+    return null;
+  }
+
+  if (functionName === "staff-operations") {
+    if (suffix === "/contacts" && (verb === "GET" || verb === "POST")) return "/api/v1/contacts";
+    if (/^\/contacts\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix;
+    if (/^\/contacts\/[^/]+\/interactions$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
+    if (/^\/contacts\/[^/]+\/notes$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
+    if (/^\/contacts\/[^/]+\/assign$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+    if (suffix === "/staff" && verb === "GET") return "/api/v1/staff";
+    if (suffix === "/followup/tasks" && (verb === "GET" || verb === "POST")) return "/api/v1/followup/tasks";
+    if (suffix.startsWith("/followup/tasks/") && suffix.split("/").length === 4 && verb === "PATCH") return "/api/v1" + suffix;
+    if (/^\/followup\/tasks\/[^/]+\/assign$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
+  }
+
+  if (functionName === "public-content") return "/api/v1/public-content";
+  return null;
+}
+
 export class CmiApiClient {
   private readonly baseUrl: string;
 
   constructor(
-    private readonly config: CmiApiConfig,
-    private readonly getAccessToken: AccessTokenProvider,
-    private readonly fetcher: typeof fetch = fetch,
+    config: CmiApiConfig = {},
+    /** @deprecated No bearer token is sent; the Worker authenticates the HttpOnly session cookie. */
+    _getAccessToken: AccessTokenProvider = async () => null,
+    private readonly fetcher: typeof fetch = fetch.bind(globalThis),
   ) {
-    const supabaseUrl = normalizeBaseUrl(config.supabaseUrl);
-    if (!supabaseUrl || !config.publishableKey.trim()) {
-      throw new Error("PCG Missions API configuration is incomplete.");
-    }
-    const parsedUrl = new URL(supabaseUrl);
-    if (parsedUrl.protocol !== "https:" && parsedUrl.hostname !== "localhost" && parsedUrl.hostname !== "127.0.0.1") {
-      throw new Error("The Supabase URL must use HTTPS outside local development.");
-    }
-    this.baseUrl = `${supabaseUrl}/functions/v1`;
-  }
-
-  private async sendWithBrowserFallback(url: string | URL, init: RequestInit): Promise<Response> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000);
-    let fetchError: unknown;
-    try {
-      return await this.fetcher(url, { ...init, signal: controller.signal });
-    } catch (error) {
-      fetchError = error;
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    // Do not let a browser fetch hang the staff portal indefinitely.
-    try {
-      return await xhrRequest(url, init);
-    } catch (xhrError) {
-      throw new CmiApiError(
-        0,
-        "NETWORK_ERROR",
-        `Browser request failed or timed out. Fetch: ${requestErrorDetail(fetchError)}; XMLHttpRequest: ${requestErrorDetail(xhrError)}.`,
-        null,
-      );
+    const configured = normalizeBaseUrl(config.apiUrl ?? "");
+    this.baseUrl = configured || (typeof window !== "undefined" ? window.location.origin : "http://localhost");
+    const parsed = new URL(this.baseUrl);
+    if (parsed.protocol !== "https:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+      throw new Error("The PCG Missions API URL must use HTTPS outside local development.");
     }
   }
 
@@ -536,56 +797,44 @@ export class CmiApiClient {
     path: string,
     options: CmiRequestOptions = {},
   ): Promise<ApiEnvelope<T>> {
-    const authenticated = options.authenticated !== false;
-    const token = authenticated ? await this.getAccessToken() : null;
-    if (authenticated && !token) {
-      throw new CmiApiError(401, "AUTH_REQUIRED", "Sign in to continue.", null);
+    const suffix = path ? (path.startsWith("/") ? path : "/" + path) : "";
+    const method = (options.method ?? "GET").toUpperCase();
+    const workerPath = workerApiPath(functionName, suffix, method);
+    if (!workerPath) {
+      throw new CmiApiError(501, "CLOUDFLARE_ROUTE_NOT_MIGRATED",
+        "This operation has no Cloudflare Worker route yet. No request was sent to another service.", null);
     }
-    const suffix = path ? (path.startsWith("/") ? path : `/${path}`) : "";
-    const useSameOriginSessionProxy = functionName === "staff-session" &&
-      typeof window !== "undefined" &&
-      window.location.hostname !== "localhost" &&
-      window.location.hostname !== "127.0.0.1";
-    const url = useSameOriginSessionProxy
-      ? new URL("/api/auth?resource=staff-session", window.location.origin)
-      : new URL(`${this.baseUrl}/${functionName}${suffix}`);
+
+    const url = new URL(workerPath, this.baseUrl);
     for (const [key, value] of Object.entries(options.query ?? {})) {
       if (value !== undefined && value !== "") url.searchParams.set(key, String(value));
     }
-    const headers = new Headers({
-      apikey: this.config.publishableKey,
-      Accept: "application/json",
-    });
-    if (token) headers.set("Authorization", `Bearer ${token}`);
+
+    const headers = new Headers({ Accept: "application/json" });
+    if (options.idempotencyKey) headers.set("Idempotency-Key", options.idempotencyKey);
+    const bodyBranchId = options.body && typeof options.body === "object" && "branch_id" in options.body
+      ? (options.body as { branch_id?: unknown }).branch_id
+      : undefined;
+    const branchId = options.branchId ?? options.query?.branch_id ?? bodyBranchId;
+    if (branchId !== undefined && branchId !== null && branchId !== "") headers.set("X-Branch-Id", String(branchId));
     if (options.body !== undefined) headers.set("Content-Type", "application/json");
 
-    const requestInit: RequestInit = {
-      method: options.method ?? "GET",
-      headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
-      cache: "no-store",
-    };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
     let response: Response;
     try {
-      response = await this.sendWithBrowserFallback(url, requestInit);
-    } catch (proxyError) {
-      if (!useSameOriginSessionProxy) throw proxyError;
-      // Keep session lookup available through the project's own HTTPS endpoint
-      // if the same-origin Vercel path is unavailable to this browser.
-      const directUrl = new URL(`${this.baseUrl}/${functionName}${suffix}`);
-      for (const [key, value] of Object.entries(options.query ?? {})) {
-        if (value !== undefined && value !== "") directUrl.searchParams.set(key, String(value));
-      }
-      try {
-        response = await this.sendWithBrowserFallback(directUrl, requestInit);
-      } catch (directError) {
-        throw new CmiApiError(
-          0,
-          "NETWORK_ERROR",
-          `Unable to reach PCG Missions. Proxy: ${requestErrorDetail(proxyError)}; Supabase: ${requestErrorDetail(directError)}.`,
-          null,
-        );
-      }
+      response = await this.fetcher(url.toString(), {
+        method,
+        headers,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        credentials: "include",
+        cache: "no-store",
+        signal: controller.signal,
+      });
+    } catch (error) {
+      throw new CmiApiError(0, "NETWORK_ERROR", requestErrorDetail(error), null);
+    } finally {
+      clearTimeout(timeout);
     }
 
     const payload = parseJson(await response.text()) as (ApiEnvelope<T> & ApiErrorBody) | null;
@@ -615,11 +864,48 @@ export class CmiApiClient {
     return this.request<ContactRecord>("staff-operations", `/contacts/${encodeURIComponent(contactId)}`, { query: { branch_id: branchId } });
   }
   createContact(input: ContactCreateInput) {
-    return this.request<ContactRecord>("staff-operations", "/contacts", { method: "POST", body: input });
+    if (input.team_id) {
+      throw new TypeError("Team assignment is not part of the contact-capture operation.");
+    }
+    const body = {
+      first_name: input.first_name,
+      last_name: input.last_name,
+      preferred_name: input.preferred_name,
+      phone_e164: input.phone_e164,
+      email: input.email_normalized,
+      age_range: input.age_range,
+      preferred_language: input.preferred_language,
+      service_area_id: input.service_area_id,
+      source_metadata: input.source_metadata,
+    };
+    return this.request<ContactRecord>("staff-operations", "/contacts", {
+      method: "POST",
+      query: { branch_id: input.branch_id },
+      body,
+      idempotencyKey: input.client_request_id,
+    });
   }
   updateContact(branchId: string, contactId: string, input: ContactUpdateInput) {
+    if (input.service_area_id !== undefined) {
+      throw new TypeError("Service-area changes must use the dedicated service-area assignment workflow.");
+    }
+    const body = {
+      first_name: input.first_name,
+      last_name: input.last_name,
+      preferred_name: input.preferred_name,
+      phone_e164: input.phone_e164,
+      email: input.email_normalized,
+      age_range: input.age_range,
+      preferred_language: input.preferred_language,
+    };
+    const allowedBody = Object.fromEntries(
+      Object.entries(body).filter(([, value]) => value !== undefined),
+    );
+    if (Object.keys(allowedBody).length === 0) {
+      throw new TypeError("Provide at least one supported contact field to update.");
+    }
     return this.request<ContactRecord>("staff-operations", `/contacts/${encodeURIComponent(contactId)}`, {
-      method: "PATCH", query: { branch_id: branchId }, body: input,
+      method: "PATCH", query: { branch_id: branchId }, body: allowedBody,
     });
   }
 
@@ -656,14 +942,41 @@ export class CmiApiClient {
     );
   }
 
+  assignContact(branchId: string, contactId: string, input: ContactAssignmentInput) {
+    const reason = input.reason.trim();
+    if (reason.length < 10 || reason.length > 500) {
+      throw new TypeError("Choose exactly one active staff member or team and provide a reason of 10–500 characters.");
+    }
+    let body: { assignee_profile_id: string; reason: string } | { team_id: string; reason: string };
+    if (typeof input.assignee_profile_id === "string" && input.assignee_profile_id.trim()) {
+      body = { assignee_profile_id: input.assignee_profile_id.trim(), reason };
+    } else if (typeof input.team_id === "string" && input.team_id.trim()) {
+      body = { team_id: input.team_id.trim(), reason };
+    } else {
+      throw new TypeError("Choose exactly one active staff member or team.");
+    }
+    return this.request<ContactAssignmentResult>(
+      "staff-operations",
+      `/contacts/${encodeURIComponent(contactId)}/assign`,
+      { method: "POST", query: { branch_id: branchId }, body },
+    );
+  }
+
   listFollowUpTasks(branchId: string, options: { limit?: number; offset?: number; status?: FollowUpTask["status"] } = {}) {
     return this.request<FollowUpTask[]>("staff-operations", "/followup/tasks", {
-      query: { branch_id: branchId, limit: options.limit ?? 25, offset: options.offset ?? 0, status: options.status },
+      branchId,
+      query: { limit: options.limit ?? 25, offset: options.offset ?? 0, status: options.status },
     });
   }
   createFollowUpTask(input: TaskCreateInput) {
     assertExactlyOneTaskTarget(input);
-    return this.request<FollowUpTask>("staff-operations", "/followup/tasks", { method: "POST", body: input });
+    const { branch_id, client_request_id, ...body } = input;
+    return this.request<FollowUpTask>("staff-operations", "/followup/tasks", {
+      method: "POST",
+      query: { branch_id },
+      body,
+      idempotencyKey: client_request_id,
+    });
   }
   updateFollowUpTask(branchId: string, taskId: string, input: TaskUpdateInput) {
     return this.request<FollowUpTask>("staff-operations", `/followup/tasks/${encodeURIComponent(taskId)}`, {
@@ -671,8 +984,8 @@ export class CmiApiClient {
     });
   }
   reassignFollowUpTask(branchId: string, taskId: string, input: TaskReassignmentInput) {
-    assertExactlyOneTaskTarget(input);
-    return this.request<FollowUpTask>("staff-operations", `/followup/tasks/${encodeURIComponent(taskId)}/reassign`, {
+    assertValidTaskReassignment(input);
+    return this.request<FollowUpTask>("staff-operations", `/followup/tasks/${encodeURIComponent(taskId)}/assign`, {
       method: "POST", query: { branch_id: branchId }, body: input,
     });
   }
@@ -683,13 +996,67 @@ export class CmiApiClient {
     });
   }
 
+  assignStaffRole(branchId: string, targetProfileId: string, roleCode: StandardStaffRoleCode, reason: string) {
+    return this.request<{ id: string; target_profile_id: string; role_code: StandardStaffRoleCode; branch_id: string; starts_at: string; ends_at: string | null }>(
+      "staff-role-operations", "/staff/roles", {
+        method: "POST", branchId,
+        body: { target_profile_id: targetProfileId, role_code: roleCode, starts_at: new Date().toISOString(), ends_at: null, reason },
+      },
+    );
+  }
+  revokeStaffRole(branchId: string, assignmentId: string, reason: string) {
+    return this.request<{ revoked_assignment_id: string }>(
+      "staff-role-operations", "/staff/roles/" + encodeURIComponent(assignmentId), {
+        method: "DELETE", branchId, body: { reason },
+      },
+    );
+  }
+  listAdminElevationRequests(branchId: string) {
+    return this.request<StaffRoleApprovalRequest[]>("staff-role-operations", "/staff/role-elevations", { branchId });
+  }
+  requestAdminElevation(branchId: string, targetProfileId: string, reason: string) {
+    return this.request<{ id: string; target_profile_id: string; status: string }>(
+      "staff-role-operations", "/staff/role-elevations", {
+        method: "POST", branchId, body: { target_profile_id: targetProfileId, reason },
+      },
+    );
+  }
+  reviewAdminElevation(branchId: string, requestId: string, decision: "approve" | "reject", reason: string) {
+    return this.request<{ elevation_request_id: string; assignment_id?: string; status: string }>(
+      "staff-role-operations", "/staff/role-elevations/" + encodeURIComponent(requestId) + "/" + decision, {
+        method: "POST", branchId, body: { review_reason: reason },
+      },
+    );
+  }
+  listAdminRevocationRequests(branchId: string) {
+    return this.request<StaffRoleApprovalRequest[]>("staff-role-operations", "/staff/role-revocations", { branchId });
+  }
+  requestAdminRevocation(branchId: string, assignmentId: string, reason: string) {
+    return this.request<{ id: string; assignment_id: string; status: string }>(
+      "staff-role-operations", "/staff/role-revocations", {
+        method: "POST", branchId, body: { assignment_id: assignmentId, reason },
+      },
+    );
+  }
+  reviewAdminRevocation(branchId: string, requestId: string, decision: "approve" | "reject", reason: string) {
+    return this.request<{ revocation_request_id: string; status: string }>(
+      "staff-role-operations", "/staff/role-revocations/" + encodeURIComponent(requestId) + "/" + decision, {
+        method: "POST", branchId, body: { review_reason: reason },
+      },
+    );
+  }
+
   createStaffAccount(input: StaffAccountCreateInput) {
     return this.request<{
       staff_profile_id: string;
       email: string;
       role_code: StaffAccountCreateInput["role_code"];
-      invitation_email_sent: boolean;
-      must_change_password: boolean;
+      account_created: true;
+      email_sent: false;
+      must_change_password: true;
+      temporary_password: string;
+      manual_handoff_required: true;
+      password_expires_in_hours: number;
     }>("staff-auth", "/admin/staff", { method: "POST", body: input });
   }
 
@@ -708,7 +1075,7 @@ export class CmiApiClient {
     }>(
       "staff-access-operations",
       `/staff/${encodeURIComponent(staffProfileId)}/accounts/${action}`,
-      { method: "POST", body: { branch_id: branchId, reason } },
+      { method: "POST", query: { branch_id: branchId }, body: { reason } },
     );
   }
 
@@ -720,7 +1087,14 @@ export class CmiApiClient {
     );
   }
   approveStaffPasswordResetRequest(branchId: string, requestId: string, reason: string) {
-    return this.request<{ status: string; temporary_password_sent: boolean; must_change_password: boolean }>(
+    return this.request<{
+      status: string;
+      email: string;
+      temporary_password_sent: boolean;
+      must_change_password: boolean;
+      temporary_password?: string;
+      manual_handoff_required?: boolean;
+    }>(
       "staff-auth",
       `/admin/password-reset-requests/${encodeURIComponent(requestId)}/approve`,
       { method: "POST", body: { branch_id: branchId, reason } },
@@ -793,6 +1167,223 @@ export class CmiApiClient {
       method: "PATCH", query: { branch_id: branchId }, body: input,
     });
   }
+  cancelEventDraft(branchId: string, eventId: string) {
+    return this.request<{ event_id: string; status: string }>("event-operations", "/events/" + encodeURIComponent(eventId) + "/cancel", {
+      method: "POST", query: { branch_id: branchId },
+    });
+  }
+
+
+
+  listAssignedPrayerRequests(
+    branchId: string,
+    options: { limit?: number; offset?: number } = {},
+  ) {
+    return this.request<AssignedPrayerInbox>(
+      "pastoral-operations",
+      "/prayer/requests/assigned",
+      {
+        branchId,
+        query: {
+          limit: options.limit ?? 25,
+          offset: options.offset ?? 0,
+        },
+      },
+    );
+  }
+
+
+  openStaffEventRegistration(branchId: string, eventId: string) {
+    return this.request<EventDraftRecord>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/staff-registration/open",
+      { method: "POST", query: { branch_id: branchId } },
+    );
+  }
+  closeStaffEventRegistration(branchId: string, eventId: string) {
+    return this.request<EventDraftRecord>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/staff-registration/close",
+      { method: "POST", query: { branch_id: branchId } },
+    );
+  }
+  listEventRegistrations(branchId: string, eventId: string) {
+    return this.request<EventRegistrationWorkspace>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/registrations",
+      { query: { branch_id: branchId } },
+    );
+  }
+  registerEventAttendee(
+    branchId: string,
+    eventId: string,
+    input: EventStaffRegistrationInput,
+  ) {
+    return this.request<EventStaffRegistrationResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/registrations",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+
+
+
+
+  getEventCloseout(branchId: string, eventId: string) {
+    return this.request<EventCloseoutWorkspace>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/closeout",
+      { query: { branch_id: branchId } },
+    );
+  }
+  submitEventCloseout(
+    branchId: string,
+    eventId: string,
+    input: { idempotency_key: string; summary_notes: string | null },
+  ) {
+    return this.request<EventCloseoutSubmissionResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/closeout/submit",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+  reviewEventCloseout(
+    branchId: string,
+    eventId: string,
+    input: {
+      idempotency_key: string;
+      decision: "approved" | "returned";
+      reason: string | null;
+    },
+  ) {
+    return this.request<EventCloseoutSubmissionResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/closeout/review",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+
+  checkinEventRegistration(
+    branchId: string,
+    eventId: string,
+    registrationId: string,
+    idempotencyKey: string,
+  ) {
+    return this.request<EventStaffCheckinResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/registrations/" +
+        encodeURIComponent(registrationId) + "/check-in",
+      {
+        method: "POST",
+        query: { branch_id: branchId },
+        body: { idempotency_key: idempotencyKey },
+      },
+    );
+  }
+
+  cancelEventRegistration(
+    branchId: string,
+    eventId: string,
+    registrationId: string,
+    idempotencyKey: string,
+  ) {
+    return this.request<EventStaffRegistrationResult>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/registrations/" +
+        encodeURIComponent(registrationId) + "/cancel",
+      {
+        method: "POST",
+        query: { branch_id: branchId },
+        body: { idempotency_key: idempotencyKey },
+      },
+    );
+  }
+
+  getEventAssignments(branchId: string, eventId: string) {
+    return this.request<EventAssignmentWorkspace>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/assignments",
+      { query: { branch_id: branchId } },
+    );
+  }
+  createEventStaffAssignment(branchId: string, eventId: string, input: EventStaffAssignmentInput) {
+    return this.request<EventStaffAssignmentRecord>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/staff-assignments",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+  createEventTeamAssignment(branchId: string, eventId: string, input: EventTeamAssignmentInput) {
+    return this.request<EventTeamAssignmentRecord>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/team-assignments",
+      { method: "POST", query: { branch_id: branchId }, body: input },
+    );
+  }
+  revokeEventAssignment(branchId: string, eventId: string, kind: "staff" | "team", assignmentId: string) {
+    const resource = kind === "staff" ? "staff-assignments" : "team-assignments";
+    return this.request<{ id: string; revoked_at: string }>(
+      "event-operations",
+      "/events/" + encodeURIComponent(eventId) + "/" + resource + "/" +
+        encodeURIComponent(assignmentId) + "/revoke",
+      { method: "POST", query: { branch_id: branchId } },
+    );
+  }
+
+  listStaffNotifications(branchId: string, limit = 30) {
+    return this.request<StaffNotificationInbox>("staff-notifications", "/notifications", {
+      query: { branch_id: branchId, limit },
+    });
+  }
+  markStaffNotificationRead(branchId: string, notificationId: string) {
+    return this.request<{ updated: boolean }>("staff-notifications", "/notifications/" + encodeURIComponent(notificationId) + "/read", {
+      method: "POST", body: { branch_id: branchId },
+    });
+  }
+  markAllStaffNotificationsRead(branchId: string) {
+    return this.request<{ updated_count: number }>("staff-notifications", "/notifications/read-all", {
+      method: "POST", body: { branch_id: branchId },
+    });
+  }
+
+  async uploadEventFlyer(branchId: string, eventId: string, file: File): Promise<ApiEnvelope<EventFlyerResult>> {
+    const url = new URL("/api/v1/events/" + encodeURIComponent(eventId) + "/flyer", this.baseUrl);
+    const headers = new Headers({ Accept: "application/json", "X-Branch-Id": branchId });
+    const form = new FormData();
+    form.set("file", file);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response: Response;
+    try {
+      response = await this.fetcher(url.toString(), {
+        method: "POST", headers, body: form, credentials: "include", cache: "no-store", signal: controller.signal,
+      });
+    } catch (error) {
+      throw new CmiApiError(0, "NETWORK_ERROR", requestErrorDetail(error), null);
+    } finally {
+      clearTimeout(timeout);
+    }
+    const payload = parseJson(await response.text()) as (ApiEnvelope<EventFlyerResult> & ApiErrorBody) | null;
+    const requestId = payload?.request_id ?? response.headers.get("X-Request-Id");
+    if (!response.ok) {
+      throw new CmiApiError(response.status, payload?.error?.code ?? "EVENT_FLYER_UPLOAD_FAILED",
+        payload?.error?.message ?? "The flyer upload could not be completed.", requestId ?? null);
+    }
+    if (!payload || typeof payload !== "object" || !("data" in payload)) {
+      throw new CmiApiError(502, "INVALID_RESPONSE", "The server returned an unexpected response.", requestId ?? null);
+    }
+    return payload;
+  }
+  getEventFlyerPreview(branchId: string, eventId: string) {
+    return this.request<EventFlyerResult>("event-flyers", "/events/" + encodeURIComponent(eventId), {
+      query: { branch_id: branchId },
+    });
+  }
+  removeEventFlyer(branchId: string, eventId: string) {
+    return this.request<{ removed: boolean }>("event-flyers", "/events/" + encodeURIComponent(eventId) + "/remove", {
+      method: "POST", query: { branch_id: branchId },
+    });
+  }
 
   listCalendarEntries(branchId: string, options: { limit?: number; offset?: number } = {}) {
     return this.request<CalendarEntryRecord[]>("calendar-operations", "/entries", {
@@ -805,6 +1396,11 @@ export class CmiApiClient {
   updateCalendarEntry(branchId: string, entryId: string, input: CalendarEntryPatchInput) {
     return this.request<CalendarEntryRecord>("calendar-operations", "/entries/" + encodeURIComponent(entryId), {
       method: "PATCH", query: { branch_id: branchId }, body: input,
+    });
+  }
+  cancelCalendarEntry(branchId: string, entryId: string, reason: string) {
+    return this.request<{ entry_id: string; status: string }>("calendar-operations", "/entries/" + encodeURIComponent(entryId) + "/cancel", {
+      method: "POST", query: { branch_id: branchId }, body: { reason },
     });
   }
 
@@ -821,7 +1417,6 @@ export class CmiApiClient {
       method: "PATCH", query: { branch_id: branchId }, body: input,
     });
   }
-
   listSermonDrafts(branchId: string, options: { limit?: number; offset?: number } = {}) {
     return this.request<SermonDraftRecord[]>("content-operations", "/sermons", {
       query: { branch_id: branchId, limit: options.limit ?? 50, offset: options.offset ?? 0 },
@@ -937,10 +1532,5 @@ export class CmiApiClient {
 }
 
 export function createConfiguredCmiApiClient(getAccessToken: AccessTokenProvider): CmiApiClient {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-  const publishableKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-  if (!supabaseUrl || !publishableKey) {
-    throw new Error("Set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY before connecting the staff API.");
-  }
-  return new CmiApiClient({ supabaseUrl, publishableKey }, getAccessToken);
+  return new CmiApiClient({}, getAccessToken);
 }

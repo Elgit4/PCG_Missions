@@ -184,10 +184,14 @@ Deno.test("derived idempotency keys are deterministic and purpose separated", as
   const contact = await deriveIdempotencySecret(master, "contact");
   const contactAgain = await deriveIdempotencySecret(master, "contact");
   const followup = await deriveIdempotencySecret(master, "followup");
+  const event = await deriveIdempotencySecret(master, "event");
   assertEquals(contact, contactAgain);
   assertEquals(contact.length, 64);
   assertEquals(followup.length, 64);
+  assertEquals(event.length, 64);
   assertEquals(contact === followup, false);
+  assertEquals(contact === event, false);
+  assertEquals(followup === event, false);
   assertEquals(
     await deriveIdempotencySecret(master + "-rotated", "contact") === contact,
     false,

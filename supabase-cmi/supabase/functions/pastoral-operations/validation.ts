@@ -2,10 +2,20 @@ export type PastoralRecordKind = "prayer_request" | "care_record";
 
 export type PastoralAccessMode = "assigned" | "oversight";
 
-export interface PastoralReadPath {
-  kind: PastoralRecordKind;
-  recordId: string;
+export type PastoralReadPath =
+  | { kind: "prayer_request"; recordId: string }
+  | { kind: "care_record"; recordId: string }
+  | { kind: "prayer_request_list" };
+
+export interface PastoralAssignedListInput {
+  branch_id: string;
+  limit: number;
+  offset: number;
 }
+
+export type PastoralAssignedListParseResult =
+  | { ok: true; value: PastoralAssignedListInput }
+  | { ok: false; error: string };
 
 export interface PastoralReadInput {
   branch_id: string;
@@ -40,6 +50,15 @@ export function parsePastoralReadPath(
   const route = functionIndex >= 0
     ? segments.slice(functionIndex + 1)
     : segments;
+
+  if (
+    route.length === 3 &&
+    route[0] === "prayer" &&
+    route[1] === "requests" &&
+    route[2] === "assigned"
+  ) {
+    return { kind: "prayer_request_list" };
+  }
 
   if (route.length !== 4 || route[3] !== "read") return null;
 
@@ -114,5 +133,46 @@ export function parsePastoralReadInput(
       access_mode: "oversight",
       reason_code: input.reason_code,
     },
+  };
+}
+
+export function parsePastoralAssignedListInput(
+  value: unknown,
+): PastoralAssignedListParseResult {
+  if (
+    value === null ||
+    typeof value !== "object" ||
+    Array.isArray(value)
+  ) {
+    return { ok: false, error: "A JSON object is required." };
+  }
+
+  const input = value as Record<string, unknown>;
+  const allowed = new Set(["branch_id", "limit", "offset"]);
+  if (Object.keys(input).some((key) => !allowed.has(key))) {
+    return { ok: false, error: "Unsupported assigned prayer inbox field." };
+  }
+  if (typeof input.branch_id !== "string" || !isUuid(input.branch_id)) {
+    return { ok: false, error: "A valid branch_id is required." };
+  }
+
+  const limit = input.limit === undefined ? 25 : input.limit;
+  const offset = input.offset === undefined ? 0 : input.offset;
+  if (
+    typeof limit !== "number" || !Number.isInteger(limit) || limit < 1 ||
+    limit > 50
+  ) {
+    return { ok: false, error: "Limit must be an integer from 1 to 50." };
+  }
+  if (
+    typeof offset !== "number" || !Number.isInteger(offset) || offset < 0 ||
+    offset > 5000
+  ) {
+    return { ok: false, error: "Offset must be an integer from 0 to 5000." };
+  }
+
+  return {
+    ok: true,
+    value: { branch_id: input.branch_id, limit, offset },
   };
 }

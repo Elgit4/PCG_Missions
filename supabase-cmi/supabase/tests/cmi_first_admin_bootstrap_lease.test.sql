@@ -1,11 +1,49 @@
 begin;
 
-select plan(12);
+select plan(16);
 
 select has_table(
   'private',
   'first_admin_bootstrap_lease',
   'first-admin lease table exists in the private schema'
+);
+
+select ok(
+  (
+    select c.relrowsecurity
+    from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'private'
+      and c.relname = 'first_admin_bootstrap_lease'
+  ),
+  'bootstrap lease table has row-level security enabled'
+);
+
+select ok(
+  not has_table_privilege(
+    'anon',
+    'private.first_admin_bootstrap_lease',
+    'SELECT'
+  ),
+  'anonymous users cannot select the bootstrap lease table'
+);
+
+select ok(
+  not has_table_privilege(
+    'authenticated',
+    'private.first_admin_bootstrap_lease',
+    'SELECT'
+  ),
+  'authenticated browser users cannot select the bootstrap lease table'
+);
+
+select ok(
+  not has_table_privilege(
+    'service_role',
+    'private.first_admin_bootstrap_lease',
+    'SELECT'
+  ),
+  'service role cannot bypass the lease RPC with direct table reads'
 );
 
 select ok(

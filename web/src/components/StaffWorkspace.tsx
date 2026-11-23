@@ -1,41 +1,37 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Activity, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
-import { OperationsWorkspace } from "./OperationsWorkspace";
-import { TeamAdministrationWorkspace } from "./TeamAdministrationWorkspace";
-import { MinistryReportsWorkspace } from "./MinistryReportsWorkspace";
-import { ContactDetailDialog } from "./ContactDetailDialog";
-import { OverviewDashboard } from "./OverviewDashboard";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Activity, AlertTriangle, BookOpen, CalendarClock, CalendarDays, CheckCircle2, ClipboardList, FileText, HandHeart, KeyRound, LogOut, Megaphone, MoreHorizontal, Network, Plus, RefreshCw, Search, ShieldCheck, Users, XCircle } from "lucide-react";
+import { StaffNotificationCenter } from "./StaffNotificationCenter";
 import { canOpenStaffPage, getAvailableStaffPages, hasCapability, hasIdentityCapture, hasIdentityRead } from "../lib/capabilities";
-import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffSession, TaskCreateInput } from "../lib/cmi-api";
+import type { ContactCreateInput, ContactRecord, FollowUpTask, StaffAccountCreateInput, StaffDirectoryEntry, StaffPasswordResetRequest, StaffRoleApprovalRequest, StaffSession, StandardStaffRoleCode, TaskCreateInput, TaskReassignmentInput, TeamRecord } from "../lib/cmi-api";
 import { CmiApiClient, CmiApiError } from "../lib/cmi-api";
 import { ThemeToggle } from "../lib/theme";
+import { formatApplicationError } from "../lib/error-messages";
 
-type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Reports" | "Staff" | "Access requests";
-type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue";
+const OperationsWorkspace = lazy(async () => ({
+  default: (await import("./OperationsWorkspace")).OperationsWorkspace,
+}));
+const TeamAdministrationWorkspace = lazy(async () => ({
+  default: (await import("./TeamAdministrationWorkspace")).TeamAdministrationWorkspace,
+}));
+const MinistryReportsWorkspace = lazy(async () => ({
+  default: (await import("./MinistryReportsWorkspace")).MinistryReportsWorkspace,
+}));
+const PrayerRequestsWorkspace = lazy(async () => ({
+  default: (await import("./PrayerRequestsWorkspace")).PrayerRequestsWorkspace,
+}));
+const ContactDetailDialog = lazy(async () => ({
+  default: (await import("./ContactDetailDialog")).ContactDetailDialog,
+}));
+const OverviewDashboard = lazy(async () => ({
+  default: (await import("./OverviewDashboard")).OverviewDashboard,
+}));
+
+type Page = "Overview" | "Contacts" | "Follow-up" | "Events" | "Calendar" | "Announcements" | "Content" | "Teams & Areas" | "Prayer" | "Reports" | "Staff" | "Access requests";
+type TaskStatusFilter = "all" | "open" | "in_progress" | "completed" | "cancelled" | "overdue" | "today" | "upcoming";
 interface StaffWorkspaceProps { api: CmiApiClient; session: StaffSession; onSignOut: () => Promise<void> }
 
 function messageFor(error: unknown): string {
-  if (error instanceof CmiApiError) {
-    if (error.status === 401) return "Your staff session has expired. Sign in again.";
-    if (error.status === 403) return "Your account is signed in, but it does not have permission for this operation.";
-    if (error.status === 404) return "The requested record is unavailable or outside your access scope.";
-    if (error.status === 409) return "This operation conflicts with an existing request or a recent record change. Refresh the data before trying again.";
-    if (error.status === 422) return "Some submitted fields need correction. Review the form and try again.";
-    if (error.status === 429) return "Too many requests were made. Wait a moment before trying again.";
-    if (error.code === "IDEMPOTENCY_NOT_CONFIGURED") {
-      return "This operation is disabled because its secure request-signing secret is missing or invalid in Supabase Edge Function secrets. Configure CMI_CONTACT_IDEMPOTENCY_HMAC_KEY for contact capture and CMI_FOLLOWUP_IDEMPOTENCY_HMAC_KEY for follow-up creation (each at least 32 characters). No record was saved.";
-    }
-    if (error.code === "STAFF_INVITATION_EMAIL_FAILED") {
-      return "The staff account was created, but its invitation email was not delivered. Do not create the account again. Check the Staff list, then have the person use Forgot password after the church email sender has been fixed.";
-    }
-    if (error.code === "AUTH_EMAIL_NOT_CONFIGURED") {
-      return "Staff account creation is blocked because the church email sender is not configured for invitations. No new staff account was created.";
-    }
-    if (error.status === 503) return "This service is temporarily unavailable. Try again later.";
-    if (error.status === 0) return error.message;
-    return `${error.message}${error.requestId ? ` (Reference: ${error.requestId})` : ""}`;
-  }
-  return "Something went wrong. Please try again.";
+  return formatApplicationError(error);
 }
 function displayName(contact: ContactRecord): string {
   return contact.preferred_name?.trim() || [contact.first_name, contact.last_name].filter(Boolean).join(" ");
@@ -49,6 +45,36 @@ function statusLabel(status: string): string {
   return status.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
+function FeedbackMark({ success = false }: { success?: boolean }) {
+  return (
+    <span className={"cmi-feedback-art" + (success ? " is-success" : "")} aria-hidden="true">
+      {success ? <CheckCircle2 size={23} strokeWidth={1.8} /> : <AlertTriangle size={23} strokeWidth={1.8} />}
+    </span>
+  );
+}
+
+function FeedbackMessage({ kind, message, onDismiss }: {
+  kind: "error" | "success";
+  message: string;
+  onDismiss?: () => void;
+}) {
+  const success = kind === "success";
+  return (
+    <div className={"cmi-feedback-card " + (success ? "is-success" : "is-error")} role={success ? "status" : "alert"}>
+      <FeedbackMark success={success} />
+      <div className="cmi-feedback-copy">
+        <strong>{success ? "All set" : "We couldn't complete that"}</strong>
+        <p>{message}</p>
+      </div>
+      {onDismiss && (
+        <button type="button" className="cmi-feedback-dismiss" onClick={onDismiss} aria-label="Dismiss message">
+          <XCircle size={17} />
+        </button>
+      )}
+    </div>
+  );
+}
+
 function navigationIcon(item: Page, size = 18) {
   switch (item) {
     case "Overview": return <Activity size={size} strokeWidth={1.9} />;
@@ -59,6 +85,7 @@ function navigationIcon(item: Page, size = 18) {
     case "Announcements": return <Megaphone size={size} strokeWidth={1.9} />;
     case "Content": return <BookOpen size={size} strokeWidth={1.9} />;
     case "Teams & Areas": return <Network size={size} strokeWidth={1.9} />;
+    case "Prayer": return <HandHeart size={size} strokeWidth={1.9} />;
     case "Reports": return <FileText size={size} strokeWidth={1.9} />;
     case "Staff": return <Users size={size} strokeWidth={1.9} />;
     case "Access requests": return <KeyRound size={size} strokeWidth={1.9} />;
@@ -68,6 +95,7 @@ function navigationIcon(item: Page, size = 18) {
 function navigationLabel(item: Page): string {
   if (item === "Follow-up") return "Follow-up tasks";
   if (item === "Content") return "Visitor content";
+  if (item === "Prayer") return "Prayer requests";
   return item;
 }
 function isOverdue(task: FollowUpTask): boolean {
@@ -114,12 +142,34 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [selectedContact, setSelectedContact] = useState<ContactRecord | null>(null);
   const [tasks, setTasks] = useState<FollowUpTask[]>([]);
   const [taskStatusFilter, setTaskStatusFilter] = useState<TaskStatusFilter>("all");
+  const [updatingTaskId, setUpdatingTaskId] = useState<string | null>(null);
+  const [reassigningTaskId, setReassigningTaskId] = useState<string | null>(null);
+  const [savingReassignmentId, setSavingReassignmentId] = useState<string | null>(null);
   const [resetRequests, setResetRequests] = useState<StaffPasswordResetRequest[]>([]);
   const [staffMembers, setStaffMembers] = useState<StaffDirectoryEntry[]>([]);
+  const [teams, setTeams] = useState<TeamRecord[]>([]);
   const [showStaffForm, setShowStaffForm] = useState(false);
+  const [credentialHandoff, setCredentialHandoff] = useState<{
+    email: string;
+    password: string;
+    expiresInHours: number;
+  } | null>(null);
+  const [credentialCopied, setCredentialCopied] = useState(false);
   const [showMobileMore, setShowMobileMore] = useState(false);
   const [staffStatusEdit, setStaffStatusEdit] = useState<{ profileId: string; nextStatus: "active" | "inactive" } | null>(null);
   const [staffStatusReason, setStaffStatusReason] = useState("");
+  const [roleAction, setRoleAction] = useState<{
+    profileId: string;
+    action: "assign" | "revoke" | "elevate" | "revoke_admin";
+    assignmentId?: string;
+    roleName?: string;
+  } | null>(null);
+  const [roleActionReason, setRoleActionReason] = useState("");
+  const [roleActionCode, setRoleActionCode] = useState<StandardStaffRoleCode>("field_worker");
+  const [elevationRequests, setElevationRequests] = useState<StaffRoleApprovalRequest[]>([]);
+  const [revocationRequests, setRevocationRequests] = useState<StaffRoleApprovalRequest[]>([]);
+  const [roleReviewReasons, setRoleReviewReasons] = useState<Record<string, string>>({});
+  const [processingRoleRequestId, setProcessingRoleRequestId] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState("");
   const [resetReasons, setResetReasons] = useState<Record<string, string>>({});
   const [processingResetId, setProcessingResetId] = useState<string | null>(null);
@@ -131,12 +181,39 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const [loadError, setLoadError] = useState("");
   const [actionError, setActionError] = useState("");
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [showContactForm, setShowContactForm] = useState(false);
   const [showTaskForm, setShowTaskForm] = useState(false);
+  const [taskContactId, setTaskContactId] = useState("");
+  const [taskContactQuery, setTaskContactQuery] = useState("");
+  const [debouncedTaskContactQuery, setDebouncedTaskContactQuery] = useState("");
+  const [taskContactResults, setTaskContactResults] = useState<ContactRecord[]>([]);
+  const [taskContactLoading, setTaskContactLoading] = useState(false);
+  const [taskContactError, setTaskContactError] = useState("");
   const [saving, setSaving] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const contactRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
   const taskRequestRef = useRef<{ fingerprint: string; id: string } | null>(null);
+  const paginationVersion = useRef(0);
+  const taskMutationInFlight = useRef(false);
+  const staffMutationInFlight = useRef(false);
+  const passwordResetReviewInFlight = useRef(false);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => window.clearTimeout(timeout);
+  }, [query]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(
+      () => setDebouncedTaskContactQuery(taskContactQuery.trim()),
+      250,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [taskContactQuery]);
+
+
+
 
   const canReadContacts = canOpenStaffPage(session, "Contacts", branchId);
   const canReadTasks = canOpenStaffPage(session, "Follow-up", branchId);
@@ -153,13 +230,60 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canUpdateTasks = hasCapability(session, "followup.task.update.scoped", branchId);
   const canManagePasswordResets = hasCapability(session, "staff.password_reset.manage", branchId);
   const canReadStaffDirectory = hasCapability(session, "staff.directory.read", branchId);
+  const canReadTeams = hasCapability(session, "team.read", branchId);
+  const canAssignFollowUp = hasCapability(session, "followup.assign", branchId) && (canReadStaffDirectory || canReadTeams);
+  const followUpAssignGrant = session.capabilities.find((grant) => grant.code === "followup.assign" && grant.branch_id === branchId);
+  const canAssignFollowUpToStaff = canAssignFollowUp && followUpAssignGrant?.scope_mode === "branch" && canReadStaffDirectory;
+  const canAssignContacts = hasCapability(session, "contacts.assign", branchId) && (canReadStaffDirectory || canReadTeams);
+  const canCreateTaskFromWorkspace = canSelfAssignTask || (canAssignFollowUp && teams.some((team) => team.is_active));
+  const canAssignStaffRoles = hasCapability(session, "staff.role.assign", branchId);
+  const canApproveStaffRoles = hasCapability(session, "staff.role.approve", branchId);
   const canManageStaffAccounts = hasCapability(session, "staff.account.manage", branchId);
   const canCreateStaffAccounts = hasCapability(session, "staff.account.manage", branchId) && hasCapability(session, "access.role.assign", branchId);
+  useEffect(() => {
+    if (
+      !showTaskForm || !canReadContacts ||
+      debouncedTaskContactQuery.length < 2
+    ) {
+      setTaskContactLoading(false);
+      setTaskContactError("");
+      if (!taskContactId) setTaskContactResults([]);
+      return;
+    }
+    let active = true;
+    setTaskContactLoading(true);
+    setTaskContactError("");
+    api.listContacts(branchId, {
+      limit: 12,
+      offset: 0,
+      search: debouncedTaskContactQuery,
+    }).then((result) => {
+      if (active) setTaskContactResults(result.data);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      if (error instanceof CmiApiError && error.status === 401) {
+        expireSession();
+        return;
+      }
+      setTaskContactResults([]);
+      setTaskContactError(messageFor(error));
+    }).finally(() => {
+      if (active) setTaskContactLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [
+    api,
+    branchId,
+    canReadContacts,
+    debouncedTaskContactQuery,
+    showTaskForm,
+    taskContactId,
+  ]);
+
   const availablePages = useMemo(() => {
-    const pages: Page[] = getAvailableStaffPages(session, branchId)
-      .filter((candidate): candidate is Exclude<Page, "Staff" | "Access requests"> =>
-        candidate !== "Prayer"
-      );
+    const pages: Page[] = getAvailableStaffPages(session, branchId);
     if (canCreateContacts && !pages.includes("Contacts")) pages.push("Contacts");
     if (canReadStaffDirectory) pages.push("Staff");
     if (canManagePasswordResets) pages.push("Access requests");
@@ -167,7 +291,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   }, [session, branchId, canCreateContacts, canManagePasswordResets, canReadStaffDirectory]);
   const navigationSections = [
     { label: "WORKSPACE", items: availablePages.filter((item) => ["Overview", "Contacts", "Follow-up"].includes(item)) },
-    { label: "MINISTRY", items: availablePages.filter((item) => ["Events", "Calendar", "Announcements", "Content", "Reports"].includes(item)) },
+    { label: "MINISTRY", items: availablePages.filter((item) => ["Events", "Calendar", "Announcements", "Content", "Prayer", "Reports"].includes(item)) },
     { label: "ADMINISTRATION", items: availablePages.filter((item) => ["Teams & Areas", "Staff", "Access requests"].includes(item)) },
   ].filter((section) => section.items.length > 0);
   const preferredMobilePages: Page[] = ["Overview", "Contacts", "Follow-up", "Calendar"];
@@ -189,6 +313,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setTasksHasMore(false);
     setResetRequests([]);
     setStaffMembers([]);
+    setTeams([]);
     setShowStaffForm(false);
     setStaffStatusEdit(null);
     setStaffStatusReason("");
@@ -208,16 +333,21 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
   useEffect(() => {
     let current = true;
+    paginationVersion.current += 1;
+    setLoadingMore(false);
     if (!branchId) {
       setContacts([]); setTasks([]); setResetRequests([]); setStaffMembers([]); setResetReasons({});
       setContactsHasMore(false); setTasksHasMore(false);
       setLoading(false); setLoadError("");
-      return () => { current = false; };
+      return () => {
+        current = false;
+        paginationVersion.current += 1;
+      };
     }
     setLoading(true); setLoadError("");
     const requests: Promise<void>[] = [];
     if (canReadContacts) {
-      requests.push(api.listContacts(branchId, { limit: 50, offset: 0, search: query.trim() || undefined })
+      requests.push(api.listContacts(branchId, { limit: 50, offset: 0, search: debouncedQuery || undefined })
         .then((result) => {
           if (current) {
             setContacts(result.data);
@@ -262,6 +392,26 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       setResetRequests([]);
       setResetReasons({});
     }
+    if (canApproveStaffRoles) {
+      requests.push(api.listAdminElevationRequests(branchId)
+        .then((result) => { if (current) setElevationRequests(result.data); })
+        .catch((error: unknown) => {
+          if (!current) return;
+          if (error instanceof CmiApiError && error.status === 401) expireSession();
+          else setLoadError(messageFor(error));
+        }));
+      requests.push(api.listAdminRevocationRequests(branchId)
+        .then((result) => { if (current) setRevocationRequests(result.data); })
+        .catch((error: unknown) => {
+          if (!current) return;
+          if (error instanceof CmiApiError && error.status === 401) expireSession();
+          else setLoadError(messageFor(error));
+        }));
+    } else {
+      setElevationRequests([]);
+      setRevocationRequests([]);
+    }
+
     if (canReadStaffDirectory) {
       requests.push(api.listStaffDirectory(branchId, { limit: 50, offset: 0 })
         .then((result) => { if (current) setStaffMembers(result.data); })
@@ -273,27 +423,55 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     } else {
       setStaffMembers([]);
     }
+    if (canReadTeams) {
+      requests.push(api.listTeams(branchId)
+        .then((result) => { if (current) setTeams(result.data.teams); })
+        .catch((error: unknown) => {
+          if (!current) return;
+          if (error instanceof CmiApiError && error.status === 401) expireSession();
+          else setLoadError(messageFor(error));
+        }));
+    } else {
+      setTeams([]);
+    }
+
     void Promise.all(requests).finally(() => { if (current) setLoading(false); });
-    return () => { current = false; };
-  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, query, expireSession]);
+    return () => {
+      current = false;
+      paginationVersion.current += 1;
+    };
+  }, [api, branchId, canReadContacts, canReadTasks, canManagePasswordResets, canReadStaffDirectory, canReadTeams, canApproveStaffRoles, debouncedQuery, expireSession]);
 
   const visibleContacts = contacts;
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
   const openTasks = tasks.filter((task) => task.status === "open" || task.status === "in_progress");
+  const todayKey = new Intl.DateTimeFormat("en-CA", { timeZone: branchTimeZone }).format(new Date());
   const filteredTasks = tasks.filter((task) => {
     if (taskStatusFilter === "overdue") return isOverdue(task);
+    if (taskStatusFilter === "today") return !!task.due_at && new Intl.DateTimeFormat("en-CA", { timeZone: branchTimeZone }).format(new Date(task.due_at)) === todayKey && (task.status === "open" || task.status === "in_progress");
+    if (taskStatusFilter === "upcoming") return !!task.due_at && new Date(task.due_at).getTime() > Date.now() && (task.status === "open" || task.status === "in_progress");
     return taskStatusFilter === "all" || task.status === taskStatusFilter;
+  }).sort((a, b) => {
+    const overdueOrder = Number(isOverdue(b)) - Number(isOverdue(a));
+    if (overdueOrder) return overdueOrder;
+    return (a.due_at ? new Date(a.due_at).getTime() : Number.MAX_SAFE_INTEGER) -
+      (b.due_at ? new Date(b.due_at).getTime() : Number.MAX_SAFE_INTEGER);
   });
 
   const refresh = async () => {
     if (!branchId) return;
+    paginationVersion.current += 1;
+    setLoadingMore(false);
     setRefreshing(true); setActionError("");
     try {
-      const [contactResult, taskResult, resetResult, staffResult] = await Promise.all([
-        canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0, search: query.trim() || undefined }) : Promise.resolve(null),
+      const [contactResult, taskResult, resetResult, staffResult, elevationResult, revocationResult, teamResult] = await Promise.all([
+        canReadContacts ? api.listContacts(branchId, { limit: 50, offset: 0, search: debouncedQuery || undefined }) : Promise.resolve(null),
         canReadTasks ? api.listFollowUpTasks(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
         canManagePasswordResets ? api.listStaffPasswordResetRequests(branchId) : Promise.resolve(null),
         canReadStaffDirectory ? api.listStaffDirectory(branchId, { limit: 50, offset: 0 }) : Promise.resolve(null),
+        canApproveStaffRoles ? api.listAdminElevationRequests(branchId) : Promise.resolve(null),
+        canApproveStaffRoles ? api.listAdminRevocationRequests(branchId) : Promise.resolve(null),
+        canReadTeams ? api.listTeams(branchId) : Promise.resolve(null),
       ]);
       if (contactResult) {
         setContacts(contactResult.data);
@@ -305,13 +483,20 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       }
       if (resetResult) setResetRequests(resetResult.data);
       if (staffResult) setStaffMembers(staffResult.data);
+      if (teamResult) setTeams(teamResult.data.teams);
+      if (elevationResult) setElevationRequests(elevationResult.data);
+      if (revocationResult) setRevocationRequests(revocationResult.data);
     } catch (error) { handleActionError(error); }
     finally { setRefreshing(false); }
   };
 
   const createStaffAccount = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canCreateStaffAccounts || !branchId || saving) return;
+    if (
+      staffMutationInFlight.current || !canCreateStaffAccounts ||
+      !branchId || saving
+    ) return;
+    staffMutationInFlight.current = true;
     const form = new FormData(event.currentTarget);
     const input: StaffAccountCreateInput = {
       branch_id: branchId,
@@ -323,38 +508,41 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     setSaving(true); setActionError(""); setActionNotice("");
     try {
       const result = await api.createStaffAccount(input);
-      setActionNotice(`Staff account created. The temporary sign-in details were emailed to ${result.data.email}. The user must change the temporary password at first sign-in.`);
       setShowStaffForm(false);
+      if (result.data.manual_handoff_required && result.data.temporary_password) {
+        setCredentialCopied(false);
+        setCredentialHandoff({
+          email: result.data.email,
+          password: result.data.temporary_password,
+          expiresInHours: result.data.password_expires_in_hours ?? 24,
+        });
+        setActionNotice(`Staff account created for ${result.data.email}. Share the one-time sign-in details privately; no invitation email was sent.`);
+      } else {
+        setActionNotice(`The staff account for ${result.data.email} was created, but the one-time credential was not returned. Do not create it again. Contact the system administrator before attempting another account creation.`);
+      }
       const directory = await api.listStaffDirectory(branchId, { limit: 50, offset: 0 });
       setStaffMembers(directory.data);
     } catch (error) {
-      if (error instanceof CmiApiError && error.code === "STAFF_INVITATION_EMAIL_FAILED") {
-        setShowStaffForm(false);
-        setActionError("");
-        setActionNotice(
-          `The staff account for ${input.email} was created, but the invitation email was not delivered. Do not create it again. Fix the church email sender, then ask this staff member to use Forgot password so you can approve a temporary-password reset.`,
-        );
-        try {
-          const directory = await api.listStaffDirectory(branchId, { limit: 50, offset: 0 });
-          setStaffMembers(directory.data);
-        } catch (refreshError) {
-          setLoadError(messageFor(refreshError));
-        }
-      } else {
-        handleActionError(error);
-      }
+      handleActionError(error);
     }
-    finally { setSaving(false); }
+    finally {
+      staffMutationInFlight.current = false;
+      setSaving(false);
+    }
   };
 
   const updateStaffAccountStatus = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!staffStatusEdit || !branchId || !canManageStaffAccounts || saving) return;
+    if (
+      staffMutationInFlight.current || !staffStatusEdit || !branchId ||
+      !canManageStaffAccounts || saving
+    ) return;
     const reason = staffStatusReason.trim();
     if (reason.length < 10 || reason.length > 500) {
       setActionError("Provide an audit reason between 10 and 500 characters.");
       return;
     }
+    staffMutationInFlight.current = true;
     setSaving(true); setActionError(""); setActionNotice("");
     try {
       const result = await api.setStaffAccountStatus(
@@ -374,23 +562,127 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
       setStaffStatusEdit(null);
       setStaffStatusReason("");
     } catch (error) { handleActionError(error); }
-    finally { setSaving(false); }
+    finally {
+      staffMutationInFlight.current = false;
+      setSaving(false);
+    }
+  };
+
+  const submitStaffRoleAction = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!roleAction || !branchId || !canAssignStaffRoles || staffMutationInFlight.current || saving) return;
+    const reason = roleActionReason.trim();
+    if (reason.length < 10 || reason.length > 500) {
+      setActionError("Provide an audit reason between 10 and 500 characters.");
+      return;
+    }
+    staffMutationInFlight.current = true;
+    setSaving(true); setActionError(""); setActionNotice("");
+    try {
+      if (roleAction.action === "assign") {
+        await api.assignStaffRole(branchId, roleAction.profileId, roleActionCode, reason);
+        setActionNotice("Staff role assigned. The change is recorded in the access audit.");
+      } else if (roleAction.action === "revoke" && roleAction.assignmentId) {
+        await api.revokeStaffRole(branchId, roleAction.assignmentId, reason);
+        setActionNotice("Staff role revoked. The change is recorded in the access audit.");
+      } else if (roleAction.action === "elevate") {
+        await api.requestAdminElevation(branchId, roleAction.profileId, reason);
+        setActionNotice("Admin/Pastor elevation request submitted for independent review.");
+      } else if (roleAction.action === "revoke_admin" && roleAction.assignmentId) {
+        await api.requestAdminRevocation(branchId, roleAction.assignmentId, reason);
+        setActionNotice("Admin/Pastor revocation request submitted for independent review.");
+      }
+      setRoleAction(null);
+      setRoleActionReason("");
+      const directory = await api.listStaffDirectory(branchId, { limit: 50, offset: 0 });
+      setStaffMembers(directory.data);
+      if (canApproveStaffRoles) {
+        const [elevations, revocations] = await Promise.all([
+          api.listAdminElevationRequests(branchId), api.listAdminRevocationRequests(branchId),
+        ]);
+        setElevationRequests(elevations.data);
+        setRevocationRequests(revocations.data);
+      }
+    } catch (error) { handleActionError(error); }
+    finally {
+      staffMutationInFlight.current = false;
+      setSaving(false);
+    }
+  };
+
+  const reviewStaffRoleRequest = async (
+    kind: "elevation" | "revocation",
+    request: StaffRoleApprovalRequest,
+    decision: "approve" | "reject",
+  ) => {
+    if (!canApproveStaffRoles || !branchId || staffMutationInFlight.current || processingRoleRequestId) return;
+    if (request.requested_by === session.staff.id) {
+      setActionError("A different Admin/Pastor must review this request.");
+      return;
+    }
+    const reason = (roleReviewReasons[request.id] ?? "").trim();
+    if (reason.length < 10 || reason.length > 500) {
+      setActionError("Enter a review reason between 10 and 500 characters.");
+      return;
+    }
+    staffMutationInFlight.current = true;
+    setProcessingRoleRequestId(request.id);
+    setActionError(""); setActionNotice("");
+    try {
+      if (kind === "elevation") await api.reviewAdminElevation(branchId, request.id, decision, reason);
+      else await api.reviewAdminRevocation(branchId, request.id, decision, reason);
+      setActionNotice(decision === "approve"
+        ? (kind === "elevation" ? "Admin/Pastor role elevation approved and applied." : "Admin/Pastor role revocation approved and applied.")
+        : "The role request was rejected.");
+      setRoleReviewReasons((current) => { const next = { ...current }; delete next[request.id]; return next; });
+      const [directory, elevations, revocations] = await Promise.all([
+        api.listStaffDirectory(branchId, { limit: 50, offset: 0 }),
+        api.listAdminElevationRequests(branchId),
+        api.listAdminRevocationRequests(branchId),
+      ]);
+      setStaffMembers(directory.data);
+      setElevationRequests(elevations.data);
+      setRevocationRequests(revocations.data);
+    } catch (error) { handleActionError(error); }
+    finally {
+      staffMutationInFlight.current = false;
+      setProcessingRoleRequestId(null);
+    }
   };
 
   const reviewPasswordReset = async (request: StaffPasswordResetRequest, action: "approve" | "deny") => {
-    if (!canManagePasswordResets || !branchId || processingResetId) return;
+    if (
+      passwordResetReviewInFlight.current || !canManagePasswordResets ||
+      !branchId || processingResetId
+    ) return;
     const reason = (resetReasons[request.id] ?? "").trim();
     if (reason.length < 10 || reason.length > 300) {
       setActionError("Enter a review reason between 10 and 300 characters before taking action.");
       return;
     }
+    passwordResetReviewInFlight.current = true;
     setProcessingResetId(request.id);
     setActionError("");
     try {
       if (action === "approve") {
-        await api.approveStaffPasswordResetRequest(branchId, request.id, reason);
+        const result = await api.approveStaffPasswordResetRequest(branchId, request.id, reason);
+        if (result.data.temporary_password_sent) {
+          setCredentialHandoff(null);
+          setActionNotice(`The temporary password was emailed to ${result.data.email}. The staff member must change it before accessing PCG Missions.`);
+        } else if (result.data.manual_handoff_required && result.data.temporary_password) {
+          setCredentialCopied(false);
+          setCredentialHandoff({
+            email: result.data.email,
+            password: result.data.temporary_password,
+            expiresInHours: 24,
+          });
+          setActionNotice(`The reset was approved, but the email was not delivered to ${result.data.email}. Use the secure one-time handoff below; do not approve another reset for this request.`);
+        } else {
+          setActionNotice(`The reset was approved for ${result.data.email}, but no email or manual credential was delivered. Contact the system administrator before asking for another reset.`);
+        }
       } else {
         await api.denyStaffPasswordResetRequest(branchId, request.id, reason);
+        setActionNotice(`The password-reset request for ${request.email} was denied.`);
       }
       setResetRequests((current) => current.filter((item) => item.id !== request.id));
       setResetReasons((current) => {
@@ -399,33 +691,48 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         return next;
       });
     } catch (error) { handleActionError(error); }
-    finally { setProcessingResetId(null); }
+    finally {
+      passwordResetReviewInFlight.current = false;
+      setProcessingResetId(null);
+    }
   };
 
   const loadMoreContacts = async () => {
     if (!canReadContacts || !branchId || !contactsHasMore || loadingMore) return;
+    const requestId = ++paginationVersion.current;
     setLoadingMore(true);
     try {
       const result = await api.listContacts(branchId, {
         limit: 50,
         offset: contacts.length,
-        search: query.trim() || undefined,
+        search: debouncedQuery || undefined,
       });
+      if (requestId !== paginationVersion.current) return;
       setContacts((current) => [...current, ...result.data]);
       setContactsHasMore(result.data.length === 50);
-    } catch (error) { handleActionError(error); }
-    finally { setLoadingMore(false); }
+    } catch (error) {
+      if (requestId !== paginationVersion.current) return;
+      handleActionError(error);
+    } finally {
+      if (requestId === paginationVersion.current) setLoadingMore(false);
+    }
   };
 
   const loadMoreTasks = async () => {
     if (!canReadTasks || !branchId || !tasksHasMore || loadingMore) return;
+    const requestId = ++paginationVersion.current;
     setLoadingMore(true);
     try {
       const result = await api.listFollowUpTasks(branchId, { limit: 50, offset: tasks.length });
+      if (requestId !== paginationVersion.current) return;
       setTasks((current) => [...current, ...result.data]);
       setTasksHasMore(result.data.length === 50);
-    } catch (error) { handleActionError(error); }
-    finally { setLoadingMore(false); }
+    } catch (error) {
+      if (requestId !== paginationVersion.current) return;
+      handleActionError(error);
+    } finally {
+      if (requestId === paginationVersion.current) setLoadingMore(false);
+    }
   };
 
   const createContact = async (event: FormEvent<HTMLFormElement>) => {
@@ -476,14 +783,32 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     event.preventDefault();
     if (!canCreateTasks || !branchId) return;
     const form = new FormData(event.currentTarget);
-    const contactId = String(form.get("contact_id") ?? "");
+    const contactId = taskContactId || String(form.get("contact_id") ?? "");
     const taskNote = String(form.get("task_note") ?? "").trim();
+    const selectedTarget = String(form.get("task_assignment_target") ?? (canSelfAssignTask ? "self" : "")).trim();
     const rawPriority = Number(form.get("priority") ?? 2);
     const dueInput = String(form.get("due_at") ?? "");
-    if (!contactId || !contacts.some((contact) => contact.id === contactId)) { setActionError("Select a contact that is visible in this branch."); return; }
-    // Without membership/assignment projections, only self-assignment can be constructed safely.
-    if (!canSelfAssignTask) {
-      setActionError("Task creation for this scope requires an authorised team or staff assignment target.");
+    if (!contactId) {
+      setActionError("Search for and select a contact before creating the follow-up.");
+      return;
+    }
+    let assignment:
+      | { assignee_user_id: string }
+      | { assignee_profile_id: string }
+      | { team_id: string };
+    if (selectedTarget === "self" && canSelfAssignTask) {
+      assignment = { assignee_user_id: session.user.id };
+    } else if (selectedTarget.startsWith("staff:") && canAssignFollowUpToStaff) {
+      const profileId = selectedTarget.slice("staff:".length);
+      const target = staffMembers.find((member) => member.id === profileId && member.account_status === "active" && member.roles.length > 0);
+      if (!target) { setActionError("Choose an active staff member in the current assignment scope."); return; }
+      assignment = { assignee_profile_id: profileId };
+    } else if (selectedTarget.startsWith("team:") && canAssignFollowUp) {
+      const teamId = selectedTarget.slice("team:".length);
+      if (!teams.some((team) => team.id === teamId && team.is_active)) { setActionError("Choose an active team in the current assignment scope."); return; }
+      assignment = { team_id: teamId };
+    } else {
+      setActionError("Choose an assignment target permitted by your current role.");
       return;
     }
     const parsedDueDate = dueInput ? new Date(dueInput) : null;
@@ -491,53 +816,110 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     const taskPayload = {
       branch_id: branchId,
       contact_id: contactId,
-      assignee_user_id: session.user.id,
       priority: Number.isInteger(rawPriority) && rawPriority >= 1 && rawPriority <= 5 ? rawPriority : 2,
       task_note: taskNote || null,
       due_at: parsedDueDate ? parsedDueDate.toISOString() : null,
     };
-    const fingerprint = JSON.stringify(taskPayload);
+    const fingerprint = JSON.stringify({ ...taskPayload, ...assignment });
     if (!taskRequestRef.current || taskRequestRef.current.fingerprint !== fingerprint) {
       taskRequestRef.current = { fingerprint, id: crypto.randomUUID() };
     }
-    const input: TaskCreateInput = {
-      ...taskPayload,
-      client_request_id: taskRequestRef.current.id,
-    };
+    const clientRequestId = taskRequestRef.current.id;
+    let input: TaskCreateInput;
+    if ("assignee_user_id" in assignment) {
+      input = { ...taskPayload, assignee_user_id: assignment.assignee_user_id, client_request_id: clientRequestId };
+    } else if ("assignee_profile_id" in assignment) {
+      input = { ...taskPayload, assignee_profile_id: assignment.assignee_profile_id, client_request_id: clientRequestId };
+    } else {
+      input = { ...taskPayload, team_id: assignment.team_id, client_request_id: clientRequestId };
+    }
     setSaving(true); setActionError("");
     try {
       const result = await api.createFollowUpTask(input);
       setTasks((current) => [result.data, ...current.filter((item) => item.id !== result.data.id)]);
       taskRequestRef.current = null;
-      setShowTaskForm(false); setPage("Follow-up");
+      setShowTaskForm(false); setTaskContactId(""); setTaskContactQuery(""); setTaskContactResults([]); setPage("Follow-up");
     } catch (error) { handleActionError(error); }
     finally { setSaving(false); }
   };
 
-  const updateTaskStatus = async (task: FollowUpTask, status: FollowUpTask["status"]) => {
-    if (!canUpdateTasks || !branchId || task.status === status || task.status === "completed" || task.status === "cancelled") return;
+  const reassignTask = async (task: FollowUpTask, event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canAssignFollowUp || !branchId || savingReassignmentId) return;
+    const form = new FormData(event.currentTarget);
+    const target = String(form.get("target") ?? "").trim();
+    const [targetType, targetId] = target.split(":", 2);
+    const reason = String(form.get("reason") ?? "").trim();
+    const validStaffTarget = targetType === "staff" && canAssignFollowUpToStaff &&
+      staffMembers.some((member) => member.id === targetId && member.account_status === "active" && member.roles.length > 0);
+    const validTeamTarget = targetType === "team" &&
+      teams.some((team) => team.id === targetId && team.is_active);
+    if ((!validStaffTarget && !validTeamTarget) || reason.length < 10 || reason.length > 500) {
+      setActionError("Choose an active staff member or team in your authorised scope and provide a reason of 10–500 characters.");
+      return;
+    }
+    setSavingReassignmentId(task.id);
     setActionError("");
+    setActionNotice("");
+    try {
+      const input: TaskReassignmentInput = targetType === "staff"
+        ? { assignee_profile_id: targetId, reason }
+        : { team_id: targetId, reason };
+      const result = await api.reassignFollowUpTask(branchId, task.id, input);
+      setTasks((current) => current.map((item) => item.id === task.id ? result.data : item));
+      setReassigningTaskId(null);
+      setActionNotice("Follow-up responsibility transferred and recorded.");
+    } catch (error) {
+      handleActionError(error);
+      if (error instanceof CmiApiError && (error.status === 409 || error.status === 0)) await refresh();
+    } finally {
+      setSavingReassignmentId(null);
+    }
+  };
+
+  const updateTaskStatus = async (task: FollowUpTask, status: FollowUpTask["status"]) => {
+    if (
+      taskMutationInFlight.current || !canUpdateTasks || !branchId ||
+      task.status === status || task.status === "completed" ||
+      task.status === "cancelled"
+    ) return;
+    taskMutationInFlight.current = true;
+    setActionError("");
+    setUpdatingTaskId(task.id);
     try {
       const result = await api.updateFollowUpTask(branchId, task.id, { status });
       setTasks((current) => current.map((item) => item.id === task.id ? result.data : item));
+      setActionNotice(status === "completed" ? "Follow-up task completed." : "Follow-up task started.");
     } catch (error) {
       handleActionError(error);
       if (error instanceof CmiApiError && (error.status === 409 || error.status === 0)) {
         await refresh();
       }
+    } finally {
+      taskMutationInFlight.current = false;
+      setUpdatingTaskId(null);
     }
   };
   const signOut = async () => {
     setSigningOut(true);
-    try { await onSignOut(); } catch { /* Local credentials are cleared even when offline. */ }
-    finally { setSigningOut(false); }
+    setActionError("");
+    try {
+      await onSignOut();
+    } catch (cause) {
+      setActionError(cause instanceof Error
+        ? cause.message
+        : "The secure service could not confirm sign-out. Your session may still be active; check your connection and retry.");
+    } finally {
+      setSigningOut(false);
+    }
   };
 
   if (!activeBranch) return (
     <main className="cmi-no-branch">
       <div className="cmi-empty-icon"><ShieldCheck size={24} /></div>
-      <h1>No active branch access</h1>
-      <p>Your staff account is authenticated, but no active branch assignment is available. Contact an authorised church administrator.</p>
+      <h1>No active workspace access</h1>
+      <p>Your staff account is authenticated, but no active ministry assignment is available. Contact an authorised church administrator.</p>
+      {actionError && <FeedbackMessage kind="error" message={actionError} />}
       <button className="cmi-button cmi-button-secondary" onClick={() => void signOut()} disabled={signingOut}><LogOut size={16} />{signingOut ? "Signing out…" : "Sign out"}</button>
     </main>
   );
@@ -573,7 +955,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           ))}
         </div>
         <div className="cmi-sidebar-bottom">
-          <div className="cmi-access-note"><ShieldCheck size={16} /><span>Access is controlled by your active role grants and branch assignment.</span></div>
+          <div className="cmi-access-note"><ShieldCheck size={16} /><span>Access is controlled by your active role grants and ministry assignment.</span></div>
           <div className="cmi-user-card">
             <div className="cmi-user-avatar">{session.staff.full_name.split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</div>
             <div><strong>{session.staff.full_name}</strong><small>{session.roles.filter((role) => role.branch_id === branchId).map((role) => role.name).join(" · ") || "Staff member"}</small></div>
@@ -619,10 +1001,14 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         <header className="cmi-topbar">
           <div className="cmi-topbar-heading">
             <div className="cmi-mobile-brand"><img src="/logo.svg" alt="" /><span><strong>PCG Missions</strong><small>STAFF WORKSPACE</small></span></div>
-            <span className="cmi-breadcrumb">PCG MISSIONS / {(activeBranch?.name ?? "NO ACTIVE BRANCH").toUpperCase()}</span>
+            <span className="cmi-breadcrumb">PCG MISSIONS / STAFF WORKSPACE</span>
             <h1>{page === "Follow-up" ? "Follow-up tasks" : page}</h1>
           </div>
           <div className="cmi-topbar-actions">
+            <StaffNotificationCenter api={api} branchId={branchId} onSessionExpired={expireSession} onNavigate={(target) => {
+              const destination = target === "followup_task" ? "Follow-up" : target === "event" ? "Events" : target === "ministry_report" ? "Reports" : null;
+              if (destination && availablePages.includes(destination)) setPage(destination);
+            }} />
             <ThemeToggle />
             <button type="button" className="cmi-icon-action" onClick={() => void refresh()} disabled={refreshing || loading} aria-label={refreshing ? "Refreshing workspace" : "Refresh workspace"} title={refreshing ? "Refreshing" : "Refresh"}>
               <RefreshCw size={17} className={refreshing ? "is-spinning" : undefined} />
@@ -630,15 +1016,16 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           </div>
         </header>
         <section className="cmi-content" id="cmi-content" tabIndex={-1} aria-busy={loading}>
-          {loadError && <div className="cmi-alert" role="alert">{loadError}</div>}
-          {actionError && <div className="cmi-alert" role="alert">{actionError}<button onClick={() => setActionError("")} aria-label="Dismiss message">×</button></div>}
-          {actionNotice && <div className="cmi-success-note" role="status">{actionNotice}<button onClick={() => setActionNotice("")} aria-label="Dismiss message">×</button></div>}
+          <h2 className="cmi-sr-only">Workspace sections</h2>
+          <Suspense fallback={<WorkspaceSkeleton page={page} />}>
+          {loadError && <FeedbackMessage kind="error" message={loadError} />}
+          {actionError && <FeedbackMessage kind="error" message={actionError} onDismiss={() => setActionError("")} />}
+          {actionNotice && <FeedbackMessage kind="success" message={actionNotice} onDismiss={() => setActionNotice("")} />}
           {loading && <WorkspaceSkeleton page={page} /> }
 
           {page === "Overview" && (
             <OverviewDashboard
               staffName={session.staff.full_name}
-              branchName={activeBranch?.name ?? "your branch"}
               branchTimeZone={branchTimeZone}
               contacts={contacts}
               tasks={tasks}
@@ -661,23 +1048,60 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
 
           {page === "Staff" && canReadStaffDirectory && <div className="cmi-panel">
             <div className="cmi-panel-heading">
-              <div><p className="cmi-eyebrow">TEAM & ACCESS</p><h3>Staff accounts</h3><p>Manage staff access for {activeBranch?.name ?? "this branch"}. Account creation is restricted to authorised administrators.</p></div>
+              <div><p className="cmi-eyebrow">TEAM & ACCESS</p><h3>Staff accounts</h3><p>Manage staff accounts and access. Account creation is restricted to authorised administrators.</p></div>
               {canCreateStaffAccounts && <button className="cmi-button cmi-button-primary" type="button" onClick={() => setShowStaffForm((value) => !value)}><Plus size={16} />Create staff account</button>}
             </div>
             {showStaffForm && canCreateStaffAccounts && <form className="cmi-form-grid" onSubmit={createStaffAccount}>
               <label>Full name<input name="full_name" required minLength={2} maxLength={180} autoComplete="name" /></label>
-              <label>Staff email<input name="email" type="email" required maxLength={254} autoComplete="email" /></label>
+              <label>Login email address<input name="email" type="email" required maxLength={254} autoComplete="email" /><span>Used as the sign-in username. PCG Missions will not send an invitation email.</span></label>
               <label>Role<select name="role_code" defaultValue="field_worker">
-                <option value="coordinator">Coordinator</option><option value="team_leader">Team Leader</option><option value="field_worker">Field Worker</option><option value="follow_up_volunteer">Follow-up Volunteer</option><option value="prayer_intercessor">Prayer Intercessor</option><option value="admin_pastor">Admin / Pastor</option>
+                <option value="coordinator">Coordinator</option><option value="team_leader">Team Leader</option><option value="field_worker">Field Worker</option><option value="follow_up_volunteer">Follow-up Volunteer</option><option value="prayer_intercessor">Prayer Intercessor</option>
               </select></label>
               <label className="cmi-field-wide">Reason for account creation<textarea name="reason" required minLength={10} maxLength={500} rows={3} placeholder="Record the ministry appointment or authorisation (10–500 characters)." /></label>
-              <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowStaffForm(false)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Creating account…" : "Create account & email details"}</button></div>
-              <p className="cmi-field-wide cmi-scope-note">A one-time temporary password is sent to the staff member's email. They must replace it immediately after signing in. The administrator never sees the permanent password.</p>
+              <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowStaffForm(false)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Creating account…" : "Create account"}</button></div>
+              <p className="cmi-field-wide cmi-scope-note">No email is sent. The administrator receives a one-time temporary password to share privately with the staff member. It expires after 24 hours and must be replaced at first sign-in. The administrator never sees or chooses the permanent password. Admin/Pastor access is granted separately through the two-person approval process.</p>
             </form>}
             <div className="cmi-task-list">
               {staffMembers.map((member) => <article className="cmi-task-row cmi-staff-directory-row" key={member.id}>
                 <div className="cmi-task-symbol"><Users size={18} /></div>
-                <div className="cmi-task-copy"><strong>{member.full_name}</strong><p>{member.roles.map((role) => role.name).join(" · ")}</p></div>
+                <div className="cmi-task-copy">
+                  <strong>{member.full_name}</strong>
+                  <p>{member.roles.map((role) => role.name).join(" · ") || "No active role"}</p>
+                  {canAssignStaffRoles && member.id !== session.staff.id && member.account_status === "active" && (
+                    <div className="cmi-staff-role-management">
+                      <div className="cmi-staff-role-list">
+                        {member.roles.map((role) => <div className="cmi-staff-role-item" key={role.assignment_id}>
+                          <span>{role.name}</span>
+                          <button type="button" className="cmi-button cmi-button-secondary" onClick={() => {
+                            setRoleAction({ profileId: member.id, action: role.code === "admin_pastor" ? "revoke_admin" : "revoke", assignmentId: role.assignment_id, roleName: role.name });
+                            setRoleActionReason(""); setActionError("");
+                          }}>{role.code === "admin_pastor" ? "Request removal" : "Remove role"}</button>
+                        </div>)}
+                      </div>
+                      <div className="cmi-form-actions">
+                        <button type="button" className="cmi-button cmi-button-secondary" onClick={() => {
+                          setRoleAction({ profileId: member.id, action: "assign" }); setRoleActionReason(""); setActionError("");
+                        }}>Assign another role</button>
+                        {!member.roles.some((role) => role.code === "admin_pastor") && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => {
+                          setRoleAction({ profileId: member.id, action: "elevate" }); setRoleActionReason(""); setActionError("");
+                        }}>Request Admin/Pastor access</button>}
+                      </div>
+                      {roleAction?.profileId === member.id && <form className="cmi-staff-status-form" onSubmit={submitStaffRoleAction}>
+                        <strong>{roleAction.action === "assign" ? "Assign a role" : roleAction.action === "revoke" ? "Remove " + roleAction.roleName : roleAction.action === "elevate" ? "Request Admin/Pastor access" : "Request Admin/Pastor role removal"}</strong>
+                        {roleAction.action === "assign" && <label>Role<select value={roleActionCode} onChange={(event) => setRoleActionCode(event.target.value as StandardStaffRoleCode)}>
+                          <option value="coordinator">Coordinator</option><option value="team_leader">Team Leader</option><option value="field_worker">Field Worker</option><option value="follow_up_volunteer">Follow-up Volunteer</option><option value="prayer_intercessor">Prayer Intercessor</option>
+                        </select></label>}
+                        <label>{roleAction.action === "elevate" || roleAction.action === "revoke_admin" ? "Reason for two-person review" : "Audit reason"}
+                          <textarea value={roleActionReason} onChange={(event) => setRoleActionReason(event.target.value)} minLength={10} maxLength={500} rows={2} required placeholder="Record the appointment, authorisation or operational reason (10–500 characters)." />
+                        </label>
+                        <div className="cmi-form-actions">
+                          <button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setRoleAction(null); setRoleActionReason(""); }}>Cancel</button>
+                          <button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Confirm"}</button>
+                        </div>
+                      </form>}
+                    </div>
+                  )}
+                </div>
                 <span className={member.account_status === "active" ? "cmi-task-status status-open" : "cmi-task-status status-cancelled"}>{member.account_status === "active" ? "Active" : "Inactive"}</span>
                 {canManageStaffAccounts && member.id !== session.staff.id && <button type="button" className="cmi-button cmi-button-secondary cmi-staff-status-action" onClick={() => { setStaffStatusEdit({ profileId: member.id, nextStatus: member.account_status === "active" ? "inactive" : "active" }); setStaffStatusReason(""); setActionError(""); }}>{member.account_status === "active" ? "Deactivate" : "Reactivate"}</button>}
                 {staffStatusEdit?.profileId === member.id && <form className="cmi-staff-status-form" onSubmit={updateStaffAccountStatus}>
@@ -685,8 +1109,21 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                   <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setStaffStatusEdit(null); setStaffStatusReason(""); }}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Confirm " + (staffStatusEdit.nextStatus === "inactive" ? "deactivation" : "reactivation")}</button></div>
                 </form>}
               </article>)}
-              {!staffMembers.length && !loading && <p className="cmi-empty-row">No staff accounts are assigned to this branch yet.</p>}
+              {!staffMembers.length && !loading && <p className="cmi-empty-row">No staff accounts are available in this workspace yet.</p>}
             </div>
+            {canApproveStaffRoles && (elevationRequests.length > 0 || revocationRequests.length > 0) && <section className="cmi-panel cmi-staff-role-approvals">
+              <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">DUAL-CONTROL ACCESS</p><h3>Admin/Pastor role requests</h3><p>Every approval or rejection requires an independent reviewer and a recorded reason.</p></div></div>
+              {elevationRequests.map((request) => <article className="cmi-task-row" key={request.id}>
+                <div className="cmi-task-copy"><strong>Admin/Pastor access for {request.target_name}</strong><p>Requested by {request.requester_name} · {formatDate(request.requested_at, session.branches.find((branch) => branch.id === branchId)?.timezone ?? "Africa/Accra")}</p><small>{request.reason}</small></div>
+                <label>Review reason<textarea value={roleReviewReasons[request.id] ?? ""} onChange={(event) => setRoleReviewReasons((current) => ({ ...current, [request.id]: event.target.value }))} minLength={10} maxLength={500} rows={2} /></label>
+                {request.requested_by === session.staff.id ? <p className="cmi-scope-note">Another Admin/Pastor must review this request.</p> : <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("elevation", request, "reject")}>Reject</button><button type="button" className="cmi-button cmi-button-primary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("elevation", request, "approve")}>Approve</button></div>}
+              </article>)}
+              {revocationRequests.map((request) => <article className="cmi-task-row" key={request.id}>
+                <div className="cmi-task-copy"><strong>Remove Admin/Pastor access from {request.target_name}</strong><p>Requested by {request.requester_name} · {formatDate(request.requested_at, session.branches.find((branch) => branch.id === branchId)?.timezone ?? "Africa/Accra")}</p><small>{request.reason}</small></div>
+                <label>Review reason<textarea value={roleReviewReasons[request.id] ?? ""} onChange={(event) => setRoleReviewReasons((current) => ({ ...current, [request.id]: event.target.value }))} minLength={10} maxLength={500} rows={2} /></label>
+                {request.requested_by === session.staff.id ? <p className="cmi-scope-note">Another Admin/Pastor must review this request.</p> : <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("revocation", request, "reject")}>Reject</button><button type="button" className="cmi-button cmi-button-primary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("revocation", request, "approve")}>Approve</button></div>}
+              </article>)}
+            </section>}
           </div>}
 
           {page === "Contacts" && (canReadContacts || canCreateContacts) && <div className="cmi-panel">
@@ -709,8 +1146,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               <p className="cmi-field-wide cmi-scope-note">Identity fields are available only with the required permission. Add only information needed for ministry follow-up.</p>
             </form>}
             {canReadContacts && <>
-              <div className="cmi-table-wrap"><table className="cmi-table"><caption className="cmi-sr-only">Contacts visible in the current branch and access scope</caption><thead><tr><th scope="col">CONTACT</th><th scope="col">STATUS</th><th scope="col">LANGUAGE</th><th scope="col">IDENTITY</th></tr></thead><tbody>
-                {visibleContacts.map((contact) => <tr key={contact.id}><td data-label="Contact"><button type="button" className="cmi-contact-open" onClick={() => setSelectedContact(contact)} aria-label={`Open contact profile, notes and activity for ${displayName(contact)}`}><strong>{displayName(contact)}</strong><span>Open profile, notes & activity</span></button><small>{contact.id}</small></td><td data-label="Status"><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td data-label="Language">{contact.preferred_language || "Not recorded"}</td><td data-label="Identity">{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
+              <div className="cmi-table-wrap"><table className="cmi-table"><caption className="cmi-sr-only">Contacts visible in your assigned ministry and access scope</caption><thead><tr><th scope="col">CONTACT</th><th scope="col">STATUS</th><th scope="col">LANGUAGE</th><th scope="col">IDENTITY</th></tr></thead><tbody>
+                {visibleContacts.map((contact) => <tr key={contact.id}><td data-label="Contact"><button type="button" className="cmi-contact-open" onClick={() => setSelectedContact(contact)} aria-label={`Open contact profile, notes and activity for ${displayName(contact)}`}><strong>{displayName(contact)}</strong><span>Open profile, notes & activity</span></button></td><td data-label="Status"><span className="cmi-status">{statusLabel(contact.contact_status)}</span></td><td data-label="Language">{contact.preferred_language || "Not recorded"}</td><td data-label="Identity">{canReadIdentity && !contact.identity_redacted ? (contact.phone_display || contact.phone_e164 || "Not recorded") : "Restricted"}</td></tr>)}
               </tbody></table>{!visibleContacts.length && !loading && <div className="cmi-contact-empty">
                 <strong>{query.trim() ? "No contacts match that search." : "No contacts have been added yet."}</strong>
                 <span>{query.trim() ? "Clear the search or try another first name." : "Add a contact to begin using profiles, notes, interaction history and follow-up tasks."}</span>
@@ -721,32 +1158,78 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
           </div>}
 
           {page === "Follow-up" && canReadTasks && <div className="cmi-panel">
-            <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h3>Follow-up tasks</h3><p>Filter tasks in your current branch and assignment scope. Counts reflect the loaded records.</p></div>
-              {canSelfAssignTask && <button className="cmi-button cmi-button-primary" onClick={() => setShowTaskForm((value) => !value)} disabled={!canReadContacts || !contacts.length}><Plus size={16} />New task</button>}
-              {canCreateTasks && canSelfAssignTask && (!canReadContacts || !contacts.length) && <div className="cmi-task-prerequisite" role="note">
-                <span>Follow-up tasks must be attached to a visible contact before they can be created.</span>
-                {canCreateContacts && <button type="button" onClick={() => { setPage("Contacts"); setShowContactForm(true); }}>Add a contact first</button>}
+            <div className="cmi-panel-heading"><div><p className="cmi-eyebrow">CARE IN ACTION</p><h3>Follow-up tasks</h3><p>Filter tasks in your current ministry and assignment scope. Counts reflect the loaded records.</p></div>
+              {canCreateTaskFromWorkspace && <button className="cmi-button cmi-button-primary" onClick={() => {
+                setTaskContactId("");
+                setTaskContactQuery("");
+                setTaskContactResults([]);
+                setTaskContactError("");
+                setShowTaskForm((value) => !value);
+              }} disabled={!canReadContacts}><Plus size={16} />New task</button>}
+              {canCreateTasks && canCreateTaskFromWorkspace && !canReadContacts && <div className="cmi-task-prerequisite" role="note">
+                <span>Your current role cannot search the contact directory. Ask an authorised coordinator to grant the required contact access.</span>
               </div>}
-              {canCreateTasks && !canSelfAssignTask && <span className="cmi-scope-note">Task creation is granted, but a supported team assignment target is not available in this workspace.</span>}
+              {canCreateTasks && !canCreateTaskFromWorkspace && <span className="cmi-scope-note">Task creation is granted, but no active assignment target is available in your current scope. Ask an authorised team leader to confirm team membership.</span>}
             </div>
             {showTaskForm && canCreateTasks && <form className="cmi-form-grid" onSubmit={createTask}>
-              <label className="cmi-field-wide">Contact<select name="contact_id" required defaultValue=""><option value="" disabled>Select a visible contact</option>{contacts.map((contact) => <option key={contact.id} value={contact.id}>{displayName(contact)}</option>)}</select></label>
+              <div className="cmi-field-wide cmi-task-contact-picker">
+                <label htmlFor="cmi-task-contact-search">Contact</label>
+                <input id="cmi-task-contact-search" type="search" role="combobox"
+                  aria-autocomplete="list" aria-expanded={taskContactResults.length > 0}
+                  aria-controls="cmi-task-contact-results" autoComplete="off"
+                  placeholder="Search by name or permitted phone number"
+                  value={taskContactQuery}
+                  onChange={(change) => {
+                    setTaskContactQuery(change.target.value);
+                    setTaskContactId("");
+                    setTaskContactResults([]);
+                  }} />
+                <input type="hidden" name="contact_id" value={taskContactId} />
+                {taskContactLoading && <small role="status">Searching contacts…</small>}
+                {taskContactError && <small className="cmi-form-error" role="alert">{taskContactError}</small>}
+                {!taskContactLoading && taskContactQuery.trim().length < 2 && !taskContactId && <small>Enter at least two characters to search the authorised contact directory.</small>}
+                {!taskContactLoading && debouncedTaskContactQuery.length >= 2 && !taskContactResults.length && !taskContactError && <small>No matching contacts were found in your current access scope.</small>}
+                {taskContactResults.length > 0 && <div id="cmi-task-contact-results" className="cmi-task-contact-results" role="listbox" aria-label="Matching contacts">
+                  {taskContactResults.map((contact) => <button type="button" role="option" aria-selected={taskContactId === contact.id} key={contact.id}
+                    onClick={() => {
+                      setTaskContactId(contact.id);
+                      setTaskContactQuery(displayName(contact));
+                      setTaskContactResults([contact]);
+                      setTaskContactError("");
+                    }}>
+                    <strong>{displayName(contact)}</strong>
+                    <span>{contact.phone_display || contact.phone_e164 || "No phone displayed"} · {contact.contact_status.replaceAll("_", " ")}</span>
+                  </button>)}
+                </div>}
+                {taskContactId && <button type="button" className="cmi-button cmi-button-secondary"
+                  onClick={() => { setTaskContactId(""); setTaskContactQuery(""); setTaskContactResults([]); }}>
+                  Change selected contact
+                </button>}
+              </div>
+              {canAssignFollowUp && <label>Assign responsibility<select name="task_assignment_target" defaultValue={canSelfAssignTask ? "self" : teams.find((team) => team.is_active) ? `team:${teams.find((team) => team.is_active)!.id}` : ""} required>
+                {canSelfAssignTask && <option value="self">Keep responsibility with me</option>}
+                {canAssignFollowUpToStaff && <optgroup label="Staff members">{staffMembers.filter((member) => member.account_status === "active" && member.roles.length > 0).map((member) => <option key={`staff:${member.id}`} value={`staff:${member.id}`}>{member.full_name} · {member.roles.map((role) => role.name).join(", ")}</option>)}</optgroup>}
+                <optgroup label="Teams">{teams.filter((team) => team.is_active).map((team) => <option key={`team:${team.id}`} value={`team:${team.id}`}>{team.name}</option>)}</optgroup>
+              </select></label>}
+              {!canAssignFollowUp && <p className="cmi-field-wide cmi-scope-note">This task will be assigned to you within your current access scope.</p>}
               <label>Priority<select name="priority" defaultValue="2"><option value="1">Urgent</option><option value="2">Normal</option><option value="3">Low</option><option value="4">Very low</option><option value="5">Minimal</option></select></label>
               <label>Due date and time<input type="datetime-local" name="due_at" /></label>
               <label className="cmi-field-wide">Operational note <span>Do not enter pastoral narratives or sensitive identity data</span><textarea name="task_note" rows={3} maxLength={1000} /></label>
-              <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setShowTaskForm(false)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Create task"}</button></div>
+              <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => { setShowTaskForm(false); setTaskContactId(""); setTaskContactQuery(""); setTaskContactResults([]); }}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={saving}>{saving ? "Saving…" : "Create task"}</button></div>
             </form>}
             <div className="cmi-followup-toolbar">
-              <label>Show
-                <select aria-label="Filter follow-up tasks" value={taskStatusFilter} onChange={(event) => setTaskStatusFilter(event.target.value as TaskStatusFilter)}>
-                  <option value="all">All tasks</option>
-                  <option value="open">Open</option>
-                  <option value="in_progress">In progress</option>
-                  <option value="overdue">Overdue</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
-              </label>
+              <div className="cmi-operations-tabs" role="group" aria-label="Filter follow-up tasks">
+                {([
+                  ["all", "All"],
+                  ["overdue", "Overdue"],
+                  ["today", "Today"],
+                  ["upcoming", "Upcoming"],
+                  ["in_progress", "In progress"],
+                  ["completed", "Completed"],
+                ] as const).map(([value, label]) => (
+                  <button key={value} type="button" className={taskStatusFilter === value ? "active" : ""} aria-pressed={taskStatusFilter === value} onClick={() => setTaskStatusFilter(value)}>{label}</button>
+                ))}
+              </div>
               <span>{filteredTasks.length} shown · {tasks.length} loaded</span>
             </div>
             <div className="cmi-task-list">{filteredTasks.map((task) => {
@@ -755,11 +1238,19 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                 <div className="cmi-task-copy"><strong>{contact ? displayName(contact) : "Contact details restricted"}</strong><p>{task.task_note || "No operational note"}</p><small>{formatDate(task.due_at, branchTimeZone)} · Priority {task.priority}</small></div>
                 <span className={`cmi-task-status status-${isOverdue(task) ? "overdue" : task.status}`}>{isOverdue(task) ? "Overdue" : statusLabel(task.status)}</span>
                 {canUpdateTasks && (task.status === "open" || task.status === "in_progress") && <div className="cmi-task-actions">
-                  {task.status === "open" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => void updateTaskStatus(task, "in_progress")}>Start</button>}
-                  <button type="button" className="cmi-button cmi-button-primary" onClick={() => void updateTaskStatus(task, "completed")}><CheckCircle2 size={14} /> Complete</button>
+                  {task.status === "open" && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => void updateTaskStatus(task, "in_progress")} disabled={updatingTaskId !== null}>{updatingTaskId === task.id ? "Saving…" : "Start"}</button>}
+                  <button type="button" className="cmi-button cmi-button-primary" onClick={() => void updateTaskStatus(task, "completed")} disabled={updatingTaskId !== null}>{updatingTaskId === task.id ? "Saving…" : <><CheckCircle2 size={14} /> Complete</>}</button>
+                </div>}
+                {canAssignFollowUp && (task.status === "open" || task.status === "in_progress") && <div className="cmi-task-handoff">
+                  <button type="button" className="cmi-button cmi-button-secondary" onClick={() => setReassigningTaskId((current) => current === task.id ? null : task.id)} aria-expanded={reassigningTaskId === task.id}> {reassigningTaskId === task.id ? "Close handoff" : "Reassign"}</button>
+                  {reassigningTaskId === task.id && <form className="cmi-form-grid" onSubmit={(event) => void reassignTask(task, event)}>
+                    <label>New responsible staff member or team<select name="target" required defaultValue=""><option value="">Choose active staff or team</option>{canAssignFollowUpToStaff && staffMembers.some((member) => member.account_status === "active" && member.roles.length > 0) && <optgroup label="Staff">{staffMembers.filter((member) => member.account_status === "active" && member.roles.length > 0).map((member) => <option key={member.id} value={`staff:${member.id}`}>{member.full_name} · {member.roles.map((role) => role.name).join(", ")}</option>)}</optgroup>}{teams.some((team) => team.is_active) && <optgroup label="Teams">{teams.filter((team) => team.is_active).map((team) => <option key={team.id} value={`team:${team.id}`}>{team.name}</option>)}</optgroup>}</select></label>
+                    <label>Reason for handoff<textarea name="reason" required minLength={10} maxLength={500} rows={2} placeholder="Record why responsibility is changing (10–500 characters)." /></label>
+                    <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" onClick={() => setReassigningTaskId(null)}>Cancel</button><button type="submit" className="cmi-button cmi-button-primary" disabled={savingReassignmentId === task.id || (!staffMembers.some((member) => member.account_status === "active" && member.roles.length > 0) && !teams.some((team) => team.is_active))}>{savingReassignmentId === task.id ? "Transferring…" : "Confirm handoff"}</button></div>
+                  </form>}
                 </div>}
               </article>;
-            })}{!filteredTasks.length && !loading && <p className="cmi-empty-row">{tasks.length ? "No tasks match this filter in the loaded records." : "No follow-up tasks are visible in this branch scope."}</p>}</div>
+            })}{!filteredTasks.length && !loading && <p className="cmi-empty-row">{tasks.length ? "No tasks match this filter in the loaded records." : "No follow-up tasks are available in your current workspace."}</p>}</div>
             {tasksHasMore && <div className="cmi-load-more"><button className="cmi-button cmi-button-secondary" onClick={() => void loadMoreTasks()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more tasks"}</button></div>}
           </div>}
 
@@ -768,7 +1259,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               <div>
                 <p className="cmi-eyebrow">ACCOUNT SECURITY</p>
                 <h3>Password reset requests</h3>
-                <p>Review staff requests and issue a one-time temporary password by email. The staff member must replace it at first sign-in.</p>
+                <p>Review staff requests and issue a one-time temporary password through a private handoff. The staff member must replace it at first sign-in.</p>
               </div>
               <span className="cmi-reset-count">{resetRequests.length} pending</span>
             </div>
@@ -814,7 +1305,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
                       disabled={processingResetId !== null}
                     >
                       <CheckCircle2 size={15} />
-                      {processingResetId === request.id ? "Processing…" : "Approve & email temporary password"}
+                      {processingResetId === request.id ? "Processing…" : "Approve & issue temporary password"}
                     </button>
                   </div>
                 </article>
@@ -829,19 +1320,71 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
             </div>
           </div>}
 
-          {page === "Teams & Areas" && availablePages.includes("Teams & Areas") && <TeamAdministrationWorkspace key={branchId + ":teams-areas"} branchId={branchId} branchName={activeBranch.name} api={api} session={session} onSessionExpired={expireSession} />}
-          {page === "Reports" && availablePages.includes("Reports") && <MinistryReportsWorkspace key={branchId + ":reports"} branchId={branchId} branchName={activeBranch.name} api={api} session={session} />}
-          {page === "Events" && availablePages.includes("Events") && <OperationsWorkspace key={branchId + ":events"} section="Events" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
-          {page === "Calendar" && availablePages.includes("Calendar") && <OperationsWorkspace key={branchId + ":calendar"} section="Calendar" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
-          {page === "Announcements" && availablePages.includes("Announcements") && <OperationsWorkspace key={branchId + ":announcements"} section="Announcements" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
-          {page === "Content" && availablePages.includes("Content") && <OperationsWorkspace key={branchId + ":content"} section="Content" branchId={branchId} branchName={activeBranch.name} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
-          {!canReadContacts && !canCreateContacts && page === "Contacts" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Contact access is not granted</h3><p>Your assigned role has no contact-read capability for this branch.</p></div>}
-          {!canReadTasks && page === "Follow-up" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Follow-up access is not granted</h3><p>Your assigned role has no follow-up-read capability for this branch.</p></div>}
+          {page === "Teams & Areas" && availablePages.includes("Teams & Areas") && <TeamAdministrationWorkspace key={branchId + ":teams-areas"} branchId={branchId} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Reports" && availablePages.includes("Reports") && <MinistryReportsWorkspace key={branchId + ":reports"} branchId={branchId} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Prayer" && availablePages.includes("Prayer") && <PrayerRequestsWorkspace key={branchId + ":prayer"} branchId={branchId} timeZone={branchTimeZone} api={api} onSessionExpired={expireSession} />}
+          {page === "Events" && availablePages.includes("Events") && <OperationsWorkspace key={branchId + ":events"} section="Events" branchId={branchId} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Calendar" && availablePages.includes("Calendar") && <OperationsWorkspace key={branchId + ":calendar"} section="Calendar" branchId={branchId} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Announcements" && availablePages.includes("Announcements") && <OperationsWorkspace key={branchId + ":announcements"} section="Announcements" branchId={branchId} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
+          {page === "Content" && availablePages.includes("Content") && <OperationsWorkspace key={branchId + ":content"} section="Content" branchId={branchId} timeZone={branchTimeZone} api={api} session={session} onSessionExpired={expireSession} />}
+          {!canReadContacts && !canCreateContacts && page === "Contacts" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Contact access is not granted</h3><p>Your assigned role does not have permission to read contacts in your current scope.</p></div>}
+          {!canReadTasks && page === "Follow-up" && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>Follow-up access is not granted</h3><p>Your assigned role does not have permission to read follow-up tasks in your current scope.</p></div>}
           {!availablePages.includes(page) && <div className="cmi-panel cmi-empty-state"><ShieldCheck size={24} /><h3>This section is unavailable</h3><p>Your session does not contain an active permission for this section.</p></div>}
+          </Suspense>
         </section>
 
       </main>
-      {selectedContact && <ContactDetailDialog
+      {credentialHandoff && (
+        <div className="cmi-credential-backdrop" role="presentation">
+          <section
+            className="cmi-credential-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="cmi-credential-title"
+            aria-describedby="cmi-credential-description"
+          >
+            <div className="cmi-credential-icon"><KeyRound size={22} /></div>
+            <p className="cmi-eyebrow">ONE-TIME STAFF CREDENTIAL</p>
+            <h2 id="cmi-credential-title">Temporary sign-in details</h2>
+            <p id="cmi-credential-description">
+              The account exists. Share this temporary password with the intended staff member through a private, verified channel. It expires in {credentialHandoff.expiresInHours} hours and must be changed immediately after first sign-in.
+            </p>
+            <label className="cmi-credential-email">
+              Staff login email
+              <input value={credentialHandoff.email} readOnly />
+            </label>
+            <div className="cmi-credential-password">
+              <span>Temporary password</span>
+              <code>{credentialHandoff.password}</code>
+            </div>
+            <div className="cmi-credential-warning">
+              Do not send this password in a group chat or leave it visible. Closing this panel clears it from the workspace.
+            </div>
+            <div className="cmi-credential-actions">
+              <button
+                className="cmi-button cmi-button-secondary"
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(credentialHandoff.password).then(() => setCredentialCopied(true)).catch(() => setCredentialCopied(false));
+                }}
+              >
+                {credentialCopied ? "Copied" : "Copy temporary password"}
+              </button>
+              <button
+                className="cmi-button cmi-button-primary"
+                type="button"
+                onClick={() => {
+                  setCredentialHandoff(null);
+                  setCredentialCopied(false);
+                }}
+              >
+                Close & clear credential
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+      {selectedContact && <Suspense fallback={null}><ContactDetailDialog
         key={`${branchId}:${selectedContact.id}`}
         open={!!selectedContact}
         onOpenChange={(open) => { if (!open) setSelectedContact(null); }}
@@ -853,8 +1396,21 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         canReadNotes={canReadContactNotes}
         canCreateNotes={canCreateContactNotes}
         canRecordInteraction={canRecordContactInteraction}
+        canCreateFollowUp={canCreateTasks && canSelfAssignTask}
+        canAssignContact={canAssignContacts}
+        staffMembers={staffMembers}
+        teams={teams}
+        onCreateFollowUp={(contact) => {
+          setTaskContactId(contact.id);
+          setTaskContactQuery(displayName(contact));
+          setTaskContactResults([contact]);
+          setSelectedContact(null);
+          setPage("Follow-up");
+          setShowTaskForm(true);
+          setActionError("");
+        }}
         onSessionExpired={expireSession}
-      />}
+      /></Suspense>}
     </div>
   );
 }

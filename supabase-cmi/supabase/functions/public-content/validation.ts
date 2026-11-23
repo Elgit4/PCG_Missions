@@ -8,7 +8,8 @@ export const PUBLIC_RESOURCES = {
   },
   "daily-words": {
     table: "daily_word",
-    columns: "id,title,body,publication_date,public_slug,published_at,created_at",
+    columns:
+      "id,title,body,publication_date,public_slug,published_at,created_at",
     slugColumn: "public_slug",
     filters: [{ column: "status", value: "published" }],
     order: { column: "publication_date", ascending: false },
@@ -39,7 +40,7 @@ export const PUBLIC_RESOURCES = {
   },
   events: {
     table: "event",
-    columns: "id,title,description,starts_at,ends_at,timezone,location,registration_state,transport_enabled",
+    columns: "id,title,description,starts_at,ends_at,timezone,location",
     filters: [
       { column: "status", value: "published" },
       { column: "visibility", value: "public" },
@@ -98,7 +99,10 @@ export function parsePublicContentRequest(
   const resourceConfig = PUBLIC_RESOURCES[resource as PublicResource];
   if (slug !== undefined) {
     if (!("slugColumn" in resourceConfig)) {
-      return { ok: false, error: "Slug lookup is not supported for this resource." };
+      return {
+        ok: false,
+        error: "Slug lookup is not supported for this resource.",
+      };
     }
     if (slug.length > 120 || !SLUG_PATTERN.test(slug)) {
       return { ok: false, error: "Invalid slug." };
@@ -123,11 +127,19 @@ export function parsePublicContentRequest(
   return {
     ok: true,
     value: slug === undefined
-      ? { resource: resource as Exclude<PublicResource, "welcome-messages">, limit, offset }
-      : { resource: resource as Exclude<PublicResource, "welcome-messages">, slug, limit, offset },
+      ? {
+        resource: resource as Exclude<PublicResource, "welcome-messages">,
+        limit,
+        offset,
+      }
+      : {
+        resource: resource as Exclude<PublicResource, "welcome-messages">,
+        slug,
+        limit,
+        offset,
+      },
   };
 }
-
 
 /** Returns the fixed PostgREST OR expression for scheduled public resources. */
 export function getScheduledPublicationFilter(
