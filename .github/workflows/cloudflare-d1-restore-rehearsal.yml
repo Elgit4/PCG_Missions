@@ -3,6 +3,9 @@ name: Cloudflare D1 Restore and Authenticated API Rehearsal
 on:
   workflow_call:
   workflow_dispatch:
+  push:
+    branches:
+      - test/run-authenticated-acceptance
 
 permissions:
   contents: read
