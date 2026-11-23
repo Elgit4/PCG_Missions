@@ -18,6 +18,13 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("needs.restore-rehearsal.result == 'success'", self.production)
         self.assertIn("inputs.confirm_production == 'DEPLOY-PRODUCTION'", self.production)
 
+    def test_production_accepts_null_for_anonymous_better_auth_session(self):
+        self.assertIn(
+            'if(p!==null && (typeof p!=="object" || Array.isArray(p) || p.error)) process.exit(1)',
+            self.production,
+        )
+        self.assertNotIn("if(p===null || (typeof p!==\"object\"))", self.production)
+
     def test_production_cutover_is_blocked_until_six_role_roster_is_ready(self):
         required_roles = (
             "admin_pastor",
