@@ -2440,10 +2440,6 @@ async function createFollowupTask(
   const targetValues = assigneeUserId !== null
     ? assignScope === "team" ? [assigneeUserId, now, now, teamIdForScope, now, now] : [assigneeUserId, now, now]
     : assignScope === "team" ? [teamId, teamIdForScope] : [teamId];
-  const assignmentCapabilityPredicate = canSelfAssign ? "? = ?" : actorCapabilityPredicate("followup.assign");
-  const assignmentCapabilityValues = canSelfAssign
-    ? [assigneeUserId, context.staff.userId]
-    : [context.staff.userId, now, now];
   const listScopeTeamId = teamId ?? teamIdForScope;
   const listPredicate = listId === null
     ? "1 = 1"
@@ -2812,6 +2808,10 @@ async function reassignFollowupTask(
           AND target_team.is_active = 1
           ${access.decision.scopeMode === "team" ? "AND target_team.id = ?" : ""}
       )`;
+  const assignmentCapabilityPredicate = canSelfAssign ? "? = ?" : actorCapabilityPredicate("followup.assign");
+  const assignmentCapabilityValues = canSelfAssign
+    ? [assigneeUserId, context.staff.userId]
+    : [context.staff.userId, now, now];
   const targetValues = nextAssignee !== null
     ? access.decision.scopeMode === "team" ? [nextAssignee, now, now, teamId, now, now] : [nextAssignee, now, now]
     : access.decision.scopeMode === "team" ? [nextTeam, teamId] : [nextTeam];
