@@ -398,7 +398,7 @@ html[data-theme="dark"] .cmi-icon-action:hover,html[data-theme="dark"] .cmi-them
 .cmi-skeleton-welcome,.cmi-skeleton-stat,.cmi-skeleton-panel{border:1px solid var(--cmi-border);border-radius:16px;background:var(--cmi-surface);box-shadow:0 3px 15px rgb(23 38 59 / 2.5%)}
 .cmi-skeleton-welcome{display:flex;min-height:124px;align-items:center;justify-content:space-between;gap:22px;padding:24px 26px}
 .cmi-skeleton-copy{display:grid;gap:11px;width:min(65%,520px)}
-.cmi-skeleton-line{display:block;height:10px;border-radius:99px;background:linear-gradient(90deg,#edf1f5 20%,#f7f9fb 45%,#edf1f5 70%);background-size:220% 100%;animation:cmi-skeleton-shimmer 1.35s ease-in-out infinite}
+.cmi-skeleton-line{display:block;height:10px;border-radius:99px;background:#edf1f5;animation:cmi-skeleton-pulse 1.35s ease-in-out infinite}
 .cmi-skeleton-line.short{width:22%;height:8px}.cmi-skeleton-line.medium{width:58%}.cmi-skeleton-line.long{width:88%}.cmi-skeleton-line.title{width:48%;height:23px;border-radius:7px}.cmi-skeleton-line.number{width:34%;height:27px;border-radius:7px;margin:8px 0 2px}
 .cmi-skeleton-mark{width:48px;height:48px;flex:0 0 auto;border-radius:15px;background:#edf1f5}
 .cmi-skeleton-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px}
@@ -414,7 +414,7 @@ html[data-theme="dark"] .cmi-icon-action:hover,html[data-theme="dark"] .cmi-them
 .cmi-skeleton-page{gap:17px;min-height:280px}.cmi-skeleton-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:3px}
 .cmi-skeleton-heading>span{display:grid;flex:1;gap:10px}.cmi-skeleton-heading .title{width:34%}.cmi-skeleton-action{width:112px;height:38px;border-radius:10px;background:#edf1f5}
 .cmi-skeleton-search{display:block;width:min(100%,420px);height:40px;border:1px solid var(--cmi-border);border-radius:10px;background:#f8fafc}
-@keyframes cmi-skeleton-shimmer{0%{background-position:100% 0}100%{background-position:-120% 0}}@keyframes cmi-skeleton-enter{from{opacity:0}to{opacity:1}}
+@keyframes cmi-skeleton-pulse{0%,100%{opacity:.7}50%{opacity:1}}@keyframes cmi-skeleton-enter{from{opacity:0}to{opacity:1}}
 @media(max-width:760px){
  .cmi-loading-skeleton{gap:11px;padding-top:0}.cmi-skeleton-welcome{min-height:106px;padding:17px;border-radius:15px}.cmi-skeleton-copy{width:76%;gap:9px}
  .cmi-skeleton-line.title{height:20px;width:66%}.cmi-skeleton-mark{width:40px;height:40px;border-radius:13px}
