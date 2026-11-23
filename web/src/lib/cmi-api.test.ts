@@ -107,6 +107,27 @@ describe("Cloudflare Worker API client", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  it("creates follow-up tasks assigned to a team or an active staff profile", async () => {
+    const fetcher = vi.fn(async () => response({ id: "task-1", team_id: "team-1" }));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await api.createFollowUpTask({
+      branch_id: "branch-1",
+      contact_id: "contact-1",
+      client_request_id: "request-team-123",
+      team_id: "team-1",
+      priority: 2,
+    });
+    await api.createFollowUpTask({
+      branch_id: "branch-1",
+      contact_id: "contact-1",
+      client_request_id: "request-staff-123",
+      assignee_profile_id: "staff-1",
+      priority: 2,
+    });
+    expect(JSON.parse(String((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].body))).toMatchObject({ team_id: "team-1" });
+    expect(JSON.parse(String((fetcher.mock.calls[1] as unknown as [string, RequestInit])[1].body))).toMatchObject({ assignee_profile_id: "staff-1" });
+  });
+
   it("loads only server-authorized follow-up team assignment targets", async () => {
     const fetcher = vi.fn(async () => response([{ id: "team-1", name: "Welcome Team" }]));
     const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
