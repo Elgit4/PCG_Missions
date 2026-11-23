@@ -70,6 +70,7 @@ jobs:
         run: |
           set -euo pipefail
           AUTH_SECRET="$(openssl rand -hex 32)"
+          echo "::add-mask::$AUTH_SECRET"
           cat > cloudflare/wrangler.restore-rehearsal.toml <<EOF
           name = "pcg-missions-restore-rehearsal"
           main = "src/index.ts"
@@ -89,6 +90,7 @@ jobs:
           database_name = "${DB_NAME}"
           database_id = "${DB_ID}"
           migrations_dir = "migrations"
+          remote = true
           EOF
           cd cloudflare
           npx wrangler d1 migrations apply "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml
@@ -121,7 +123,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler dev --remote --config wrangler.restore-rehearsal.toml \
+          npx wrangler dev --config wrangler.restore-rehearsal.toml \
             --ip 0.0.0.0 --port 8787 </dev/null > "$RUNNER_TEMP/pcg-acceptance-worker.log" 2>&1 &
           WORKER_PID=$!
           cleanup() {
