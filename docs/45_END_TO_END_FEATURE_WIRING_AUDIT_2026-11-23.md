@@ -234,3 +234,42 @@ The preview failure was confirmed directly by Cloudflare D1: a read-only metadat
 7. Verify production backups/Time Travel recovery evidence, monitoring/alerting, account provisioning and operational support procedures before opening access to the full ministry team.
 
 No production migration, Worker deployment, staff credential change, SMS activation or destructive data operation was performed as part of this audit update.
+
+## 8. Post-audit reconciliation — 23 November 2026
+
+The P1 UI gaps recorded in sections 3–4 were subsequently addressed in the current migration branch. The earlier findings above describe the audit baseline and must not be treated as the current source state.
+
+| Previously identified gap | Current migration-branch evidence | Status |
+|---|---|---|
+| Contact assignment UI | PRs #123 and #124 are merged. `CmiApiClient.assignContact` maps the Worker route; `ContactDetailDialog` exposes staff/team assignment with a required reason; server authorization and assignment history remain authoritative. | Closed in source; authenticated acceptance remains required. |
+| Follow-up team/staff assignment and handoff | PRs #123 and #124 are merged. `StaffWorkspace` exposes authorized staff/team task targets and reasoned reassignment; API validation requires exactly one valid target. | Closed in source; authenticated acceptance remains required. |
+| Staff role administration UI | PR #123 is merged. The Staff workspace now exposes ordinary role assignment/revocation and separate Admin/Pastor elevation/revocation review flows. | Closed in source; six-role acceptance and branch-scoped history verification remain required. |
+| Better Auth D1 adapter and rate-limit integration | PR #128 is merged. Better Auth uses the Drizzle D1 adapter and explicit auth schema, including the D1 `rateLimit` table. | Source correction merged; live sign-in/session verification remains a release gate. |
+| Six-role acceptance and D1 recovery | PR #127 is merged. An isolated EU D1 rehearsal provisions synthetic identities, exercises authenticated API boundaries and restores to a pre-acceptance Time Travel bookmark. | Harness present; latest successful run on the exact release commit is required. |
+| Safe preview authentication diagnostics | PR #129 is merged. Diagnostics use stable error codes and avoid returning SQL details or credential material. | Source correction merged. |
+
+### Current infrastructure snapshot
+
+Cloudflare API inspection on 23 November 2026 confirms:
+- Production D1 `pcg-missions-production`: schema 45, production marker, 45 migration-ledger entries.
+- Preview D1 `pcg-missions-migration-test`: schema 46, non-production marker, 46 migration-ledger entries.
+- Both production and preview Workers have the expected D1 binding, Better Auth secret binding, and private event-storage secret binding. Secret values were not read.
+- Cloudflare Pages project `pcg-missions` retains `main` as its production branch. The migration branch creates preview deployments only; the canonical production deployment is not changed by these checks.
+- Production schema migration and production Pages cutover have not been performed. SMS remains disabled.
+
+### Release-pipeline remediation
+
+The latest release workflow review found path resolution errors caused by job-level `working-directory: cloudflare`, and a brittle cross-workflow polling gate that returned GitHub API 404 responses. The release flow has been changed to call the isolated D1 restore/authenticated-acceptance workflow as a reusable workflow dependency. Preview and production jobs are pinned to the exact triggering commit; the production workflow also checks the deployed preview Worker's health, anonymous authorization boundary and Better Auth session endpoint before any production D1 mutation.
+
+The new reusable workflow path and resulting run must complete successfully before production release. A source merge, TypeScript pass or green SQLite foundation test is not a substitute for that run.
+
+### Remaining production gates
+
+1. **Live authentication acceptance:** complete sign-in, cookie-backed session retrieval, authenticated `/api/v1/me`, sign-out, password reset and forced first-password change against the deployed preview Worker. The Better Auth adapter correction is merged, but this runtime acceptance is not yet closed.
+2. **Six-role authorization acceptance:** complete the synthetic six-role run, including team/contact/task handoff, report/event operations, prayer/care boundaries, branch isolation, denied cross-team access, and audit evidence.
+3. **Production staff reconciliation:** the last production identity audit found one active Admin/Pastor, another active profile without an effective role and with an expired first-login setup window, and a Team Leader assignment attached to an inactive profile. Do not invent or silently apply role assignments; reconcile these against the church's intended staff roster before inviting staff to use production.
+4. **Credential delivery:** no production email sender has verified invitation/reset delivery. Continue the audited manual one-time credential handoff until a sender is configured and delivery is confirmed.
+5. **Production-data recovery:** the isolated empty-schema restore rehearsal does not prove recovery of actual ministry records. Rehearse a protected production-data clone/backup restore without exposing sensitive records or modifying production.
+6. **Privacy and governance:** approve the church's data-controller contact, privacy notice, lawful purposes, retention/deletion schedule, pastoral-record access policy and incident-response contact before loading real visitor or pastoral records.
+
+No production mutation, staff role change, credential rotation, SMS activation or Supabase media-storage retirement is authorized by this audit addendum.
