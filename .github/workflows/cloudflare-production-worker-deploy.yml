@@ -180,6 +180,100 @@ jobs:
           }));
           NODE
 
+      - name: Require reconciled six-role production staff roster before cutover
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "
+            SELECT
+              (SELECT COUNT(*) FROM staff_profile WHERE account_status='active' AND deactivated_at IS NULL) AS active_staff_profiles,
+              (SELECT COUNT(*) FROM user) AS auth_users,
+              (SELECT COUNT(DISTINCT userId) FROM account WHERE password IS NOT NULL) AS password_users,
+              (SELECT COUNT(*) FROM role) AS role_catalogue_entries,
+              (SELECT COUNT(*) FROM staff_role_assignment a JOIN staff_profile s ON s.id=a.staff_profile_id
+                WHERE a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now') AND s.account_status='active' AND s.deactivated_at IS NULL) AS active_role_assignments,
+              (SELECT COUNT(DISTINCT a.staff_profile_id) FROM staff_role_assignment a JOIN staff_profile s ON s.id=a.staff_profile_id
+                WHERE a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now') AND s.account_status='active' AND s.deactivated_at IS NULL) AS assigned_staff_profiles,
+              (SELECT COUNT(DISTINCT r.code) FROM staff_role_assignment a JOIN role r ON r.id=a.role_id JOIN staff_profile s ON s.id=a.staff_profile_id
+                WHERE a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now') AND s.account_status='active' AND s.deactivated_at IS NULL) AS assigned_role_codes,
+              (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                AND NOT EXISTS (SELECT 1 FROM staff_role_assignment a WHERE a.staff_profile_id=s.id
+                  AND a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now'))) AS active_profiles_without_role,
+              (SELECT COUNT(*) FROM staff_role_assignment a JOIN staff_profile s ON s.id=a.staff_profile_id
+                WHERE a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now') AND (s.account_status<>'active' OR s.deactivated_at IS NOT NULL)) AS assignments_on_inactive_profiles,
+              (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                AND s.must_change_password=1 AND s.password_setup_expires_at IS NOT NULL
+                AND datetime(s.password_setup_expires_at)<datetime('now')) AS expired_first_login_setups,
+              (SELECT COUNT(*) FROM staff_profile s LEFT JOIN user u ON u.id=s.auth_user_id
+                WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                  AND (u.id IS NULL OR NOT EXISTS (SELECT 1 FROM account a WHERE a.userId=u.id AND a.password IS NOT NULL))) AS active_staff_without_credential,
+              (SELECT COUNT(*) FROM (
+                SELECT r.code
+                FROM staff_role_assignment a JOIN role r ON r.id=a.role_id JOIN staff_profile s ON s.id=a.staff_profile_id
+                WHERE a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now') AND s.account_status='active' AND s.deactivated_at IS NULL
+                  AND r.code IN ('admin_pastor','coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor')
+                GROUP BY r.code HAVING COUNT(DISTINCT a.staff_profile_id)=1
+              )) AS roles_with_one_active_assignee
+          " > /tmp/pcg-production-staff-roster.json
+
+          node - /tmp/pcg-production-staff-roster.json <<'NODE'
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const candidates = [];
+          const visit = (value) => {
+            if (Array.isArray(value)) return value.forEach(visit);
+            if (!value || typeof value !== "object") return;
+            if (Object.hasOwn(value, "active_staff_profiles")) candidates.push(value);
+            Object.values(value).forEach(visit);
+          };
+          visit(payload);
+          const row = candidates[0];
+          if (!row) {
+            console.error("Production staff-roster query returned no summary row.");
+            process.exit(1);
+          }
+          const expected = {
+            active_staff_profiles: 6,
+            role_catalogue_entries: 6,
+            active_role_assignments: 6,
+            assigned_staff_profiles: 6,
+            assigned_role_codes: 6,
+            active_profiles_without_role: 0,
+            assignments_on_inactive_profiles: 0,
+            expired_first_login_setups: 0,
+            active_staff_without_credential: 0,
+            roles_with_one_active_assignee: 6,
+          };
+          const failures = Object.entries(expected).filter(([key, value]) => Number(row[key]) !== value);
+          if (Number(row.auth_users) < 6 || Number(row.password_users) < 6) {
+            failures.push(["auth_users/password_users", "at least 6 each"]);
+          }
+          console.log(JSON.stringify({
+            active_staff_profiles: Number(row.active_staff_profiles),
+            auth_users: Number(row.auth_users),
+            password_users: Number(row.password_users),
+            role_catalogue_entries: Number(row.role_catalogue_entries),
+            active_role_assignments: Number(row.active_role_assignments),
+            assigned_staff_profiles: Number(row.assigned_staff_profiles),
+            assigned_role_codes: Number(row.assigned_role_codes),
+            active_profiles_without_role: Number(row.active_profiles_without_role),
+            assignments_on_inactive_profiles: Number(row.assignments_on_inactive_profiles),
+            expired_first_login_setups: Number(row.expired_first_login_setups),
+            active_staff_without_credential: Number(row.active_staff_without_credential),
+            roles_with_one_active_assignee: Number(row.roles_with_one_active_assignee),
+          }, null, 2));
+          if (failures.length) {
+            console.error("Production cutover blocked: the six-user launch roster is not reconciled. Activate six staff accounts, assign exactly one active staff member to each of the six roles, resolve inactive-profile assignments, and reset expired first-login credentials before release.");
+            process.exit(1);
+          }
+          NODE
+
       - name: Verify existing production Worker secrets without exposing values
         shell: bash
         run: |
