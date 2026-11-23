@@ -188,9 +188,9 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         ):
             self.db.execute(
                 """INSERT INTO staff_profile
-                   (id,auth_user_id,full_name,email,account_status,created_at,updated_at,must_change_password)
-                   VALUES(?,?,?,?,?,?,?,?)""",
-                (profile_id, user_id, name, email, status, now, now, must_change),
+                   (id,auth_user_id,full_name,email,account_status,deactivated_at,created_at,updated_at,must_change_password)
+                   VALUES(?,?,?,?,?,?,?,?,?)""",
+                (profile_id, user_id, name, email, status, now if status == "inactive" else None, now, now, must_change),
             )
         self.db.executemany(
             """INSERT INTO session(id,expiresAt,token,createdAt,updatedAt,userId)
