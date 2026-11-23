@@ -9,6 +9,8 @@ on:
       - "cloudflare/migrations/**"
       - "cloudflare/wrangler.toml"
       - "cloudflare/package.json"
+      - "cloudflare/src/**"
+      - "cloudflare/tests/**"
       - "cloudflare/scripts/run_authenticated_acceptance.mjs"
   workflow_dispatch:
 
