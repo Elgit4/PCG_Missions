@@ -1670,3 +1670,22 @@ test("ordinary name searches keep the optional phone predicate valid without pho
   assert.ok(query);
   assert.match(query.sql, /0 = 1/);
 });
+
+test("Field Worker cannot discover contacts by hidden email or phone without identity-read capability", async () => {
+  for (const search of ["hidden@example.test", "024 123-4567"]) {
+    const { env, calls } = authorizedDirectoryEnv("field_worker", [
+      ["contacts.read", "assigned"],
+    ]);
+    const response = await worker.fetch(new Request(
+      "https://worker.example/api/v1/contacts?search=" + encodeURIComponent(search),
+      { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+    ), env);
+    assert.equal(response.status, 200);
+    const query = calls.find((call) => call.kind === "all" && call.sql.includes("FROM contact c") && call.sql.includes("SELECT c.id"));
+    assert.ok(query);
+    assert.match(query.sql, /OR \(\? = 1 AND COALESCE\(c\.email_normalized, ''\) LIKE \?\)/);
+    assert.match(query.sql, /OR \(\? = 1 AND \(/);
+    assert.equal(query.values[11], 0, "email search must be disabled without contact identity-read");
+    assert.equal(query.values[13], 0, "phone search must be disabled without contact identity-read");
+  }
+});
