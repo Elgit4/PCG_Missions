@@ -73,6 +73,57 @@ describe("Cloudflare Worker API client", () => {
     expect(init.credentials).toBe("include");
   });
 
+  it("assigns a contact through the branch-scoped Worker route with a required reason", async () => {
+    const fetcher = vi.fn(async () => response({
+      assignment_id: "assignment-1",
+      assignee_profile_id: "staff-profile-2",
+      team_id: null,
+      starts_at: "2026-11-23T12:00:00.000Z",
+    }, 201));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    const result = await api.assignContact("branch-1", "contact-1", {
+      assignee_profile_id: "staff-profile-2",
+      reason: "Missions leader assigned this visitor for follow-up.",
+    });
+    expect(result.data.assignment_id).toBe("assignment-1");
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URL(url).pathname).toBe("/api/v1/contacts/contact-1/assign");
+    expect(new URL(url).searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(JSON.parse(String(init.body))).toEqual({
+      assignee_profile_id: "staff-profile-2",
+      reason: "Missions leader assigned this visitor for follow-up.",
+    });
+    expect(init.credentials).toBe("include");
+  });
+
+  it("rejects contact assignments without a valid reason before sending a request", async () => {
+    const fetcher = vi.fn(async () => response({}));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    expect(() => api.assignContact("branch-1", "contact-1", {
+      assignee_profile_id: "staff-profile-2",
+      reason: "short",
+    })).toThrow(/reason of 10–500 characters/);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it("routes follow-up handoffs through the branch-scoped Worker assignment endpoint", async () => {
+    const fetcher = vi.fn(async () => response({ id: "task-1", assignee_user_id: "staff-user-2" }));
+    const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
+    await api.reassignFollowUpTask("branch-1", "task-1", {
+      assignee_profile_id: "staff-profile-2",
+      reason: "Transfer to the assigned field worker for continuity.",
+    });
+    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(new URL(url).pathname).toBe("/api/v1/followup/tasks/task-1/assign");
+    expect(new URL(url).searchParams.get("branch_id")).toBe("branch-1");
+    expect(new Headers(init.headers).get("X-Branch-Id")).toBe("branch-1");
+    expect(JSON.parse(String(init.body))).toEqual({
+      assignee_profile_id: "staff-profile-2",
+      reason: "Transfer to the assigned field worker for continuity.",
+    });
+  });
+
   it("routes calendar cancellation through the branch-scoped Cloudflare Worker endpoint", async () => {
     const fetcher = vi.fn(async () => response({ entry_id: "entry-1", status: "cancelled" }));
     const api = new CmiApiClient({}, async () => null, fetcher as typeof fetch);
