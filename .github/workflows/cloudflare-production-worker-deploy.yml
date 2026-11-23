@@ -143,7 +143,7 @@ jobs:
   restore-rehearsal:
     needs: production-roster-preflight
     name: Full D1 restore and six-role authenticated acceptance
-    if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
+    if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
     uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
     secrets: inherit
 
