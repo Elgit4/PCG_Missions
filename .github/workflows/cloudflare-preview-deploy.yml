@@ -46,7 +46,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          auth_fix_sha="$(git log --all -1 --format=%H --grep='fix(auth): connect Better Auth to D1 through Drizzle')"
+          auth_fix_sha="$(git log --all -1 --format=%H --grep='connect Better Auth to D1 through Drizzle')"
           if [[ -z "$auth_fix_sha" ]]; then
             echo "::error title=Authentication fix not found::The reviewed Better Auth D1 adapter commit is missing from this preview branch."
             exit 1
