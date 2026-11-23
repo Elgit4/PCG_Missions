@@ -37,7 +37,7 @@ test("staff role review and account-status audit triggers are accepted as additi
   assert.match(elevation, /results\[1\]\?\.meta\?\.changes \?\? 0\) < 1/);
   const status = section("async function changeStaffAccountStatus(", "async function createAdminRevocationRequest(");
   assert.match(status, /result\.meta\?\.changes \?\? 0\) < 1/);
-  const revocation = section("async function reviewAdminRevocationRequest(", "async function requestStaffPasswordReset(");
+  const revocation = section("async function reviewAdminRevocationRequest(", "function bestScope(");
   assert.match(revocation, /results\[0\]\?\.meta\?\.changes \?\? 0\) < 1/);
   assert.match(revocation, /results\[2\]\?\.meta\?\.changes \?\? 0\) < 1/);
 });
