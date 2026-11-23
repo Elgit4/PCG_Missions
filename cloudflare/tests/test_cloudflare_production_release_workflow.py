@@ -44,6 +44,7 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
     def test_routine_preview_does_not_import_from_legacy_postgres_or_probe_rate_limit_writes(self):
         self.assertNotIn("SUPABASE_SOURCE_DB_URL", self.preview)
         self.assertNotIn("scripts/import_supabase_auth_credentials.py", self.preview)
+        self.assertNotIn("postgresql-client", self.preview)
         self.assertNotIn("INSERT INTO rateLimit", self.preview)
         self.assertNotIn("DELETE FROM rateLimit", self.preview)
 
