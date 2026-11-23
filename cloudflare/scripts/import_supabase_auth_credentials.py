@@ -148,6 +148,32 @@ def require_preview_schema(meta: list[dict]) -> None:
     if len(meta) != 1 or meta[0].get("schema_version") != 46 or meta[0].get("environment") != "non-production":
         raise RuntimeError("Credential import is restricted to schema 46 in the isolated non-production D1 database.")
 
+def import_credential_rows(
+    token: str,
+    source_rows: list[tuple[str, str, str]],
+    now_ms: str,
+) -> int:
+    writes = 0
+    for user_id, _email, password_hash in source_rows:
+        existing = d1_query(
+            token,
+            "SELECT COUNT(*) AS count FROM account WHERE providerId='credential' AND userId=? AND password=?",
+            [user_id, password_hash],
+        )
+        if existing and int(existing[0]["count"]) == 1:
+            continue
+        d1_query(
+            token,
+            """INSERT INTO account (id, accountId, providerId, userId, password, createdAt, updatedAt)
+               VALUES (?, ?, 'credential', ?, ?, ?, ?)
+               ON CONFLICT(providerId, accountId) DO UPDATE
+               SET password=excluded.password, updatedAt=excluded.updatedAt""",
+            [user_id + ":credential", user_id, user_id, password_hash, now_ms, now_ms],
+        )
+        writes += 1
+    return writes
+
+
 def verify_credential_hashes(token: str, source_rows: list[tuple[str, str, str]]) -> None:
     # Compare hashes inside D1 and return only a match count. Never read hashes
     # back into the runner or expose them in logs, artifacts, or API responses.
@@ -181,16 +207,7 @@ def main() -> int:
         raise RuntimeError("Supabase and D1 staff identity IDs/emails do not match exactly; no credential was imported.")
 
     now_ms = str(int(time.time() * 1000))
-    for user_id, _email, password_hash in source_rows:
-        account_id = user_id + ":credential"
-        d1_query(
-            token,
-            """INSERT INTO account (id, accountId, providerId, userId, password, createdAt, updatedAt)
-               VALUES (?, ?, 'credential', ?, ?, ?, ?)
-               ON CONFLICT(providerId, accountId) DO UPDATE
-               SET password=excluded.password, updatedAt=excluded.updatedAt""",
-            [account_id, user_id, user_id, password_hash, now_ms, now_ms],
-        )
+    writes = import_credential_rows(token, source_rows, now_ms)
 
     imported = d1_query(
         token,
@@ -202,7 +219,7 @@ def main() -> int:
 
     verify_credential_hashes(token, source_rows)
 
-    print(f"Verified {count} linked staff credential hashes in isolated non-production D1. No password hashes or tokens were logged.")
+    print(f"Verified {count} linked staff credential hashes in isolated non-production D1 ({writes} rows written; no password hashes or tokens were logged).")
     return 0
 
 
