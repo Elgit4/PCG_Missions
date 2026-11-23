@@ -53,7 +53,6 @@ export function canOpenStaffPage(
   if (page === "Overview") return true;
   if (page === "Reports") {
     return hasCapability(session, "report.read.scoped", branchId) ||
-      hasCapability(session, "report.submit.scoped", branchId) ||
       hasCapability(session, "report.review.scoped", branchId);
   }
 
