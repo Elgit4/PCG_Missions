@@ -240,6 +240,7 @@ const selfReview = await api(workerCookie, `/api/v1/reports/${reportId}/review`,
 if (selfReview.status !== 403 || selfReview.payload?.error?.code !== "SELF_REVIEW_FORBIDDEN") {
   throw new Error(`Field Worker self-review was not rejected: ${selfReview.status} ${JSON.stringify(selfReview.payload)}`);
 }
+console.log("REPORT_D1_STATUS_AFTER_SELF_REVIEW", JSON.stringify(await d1("SELECT status,author_profile_id FROM ministry_report WHERE id=?", [reportId])));
 
 console.log("REPORT_SUBMIT_AND_SELF_REVIEW_BOUNDARY_PASSED");
 
