@@ -49,7 +49,7 @@ export function createAuth(env: AuthEnvironment) {
   if (baseUrl.protocol !== "https:" && baseUrl.hostname !== "localhost") throw new Error("BETTER_AUTH_URL_MUST_USE_HTTPS");
   const secureCookies = baseUrl.protocol === "https:";
 
-  const database = drizzle(env.DB as never, { schema: authSchema });
+  const database = drizzle(env.DB as Parameters<typeof drizzle>[0], { schema: authSchema });
 
   return betterAuth({
     appName: "PCG Missions",
