@@ -35,4 +35,13 @@ describe("staff account and password-reset mutation concurrency", () => {
     expect(source).toContain("A different Admin/Pastor must review this request.");
   });
 
+  it("exposes only branch/team-scoped assignment targets for follow-up creation and handoff", () => {
+    expect(source).toContain("listFollowUpAssignmentTeams(branchId)");
+    expect(source).toContain('name="task_assignment_target"');
+    expect(source).toContain('name="assignment_target"');
+    expect(source).toContain('value={`team:${team.id}`}');
+    expect(source).toContain("canAssignFollowUpToStaff");
+    expect(source).toContain("const input: TaskReassignmentInput = targetType === \"team\"");
+  });
+
 });
