@@ -97,7 +97,24 @@ jobs:
           remote = true
           EOF
           cd cloudflare
-          npx wrangler d1 migrations apply "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml
+          set +e
+          npx wrangler d1 migrations apply "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml 2>&1 | tee /tmp/pcg-d1-migrations.log
+          migration_status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$migration_status" -ne 0 ]] && grep -q "code: 7500" /tmp/pcg-d1-migrations.log; then
+            reset_at="$(date -u -d 'tomorrow 00:05:00' +%s)"
+            now="$(date -u +%s)"
+            wait_seconds=$((reset_at - now))
+            if [[ "$wait_seconds" -le 0 || "$wait_seconds" -gt 18000 ]]; then
+              echo "::error title=D1 free-tier daily write limit::Cloudflare D1 returned code 7500. Re-run this recovery rehearsal after the UTC daily quota reset or use a paid D1 plan."
+              exit 1
+            fi
+            echo "::warning title=D1 daily write quota exhausted::Waiting until 00:05 UTC for the account's daily row-write quota to reset, then retrying the same isolated migration database."
+            sleep "$wait_seconds"
+            npx wrangler d1 migrations apply "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml
+          elif [[ "$migration_status" -ne 0 ]]; then
+            exit "$migration_status"
+          fi
           npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
             --command "SELECT CASE WHEN schema_version=46 AND environment='non-production' THEN 'SCHEMA_46_READY' ELSE 'SCHEMA_INVALID' END AS status FROM app_meta WHERE id=1;"
           npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
