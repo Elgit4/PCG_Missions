@@ -1803,6 +1803,67 @@ test("expired temporary-password gate blocks Better Auth credential mutation", a
 });
 
 
+test("staff role assignment and Admin/Pastor review endpoints enforce their capabilities", async () => {
+  const fixture = authorizedDirectoryEnv("coordinator");
+  const headers = {
+    Cookie: "better-auth.session_token=verified-test-token",
+    "X-Branch-Id": BRANCH_ID,
+    "Content-Type": "application/json",
+  };
+  const assignment = await worker.fetch(new Request("https://worker.example/api/v1/staff/roles", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      target_profile_id: COVERED_STAFF_ID,
+      role_code: "field_worker",
+      starts_at: "2026-11-22T12:00:00.000Z",
+      ends_at: null,
+      reason: "The ministry appointment was approved.",
+    }),
+  }), fixture.env);
+  const elevationList = await worker.fetch(new Request("https://worker.example/api/v1/staff/role-elevations", { headers }), fixture.env);
+  const revocationList = await worker.fetch(new Request("https://worker.example/api/v1/staff/role-revocations", { headers }), fixture.env);
+
+  for (const response of [assignment, elevationList, revocationList]) {
+    const payload = await response.json();
+    assert.equal(response.status, 403);
+    assert.equal(payload.error.code, "CAPABILITY_DENIED");
+  }
+  assert.equal(fixture.batches.length, 0);
+  assert.equal(fixture.writes, 0);
+});
+
+
+test("staff directory preserves branch history and exposes active assignment identifiers for role management", async () => {
+  const fixture = authorizedDirectoryEnv("admin_pastor");
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/staff?limit=50&offset=0", {
+    headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID },
+  }), fixture.env);
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.deepEqual(payload.data, []);
+  const query = fixture.calls.find((call) => call.kind === "all" && call.sql.includes("FROM staff_profile sp") && call.sql.includes("roles_json"));
+  assert.ok(query);
+  assert.match(query.sql, /json_object\('assignment_id', sra2\.id/);
+  const branchHistoryPredicate = query.sql.slice(query.sql.indexOf("WHERE EXISTS"));
+  assert.match(branchHistoryPredicate, /sra\.branch_id = \?/);
+  assert.doesNotMatch(branchHistoryPredicate, /sra\.revoked_at IS NULL/);
+});
+
+test("Admin/Pastor role approval queues return the standard data envelope", async () => {
+  const fixture = authorizedDirectoryEnv("admin_pastor", [["staff.role.approve", "branch"]]);
+  const headers = { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID };
+  const elevations = await worker.fetch(new Request("https://worker.example/api/v1/staff/role-elevations", { headers }), fixture.env);
+  const revocations = await worker.fetch(new Request("https://worker.example/api/v1/staff/role-revocations", { headers }), fixture.env);
+  const elevationPayload = await elevations.json();
+  const revocationPayload = await revocations.json();
+  assert.equal(elevations.status, 200);
+  assert.equal(revocations.status, 200);
+  assert.deepEqual(elevationPayload.data, []);
+  assert.deepEqual(revocationPayload.data, []);
+});
+
+
 test("Coordinator contact search matches normalized phone numbers as well as names", async () => {
   const { env, calls } = authorizedDirectoryEnv("coordinator", [
     ["contacts.read", "branch"],
