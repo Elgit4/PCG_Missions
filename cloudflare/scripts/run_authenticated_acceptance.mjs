@@ -219,6 +219,8 @@ const report = await api(workerCookie, "/api/v1/reports", "POST", {
 if (report.status !== 201) throw new Error(`Ministry report submission failed: ${report.status} ${JSON.stringify(report.payload)}`);
 const reportId = report.payload?.data?.id;
 if (!reportId) throw new Error("Ministry report response did not include a report id");
+console.log("REPORT_CREATE_STATUS", report.payload?.data?.status);
+console.log("REPORT_D1_STATUS_AFTER_CREATE", JSON.stringify(await d1("SELECT status,last_action_id FROM ministry_report WHERE id=?", [reportId])));
 
 const selfReview = await api(workerCookie, `/api/v1/reports/${reportId}/review`, "POST", {
   decision: "approved",
