@@ -4,15 +4,16 @@ import { hash } from "bcryptjs";
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
 const apiToken = process.env.CLOUDFLARE_API_TOKEN;
 const databaseId = process.env.DB_ID;
-const workerUrl = (process.env.WORKER_URL || "http://localhost:8787").replace(/\/$/, "");
-const origin = workerUrl;
+const workerUrl = (process.env.WORKER_URL || "http://127.0.0.1:8787").replace(/\/$/, "");
+const origin = "http://localhost:8787";
+const fetchWithTimeout = (url, init = {}) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
 const runId = process.env.GITHUB_RUN_ID || "local";
 const apiBase = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
 
 if (!accountId || !apiToken || !databaseId) throw new Error("Missing isolated D1 acceptance configuration");
 
 async function d1(sql, params = []) {
-  const response = await fetch(apiBase, {
+  const response = await fetchWithTimeout(apiBase, {
     method: "POST",
     headers: { authorization: `Bearer ${apiToken}`, "content-type": "application/json" },
     body: JSON.stringify({ sql, params }),
@@ -55,7 +56,7 @@ async function insertUser(roleCode, label, assignerProfileId, bootstrapAdmin = f
 }
 
 async function signIn(identity, label) {
-  const response = await fetch(`${workerUrl}/api/auth/sign-in/email`, {
+  const response = await fetchWithTimeout(`${workerUrl}/api/auth/sign-in/email`, {
     method: "POST",
     headers: { origin, "content-type": "application/json" },
     body: JSON.stringify({ email: identity.email, password: identity.password, rememberMe: false }),
@@ -71,7 +72,7 @@ async function signIn(identity, label) {
 }
 
 async function api(cookie, path, method = "GET", body = undefined) {
-  const response = await fetch(`${workerUrl}${path}`, {
+  const response = await fetchWithTimeout(`${workerUrl}${path}`, {
     method,
     headers: {
       origin,
@@ -109,14 +110,16 @@ const admin = await insertUser("admin_pastor", "admin", null, true);
 const worker = await insertUser("field_worker", "worker", admin.profileId);
 const reviewer = await insertUser("coordinator", "reviewer", admin.profileId);
 const unassigned = await insertUser("field_worker", "unassigned", admin.profileId);
+console.log("SYNTHETIC_IDENTITIES_SEEDED");
 
-const unauthenticated = await fetch(`${workerUrl}/api/v1/me`);
+const unauthenticated = await fetchWithTimeout(`${workerUrl}/api/v1/me`);
 if (unauthenticated.status !== 401) throw new Error(`Unauthenticated /api/v1/me expected 401, got ${unauthenticated.status}`);
 
 const adminCookie = await signIn(admin, "Admin/Pastor");
 const workerCookie = await signIn(worker, "Field Worker");
 const reviewerCookie = await signIn(reviewer, "Coordinator");
 const unassignedCookie = await signIn(unassigned, "Unassigned Field Worker");
+console.log("BETTER_AUTH_SESSIONS_CREATED");
 
 for (const [cookie, label] of [[adminCookie, "Admin/Pastor"], [workerCookie, "Field Worker"], [reviewerCookie, "Coordinator"]]) {
   const me = await api(cookie, "/api/v1/me");
@@ -127,6 +130,8 @@ await d1(
   "INSERT INTO event(id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,registration_state,visibility,status,transport_enabled,created_by,created_at,updated_at,last_modified_by) VALUES(?,?,?,NULL,?,?,?,'QA Acceptance Venue',50,'open','staff','published',0,?,?,?,?)",
   [eventId, branchId, "Authenticated Acceptance Event", startsAt, endsAt, "Africa/Accra", admin.userId, nowIso, nowIso, admin.userId],
 );
+
+console.log("AUTHENTICATED_ME_ENDPOINTS_PASSED");
 
 const assignment = await api(adminCookie, `/api/v1/events/${eventId}/staff-assignments`, "POST", {
   staff_auth_user_id: worker.userId,
@@ -179,6 +184,8 @@ const closeoutReview = await api(reviewerCookie, `/api/v1/events/${eventId}/clos
 });
 if (closeoutReview.status !== 200) throw new Error(`Event closeout review failed: ${closeoutReview.status} ${JSON.stringify(closeoutReview.payload)}`);
 
+console.log("EVENT_REGISTRATION_CHECKIN_CLOSEOUT_PASSED");
+
 const report = await api(workerCookie, "/api/v1/reports", "POST", {
   branch_id: branchId,
   report_type: "daily_evangelism",
@@ -207,6 +214,8 @@ const selfReview = await api(workerCookie, `/api/v1/reports/${reportId}/review`,
 if (selfReview.status !== 403 || selfReview.payload?.error?.code !== "SELF_REVIEW_FORBIDDEN") {
   throw new Error(`Field Worker self-review was not rejected: ${selfReview.status} ${JSON.stringify(selfReview.payload)}`);
 }
+
+console.log("REPORT_SUBMIT_AND_SELF_REVIEW_BOUNDARY_PASSED");
 
 const reportReview = await api(reviewerCookie, `/api/v1/reports/${reportId}/review`, "POST", {
   decision: "approved",
