@@ -215,6 +215,7 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
   const canUpdateTasks = hasCapability(session, "followup.task.update.scoped", branchId);
   const canManagePasswordResets = hasCapability(session, "staff.password_reset.manage", branchId);
   const canReadStaffDirectory = hasCapability(session, "staff.directory.read", branchId);
+  const canAssignContacts = hasCapability(session, "contacts.assign", branchId) && canReadStaffDirectory;
   const canManageStaffAccounts = hasCapability(session, "staff.account.manage", branchId);
   const canCreateStaffAccounts = hasCapability(session, "staff.account.manage", branchId) && hasCapability(session, "access.role.assign", branchId);
   useEffect(() => {
@@ -1127,6 +1128,8 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
         canCreateNotes={canCreateContactNotes}
         canRecordInteraction={canRecordContactInteraction}
         canCreateFollowUp={canCreateTasks && canSelfAssignTask}
+        canAssignContact={canAssignContacts}
+        staffMembers={staffMembers}
         onCreateFollowUp={(contact) => {
           setTaskContactId(contact.id);
           setTaskContactQuery(displayName(contact));
