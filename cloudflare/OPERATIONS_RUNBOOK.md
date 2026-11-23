@@ -11,7 +11,8 @@
 - Production D1 ID: `2bbfb04f-9182-427d-b269-d050b8a9403f`
 - Cloudflare account ID: `1697f36d4227453d2e25cfb49b347e5f`
 - Pages project: `pcg-missions`
-- Pages production branch: `migration/cloudflare-auth-consolidation`
+- Pages production branch: `main`
+- Automatic Pages production deployments: disabled until the explicit production cutover is approved
 
 Never put API tokens, database credentials, user passwords, Better Auth secrets, storage keys or private visitor/pastoral data in Git, issues, workflow output or chat.
 
@@ -58,7 +59,7 @@ Before using the production workflow for the first time, configure the GitHub re
 
 ## 5. Pages deployment
 
-Cloudflare Pages is Git-integrated. The configured production branch is `migration/cloudflare-auth-consolidation`; root directory is `web`; build command is `npm run build`; output directory is `dist`; Node.js is 22. Production `PCG_MISSIONS_API_ORIGIN` must remain exactly:
+Cloudflare Pages is Git-integrated. The configured production branch is `main`; automatic production deployments are currently **disabled**. The migration branch is a preview branch. The current canonical production Pages deployment remains unchanged. Do not re-enable automatic production deployments or create a production Pages deployment until the production cutover has explicit approval and the Worker/D1 release gates have passed. Root directory is `web`; build command is `npm run build`; output directory is `dist`; Node.js is 22. Production `PCG_MISSIONS_API_ORIGIN` must remain exactly:
 
 `https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev`
 
@@ -73,6 +74,12 @@ Verify the latest Pages deployment commit and successful build/deploy stages in 
 - The production Worker release workflow records the current Time Travel bookmark before applying migrations. Wrangler documents that `d1 migrations apply` captures a backup after applying; do not assume this removes the need for an independent recovery plan.
 - Verify `app_meta.environment = 'production'`, schema version and migration ledger after every migration.
 - Never perform Time Travel restore against production as a routine deployment action. Restore is destructive and requires an incident owner, a verified target bookmark, a written impact decision and an independently captured current-state bookmark.
+
+### 6.1 D1 restore rehearsal
+
+The `Cloudflare D1 Restore Rehearsal` workflow creates a temporary EU D1 database, applies the complete current migration chain, captures a Time Travel bookmark, writes a synthetic probe, restores to the bookmark, verifies the probe is gone and schema/migration metadata remain intact, then deletes the temporary database. The schema 46 rehearsal passed on 22 November 2026.
+
+This rehearsal validates the D1 Time Travel mechanism against an isolated schema-only database. It does not constitute a production-data restore test. Production currently has a Time Travel bookmark available; do not restore production as a routine operation.
 
 ## 7. Secret management
 
