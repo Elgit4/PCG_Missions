@@ -44,6 +44,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           set -euo pipefail
           if ! grep -q 'drizzleAdapter' src/auth.ts || ! grep -q 'authSchema' src/auth.ts; then
@@ -53,12 +54,12 @@ jobs:
 
           deadline=$((SECONDS + 18000))
           while (( SECONDS < deadline )); do
-            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq '.workflow_runs[] | select(.path == ".github/workflows/cloudflare-d1-restore-rehearsal.yml") | select(.conclusion == "success") | .head_sha')"
+            runs="$(gh api "repos/${REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq '.workflow_runs[] | select(.path == ".github/workflows/cloudflare-d1-restore-rehearsal.yml") | select(.conclusion == "success") | .head_sha')"
             while IFS= read -r sha; do
               [[ -z "$sha" ]] && continue
               if git cat-file -e "${sha}^{commit}" 2>/dev/null &&
-                 git grep -q 'drizzleAdapter' "$sha" -- src/auth.ts &&
-                 git grep -q 'authSchema' "$sha" -- src/auth.ts &&
+                 git grep -q 'drizzleAdapter' "$sha" -- cloudflare/src/auth.ts &&
+                 git grep -q 'authSchema' "$sha" -- cloudflare/src/auth.ts &&
                  git merge-base --is-ancestor "$sha" "$GITHUB_SHA"; then
                 echo "Authenticated D1 restore rehearsal accepted at $sha."
                 exit 0
