@@ -17,6 +17,7 @@ on:
 permissions:
   contents: read
 
+# Serialize preview, restore rehearsal and production D1 writes against the account's daily quota.
 concurrency:
   group: pcg-missions-d1-restore-rehearsal
   cancel-in-progress: false
