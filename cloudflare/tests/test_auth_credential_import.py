@@ -42,6 +42,45 @@ class CredentialImportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             MODULE.parse_source_rows("")
 
+    def test_import_skips_credentials_that_already_match(self):
+        source = [(
+            "10000000-0000-4000-8000-000000000001",
+            "staff@example.test",
+            "$2b$12$" + "a" * 53,
+        )]
+        calls = []
+
+        def fake_query(_token, sql, params=None):
+            calls.append(sql)
+            return [{"count": 1}]
+
+        with patch.object(MODULE, "d1_query", side_effect=fake_query):
+            writes = MODULE.import_credential_rows("test-token", source, "1795464000000")
+
+        self.assertEqual(writes, 0)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(calls[0].startswith("SELECT COUNT(*)"))
+
+    def test_import_updates_only_a_credential_that_does_not_match(self):
+        source = [(
+            "10000000-0000-4000-8000-000000000001",
+            "staff@example.test",
+            "$2b$12$" + "a" * 53,
+        )]
+        calls = []
+
+        def fake_query(_token, sql, params=None):
+            calls.append((sql, params))
+            return [{"count": 0}]
+
+        with patch.object(MODULE, "d1_query", side_effect=fake_query):
+            writes = MODULE.import_credential_rows("test-token", source, "1795464000000")
+
+        self.assertEqual(writes, 1)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(calls[1][0].startswith("INSERT INTO account"))
+        self.assertEqual(calls[1][1][0], source[0][0] + ":credential")
+
     def test_hash_verification_compares_inside_d1_without_returning_hashes(self):
         source = [(
             "10000000-0000-4000-8000-000000000001",
