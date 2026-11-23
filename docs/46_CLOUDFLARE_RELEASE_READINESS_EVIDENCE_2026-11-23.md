@@ -1,24 +1,24 @@
 # PCG Missions — Cloudflare Release Readiness Evidence
 
-**Evidence timestamp:** 23 November 2026, 21:45 UTC  
+**Evidence timestamp:** 23 November 2026, 22:05 UTC  
 **Repository:** `Elgit4/PCG_Missions`  
 **Release-candidate branch:** `migration/cloudflare-auth-consolidation`  
-**Candidate commit:** `5e19fd20f06a55c7619e26ceed6c34ede7f44d9a`  
+**Candidate commit:** `98b1751563fb95dd30efcee2eddeb2016a265183`  
 **Decision:** **Not approved for production cutover.** Preview and source CI are green; live authenticated acceptance, staff readiness, main-branch integration and production migration remain incomplete.
 
 This document supersedes earlier session/quota observations in the end-to-end audit where the current candidate has since changed. It does not replace the full restore/authorization acceptance record.
 
 ## 1. Verified candidate CI and preview evidence
 
-The exact candidate commit `5e19fd20f06a55c7619e26ceed6c34ede7f44d9a` has the following successful GitHub Actions runs:
+The current candidate commit `98b1751563fb95dd30efcee2eddeb2016a265183` has the following successful GitHub Actions runs:
 
 | Workflow | Run | Result | What it proves |
 |---|---:|---|---|
-| Cloudflare D1 Foundation | [45271930595](https://github.com/Elgit4/PCG_Missions/actions/runs/45271930595) | Passed | SQLite migration/security tests, Worker TypeScript checks, Better Auth regression tests and acceptance-harness syntax checks |
-| CMI web CI | [45271942561](https://github.com/Elgit4/PCG_Missions/actions/runs/45271942561) | Passed | Frontend type-check, lint, unit tests and production build |
-| Cloudflare Auth Preview Release | [45271930410](https://github.com/Elgit4/PCG_Missions/actions/runs/45271930410) | Passed | Preview Worker build/upload/deploy, forward-only D1 migration, health and anonymous-boundary smoke tests |
+| Cloudflare D1 Foundation | [45275655900](https://github.com/Elgit4/PCG_Missions/actions/runs/45275655900) | Passed | SQLite migration/security tests, Worker TypeScript checks, Better Auth regression tests, Cloudflare runtime-boundary regression and acceptance-harness syntax checks |
+| CMI web CI | [45275655747](https://github.com/Elgit4/PCG_Missions/actions/runs/45275655747) | Passed | Frontend type-check, lint, unit tests (including Pages gateway cookie/IP forwarding) and production build |
+| Cloudflare Auth Preview Release | [45275280818](https://github.com/Elgit4/PCG_Missions/actions/runs/45275280818) | Passed on Worker-source commit `43cfa691f1f990d628e10d216336f91638b32141` | Preview Worker deployment, forward-only D1 migration, health and anonymous-boundary smoke tests |
 
-The preview Worker deployed version `a1b2ffa6-605e-4705-9d63-0b278ebfde76` at 100% traffic. It is bound to the isolated non-production D1 database `pcg-missions-migration-test`; the production Worker is not bound to preview data.
+The preview Worker is deployed at 100% to `pcg-missions-api-preview`, version `42b874b7-e425-42c2-a190-8807c2ad658a`, and is bound to the isolated non-production D1 database `pcg-missions-migration-test` (91 tables). The latest Pages preview build for candidate commit `98b1751563fb95dd30efcee2eddeb2016a265183` completed successfully as deployment [88ca8a22-cd72-4faa-bce9-6e81bf1a9135](https://88ca8a22.pcg-missions.pages.dev). Its preview environment has `PCG_MISSIONS_API_ORIGIN` set to the preview Worker. Production Worker and D1 remain separate.
 
 The successful preview smoke results were:
 
@@ -39,6 +39,9 @@ The following pull requests have been merged into the candidate branch:
 - [PR #143](https://github.com/Elgit4/PCG_Missions/pull/143): enforces a fail-closed production staff-roster gate and regression tests.
 - [PR #144](https://github.com/Elgit4/PCG_Missions/pull/144): moves the read-only roster preflight ahead of the expensive D1 restore rehearsal.
 - [PR #145](https://github.com/Elgit4/PCG_Missions/pull/145): makes passive session hydration read-only using Better Auth deferred refresh, and makes the browser issue an explicit POST refresh only when the server returns `needsRefresh: true`. Both internal and basePath-qualified GET session routes are exempt from the rate-limit write path; sign-in and password-recovery limits remain database-backed.
+- [PR #146](https://github.com/Elgit4/PCG_Missions/pull/146): expands the authenticated acceptance harness for first-login password change, old-password rejection, Admin/Pastor reset approval, temporary credential handoff, old-session revocation, confirmed sign-out, team drafts and calendar lifecycle.
+- [PR #147](https://github.com/Elgit4/PCG_Missions/pull/147): adds regression tests proving no browser-side Supabase Auth/client usage, confines Worker Supabase credentials to private event-flyer Storage and checks public content uses D1.
+- [PR #148](https://github.com/Elgit4/PCG_Missions/pull/148): adds Pages gateway tests for HttpOnly Cookie/Origin forwarding, multiple Set-Cookie preservation, cross-origin rejection, fail-closed configuration and Cloudflare client-IP forwarding. It also fixes the nullable Set-Cookie fallback type error.
 
 Four stale, divergent release/preview PRs (#134, #136, #137 and #138) were closed. They are superseded by the active candidate's guarded manual release workflow and the newer verified fixes. The alternative push-triggered production release path in the old proposals was not adopted.
 
@@ -145,9 +148,25 @@ A direct row-level comparison of production D1 and the source Supabase project's
 
 The Supabase Storage bucket `pcg-missions-event-media` was inspected directly. It is **private**, has the intended event-media bucket name and currently allows JPEG, PNG, WebP and AVIF at the bucket layer. The Worker deliberately enforces a stricter 5 MiB JPEG/PNG/WebP upload allowlist and serves 15-minute signed URLs. The bucket is not made public.
 
-A new automated Cloudflare Foundation regression test is being added to enforce that:
-- the production browser source and web package contain no Supabase Auth/client dependency;
+The automated Cloudflare Foundation regression test `cloudflare/tests/test_supabase_runtime_boundary.py` is merged and passed in run [45275655900](https://github.com/Elgit4/PCG_Missions/actions/runs/45275655900). It enforces that:
+- production browser source and the web package contain no Supabase Auth/client dependency;
 - the Cloudflare Worker can use Supabase credentials only inside the private event-flyer Storage integration;
 - public church content remains served from D1.
 
 The ten legacy Supabase Edge Functions remain deployed and active in the source Supabase project. Do **not** disable them before the Cloudflare production deployment is integrated, accepted and serving the live Pages domains. Once the cutover has passed, decommission the old staff/event/calendar/content/announcement/public-content functions and unused Supabase Auth/database dependencies, while retaining only the private event-media Storage service and the minimum server-side Storage credentials. Do not pause the Supabase project while Storage remains the agreed exception.
+
+
+## 11. Pages authentication gateway — latest preview candidate
+
+PR #148 added and passed the following browser-gateway checks on commit `98b1751563fb95dd30efcee2eddeb2016a265183`:
+
+- forwards the browser's HttpOnly Better Auth `Cookie` and same-origin `Origin` to the API Worker;
+- forwards `CF-Connecting-IP` for the Worker-side authentication throttling path;
+- relays multiple upstream `Set-Cookie` values back to the Pages browser origin;
+- keeps API responses no-store;
+- rejects cross-origin requests before contacting the Worker;
+- returns a closed failure when `PCG_MISSIONS_API_ORIGIN` is absent.
+
+The TypeScript failure discovered by the first gateway test run (nullable `Set-Cookie` fallback) was corrected and the final web CI passed. The current candidate Pages preview deployment is `https://88ca8a22.pcg-missions.pages.dev`, with deployment status `success`; it is not the production Pages domain. A direct smoke from the current tool execution network was denied before reaching the Pages/Worker host, so no fresh HTTP response from that URL is claimed here. The Cloudflare deployment record and CI results confirm build/deploy success, not a full browser sign-in session.
+
+The preview Worker API smoke was confirmed by the Cloudflare preview workflow on the unchanged Worker-source commit listed in section 1: health 200/schema 46, anonymous staff API 401, anonymous Better Auth session 200/null. Authenticated sign-in/session persistence and recovery remain gated by the isolated acceptance rehearsal.
