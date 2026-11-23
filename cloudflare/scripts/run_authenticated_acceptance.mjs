@@ -233,6 +233,7 @@ const adminTeamAssign = await api(adminCookie, `/api/v1/contacts/${contactId}/as
 if (adminTeamAssign.status !== 201 || adminTeamAssign.payload?.data?.team_id !== teamId) {
   throw new Error("Admin/Pastor could not assign the contact to a branch team: " + adminTeamAssign.status + " " + JSON.stringify(adminTeamAssign.payload));
 }
+await new Promise((resolve) => setTimeout(resolve, 1250));
 const teamLeaderContacts = await api(teamLeaderCookie, "/api/v1/contacts?limit=50&offset=0");
 if (teamLeaderContacts.status !== 200 || !teamLeaderContacts.payload?.data?.some((contact) => contact.id === contactId)) {
   throw new Error("Team Leader could not read a contact assigned to their active team.");
@@ -251,6 +252,7 @@ const teamLeaderStaffAssign = await api(teamLeaderCookie, `/api/v1/contacts/${co
 if (teamLeaderStaffAssign.status !== 201) {
   throw new Error("Team Leader could not hand off a contact to an active member of their team: " + teamLeaderStaffAssign.status + " " + JSON.stringify(teamLeaderStaffAssign.payload));
 }
+await new Promise((resolve) => setTimeout(resolve, 1250));
 const volunteerContacts = await api(followupVolunteerCookie, "/api/v1/contacts?limit=50&offset=0");
 if (volunteerContacts.status !== 200 || !volunteerContacts.payload?.data?.some((contact) => contact.id === contactId)) {
   throw new Error("Follow-up Volunteer could not read the contact currently assigned to them.");
