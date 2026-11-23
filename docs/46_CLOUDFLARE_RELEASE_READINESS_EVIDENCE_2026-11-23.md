@@ -131,3 +131,23 @@ The safe integration order remains: complete release acceptance and owner/staff 
 9. Merge the reviewed candidate to `main`, apply migration 0046 through the guarded manual workflow, deploy the production Worker and Pages frontend, then verify same-origin routes, CORS, sessions, recovery and monitoring.
 
 **No production migration, production Worker/Pages deployment, staff role or credential mutation, or SMS activation is authorized by this evidence record.**
+
+
+## 10. Authorization parity and event media storage
+
+A direct row-level comparison of production D1 and the source Supabase project's `role_capability` table was completed on 23 November:
+
+- Supabase: 65 `(role_code, capability_code)` grants.
+- Production D1: 128 grants.
+- Missing legacy role-capability pairs in D1: **0**.
+- Scope changes among the 65 legacy pairs: **0**.
+- The additional 63 D1 grants are compatibility/expanded capabilities; their configured modes are branch, team or assigned (not a new global/unscoped mode).
+
+The Supabase Storage bucket `pcg-missions-event-media` was inspected directly. It is **private**, has the intended event-media bucket name and currently allows JPEG, PNG, WebP and AVIF at the bucket layer. The Worker deliberately enforces a stricter 5 MiB JPEG/PNG/WebP upload allowlist and serves 15-minute signed URLs. The bucket is not made public.
+
+A new automated Cloudflare Foundation regression test is being added to enforce that:
+- the production browser source and web package contain no Supabase Auth/client dependency;
+- the Cloudflare Worker can use Supabase credentials only inside the private event-flyer Storage integration;
+- public church content remains served from D1.
+
+The ten legacy Supabase Edge Functions remain deployed and active in the source Supabase project. Do **not** disable them before the Cloudflare production deployment is integrated, accepted and serving the live Pages domains. Once the cutover has passed, decommission the old staff/event/calendar/content/announcement/public-content functions and unused Supabase Auth/database dependencies, while retaining only the private event-media Storage service and the minimum server-side Storage credentials. Do not pause the Supabase project while Storage remains the agreed exception.
