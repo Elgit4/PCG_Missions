@@ -16,6 +16,7 @@ test("standard role revocation writes its audit row only for the exact revoked a
   assert.doesNotMatch(revoke, /changes\(\)\s*=\s*1/);
   assert.match(revoke, /a\.id = \? AND a\.branch_id = \? AND a\.revoked_at = \? AND a\.revoked_by = \?/);
   assert.match(revoke, /results\[0\].*changes/s);
+  assert.match(revoke, /results\[1\].*changes/s);
 });
 
 test("Admin/Pastor elevation applies only to the exact request reviewed by this actor at this time", () => {
