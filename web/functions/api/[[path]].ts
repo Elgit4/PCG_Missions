@@ -12,6 +12,8 @@ const FORWARDED_HEADERS = [
   "accept",
   "content-type",
   "cookie",
+  // Set by Cloudflare at the Pages edge; the Worker uses it for credential rate limits.
+  "cf-connecting-ip",
   "origin",
   "user-agent",
   "x-branch-id",
