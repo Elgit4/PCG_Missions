@@ -4756,12 +4756,12 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
                'ministry_report',mr.id,?,?
         FROM ministry_report mr
         JOIN staff_profile author ON author.id=mr.author_profile_id
-        WHERE mr.id=? AND mr.branch_id=? AND mr.last_action_id=? AND changes()=1
+        WHERE mr.id=? AND mr.branch_id=? AND mr.last_action_id=? AND mr.last_action_by=? AND mr.status=?
       `).bind(
         crypto.randomUUID(),
         decision==="approved"?"Your ministry report has been approved.":decision==="returned"?"Your ministry report was returned for correction.":"A reviewer commented on your ministry report.",
         `ministry-report:${reportIdForReview}:review:${actionId}`,now,
-        reportIdForReview,String(row.branch_id),actionId
+        reportIdForReview,String(row.branch_id),actionId,context.staff.userId,nextStatus
       ),
     ];
     const reviewResults=await env.DB.batch(reviewStatements);
