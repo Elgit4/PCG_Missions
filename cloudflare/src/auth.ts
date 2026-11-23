@@ -54,7 +54,9 @@ export const betterAuthRateLimitOptions = {
   window: 60,
   max: 30,
   customRules: {
+    // Match both the internal route path and the external basePath-qualified URL.
     "/get-session": false,
+    "/api/auth/get-session": false,
     "/sign-in/email": { window: 60, max: 5 },
     "/forget-password": { window: 60, max: 3 },
     "/reset-password": { window: 60, max: 5 },
@@ -109,7 +111,13 @@ export function createAuth(env: AuthEnvironment) {
       // PCG Missions uses its audited Admin/Pastor-approved reset-request flow.
       sendResetPassword: async () => { throw new Error("ADMIN_APPROVED_PASSWORD_RESET_REQUIRED"); },
     },
-    session: { expiresIn: 60 * 60 * 24 * 7, updateAge: 60 * 60 * 24, cookieCache: { enabled: false } },
+    session: {
+      expiresIn: 60 * 60 * 24 * 7,
+      updateAge: 60 * 60 * 24,
+      // Session hydration stays read-only; the browser performs a deliberate POST only when refresh is due.
+      deferSessionRefresh: true,
+      cookieCache: { enabled: false },
+    },
     advanced: {
       useSecureCookies: secureCookies,
       defaultCookieAttributes: { httpOnly: true, secure: secureCookies, sameSite: "lax", path: "/" },
