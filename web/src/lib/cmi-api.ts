@@ -533,6 +533,7 @@ export type TaskAssignmentTarget =
   | { assignee_user_id: string; team_id?: never }
   | { team_id: string; assignee_user_id?: never };
 export type TaskCreateInput = TaskCreateBase & TaskAssignmentTarget;
+export interface FollowUpAssignmentTeam { id: string; name: string }
 export type TaskReassignmentInput =
   | { assignee_profile_id: string; team_id?: never; reason: string }
   | { team_id: string; assignee_profile_id?: never; reason: string };
@@ -766,6 +767,7 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
     if (/^\/contacts\/[^/]+\/notes$/.test(suffix) && (verb === "GET" || verb === "POST")) return "/api/v1" + suffix;
     if (/^\/contacts\/[^/]+\/assign$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
     if (suffix === "/staff" && verb === "GET") return "/api/v1/staff";
+    if (suffix === "/followup/assignment-teams" && verb === "GET") return "/api/v1/followup/assignment-teams";
     if (suffix === "/followup/tasks" && (verb === "GET" || verb === "POST")) return "/api/v1/followup/tasks";
     if (suffix.startsWith("/followup/tasks/") && suffix.split("/").length === 4 && verb === "PATCH") return "/api/v1" + suffix;
     if (/^\/followup\/tasks\/[^/]+\/assign$/.test(suffix) && verb === "POST") return "/api/v1" + suffix;
@@ -974,6 +976,9 @@ export class CmiApiClient {
     return this.request<FollowUpTask>("staff-operations", `/followup/tasks/${encodeURIComponent(taskId)}`, {
       method: "PATCH", query: { branch_id: branchId }, body: input,
     });
+  }
+  listFollowUpAssignmentTeams(branchId: string) {
+    return this.request<FollowUpAssignmentTeam[]>("staff-operations", "/followup/assignment-teams", { branchId });
   }
   reassignFollowUpTask(branchId: string, taskId: string, input: TaskReassignmentInput) {
     assertValidTaskReassignment(input);
