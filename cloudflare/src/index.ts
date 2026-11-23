@@ -5215,19 +5215,23 @@ export default {
         return withSecurityHeaders(authResponse, origin);
       } catch (error) {
         const message = error instanceof Error ? error.message : "";
-        const diagnosticCode = /^[A-Z0-9_]+$/.test(message)
-          ? message
-          : /no such table|no such column|sqlite_error/i.test(message)
+        const causeMessage = error instanceof Error && error.cause instanceof Error ? error.cause.message : "";
+        const diagnosticDetail = [message, causeMessage].filter(Boolean).join(" | ");
+        const diagnosticCode = /7500|daily row write limit|free tier/i.test(diagnosticDetail)
+          ? "D1_DAILY_WRITE_LIMIT"
+          : /no such table|no such column|sqlite_error/i.test(diagnosticDetail)
             ? "D1_SCHEMA_ERROR"
-            : error instanceof Error ? error.name : "AUTH_RUNTIME_ERROR";
-        console.error("BETTER_AUTH_HANDLER_FAILED", diagnosticCode);
+            : /^[A-Z0-9_]+$/.test(message)
+              ? message
+              : error instanceof Error ? error.name : "AUTH_RUNTIME_ERROR";
+        console.error("BETTER_AUTH_HANDLER_FAILED", diagnosticCode, diagnosticDetail.slice(0, 300));
         return json(503, {
           ok: false,
           error: {
             code: "AUTH_SERVICE_UNAVAILABLE",
             ...(env.APP_ENV !== "production" ? {
               diagnostic_code: diagnosticCode,
-              diagnostic_detail: message.slice(0, 300),
+              diagnostic_detail: diagnosticDetail.slice(0, 300),
             } : {}),
           },
         }, requestId, origin);
