@@ -76,7 +76,7 @@ jobs:
             local label="$2"
             local runs accepted sha
             jq_filter=".workflow_runs[] | select(.path == \".github/workflows/${workflow_file}\" and .conclusion == \"success\") | .head_sha"
-            runs="$(gh api "repos/${REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq "$jq_filter")"
+            runs="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="migration/cloudflare-auth-consolidation" -F per_page=100 --jq "$jq_filter")"
             accepted=""
             while IFS= read -r sha; do
               [[ -z "$sha" ]] && continue
