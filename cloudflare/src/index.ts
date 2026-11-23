@@ -301,10 +301,14 @@ async function revokeStaffRole(
         INSERT INTO staff_access_audit
           (id, branch_id, actor_profile_id, target_profile_id, action, reason, metadata, created_at)
         SELECT ?, ?, ?, ?, 'role_revoked', ?, ?, ?
-        WHERE changes() = 1
+        WHERE EXISTS (
+          SELECT 1 FROM staff_role_assignment a
+          WHERE a.id = ? AND a.branch_id = ? AND a.revoked_at = ? AND a.revoked_by = ?
+        )
       `).bind(
         crypto.randomUUID(), access.activeBranch.branchId, access.staff.profileId,
         existing.staff_profile_id, reason, metadata, now,
+        existing.id, access.activeBranch.branchId, now, access.staff.profileId,
       ),
     ]);
     if (results.some((result) => !result.success) || (results[0]?.meta?.changes ?? 0) !== 1) {
@@ -502,10 +506,10 @@ async function reviewAdminElevationRequest(
         FROM staff_role_elevation_request req
         WHERE req.id = ? AND req.branch_id = ?
           AND req.status = 'approved' AND req.reviewed_by = ?
-          AND changes() = 1
+          AND req.reviewed_at = ? AND req.review_reason = ?
       `).bind(
         assignmentId, access.staff.profileId, endsAt, now,
-        elevationId, access.activeBranch.branchId, access.staff.profileId,
+        elevationId, access.activeBranch.branchId, access.staff.profileId, now, reviewReason,
       ),
     ]);
     if (
@@ -1190,18 +1194,28 @@ async function reviewAdminRevocationRequest(
         WHERE id = (
           SELECT assignment_id FROM staff_role_revocation_request
           WHERE id = ? AND branch_id = ? AND status = 'approved'
-            AND reviewed_by = ? AND changes() = 1
+            AND reviewed_by = ? AND reviewed_at = ?
         )
           AND branch_id = ? AND revoked_at IS NULL
       `).bind(
         now, access.staff.profileId, revocationId, reason,
-        revocationId, access.activeBranch.branchId, access.staff.profileId, access.activeBranch.branchId,
+        revocationId, access.activeBranch.branchId, access.staff.profileId, now, access.activeBranch.branchId,
       ),
       env.DB.prepare(`
         UPDATE staff_role_revocation_request SET status = 'applied'
         WHERE id = ? AND branch_id = ? AND status = 'approved'
-          AND reviewed_by = ? AND changes() = 1
-      `).bind(revocationId, access.activeBranch.branchId, access.staff.profileId),
+          AND reviewed_by = ? AND reviewed_at = ?
+          AND EXISTS (
+            SELECT 1 FROM staff_role_assignment a
+            WHERE a.id = staff_role_revocation_request.assignment_id
+              AND a.branch_id = staff_role_revocation_request.branch_id
+              AND a.revocation_request_id = staff_role_revocation_request.id
+              AND a.revoked_at = ? AND a.revoked_by = ?
+          )
+      `).bind(
+        revocationId, access.activeBranch.branchId, access.staff.profileId, now,
+        now, access.staff.profileId,
+      ),
     ]);
     if (results.some((result) => !result.success) ||
         (results[0]?.meta?.changes ?? 0) !== 1 ||
