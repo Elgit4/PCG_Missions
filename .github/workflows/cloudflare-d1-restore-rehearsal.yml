@@ -24,7 +24,7 @@ jobs:
       - name: Check out migration branch
         uses: actions/checkout@v4
         with:
-          ref: migration/cloudflare-auth-consolidation
+          ref: ${{ github.sha }}
 
       - name: Require the reviewed Better Auth D1 adapter
         shell: bash
