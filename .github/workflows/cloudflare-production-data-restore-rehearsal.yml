@@ -119,6 +119,21 @@ jobs:
           sha256sum /tmp/pcg-production-clone.sql | awk '{print "Private temporary production export SHA-256: " $1}'
           echo "The SQL export remains on this ephemeral runner only; it will not be uploaded as a workflow artifact or printed."
 
+      - name: Wait for the account D1 write quota to reset before importing the production clone
+        shell: bash
+        run: |
+          set -euo pipefail
+          reset_at="$(date -u -d 'today 00:05:00' +%s)"
+          now="$(date -u +%s)"
+          if [[ "$reset_at" -le "$now" ]]; then
+            reset_at="$(date -u -d 'tomorrow 00:05:00' +%s)"
+          fi
+          wait_seconds=$((reset_at-now))
+          if [[ "$wait_seconds" -gt 0 ]]; then
+            echo "Waiting until the next 00:05 UTC D1 row-write quota reset before creating/importing the temporary clone."
+            sleep "$wait_seconds"
+          fi
+
       - name: Create an isolated EU D1 database for the production-data clone
         id: database
         shell: bash
@@ -234,7 +249,7 @@ jobs:
             SELECT (SELECT schema_version FROM app_meta WHERE id=1) AS schema_version,
                    (SELECT environment FROM app_meta WHERE id=1) AS environment,
                    (SELECT COUNT(*) FROM d1_migrations) AS migration_count,
-                   (SELECT COUNT(*) FROM restore_rehearsal_probe) AS probe_tables,
+                   (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='restore_rehearsal_probe') AS probe_tables,
                    (SELECT COUNT(*) FROM staff_profile) AS staff_profiles,
                    (SELECT COUNT(*) FROM contact) AS contacts,
                    (SELECT COUNT(*) FROM followup_task) AS followup_tasks,
