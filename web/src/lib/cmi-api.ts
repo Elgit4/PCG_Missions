@@ -266,6 +266,7 @@ export interface CalendarEntryRecord {
   starts_at: string;
   ends_at: string | null;
   scope_type: "branch";
+  status: "active" | "cancelled";
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -630,6 +631,7 @@ function workerApiPath(functionName: string, suffix: string, method: string): st
 
   if (functionName === "calendar-operations") {
     if (suffix === "/entries" && (verb === "GET" || verb === "POST")) return "/api/v1/calendar/entries";
+    if (/^\/entries\/[^/]+\/cancel$/.test(suffix) && verb === "POST") return "/api/v1" + suffix.replace("/entries/", "/calendar/entries/");
     if (/^\/entries\/[^/]+$/.test(suffix) && (verb === "GET" || verb === "PATCH")) return "/api/v1" + suffix.replace("/entries/", "/calendar/entries/");
     return null;
   }

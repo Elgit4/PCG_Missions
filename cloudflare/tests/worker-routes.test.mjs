@@ -147,6 +147,70 @@ test("legacy staff invitation endpoints are permanently disabled", async () => {
   assert.equal(calls.length, 0);
 });
 
+test("Admin/Pastor can cancel an active calendar entry once with a reason and preserve its cancelled state", async () => {
+  const fixture = authorizedDirectoryEnv("admin_pastor", [["calendar.manage.scoped", "branch"]]);
+  const entryId = "60000000-0000-4000-8000-000000000009";
+  fixture.setCalendarEntryRow({
+    id: entryId,
+    branch_id: BRANCH_ID,
+    entry_type: "service",
+    title: "Sunday service",
+    starts_at: "2026-11-29T09:00:00.000Z",
+    ends_at: "2026-11-29T11:00:00.000Z",
+    scope_type: "branch",
+    status: "active",
+    created_by: AUTH_USER_ID,
+    created_at: "2026-11-20T10:00:00.000Z",
+    updated_at: "2026-11-20T10:00:00.000Z",
+  });
+  const request = () => new Request(
+    `https://worker.example/api/v1/calendar/entries/${entryId}/cancel?branch_id=${BRANCH_ID}`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: "better-auth.session_token=verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ reason: "Service moved to a different venue." }),
+    },
+  );
+
+  const response = await worker.fetch(request(), fixture.env);
+  const payload = await response.json();
+  assert.equal(response.status, 200);
+  assert.deepEqual(payload.data, { entry_id: entryId, status: "cancelled" });
+  assert.equal(fixture.calendarEntryRow.status, "cancelled");
+  assert.equal(fixture.calendarEntryRow.cancellation_reason, "Service moved to a different venue.");
+
+  const replay = await worker.fetch(request(), fixture.env);
+  assert.equal(replay.status, 409);
+  assert.equal((await replay.json()).error.code, "CALENDAR_ENTRY_ALREADY_CANCELLED");
+});
+
+test("calendar cancellation rejects callers without the branch management capability", async () => {
+  const fixture = authorizedDirectoryEnv("coordinator");
+  const entryId = "60000000-0000-4000-8000-000000000010";
+  fixture.setCalendarEntryRow({
+    id: entryId, branch_id: BRANCH_ID, status: "active",
+    updated_at: "2026-11-20T10:00:00.000Z",
+  });
+  const response = await worker.fetch(new Request(
+    `https://worker.example/api/v1/calendar/entries/${entryId}/cancel?branch_id=${BRANCH_ID}`,
+    {
+      method: "POST",
+      headers: {
+        Cookie: "better-auth.session_token=verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ reason: "Service moved to a different venue." }),
+    },
+  ), fixture.env);
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error.code, "CAPABILITY_DENIED");
+});
+
 test("calendar collection reads reject anonymous requests before database access", async () => {
   const { env, calls } = fakeEnv();
   const response = await worker.fetch(new Request("https://worker.example/api/v1/calendar/entries?branch_id=30000000-0000-4000-8000-000000000001"), env);
@@ -528,8 +592,13 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
             const [id, branch_id, entry_type, title, starts_at, ends_at, created_by, updated_by, created_at, updated_at] = this.values;
             calendarEntryRow = { id, branch_id, entry_type, title, starts_at, ends_at, scope_type: "branch", created_by, created_at, updated_at };
           } else if (this.sql.includes("UPDATE calendar_entry") && calendarEntryRow) {
-            const [entry_type, title, starts_at, ends_at, , updated_at] = this.values;
-            calendarEntryRow = { ...calendarEntryRow, entry_type, title, starts_at, ends_at, updated_at };
+            if (this.sql.includes("status='cancelled'")) {
+              const [cancelled_at, cancelled_by, cancellation_reason, updated_by, updated_at] = this.values;
+              calendarEntryRow = { ...calendarEntryRow, status: "cancelled", cancelled_at, cancelled_by, cancellation_reason, updated_by, updated_at };
+            } else {
+              const [entry_type, title, starts_at, ends_at, , updated_at] = this.values;
+              calendarEntryRow = { ...calendarEntryRow, entry_type, title, starts_at, ends_at, updated_at };
+            }
           } else if (this.sql.includes("INSERT INTO announcement")) {
             const [id, branch_id, title, body, created_by, updated_by, created_at, updated_at] = this.values;
             announcementRow = { id, branch_id, title, body, is_public: 0, status: "draft", created_by, created_at, updated_at };
@@ -566,6 +635,8 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
     calls,
     batches,
     get writes() { return writes; },
+    setCalendarEntryRow(row) { calendarEntryRow = row; },
+    get calendarEntryRow() { return calendarEntryRow; },
     env: {
       DB,
       APP_ENV: "non-production",
