@@ -23,9 +23,19 @@ test("Better Auth session polling bypasses D1 rate-limit writes while sensitive 
   assert.ok(config, "the shared Better Auth rate-limit configuration must be exported for regression testing");
   assert.equal(config.storage, "database");
   assert.equal(config.customRules["/get-session"], false);
+  assert.equal(config.customRules["/api/auth/get-session"], false);
   assert.deepEqual(config.customRules["/sign-in/email"], { window: 60, max: 5 });
   assert.deepEqual(config.customRules["/forget-password"], { window: 60, max: 3 });
   assert.deepEqual(config.customRules["/reset-password"], { window: 60, max: 5 });
+});
+
+test("Better Auth defers session refresh writes until an explicit POST", () => {
+  const sessionOptions = authModule.betterAuthSessionOptions;
+  assert.ok(sessionOptions, "shared session options must be exported for regression testing");
+  assert.equal(sessionOptions.deferSessionRefresh, true);
+  assert.deepEqual(sessionOptions.cookieCache, { enabled: false });
+  assert.equal(sessionOptions.expiresIn, 60 * 60 * 24 * 7);
+  assert.equal(sessionOptions.updateAge, 60 * 60 * 24);
 });
 
 test("D1 rate-limit records receive an application-generated primary key", () => {
