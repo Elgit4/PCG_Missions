@@ -1,28 +1,41 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { hash } from "bcryptjs";
 
-const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-const apiToken = process.env.CLOUDFLARE_API_TOKEN;
-const databaseId = process.env.DB_ID;
+const databaseName = process.env.DB_NAME;
 const workerUrl = (process.env.WORKER_URL || "http://127.0.0.1:8787").replace(/\/$/, "");
 const origin = "http://localhost:8787";
-const fetchWithTimeout = (url, init = {}) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
 const runId = process.env.GITHUB_RUN_ID || "local";
-const apiBase = `https://api.cloudflare.com/client/v4/accounts/${accountId}/d1/database/${databaseId}/query`;
+const fetchWithTimeout = (url, init = {}) => fetch(url, { ...init, signal: AbortSignal.timeout(15_000) });
 
-if (!accountId || !apiToken || !databaseId) throw new Error("Missing isolated D1 acceptance configuration");
+if (!databaseName) throw new Error("Missing local D1 acceptance database name");
+
+function sqlLiteral(value) {
+  if (value === null || value === undefined) return "NULL";
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "NULL";
+  if (typeof value === "boolean") return value ? "1" : "0";
+  return "'" + String(value).replaceAll("'", "''") + "'";
+}
+
+function bindSql(sql, params) {
+  let index = 0;
+  const bound = sql.replace(/\?/g, () => {
+    if (index >= params.length) throw new Error("Missing SQL bind parameter");
+    return sqlLiteral(params[index++]);
+  });
+  if (index !== params.length) throw new Error("Unused SQL bind parameter");
+  return bound;
+}
 
 async function d1(sql, params = []) {
-  const response = await fetchWithTimeout(apiBase, {
-    method: "POST",
-    headers: { authorization: `Bearer ${apiToken}`, "content-type": "application/json" },
-    body: JSON.stringify({ sql, params }),
-  });
-  const payload = await response.json();
-  if (!response.ok || payload.success !== true) {
-    throw new Error(`D1 acceptance query failed: ${JSON.stringify(payload.errors || payload)}`);
-  }
-  return payload.result?.[0]?.results ?? [];
+  const statement = bindSql(sql, params);
+  const output = execFileSync("npx", [
+    "wrangler", "d1", "execute", databaseName, "--local", "--json",
+    "--config", "wrangler.restore-rehearsal.toml", "--command", statement,
+  ], { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] });
+  const payload = JSON.parse(output);
+  if (Array.isArray(payload)) return payload[0]?.results ?? [];
+  return payload.results ?? payload.result?.[0]?.results ?? [];
 }
 
 async function insertUser(roleCode, label, assignerProfileId, bootstrapAdmin = false) {
