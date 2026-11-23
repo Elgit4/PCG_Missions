@@ -585,7 +585,7 @@ export function OperationsWorkspace({
                 <div className="cmi-task-copy"><strong>{item.title}</strong><p>{formatBranchDate(item.updated_at, timeZone)} · {shortText(item.body)}</p></div>
                 <span className="cmi-task-status status-open">Private draft</span>
                 {canManage && <button type="button" className="cmi-button cmi-button-secondary" onClick={() => beginEdit(item.id)} aria-label={"Edit " + item.title}><Pencil size={14} />Edit</button>}
-                {canManage && <button type="button" className="cmi-button cmi-button-danger" onClick={() => void deleteRecord(item.id,item.title)} disabled={deletingId!==null} aria-label={"Delete " + item.title}>{deletingId===item.id ? "Deleting…" : <><Trash2 size={14} />Delete</>}</button>}
+
               </article>
             ))}
             {!announcements.length && <p className="cmi-detail-muted">No announcement drafts are visible in this branch.</p>}
