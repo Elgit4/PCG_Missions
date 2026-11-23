@@ -592,6 +592,10 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
     decision: "approve" | "reject",
   ) => {
     if (!canApproveStaffRoles || !branchId || staffMutationInFlight.current || processingRoleRequestId) return;
+    if (request.requested_by === session.staff.id) {
+      setActionError("A different Admin/Pastor must review this request.");
+      return;
+    }
     const reason = (roleReviewReasons[request.id] ?? "").trim();
     if (reason.length < 10 || reason.length > 500) {
       setActionError("Enter a review reason between 10 and 500 characters.");
@@ -1026,12 +1030,12 @@ export function StaffWorkspace({ api, session, onSignOut }: StaffWorkspaceProps)
               {elevationRequests.map((request) => <article className="cmi-task-row" key={request.id}>
                 <div className="cmi-task-copy"><strong>Admin/Pastor access for {request.target_name}</strong><p>Requested by {request.requester_name} · {formatDate(request.requested_at, session.branches.find((branch) => branch.id === branchId)?.timezone ?? "Africa/Accra")}</p><small>{request.reason}</small></div>
                 <label>Review reason<textarea value={roleReviewReasons[request.id] ?? ""} onChange={(event) => setRoleReviewReasons((current) => ({ ...current, [request.id]: event.target.value }))} minLength={10} maxLength={500} rows={2} /></label>
-                <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("elevation", request, "reject")}>Reject</button><button type="button" className="cmi-button cmi-button-primary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("elevation", request, "approve")}>Approve</button></div>
+                {request.requested_by === session.staff.id ? <p className="cmi-scope-note">Another Admin/Pastor must review this request.</p> : <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("elevation", request, "reject")}>Reject</button><button type="button" className="cmi-button cmi-button-primary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("elevation", request, "approve")}>Approve</button></div>}
               </article>)}
               {revocationRequests.map((request) => <article className="cmi-task-row" key={request.id}>
                 <div className="cmi-task-copy"><strong>Remove Admin/Pastor access from {request.target_name}</strong><p>Requested by {request.requester_name} · {formatDate(request.requested_at, session.branches.find((branch) => branch.id === branchId)?.timezone ?? "Africa/Accra")}</p><small>{request.reason}</small></div>
                 <label>Review reason<textarea value={roleReviewReasons[request.id] ?? ""} onChange={(event) => setRoleReviewReasons((current) => ({ ...current, [request.id]: event.target.value }))} minLength={10} maxLength={500} rows={2} /></label>
-                <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("revocation", request, "reject")}>Reject</button><button type="button" className="cmi-button cmi-button-primary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("revocation", request, "approve")}>Approve</button></div>
+                {request.requested_by === session.staff.id ? <p className="cmi-scope-note">Another Admin/Pastor must review this request.</p> : <div className="cmi-form-actions"><button type="button" className="cmi-button cmi-button-secondary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("revocation", request, "reject")}>Reject</button><button type="button" className="cmi-button cmi-button-primary" disabled={!!processingRoleRequestId} onClick={() => void reviewStaffRoleRequest("revocation", request, "approve")}>Approve</button></div>}
               </article>)}
             </section>}
           </div>}
