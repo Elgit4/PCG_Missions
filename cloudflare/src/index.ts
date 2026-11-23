@@ -3899,12 +3899,13 @@ type CalendarEntryRow = {
   starts_at: string;
   ends_at: string | null;
   scope_type: "branch";
+  status: "active" | "cancelled";
   created_by: string;
   created_at: string;
   updated_at: string;
 };
 
-const CALENDAR_ENTRY_COLUMNS = "id,branch_id,entry_type,title,starts_at,ends_at,scope_type,created_by,created_at,updated_at";
+const CALENDAR_ENTRY_COLUMNS = "id,branch_id,entry_type,title,starts_at,ends_at,scope_type,status,created_by,created_at,updated_at";
 
 function parseCalendarTimestamp(value: unknown): string | null {
   if (typeof value !== "string" || value.length > 50 ||
@@ -3983,7 +3984,7 @@ async function handleCalendarCollection(request: Request, env: Env, requestId: s
     const rows = await env.DB.prepare(`
       SELECT ${CALENDAR_ENTRY_COLUMNS}
       FROM calendar_entry
-      WHERE branch_id = ? AND scope_type = 'branch'
+      WHERE branch_id = ? AND scope_type = 'branch' AND status = 'active'
       ORDER BY starts_at ASC, id ASC
       LIMIT ? OFFSET ?
     `).bind(branchId, limit, offset).all<CalendarEntryRow>();
@@ -4036,7 +4037,7 @@ async function handleCalendarEntry(request: Request, env: Env, entryId: string, 
   const current = await env.DB.prepare(`
     SELECT ${CALENDAR_ENTRY_COLUMNS}
     FROM calendar_entry
-    WHERE id=? AND branch_id=? AND scope_type='branch'
+    WHERE id=? AND branch_id=? AND scope_type='branch' AND status='active'
   `).bind(entryId, branchId).first<CalendarEntryRow>();
   if (!current) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
   if (method === "GET") return json(200, { ok: true, data: current }, requestId, origin);
@@ -4050,7 +4051,7 @@ async function handleCalendarEntry(request: Request, env: Env, entryId: string, 
   const result = await env.DB.prepare(`
     UPDATE calendar_entry
     SET entry_type=?, title=?, starts_at=?, ends_at=?, updated_by=?, updated_at=?
-    WHERE id=? AND branch_id=? AND scope_type='branch' AND updated_at=?
+    WHERE id=? AND branch_id=? AND scope_type='branch' AND status='active' AND updated_at=?
   `).bind(
     next.entry_type, next.title, next.starts_at, next.ends_at,
     access.staff.userId, now, entryId, branchId, current.updated_at,
@@ -4061,6 +4062,61 @@ async function handleCalendarEntry(request: Request, env: Env, entryId: string, 
     .bind(entryId, branchId).first<CalendarEntryRow>();
   if (!updated) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
   return json(200, { ok: true, data: updated }, requestId, origin);
+}
+
+async function handleCalendarEntryCancellation(
+  request: Request,
+  env: Env,
+  entryId: string,
+  requestId: string,
+  origin?: string,
+): Promise<Response> {
+  if (!isUuidValue(entryId)) return json(400, { ok: false, error: { code: "INVALID_CALENDAR_ENTRY_ID" } }, requestId, origin);
+  const access = await authorizeRequestCapability(request, env, "calendar.manage.scoped");
+  if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
+
+  const url = new URL(request.url);
+  const branchIds = url.searchParams.getAll("branch_id");
+  const branchId = branchIds[0];
+  if (branchIds.length !== 1 || [...url.searchParams.keys()].some((key) => key !== "branch_id") ||
+      branchId !== access.activeBranch.branchId) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_QUERY" } }, requestId, origin);
+  }
+
+  const body = await readJsonBody(request, 8192);
+  if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
+  if (!isPlainObject(body.value) || Object.keys(body.value).some((key) => key !== "reason")) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_CANCELLATION" } }, requestId, origin);
+  }
+  const reason = typeof body.value.reason === "string" ? body.value.reason.trim() : "";
+  if (reason.length < 10 || reason.length > 500) {
+    return json(400, { ok: false, error: { code: "INVALID_CALENDAR_CANCELLATION_REASON" } }, requestId, origin);
+  }
+
+  const current = await env.DB.prepare(`
+    SELECT id,branch_id,status,updated_at
+    FROM calendar_entry
+    WHERE id=? AND branch_id=? AND scope_type='branch'
+  `).bind(entryId, branchId).first<{ id: string; branch_id: string; status: string; updated_at: string }>();
+  if (!current) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
+  if (current.status !== "active") {
+    return json(409, { ok: false, error: { code: "CALENDAR_ENTRY_ALREADY_CANCELLED" } }, requestId, origin);
+  }
+
+  const now = new Date().toISOString();
+  const result = await env.DB.prepare(`
+    UPDATE calendar_entry
+    SET status='cancelled', cancelled_at=?, cancelled_by=?, cancellation_reason=?, updated_by=?, updated_at=?
+    WHERE id=? AND branch_id=? AND scope_type='branch' AND status='active' AND updated_at=?
+  `).bind(
+    now, access.staff.userId, reason, access.staff.userId, now,
+    entryId, branchId, current.updated_at,
+  ).run();
+  if (!result.success) return json(500, { ok: false, error: { code: "CALENDAR_CANCELLATION_FAILED" } }, requestId, origin);
+  if ((result.meta?.changes ?? 0) !== 1) {
+    return json(409, { ok: false, error: { code: "CALENDAR_ENTRY_CHANGED" } }, requestId, origin);
+  }
+  return json(200, { ok: true, data: { entry_id: entryId, status: "cancelled" } }, requestId, origin);
 }
 
 async function eventOperationContext(request: Request, env: Env, branchId: string, eventId: string, requestId: string, origin?: string) {
@@ -5677,6 +5733,13 @@ async function readSensitiveCareRecord(request: Request, env: Env, careRecordId:
 
     if (url.pathname === "/api/v1/calendar/entries" && (request.method === "GET" || request.method === "POST")) {
       return handleCalendarCollection(request, env, requestId, origin);
+    }
+    const calendarCancelMatch = url.pathname.match(/^\/api\/v1\/calendar\/entries\/([^/]+)\/cancel$/);
+    if (calendarCancelMatch && request.method === "POST") {
+      let calendarEntryId: string;
+      try { calendarEntryId = decodeURIComponent(calendarCancelMatch[1]); }
+      catch { return json(400, { ok: false, error: { code: "INVALID_CALENDAR_ENTRY_ID" } }, requestId, origin); }
+      return handleCalendarEntryCancellation(request, env, calendarEntryId, requestId, origin);
     }
     const calendarEntryMatch = url.pathname.match(/^\/api\/v1\/calendar\/entries\/([^/]+)$/);
     if (calendarEntryMatch && (request.method === "GET" || request.method === "PATCH")) {
