@@ -117,6 +117,13 @@ WHERE sp.id = ?
       rc.scope_mode = 'assigned'
       AND c.code IN ('prayer.request.read.assigned', 'care.record.read.assigned')
     )
+    -- Contact capture has no existing record ID; the create handler binds the new contact to its actor.
+    OR (
+      rc.scope_mode = 'assigned'
+      AND c.code = 'contacts.create'
+      AND ? = ''
+      AND ? = ''
+    )
     OR (rc.scope_mode = 'self' AND ? = sp.id)
   )
 ORDER BY CASE rc.scope_mode
@@ -175,6 +182,8 @@ export async function authorizeCapability(
     input.now,
     input.now,
     input.actorProfileId,
+    resourceType,
+    recordId,
   ).first<{ scope_mode: AuthorizationScope; sensitivity: AuthorizationDecision["sensitivity"] }>();
 
   if (!row) return { allowed: false };
