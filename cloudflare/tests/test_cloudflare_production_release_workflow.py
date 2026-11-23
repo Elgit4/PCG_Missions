@@ -18,6 +18,12 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("needs.restore-rehearsal.result == 'success'", self.production)
         self.assertIn("inputs.confirm_production == 'DEPLOY-PRODUCTION'", self.production)
 
+    def test_read_only_staff_preflight_runs_before_expensive_restore_rehearsal(self):
+        self.assertIn("production-roster-preflight:", self.production)
+        self.assertIn("restore-rehearsal:\n    needs: production-roster-preflight", self.production)
+        self.assertIn("production-worker:\n    needs: restore-rehearsal", self.production)
+        self.assertIn("Require complete six-role production roster before restore rehearsal", self.production)
+
     def test_production_accepts_null_for_anonymous_better_auth_session(self):
         self.assertIn(
             'if(p!==null && (typeof p!=="object" || Array.isArray(p) || p.error)) process.exit(1)',
