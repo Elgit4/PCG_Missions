@@ -181,9 +181,9 @@ export async function authorizeCapability(
     recordId,
     input.now,
     input.now,
-    input.actorProfileId,
     resourceType,
     recordId,
+    input.actorProfileId,
   ).first<{ scope_mode: AuthorizationScope; sensitivity: AuthorizationDecision["sensitivity"] }>();
 
   if (!row) return { allowed: false };
