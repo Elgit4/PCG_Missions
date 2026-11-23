@@ -50,7 +50,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
 
-    def test_full_migration_chain_reaches_schema_46(self):
+    def test_full_migration_chain_reaches_schema_47(self):
         self.assertEqual(
             self.db.execute(
                 "SELECT schema_version, environment FROM app_meta WHERE id = 1"
@@ -869,7 +869,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            46,
+            47,
         )
 
     
