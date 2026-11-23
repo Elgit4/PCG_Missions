@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createBetterAuthUser, deleteBetterAuthUser, updateBetterAuthUserPassword, verifyLegacyBcryptPassword } from "../src/auth.ts";
+import { createAuth, createBetterAuthUser, deleteBetterAuthUser, updateBetterAuthUserPassword, verifyLegacyBcryptPassword } from "../src/auth.ts";
 
 function fakeDatabase() {
   const statements = [];
@@ -15,6 +15,17 @@ function fakeDatabase() {
   };
   return { DB, statements };
 }
+
+test("Better Auth initializes its session API with the D1 Drizzle adapter", () => {
+  const { DB } = fakeDatabase();
+  const auth = createAuth({
+    DB,
+    BETTER_AUTH_SECRET: "test-only-secret-that-is-long-enough-for-better-auth",
+    BETTER_AUTH_URL: "https://pcg-missions-api-preview.example.workers.dev",
+    BETTER_AUTH_TRUSTED_ORIGINS: "https://pcg-missions-preview.example.pages.dev",
+  });
+  assert.equal(typeof auth.api.getSession, "function");
+});
 
 test("Better Auth creates a D1 user and credential without an external Auth API", async () => {
   const { DB, statements } = fakeDatabase();
