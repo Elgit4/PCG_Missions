@@ -90,7 +90,7 @@ jobs:
           database_name = "${DB_NAME}"
           database_id = "${DB_ID}"
           migrations_dir = "migrations"
-          remote = true
+          remote = false
           EOF
           cd cloudflare
           npx wrangler d1 migrations apply "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml
@@ -98,6 +98,9 @@ jobs:
             --command "SELECT CASE WHEN schema_version=46 AND environment='non-production' THEN 'SCHEMA_46_READY' ELSE 'SCHEMA_INVALID' END AS status FROM app_meta WHERE id=1;"
           npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
             --command "SELECT CASE WHEN COUNT(*)=46 THEN 'MIGRATION_LEDGER_46_READY' ELSE 'MIGRATION_LEDGER_INVALID' END AS status FROM d1_migrations;"
+          npx wrangler d1 migrations apply "$DB_NAME" --local --config wrangler.restore-rehearsal.toml
+          npx wrangler d1 execute "$DB_NAME" --local --config wrangler.restore-rehearsal.toml \
+            --command "SELECT CASE WHEN schema_version=46 AND environment='non-production' THEN 'LOCAL_SCHEMA_46_READY' ELSE 'LOCAL_SCHEMA_INVALID' END AS status FROM app_meta WHERE id=1;"
 
       - name: Capture pre-acceptance Time Travel bookmark
         id: bookmark
@@ -119,6 +122,7 @@ jobs:
         working-directory: cloudflare
         env:
           DB_ID: ${{ steps.database.outputs.id }}
+          DB_NAME: ${{ steps.database.outputs.name }}
           WORKER_URL: "http://127.0.0.1:8787"
         shell: bash
         run: |
