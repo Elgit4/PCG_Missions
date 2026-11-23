@@ -420,7 +420,7 @@ async function createAdminElevationRequest(
       access.staff.profileId, reason, requestedAt,
     ).run();
 
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+    if (!result.success || (result.meta?.changes ?? 0) < 1) {
       throw new Error("ELEVATION_REQUEST_NOT_CREATED");
     }
   } catch {
@@ -489,7 +489,7 @@ async function reviewAdminElevationRequest(
       `).bind(
         access.staff.profileId, now, reviewReason, elevationId, access.activeBranch.branchId,
       ).run();
-      if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+      if (!result.success || (result.meta?.changes ?? 0) < 1) {
         return json(409, { ok: false, error: { code: "ELEVATION_REQUEST_NOT_PENDING" } }, requestId, origin);
       }
     } catch {
@@ -524,8 +524,8 @@ async function reviewAdminElevationRequest(
     ]);
     if (
       results.some((result) => !result.success) ||
-      (results[0]?.meta?.changes ?? 0) !== 1 ||
-      (results[1]?.meta?.changes ?? 0) !== 1
+      (results[0]?.meta?.changes ?? 0) < 1 ||
+      (results[1]?.meta?.changes ?? 0) < 1
     ) {
       return json(409, { ok: false, error: { code: "ELEVATION_REQUEST_NOT_PENDING" } }, requestId, origin);
     }
@@ -1076,7 +1076,7 @@ async function changeStaffAccountStatus(
       target.id,
       target.account_status,
     ).run();
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+    if (!result.success || (result.meta?.changes ?? 0) < 1) {
       return json(409, { ok: false, error: { code: "STAFF_ACCOUNT_STATUS_CHANGED" } }, requestId, origin);
     }
   } catch {
@@ -1154,7 +1154,7 @@ async function createAdminRevocationRequest(
       requestIdForRevocation, access.activeBranch.branchId, assignment.id,
       assignment.staff_profile_id, assignment.role_id, access.staff.profileId, reason, now,
     ).run();
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) throw new Error("REVOCATION_REQUEST_NOT_CREATED");
+    if (!result.success || (result.meta?.changes ?? 0) < 1) throw new Error("REVOCATION_REQUEST_NOT_CREATED");
   } catch {
     return json(409, { ok: false, error: { code: "REVOCATION_REQUEST_CONFLICT" } }, requestId, origin);
   }
@@ -1200,7 +1200,7 @@ async function reviewAdminRevocationRequest(
         SET status = 'rejected', reviewed_by = ?, reviewed_at = ?, review_reason = ?
         WHERE id = ? AND branch_id = ? AND status = 'pending'
       `).bind(access.staff.profileId, now, reason, revocationId, access.activeBranch.branchId).run();
-      if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+      if (!result.success || (result.meta?.changes ?? 0) < 1) {
         return json(409, { ok: false, error: { code: "REVOCATION_REQUEST_NOT_PENDING" } }, requestId, origin);
       }
     } catch {
@@ -1236,9 +1236,9 @@ async function reviewAdminRevocationRequest(
       `).bind(revocationId, access.activeBranch.branchId, access.staff.profileId),
     ]);
     if (results.some((result) => !result.success) ||
-        (results[0]?.meta?.changes ?? 0) !== 1 ||
-        (results[1]?.meta?.changes ?? 0) !== 1 ||
-        (results[2]?.meta?.changes ?? 0) !== 1) {
+        (results[0]?.meta?.changes ?? 0) < 1 ||
+        (results[1]?.meta?.changes ?? 0) < 1 ||
+        (results[2]?.meta?.changes ?? 0) < 1) {
       return json(409, { ok: false, error: { code: "REVOCATION_REQUEST_NOT_APPLIED", message: "The request may be stale or the last-Admin/Pastor safeguard blocked removal." } }, requestId, origin);
     }
   } catch {
@@ -1746,7 +1746,7 @@ async function updateContact(
     ...Object.values(values), now, contactId, access.activeBranch.branchId,
     ...predicate.values, ...additionalValues,
   ).run();
-  if (!result.success || (result.meta?.changes ?? 0) !== 1) {
+  if (!result.success || (result.meta?.changes ?? 0) < 1) {
     return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND_OR_NOT_ACCESSIBLE" } }, requestId, origin);
   }
   return getContact(request, env, contactId, requestId, origin);
@@ -2640,7 +2640,7 @@ async function updateFollowupTask(
       ),
     ]);
     if (results.some((result) => !result.success) ||
-        (results[0]?.meta?.changes ?? 0) !== 1 ||
+        (results[0]?.meta?.changes ?? 0) < 1 ||
         (results[1]?.meta?.changes ?? 0) !== 1) {
       return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_CHANGED" } }, requestId, origin);
     }
@@ -2854,7 +2854,7 @@ async function reassignFollowupTask(
     }
     const results = await env.DB.batch(statements);
     if (results.some((result) => !result.success) ||
-        (results[0]?.meta?.changes ?? 0) !== 1 ||
+        (results[0]?.meta?.changes ?? 0) < 1 ||
         (results[1]?.meta?.changes ?? 0) !== 1 ||
         (nextAssignee !== null && (results[2]?.meta?.changes ?? 0) !== 1)) {
       return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_CHANGED" } }, requestId, origin);
@@ -4030,7 +4030,7 @@ async function handleCalendarEntry(request: Request, env: Env, entryId: string, 
     access.staff.userId, now, entryId, branchId, current.updated_at,
   ).run();
   if (!result.success) return json(500, { ok: false, error: { code: "CALENDAR_UPDATE_FAILED" } }, requestId, origin);
-  if ((result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "CALENDAR_CONFLICT" } }, requestId, origin);
+  if ((result.meta?.changes ?? 0) < 1) return json(409, { ok: false, error: { code: "CALENDAR_CONFLICT" } }, requestId, origin);
   const updated = await env.DB.prepare(`SELECT ${CALENDAR_ENTRY_COLUMNS} FROM calendar_entry WHERE id=? AND branch_id=?`)
     .bind(entryId, branchId).first<CalendarEntryRow>();
   if (!updated) return json(404, { ok: false, error: { code: "CALENDAR_ENTRY_NOT_FOUND" } }, requestId, origin);
@@ -4160,7 +4160,7 @@ async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:
   const now=new Date().toISOString();
   const updated=await env.DB.prepare("UPDATE event SET flyer_key=?,flyer_content_type=?,flyer_size=?,flyer_updated_at=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
     .bind(key,type,file.size,now,now,eventId,branchId).run();
-  if(!updated.success||(updated.meta?.changes??0)!==1){
+  if(!updated.success||(updated.meta?.changes??0)<1){
     await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);
     return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
   }
@@ -4253,7 +4253,7 @@ async function handleEventItem(request:Request,env:Env,eventId:string,requestId:
   assignments.push("updated_at=?");values.push(now);
   const result=await env.DB.prepare("UPDATE event SET "+assignments.join(",")+" WHERE id=? AND branch_id=? AND status='draft' AND registration_state='closed'")
     .bind(...values,eventId,branchId).run();
-  if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
+  if(!result.success||(result.meta?.changes??0)<1) return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
   const row=await env.DB.prepare("SELECT "+EVENT_RESPONSE_COLUMNS+" FROM event WHERE id=? AND branch_id=?").bind(eventId,branchId).first<Record<string,unknown>>();
   return row?json(200,{ok:true,data:row},requestId,origin):json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
 }
@@ -4413,7 +4413,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     if(event.status==="cancelled") return json(200,{ok:true,data:{event_id:eventId,status:"cancelled"}},requestId,origin);
     const result=await env.DB.prepare("UPDATE event SET status='cancelled',registration_state='closed',updated_at=? WHERE id=? AND branch_id=? AND status IN ('draft','published')")
       .bind(now,eventId,branchId).run();
-    if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"EVENT_CANCELLATION_CONFLICT"}},requestId,origin);
+    if(!result.success||(result.meta?.changes??0)<1) return json(409,{ok:false,error:{code:"EVENT_CANCELLATION_CONFLICT"}},requestId,origin);
     return json(200,{ok:true,data:{event_id:eventId,status:"cancelled"}},requestId,origin);
   }
 
@@ -4424,7 +4424,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     const state=action==="open"?"open":"closed";
     const result=await env.DB.prepare("UPDATE event SET registration_state=?,updated_at=? WHERE id=? AND branch_id=?")
       .bind(state,now,eventId,branchId).run();
-    if((result.meta?.changes??0)!==1) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
+    if((result.meta?.changes??0)<1) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
     return json(200,{data:{...event,registration_state:state,updated_at:now}},requestId,origin);
   }
 
@@ -4796,7 +4796,7 @@ async function handleReportOperations(request: Request, env: Env, requestId: str
     const sets=[...REPORT_FIELDS.map(k=>`${k}=?`),"status='submitted'","submitted_at=?","last_action_id=?","last_action_by=?","last_action_decision='resubmitted'","last_action_comment=NULL","last_action_at=?","updated_at=?","updated_by=?"];
     const values=[...REPORT_FIELDS.map(k=>correction[k]===undefined?row[k]:correction[k]),now,crypto.randomUUID(),context.staff.userId,now,now,context.staff.userId,reportIdForSubmit];
     const updated=await env.DB.prepare(`UPDATE ministry_report SET ${sets.join(",")} WHERE id=? AND status='returned' AND author_profile_id=?`).bind(...values,context.staff.profileId).run();
-    if((updated.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"REPORT_NOT_RETURNED"}},requestId,origin);
+    if((updated.meta?.changes??0)<1) return json(409,{ok:false,error:{code:"REPORT_NOT_RETURNED"}},requestId,origin);
     const report=await env.DB.prepare(`SELECT ${REPORT_COLUMNS} FROM ministry_report WHERE id=?`).bind(reportIdForSubmit).first();
     const history=await env.DB.prepare("SELECT id,actor_profile_id,decision,comment,created_at FROM report_review_event WHERE report_id=? ORDER BY created_at ASC").bind(reportIdForSubmit).all();
     return json(200,{data:{report,review_history:history.results??[]}},requestId,origin);
@@ -5297,8 +5297,8 @@ async function sharePrayerRequest(
       `).bind(now, prayerRequestId, access.activeBranch.branchId),
     ]);
     if (results.some((result) => !result.success) ||
-        (results[0]?.meta?.changes ?? 0) !== 1 ||
-        (results[1]?.meta?.changes ?? 0) !== 1) {
+        (results[0]?.meta?.changes ?? 0) < 1 ||
+        (results[1]?.meta?.changes ?? 0) < 1) {
       throw new Error("PRAYER_SHARE_CREATE_FAILED");
     }
   } catch {
@@ -5361,7 +5361,7 @@ async function revokePrayerShare(
         now, access.staff.userId, reason, prayerRequestId, access.activeBranch.branchId, shareId, now,
       ),
     ]);
-    if (results.some((result) => !result.success) || (results[0]?.meta?.changes ?? 0) !== 1) {
+    if (results.some((result) => !result.success) || (results[0]?.meta?.changes ?? 0) < 1) {
       return json(404, { ok: false, error: { code: "ACTIVE_PRAYER_SHARE_NOT_FOUND" } }, requestId, origin);
     }
   } catch {
