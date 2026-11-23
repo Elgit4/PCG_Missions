@@ -1771,7 +1771,13 @@ async function assignContact(
   requestId: string,
   origin?: string,
 ): Promise<Response> {
-  const access = await authorizeRequestCapability(request, env, "contacts.assign");
+  const resource = await contactResourceContext(request, env, contactId);
+  if (!resource.ok) return resource.response;
+  const access = await authorizeRequestCapability(request, env, "contacts.assign", {
+    type: "contact",
+    recordId: contactId,
+    teamId: resource.teamId,
+  });
   if (access.state !== "authorized") return mapCapabilityFailure(access.state, requestId, origin);
   const body = await readJsonBody(request);
   if (!body.ok) return json(body.status, { ok: false, error: { code: body.status === 413 ? "REQUEST_TOO_LARGE" : "INVALID_JSON" } }, requestId, origin);
@@ -1788,14 +1794,20 @@ async function assignContact(
   }
 
   const now = new Date().toISOString();
-  const contact = await env.DB.prepare(
-    "SELECT id FROM contact WHERE id = ? AND branch_id = ? AND contact_status = 'active' LIMIT 1",
-  ).bind(contactId, access.activeBranch.branchId).first<{ id: string }>();
-  if (!contact) return json(404, { ok: false, error: { code: "CONTACT_NOT_FOUND" } }, requestId, origin);
+  const scope = access.decision.scopeMode as ContactScopeMode;
+  const contactPredicate = contactScopePredicate(
+    scope, "c", access.staff.userId, access.activeBranch.branchId, now,
+  );
 
   let assigneeUserId: string | null = null;
   let selectedTeamId: string | null = null;
   if (assigneeProfileId) {
+    const teamTargetPredicate = scope === "team" ? `AND EXISTS (
+      SELECT 1 FROM staff_team_membership tm
+      WHERE tm.staff_profile_id = sp.id AND tm.team_id = ?
+        AND tm.branch_id = ? AND tm.revoked_at IS NULL
+        AND tm.starts_at <= ? AND (tm.ends_at IS NULL OR tm.ends_at > ?)
+    )` : "";
     const target = await env.DB.prepare(`
       SELECT sp.auth_user_id
       FROM staff_profile sp
@@ -1809,15 +1821,22 @@ async function assignContact(
             AND ra.starts_at <= ?
             AND (ra.ends_at IS NULL OR ra.ends_at > ?)
         )
+        ${teamTargetPredicate}
       LIMIT 1
-    `).bind(assigneeProfileId, access.activeBranch.branchId, now, now).first<{ auth_user_id: string }>();
-    if (!target) return json(400, { ok: false, error: { code: "ASSIGNEE_NOT_ACTIVE_IN_BRANCH" } }, requestId, origin);
+    `).bind(
+      assigneeProfileId, access.activeBranch.branchId, now, now,
+      ...(scope === "team" ? [resource.teamId, access.activeBranch.branchId, now, now] : []),
+    ).first<{ auth_user_id: string }>();
+    if (!target) return json(403, { ok: false, error: { code: scope === "team" ? "ASSIGNEE_OUTSIDE_TEAM" : "ASSIGNEE_NOT_ACTIVE_IN_BRANCH" } }, requestId, origin);
     assigneeUserId = target.auth_user_id;
   } else {
     const targetTeam = await env.DB.prepare(
       "SELECT id FROM team WHERE id = ? AND branch_id = ? AND is_active = 1 LIMIT 1",
     ).bind(teamId, access.activeBranch.branchId).first<{ id: string }>();
     if (!targetTeam) return json(400, { ok: false, error: { code: "TEAM_NOT_ACTIVE_IN_BRANCH" } }, requestId, origin);
+    if (scope === "team" && targetTeam.id !== resource.teamId) {
+      return json(403, { ok: false, error: { code: "TEAM_OUTSIDE_SCOPE" } }, requestId, origin);
+    }
     selectedTeamId = targetTeam.id;
   }
 
@@ -1842,9 +1861,16 @@ async function assignContact(
         WHERE contact_id = ? AND branch_id = ?
           AND starts_at <= ?
           AND (ends_at IS NULL OR ends_at > ?)
+          AND EXISTS (
+            SELECT 1 FROM contact c
+            WHERE c.id = contact_assignment.contact_id
+              AND c.branch_id = contact_assignment.branch_id
+              AND (${contactPredicate.sql})
+          )
       `).bind(
         transitionAt, access.staff.userId, reason,
         contactId, access.activeBranch.branchId, now, transitionAt,
+        ...contactPredicate.values,
       ),
       env.DB.prepare(`
         INSERT INTO contact_assignment
@@ -1852,9 +1878,11 @@ async function assignContact(
         SELECT ?, c.id, c.branch_id, ?, ?, ?, ?, ?, ?
         FROM contact c
         WHERE c.id = ? AND c.branch_id = ? AND c.contact_status = 'active'
+          AND (${contactPredicate.sql})
       `).bind(
         assignmentId, assigneeUserId, selectedTeamId, access.staff.userId,
         transitionAt, reason, transitionAt, contactId, access.activeBranch.branchId,
+        ...contactPredicate.values,
       ),
     ]);
     if (results.some((result) => !result.success) || (results[1]?.meta?.changes ?? 0) !== 1) {
