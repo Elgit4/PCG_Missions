@@ -1,12 +1,17 @@
-name: Cloudflare Production Worker Deploy
+name: Cloudflare Production Release
 
 on:
   workflow_dispatch:
     inputs:
       confirm_production:
-        description: Type DEPLOY-PRODUCTION to authorize a guarded production Worker release
+        description: Type DEPLOY-PRODUCTION to authorize the guarded production release
         required: true
         type: string
+  push:
+    branches:
+      - migration/cloudflare-auth-consolidation
+    paths:
+      - .github/production-release-approved
 
 permissions:
   contents: read
@@ -18,8 +23,8 @@ concurrency:
 
 jobs:
   production-worker:
-    name: Validate, migrate and deploy the production Worker
-    if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
+    name: Validate, migrate and deploy production Worker and Pages
+    if: ${{ github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' && ((github.event_name == 'workflow_dispatch' && inputs.confirm_production == 'DEPLOY-PRODUCTION') || (github.event_name == 'push' && contains(github.event.head_commit.message, '[DEPLOY-PRODUCTION]'))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     environment: production
@@ -54,7 +59,11 @@ jobs:
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = "refs/heads/migration/cloudflare-auth-consolidation"
-          test "$CONFIRMATION" = "DEPLOY-PRODUCTION"
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            test "$(cat .github/production-release-approved)" = "DEPLOY-PRODUCTION"
+          else
+            test "$CONFIRMATION" = "DEPLOY-PRODUCTION"
+          fi
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           npx --yes wrangler@4.166.0 whoami
 
@@ -108,6 +117,30 @@ jobs:
           cd cloudflare
           npm run typecheck
           npm test
+
+      - name: Build and verify production Pages assets before any production mutation
+        working-directory: web
+        run: |
+          npm ci
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run build
+
+      - name: Verify access to the existing production Pages project
+        working-directory: web
+        run: |
+          ../cloudflare/node_modules/.bin/wrangler pages project list > /tmp/pcg-pages-projects.json
+          grep -q "pcg-missions" /tmp/pcg-pages-projects.json
+
+      - name: Verify Pages upload permission with a non-production preflight deployment
+        working-directory: web
+        run: |
+          ../cloudflare/node_modules/.bin/wrangler pages deploy dist \
+            --project-name pcg-missions \
+            --branch "production-preflight-${GITHUB_RUN_ID}" \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-message "Non-production Pages release preflight ${GITHUB_RUN_ID}"
 
       - name: Verify exact production D1 target and environment before mutation
         shell: bash
@@ -224,6 +257,11 @@ jobs:
               Number(row.migration_id_sum) !== Number(row.schema_version) * (Number(row.schema_version) + 1) / 2) {
             throw new Error("Post-migration production marker/schema/ledger mismatch.");
           }
+          if (Number(row.schema_version) !== 46 ||
+              Number(row.latest_migration_id) !== 46 ||
+              Number(row.migration_count) !== 46) {
+            throw new Error("Production must be exactly at D1 schema 46 after the release migration.");
+          }
           console.log(JSON.stringify({
             environment: row.environment,
             schema_version: row.schema_version,
@@ -286,13 +324,22 @@ jobs:
       - name: Deploy reviewed Worker code to production
         run: npx wrangler deploy --env production
 
+      - name: Deploy reviewed frontend and Pages Functions to production
+        working-directory: web
+        run: |
+          ../cloudflare/node_modules/.bin/wrangler pages deploy dist \
+            --project-name pcg-missions \
+            --branch main \
+            --commit-hash "$GITHUB_SHA" \
+            --commit-message "PCG Missions production release $GITHUB_SHA"
+
       - name: Verify direct Worker and same-origin Pages production endpoints
         shell: bash
         run: |
           set -euo pipefail
           direct_health="$(curl --retry 5 --retry-delay 3 --retry-all-errors --fail --silent --show-error --max-time 30 "$WORKER_URL/health")"
           printf '%s\n' "$direct_health"
-          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||!Number.isInteger(p.schema_version)||p.schema_version<45)process.exit(1)' "$direct_health"
+          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||!Number.isInteger(p.schema_version)||p.schema_version!==46)process.exit(1)' "$direct_health"
 
           for base in "$WORKER_URL" "$PAGES_URL"; do
             status="$(curl --silent --show-error --output /tmp/pcg-me.json --write-out "%{http_code}" --max-time 20 "$base/api/v1/me")"
@@ -304,7 +351,7 @@ jobs:
           test "$session_status" = "200"
 
           api_health="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error --max-time 20 "$PAGES_URL/api/v1/health")"
-          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||!Number.isInteger(p.schema_version)||p.schema_version<45)process.exit(1)' "$api_health"
+          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||!Number.isInteger(p.schema_version)||p.schema_version!==46)process.exit(1)' "$api_health"
 
           cors_status="$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 20 -X OPTIONS "$WORKER_URL/api/auth/sign-in/email" -H "Origin: https://pcg-missions.pages.dev" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type")"
           test "$cors_status" = "204"
