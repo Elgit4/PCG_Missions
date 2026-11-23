@@ -12,6 +12,7 @@ on:
       - "cloudflare/package.json"
       - "cloudflare/wrangler.toml"
       - ".github/workflows/cloudflare-preview-deploy.yml"
+      - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
   workflow_dispatch:
 
 permissions:
