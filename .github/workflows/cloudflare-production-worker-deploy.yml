@@ -127,7 +127,7 @@ jobs:
             summary.active_staff_without_credential === 0 &&
             summary.invalid_first_login_setups === 0;
           if (!rosterReady) {
-            console.error("Production cutover blocked: require one credential-ready active Admin/Pastor owner; every other active staff account must have a valid credential and effective role. Resolve stale assignments and expired first-login setups before production migration. Additional staff accounts may be added through the normal staff onboarding workflow after cutover.");
+            console.error("Production cutover blocked: require one credential-ready active Admin/Pastor owner; every other active staff account must have a valid credential and effective role. Resolve stale assignments and expired first-login setups before production migration. Additional staff accounts may be added through staff account creation and first-login onboarding after cutover.");
             process.exit(1);
           }
           console.log("Production staff readiness gate passed: at least one credential-ready active Admin/Pastor owner; all active staff have credentials and effective roles; no stale assignments or expired first-login setups.");
@@ -383,8 +383,8 @@ jobs:
           const row = candidates[0];
           if (!row || row.environment !== "production" ||
               Number(row.schema_version) !== 47 ||
-              Number(row.latest_migration_id) !== 46 ||
-              Number(row.migration_count) !== 46 ||
+              Number(row.latest_migration_id) !== 47 ||
+              Number(row.migration_count) !== 47 ||
               Number(row.schema_version) !== Number(row.latest_migration_id) ||
               Number(row.migration_count) !== Number(row.schema_version) ||
               Number(row.first_migration_id) !== 1 ||
@@ -468,7 +468,7 @@ jobs:
           set -euo pipefail
           direct_health="$(curl --retry 5 --retry-delay 3 --retry-all-errors --fail --silent --show-error --max-time 30 "$WORKER_URL/health")"
           printf '%s\n' "$direct_health"
-          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==46||p.auth_configuration!=="ready")process.exit(1)' "$direct_health"
+          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==47||p.auth_configuration!=="ready")process.exit(1)' "$direct_health"
 
           for base in "$WORKER_URL" "$PAGES_URL"; do
             status="$(curl --silent --show-error --output /tmp/pcg-me.json --write-out "%{http_code}" --max-time 20 "$base/api/v1/me")"
