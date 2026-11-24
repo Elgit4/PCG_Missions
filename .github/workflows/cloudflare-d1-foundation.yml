@@ -48,5 +48,9 @@ jobs:
         run: npm run typecheck
       - name: Test Better Auth credential verification and session integration
         run: npm test
+      - name: Validate preview and production Wrangler bundles and trigger configuration
+        run: |
+          npx wrangler deploy --env preview --dry-run
+          npx wrangler deploy --env production --dry-run
       - name: Syntax-check authenticated acceptance harness
         run: node --check scripts/run_authenticated_acceptance.mjs

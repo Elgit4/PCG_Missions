@@ -232,7 +232,7 @@ jobs:
             if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://127.0.0.1:8787/health >/dev/null; then
               echo "Temporary authenticated Worker is healthy."
               set +e
-              node scripts/run_authenticated_acceptance.mjs
+              node --experimental-strip-types scripts/run_authenticated_acceptance.mjs
               ACCEPTANCE_EXIT=$?
               set -e
               grep -E "FOLLOWUP_TASK_UPDATE_CONFLICT|FOLLOWUP_REASSIGNMENT_BATCH_FAILED|REPORT_REVIEW|EVENT_CLOSEOUT|AUTH_SIGNIN|CONTACT_ASSIGNMENT_BATCH_FAILED|FOLLOWUP_REASSIGNMENT_PRECHECK" "$RUNNER_TEMP/pcg-acceptance-worker.log" || true

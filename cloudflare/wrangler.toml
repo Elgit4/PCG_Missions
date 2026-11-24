@@ -1,5 +1,5 @@
 name = "pcg-missions-api-nonprod"
-main = "src/index.ts"
+main = "src/worker.ts"
 compatibility_date = "2026-11-22"
 compatibility_flags = ["nodejs_compat"]
 upload_source_maps = true
@@ -61,3 +61,6 @@ binding = "DB"
 database_name = "pcg-missions-production"
 database_id = "2bbfb04f-9182-427d-b269-d050b8a9403f"
 migrations_dir = "migrations"
+
+[env.production.triggers]
+crons = ["*/15 * * * *"]
