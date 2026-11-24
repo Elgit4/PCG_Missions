@@ -518,6 +518,18 @@ const adminTeamAssign = await api(adminCookie, `/api/v1/contacts/${contactId}/as
   reason: "Admin routes the captured visitor to the responsible ministry team.",
 });
 if (adminTeamAssign.status !== 201 || adminTeamAssign.payload?.data?.team_id !== teamId) {
+  const assignmentFailureState = await d1(
+    `SELECT
+       COUNT(*) AS assignment_count,
+       SUM(CASE WHEN team_id=? THEN 1 ELSE 0 END) AS assignments_for_target_team,
+       SUM(CASE WHEN assignee_user_id IS NOT NULL THEN 1 ELSE 0 END) AS assignments_with_user,
+       SUM(CASE WHEN ends_at IS NULL THEN 1 ELSE 0 END) AS open_ended_assignments,
+       SUM(CASE WHEN ended_by IS NOT NULL THEN 1 ELSE 0 END) AS assignments_with_end_actor,
+       (SELECT COUNT(*) FROM contact_assignment_audit WHERE contact_id=? AND branch_id=?) AS audit_rows
+     FROM contact_assignment WHERE contact_id=? AND branch_id=?`,
+    [teamId, contactId, branchId, contactId, branchId],
+  );
+  console.log("CONTACT_ASSIGNMENT_FAILURE_STATE", JSON.stringify(assignmentFailureState[0] ?? {}));
   throw new Error("Admin/Pastor could not assign the contact to a branch team: " + adminTeamAssign.status + " " + JSON.stringify(adminTeamAssign.payload));
 }
 await new Promise((resolve) => setTimeout(resolve, 1250));
