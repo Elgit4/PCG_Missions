@@ -200,7 +200,7 @@ jobs:
     env:
       CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      WORKER_URL: https://pcg-missions-api-production.pcg-missions.workers.dev
+      WORKER_URL: https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev
       PAGES_URL: https://pcg-missions.pages.dev
 
     steps:
