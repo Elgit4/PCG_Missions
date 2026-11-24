@@ -393,8 +393,8 @@ jobs:
         run: |
           rm -rf dist
           npx wrangler deploy --env production --dry-run --outdir dist
-          test -s dist/index.js
-          node --check dist/index.js
+          test -s dist/worker.js
+          node --check dist/worker.js
 
       - name: Record the pre-release production D1 Time Travel bookmark
         shell: bash
