@@ -36,6 +36,8 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("owner_directed_orphan_profiles", self.production)
         self.assertIn("owner_directed_stale_assignments", self.production)
         self.assertIn("scripts/reconcile_owner_directed_staff_cleanup.sql", self.production)
+        self.assertNotIn("remove_test_staff_logins.sql", self.production)
+        self.assertNotIn("preflight_test_staff_login_cleanup.sql", self.production)
         self.assertIn("staff_account_audit", self.production)
         self.assertIn("owner_directed_role_revocation_audits", self.production)
         self.assertLess(
