@@ -14,7 +14,7 @@ This document records verified repository/workflow evidence for the current rele
 | Cloudflare Preview Release | Passed; preview Worker version 164 and preview D1 schema 49 | Green |
 | Production D1 | Schema 45; migrations 46–49 not applied | Pending |
 | Production roster preflight | Passed on the latest guarded release attempt | Green |
-| Isolated schema/authenticated rehearsal | Stopped applying schema 49 migrations with D1 error 7500 (daily free-tier row-write quota exhausted) | Not passed |
+| Isolated schema/authenticated rehearsal | First D1 API request for the schema-49 migration command failed with error 7500 (account-wide daily free-tier row-write quota exhausted); no migration ran and the scratch DB was cleaned up | Not passed |
 | Production-data clone/restore rehearsal | Skipped because the preceding rehearsal failed | Not passed |
 | Production Worker | Still version 20 | Not deployed |
 | Production Pages | Previous production deployment remains in service; automatic Pages production deployment is disabled | Not deployed |
