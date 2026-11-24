@@ -1200,6 +1200,37 @@ if (scheduledReminderForRevokedAssignee.due_tasks_found !== 0 ||
   throw new Error("Scheduled follow-up processor notified a user whose role assignment had been revoked.");
 }
 
+const inactiveReminderUser = await insertUser("field_worker", "inactive-reminder", admin.profileId);
+await d1("UPDATE staff_profile SET account_status='inactive' WHERE id=?", [inactiveReminderUser.profileId]);
+const inactiveAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/tasks", "POST", {
+  contact_id: contactId,
+  assignee_user_id: worker.userId,
+  priority: 2,
+  due_at: new Date(Date.now() - 10_000).toISOString(),
+  task_note: "Synthetic inactive-assignee reminder exclusion fixture",
+}, "qa-inactive-reminder-" + runId);
+if (inactiveAssigneeTaskCreate.status !== 201 || !inactiveAssigneeTaskCreate.payload?.data?.id) {
+  throw new Error("Could not create the inactive-assignee follow-up fixture.");
+}
+const inactiveAssigneeTaskId = inactiveAssigneeTaskCreate.payload.data.id;
+await d1(
+  "UPDATE followup_task SET assignee_user_id=? WHERE id=? AND branch_id=?",
+  [inactiveReminderUser.userId, inactiveAssigneeTaskId, branchId],
+);
+const scheduledReminderForInactiveAssignee = await processDueFollowupReminders(
+  { DB: scheduledReminderDb },
+  Date.now(),
+);
+const inactiveAssigneeReminderCount = (await d1(
+  "SELECT COUNT(*) AS count FROM staff_notification WHERE target_type='followup_task' AND target_id=? AND category='system'",
+  [inactiveAssigneeTaskId],
+))[0]?.count;
+if (scheduledReminderForInactiveAssignee.due_tasks_found !== 0 ||
+    scheduledReminderForInactiveAssignee.notifications_created !== 0 ||
+    Number(inactiveAssigneeReminderCount) !== 0) {
+  throw new Error("Scheduled follow-up processor notified an inactive staff profile.");
+}
+
 const scheduledReminderRows = await d1(
   "SELECT id,branch_id,recipient_user_id,category,target_type,target_id,idempotency_key FROM staff_notification WHERE target_type='followup_task' AND target_id=? AND category='system' ORDER BY created_at,id",
   [scheduledReminderTaskId],
@@ -1705,6 +1736,8 @@ const checks = {
     scheduledReminderAfterReassignment.notifications_created === 1 &&
     scheduledReminderForRevokedAssignee.notifications_created === 0 &&
     Number(revokedAssigneeReminderCount) === 0 &&
+    scheduledReminderForInactiveAssignee.notifications_created === 0 &&
+    Number(inactiveAssigneeReminderCount) === 0 &&
     scheduledReminderRows.length === 3 &&
     workerReminderRows.length === 2 && volunteerReminderRows.length === 1,
   scheduledReminderRecipientScoped: Boolean(scheduledReminderNotification) &&
