@@ -1272,9 +1272,13 @@ function contactScopePredicate(
       FROM contact_assignment ca
       JOIN staff_team_membership tm
         ON tm.team_id = ca.team_id AND tm.branch_id = ca.branch_id
+      JOIN staff_profile scope_staff
+        ON scope_staff.id = tm.staff_profile_id
       WHERE ca.contact_id = ${alias}.id
         AND ca.branch_id = ${alias}.branch_id
-        AND tm.staff_profile_id = ?
+        AND scope_staff.auth_user_id = ?
+        AND scope_staff.account_status = 'active'
+        AND scope_staff.deactivated_at IS NULL
         AND tm.membership_role = 'leader'
         AND tm.revoked_at IS NULL
         AND tm.starts_at <= ?
