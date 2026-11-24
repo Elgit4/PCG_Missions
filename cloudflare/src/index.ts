@@ -1907,7 +1907,10 @@ async function assignContact(
     if (results.some((result) => !result.success)) {
       throw new Error("CONTACT_ASSIGNMENT_SQL_FAILED");
     }
-    if (batchSummary.insertChanges !== 1) {
+    // D1's meta.changes includes trigger side effects. A successful
+    // assignment insert also writes its append-only audit row, so the
+    // expected count is at least one, not exactly one.
+    if (batchSummary.insertChanges < 1) {
       throw new Error("CONTACT_ASSIGNMENT_INSERT_NO_ROW");
     }
   } catch (error) {
