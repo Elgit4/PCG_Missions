@@ -13,6 +13,11 @@ on:
         description: Type DEPLOY-PRODUCTION to authorize a guarded production Worker release
         required: true
         type: string
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/production/DEPLOY-PRODUCTION"
 
 permissions:
   contents: read
@@ -25,7 +30,7 @@ concurrency:
 jobs:
   production-roster-preflight:
     name: Require active Admin/Pastor owner and verify owner-directed cleanup candidates before restore rehearsal
-    if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
+    if: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || ((github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: production
@@ -164,28 +169,28 @@ jobs:
             process.exit(1);
           }
           console.log("Production staff readiness gate passed: active Admin/Pastor owner is ready; all active accounts have credentials; any owner-directed orphan and inactive team_leader assignment are uniquely evidenced and will be reconciled after schema 49.");
-          echo "Additional staff accounts may be added through staff account creation and first-login onboarding."
+          console.log("Additional staff accounts may be added through staff account creation and first-login onboarding.");
           NODE
 
 
   restore-rehearsal:
     needs: production-roster-preflight
     name: Full D1 restore and six-role authenticated acceptance
-    if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
+    if: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || ((github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION')) }}
     uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
     secrets: inherit
 
   production-data-restore-rehearsal:
     needs: restore-rehearsal
     name: Clone and recover real production D1 data in an isolated EU database
-    if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' && needs.restore-rehearsal.result == 'success' }}
+    if: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || ((github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION')) && needs.restore-rehearsal.result == 'success' }}
     uses: ./.github/workflows/cloudflare-production-data-restore-rehearsal.yml
     secrets: inherit
 
   production-worker:
     needs: [restore-rehearsal, production-data-restore-rehearsal]
     name: Validate, migrate and deploy the production Worker
-    if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' && needs.restore-rehearsal.result == 'success' && needs.production-data-restore-rehearsal.result == 'success' }}
+    if: ${{ ((github.event_name == 'push' && github.ref == 'refs/heads/main') || ((github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION')) && needs.restore-rehearsal.result == 'success' && needs.production-data-restore-rehearsal.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     environment: production
@@ -216,7 +221,7 @@ jobs:
       - name: Require exact production confirmation and Cloudflare credential
         shell: bash
         env:
-          CONFIRMATION: ${{ inputs.confirm_production }}
+          CONFIRMATION: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'DEPLOY-PRODUCTION' || inputs.confirm_production }}
         run: |
           set -euo pipefail
           test "$CONFIRMATION" = "DEPLOY-PRODUCTION"
