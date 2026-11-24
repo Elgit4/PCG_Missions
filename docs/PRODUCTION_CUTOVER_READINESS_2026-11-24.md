@@ -83,6 +83,10 @@ The current runtime boundary test asserts that the browser has no Supabase Auth/
 
 The operations runbook currently requires approval of the church's privacy notice, lawful purposes, retention/deletion rules, data-controller contact and pastoral-access policy before real visitor, prayer or care records are entered. These are launch controls, not merely technical deployment checks. Record the church's approval and operational owner before opening registration to real visitors. Preview acceptance must continue to use synthetic people and contact details.
 
+## Non-production resource cleanup note
+
+A separate D1 database named `pcg-missions-restore-rehearsal` remains in the Cloudflare account. Read-only inspection found schema version 43, one branch, three staff profiles, and no contacts, follow-up tasks, ministry reports or events. It is not bound to any of the currently listed application Worker scripts and is not referenced by the current per-run rehearsal workflow. Its staff-profile records have not been classified as synthetic, so it has deliberately **not** been deleted. Treat this as a post-cutover cleanup item: confirm data provenance and retention with the owner, then remove the database only if it is confirmed disposable and unreferenced.
+
 ## Guardrails
 
 - No production D1 writes while the release rehearsal is blocked by quota.
