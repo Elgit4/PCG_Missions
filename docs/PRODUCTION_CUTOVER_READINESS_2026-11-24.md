@@ -79,6 +79,10 @@ Do not infer that a follow-up task should automatically notify a visitor. The fi
 
 The current runtime boundary test asserts that the browser has no Supabase Auth/client dependency and that Worker Supabase credentials are confined to the private event-flyer Storage adapter. Preserve Supabase Storage for `pcg-missions-event-media`. Before retiring any other Supabase service, inspect all production frontend, Pages Functions, Worker, CI, migration/import scripts and environment configuration references. Remove obsolete Auth/Postgres dependencies only after proving they are not used by any production path.
 
+### F. Approve operational privacy and data-governance controls before real ministry data
+
+The operations runbook currently requires approval of the church's privacy notice, lawful purposes, retention/deletion rules, data-controller contact and pastoral-access policy before real visitor, prayer or care records are entered. These are launch controls, not merely technical deployment checks. Record the church's approval and operational owner before opening registration to real visitors. Preview acceptance must continue to use synthetic people and contact details.
+
 ## Guardrails
 
 - No production D1 writes while the release rehearsal is blocked by quota.
