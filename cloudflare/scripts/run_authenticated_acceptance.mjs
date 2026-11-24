@@ -79,25 +79,49 @@ async function insertUser(roleCode, label, assignerProfileId, bootstrapAdmin = f
   return { userId, profileId, email, password };
 }
 
+// The production sign-in policy is five attempts per IP per 60 seconds.
+// The synthetic harness creates many accounts from one Worker IP, so pace
+// starts 20 seconds apart (at most three per rolling minute). If a 429 is
+// still returned, wait for a full rate-limit window and retry the same
+// isolated identity. Production rate-limit settings remain unchanged.
+const SIGN_IN_RATE_LIMIT_INTERVAL_MS = 20_000;
+const SIGN_IN_RATE_LIMIT_RETRY_MS = 61_000;
 let lastSignInAttemptAt = 0;
+
 async function waitForSignInRateLimitSlot() {
-  // Better Auth limits /sign-in/email per client IP. This isolated rehearsal
-  // uses many synthetic accounts from one local Worker IP, so pace every
-  // positive and negative attempt without weakening the production policy.
   if (lastSignInAttemptAt > 0) {
-    const remaining = 12_500 - (Date.now() - lastSignInAttemptAt);
+    const remaining = SIGN_IN_RATE_LIMIT_INTERVAL_MS - (Date.now() - lastSignInAttemptAt);
     if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
   }
   lastSignInAttemptAt = Date.now();
 }
 
+async function signInAttempt(identity, label) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await waitForSignInRateLimitSlot();
+    const response = await fetchWithTimeout(`${workerUrl}/api/auth/sign-in/email`, {
+      method: "POST",
+      headers: { origin, "content-type": "application/json" },
+      body: JSON.stringify({ email: identity.email, password: identity.password, rememberMe: false }),
+    });
+    if (response.status !== 429) return response;
+
+    if (attempt === 3) {
+      const bodyText = await response.text();
+      throw new Error(`${label} Better Auth sign-in remained rate-limited after three attempts: ${bodyText.slice(0, 500)}`);
+    }
+
+    const retryAfterSeconds = Number(response.headers.get("retry-after"));
+    const retryDelay = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+      ? Math.max(SIGN_IN_RATE_LIMIT_RETRY_MS, Math.ceil(retryAfterSeconds * 1000))
+      : SIGN_IN_RATE_LIMIT_RETRY_MS;
+    await new Promise((resolve) => setTimeout(resolve, retryDelay));
+  }
+  throw new Error(`${label} Better Auth sign-in retry loop ended unexpectedly`);
+}
+
 async function signIn(identity, label) {
-  await waitForSignInRateLimitSlot();
-  const response = await fetchWithTimeout(`${workerUrl}/api/auth/sign-in/email`, {
-    method: "POST",
-    headers: { origin, "content-type": "application/json" },
-    body: JSON.stringify({ email: identity.email, password: identity.password, rememberMe: false }),
-  });
+  const response = await signInAttempt(identity, label);
   const bodyText = await response.text();
   if (!response.ok) throw new Error(`${label} Better Auth sign-in failed (${response.status}): ${bodyText.slice(0, 500)}`);
   const setCookies = typeof response.headers.getSetCookie === "function"
@@ -547,12 +571,7 @@ const firstLoginState = (await d1(
 if (Number(firstLoginState?.must_change_password) !== 0 || firstLoginState?.password_setup_expires_at !== null) {
   throw new Error("Forced first-login password gate was not cleared after password replacement.");
 }
-await waitForSignInRateLimitSlot();
-const firstLoginOldAttempt = await fetchWithTimeout(workerUrl + "/api/auth/sign-in/email", {
-  method: "POST",
-  headers: { origin, "content-type": "application/json" },
-  body: JSON.stringify({ email: firstLoginUser.email, password: firstLoginUser.password, rememberMe: false }),
-});
+const firstLoginOldAttempt = await signInAttempt(firstLoginUser, "First-login old credential");
 if (firstLoginOldAttempt.status !== 401) {
   throw new Error("Old first-login credential was not rejected after password change: " + firstLoginOldAttempt.status);
 }
@@ -610,12 +629,7 @@ const resetOldSession = await api(resetTargetCookie, "/api/v1/me");
 if (resetOldSession.status !== 401) {
   throw new Error("Password reset did not revoke the target staff member's pre-existing session.");
 }
-await waitForSignInRateLimitSlot();
-const resetOldCredentialAttempt = await fetchWithTimeout(workerUrl + "/api/auth/sign-in/email", {
-  method: "POST",
-  headers: { origin, "content-type": "application/json" },
-  body: JSON.stringify({ email: resetTarget.email, password: resetTarget.password, rememberMe: false }),
-});
+const resetOldCredentialAttempt = await signInAttempt(resetTarget, "Password-reset old credential");
 if (resetOldCredentialAttempt.status !== 401) {
   throw new Error("Old password was not rejected after Admin/Pastor reset: " + resetOldCredentialAttempt.status);
 }
