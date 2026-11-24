@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   production-roster-preflight:
-    name: Require active Admin/Pastor owner and clean onboarded staff roster before restore rehearsal
+    name: Require active Admin/Pastor owner and verify owner-directed cleanup candidates before restore rehearsal
     if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -90,7 +90,28 @@ jobs:
                   AND (s.account_status<>'active' OR s.deactivated_at IS NOT NULL)) AS assignments_on_inactive_profiles,
               (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
                 AND s.must_change_password=1 AND (s.password_setup_expires_at IS NULL
-                  OR datetime(s.password_setup_expires_at)<datetime('now'))) AS invalid_first_login_setups
+                  OR datetime(s.password_setup_expires_at)<datetime('now'))) AS invalid_first_login_setups,
+              (SELECT COUNT(*) FROM staff_profile s
+                WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                  AND s.must_change_password=1
+                  AND (s.password_setup_expires_at IS NULL OR datetime(s.password_setup_expires_at)<datetime('now'))
+                  AND NOT EXISTS (SELECT 1 FROM staff_role_assignment a WHERE a.staff_profile_id=s.id
+                    AND a.revoked_at IS NULL AND datetime(a.starts_at)<=datetime('now')
+                    AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now')))
+                  AND NOT EXISTS (SELECT 1 FROM session se WHERE se.userId=s.auth_user_id)
+                  AND EXISTS (SELECT 1 FROM staff_access_audit aa WHERE aa.target_profile_id=s.id
+                    AND aa.action='account_deactivated'
+                    AND json_extract(aa.metadata,'$.operation')='owner_directed_account_reset')) AS owner_directed_orphan_profiles,
+              (SELECT COUNT(*) FROM staff_role_assignment a
+                JOIN staff_profile s ON s.id=a.staff_profile_id
+                JOIN role r ON r.id=a.role_id AND r.code='team_leader'
+                WHERE (s.account_status<>'active' OR s.deactivated_at IS NOT NULL)
+                  AND a.revoked_at IS NULL AND datetime(a.starts_at)<=datetime('now')
+                  AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND NOT EXISTS (SELECT 1 FROM session se WHERE se.userId=s.auth_user_id)
+                  AND EXISTS (SELECT 1 FROM staff_access_audit aa WHERE aa.target_profile_id=s.id
+                    AND aa.action='account_deactivated'
+                    AND json_extract(aa.metadata,'$.operation')='owner_directed_account_reset')) AS owner_directed_stale_assignments
           " > /tmp/pcg-production-staff-roster.json
 
           node - /tmp/pcg-production-staff-roster.json <<'NODE'
@@ -120,23 +141,29 @@ jobs:
             active_profiles_without_role: Number(row.active_profiles_without_role),
             assignments_on_inactive_profiles: Number(row.assignments_on_inactive_profiles),
             invalid_first_login_setups: Number(row.invalid_first_login_setups),
+            owner_directed_orphan_profiles: Number(row.owner_directed_orphan_profiles),
+            owner_directed_stale_assignments: Number(row.owner_directed_stale_assignments),
           };
           console.log(JSON.stringify(summary, null, 2));
           if (summary.configured_role_catalogue !== 6 || summary.active_admin_pastor_ready < 1) {
             console.error("Production cutover blocked: six role definitions and one credential-ready active Admin/Pastor account are required.");
             process.exit(1);
           }
+          const ownerDirectedCleanupIsExact =
+            summary.owner_directed_orphan_profiles <= 1 &&
+            summary.owner_directed_stale_assignments <= 1 &&
+            summary.active_profiles_without_role === summary.owner_directed_orphan_profiles &&
+            summary.invalid_first_login_setups === summary.owner_directed_orphan_profiles &&
+            summary.assignments_on_inactive_profiles === summary.owner_directed_stale_assignments;
           const rosterReady =
             summary.active_staff_profiles >= 1 &&
-            summary.active_profiles_without_role === 0 &&
-            summary.assignments_on_inactive_profiles === 0 &&
-            summary.active_staff_without_credential === 0 &&
-            summary.invalid_first_login_setups === 0;
+            ownerDirectedCleanupIsExact &&
+            summary.active_staff_without_credential === 0;
           if (!rosterReady) {
-            console.error("Production cutover blocked: require one credential-ready active Admin/Pastor owner; every other active staff account must have a valid credential and effective role. Resolve stale assignments and expired first-login setups before production migration. Additional staff accounts may be added through staff account creation and first-login onboarding after cutover.");
+            console.error("Production cutover blocked: require one credential-ready active Admin/Pastor owner; all active accounts must have credentials. Only the uniquely owner-audited orphan profile and inactive team_leader assignment may be reconciled after schema migration; all other roleless profiles, stale assignments and expired first-login setups block release.");
             process.exit(1);
           }
-          console.log("Production staff readiness gate passed: at least one credential-ready active Admin/Pastor owner; all active staff have credentials and effective roles; no stale assignments or expired first-login setups.");
+          console.log("Production staff readiness gate passed: active Admin/Pastor owner is ready; all active accounts have credentials; any owner-directed orphan and inactive team_leader assignment are uniquely evidenced and will be reconciled after schema 49.");
           NODE
 
 
@@ -423,6 +450,78 @@ jobs:
             schema_version: row.schema_version,
             latest_migration_id: row.latest_migration_id
           }));
+          NODE
+
+      - name: Reconcile owner-directed staff deactivation and stale team-leader assignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          npx wrangler d1 execute pcg-missions-production --remote --env production \
+            --file scripts/reconcile_owner_directed_staff_cleanup.sql 2>&1 | tee /tmp/pcg-owner-directed-staff-cleanup.log
+          cleanup_status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$cleanup_status" -ne 0 ]] && grep -Eiq "7500|daily row write limit|free tier" /tmp/pcg-owner-directed-staff-cleanup.log; then
+            reset_at="$(date -u -d 'tomorrow 00:05:00' +%s)"
+            now="$(date -u +%s)"
+            wait_seconds=$((reset_at - now))
+            if [[ "$wait_seconds" -le 0 || "$wait_seconds" -gt 18000 ]]; then
+              echo "::error title=D1 free-tier daily write limit::Cloudflare D1 row-write quota is exhausted outside the supported five-hour wait window."
+              exit 1
+            fi
+            echo "::warning title=D1 daily write quota exhausted::Waiting until 00:05 UTC before retrying the idempotent owner-directed roster reconciliation."
+            sleep "$wait_seconds"
+            npx wrangler d1 execute pcg-missions-production --remote --env production --file scripts/reconcile_owner_directed_staff_cleanup.sql
+          elif [[ "$cleanup_status" -ne 0 ]]; then
+            exit "$cleanup_status"
+          fi
+
+          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "
+            SELECT
+              (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                AND NOT EXISTS (SELECT 1 FROM staff_role_assignment a WHERE a.staff_profile_id=s.id
+                  AND a.revoked_at IS NULL AND datetime(a.starts_at)<=datetime('now')
+                  AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now')))) AS active_profiles_without_role,
+              (SELECT COUNT(*) FROM staff_role_assignment a JOIN staff_profile s ON s.id=a.staff_profile_id
+                WHERE a.revoked_at IS NULL AND datetime(a.starts_at)<=datetime('now')
+                  AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND (s.account_status<>'active' OR s.deactivated_at IS NOT NULL)) AS assignments_on_inactive_profiles,
+              (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                AND s.must_change_password=1 AND (s.password_setup_expires_at IS NULL
+                  OR datetime(s.password_setup_expires_at)<datetime('now'))) AS invalid_first_login_setups,
+              (SELECT COUNT(*) FROM staff_account_audit WHERE action='account_deactivated'
+                AND reason='Owner-directed removal of login access; preserve ministry history.') AS owner_directed_deactivation_audits,
+              (SELECT COUNT(*) FROM staff_access_audit WHERE action='role_revoked'
+                AND json_extract(metadata,'$.operation')='owner_directed_account_reset_reconciled') AS owner_directed_role_revocation_audits
+          " > /tmp/pcg-owner-directed-staff-cleanup-verify.json
+          node - /tmp/pcg-owner-directed-staff-cleanup-verify.json <<'NODE'
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const rows = [];
+          const visit = (value) => {
+            if (Array.isArray(value)) return value.forEach(visit);
+            if (!value || typeof value !== "object") return;
+            if (Object.hasOwn(value, "active_profiles_without_role")) rows.push(value);
+            Object.values(value).forEach(visit);
+          };
+          visit(payload);
+          const row = rows[0];
+          if (!row ||
+              Number(row.active_profiles_without_role) !== 0 ||
+              Number(row.assignments_on_inactive_profiles) !== 0 ||
+              Number(row.invalid_first_login_setups) !== 0 ||
+              Number(row.owner_directed_deactivation_audits) < 1 ||
+              Number(row.owner_directed_role_revocation_audits) < 1) {
+            console.error("Owner-directed staff cleanup did not produce a clean, auditable production roster.");
+            process.exit(1);
+          }
+          console.log(JSON.stringify({
+            active_profiles_without_role: Number(row.active_profiles_without_role),
+            assignments_on_inactive_profiles: Number(row.assignments_on_inactive_profiles),
+            invalid_first_login_setups: Number(row.invalid_first_login_setups),
+            owner_directed_deactivation_audits: Number(row.owner_directed_deactivation_audits),
+            owner_directed_role_revocation_audits: Number(row.owner_directed_role_revocation_audits)
+          }, null, 2));
           NODE
 
       - name: Verify production D1 write budget for Better Auth session storage

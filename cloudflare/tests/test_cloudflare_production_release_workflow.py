@@ -24,13 +24,28 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("production-data-restore-rehearsal:\n    needs: restore-rehearsal", self.production)
         self.assertIn("production-worker:\n    needs: [restore-rehearsal, production-data-restore-rehearsal]", self.production)
         self.assertIn("needs.production-data-restore-rehearsal.result == 'success'", self.production)
-        self.assertIn("Require active Admin/Pastor owner and clean onboarded staff roster before restore rehearsal", self.production)
+        self.assertIn("Require active Admin/Pastor owner and verify owner-directed cleanup candidates before restore rehearsal", self.production)
 
     def test_preview_and_production_health_gates_require_schema_49(self):
         self.assertIn("schema_version!==49", self.preview)
         self.assertIn("schema_version!==49", self.production)
         self.assertIn("Number(row.schema_version) !== 49", self.production)
         self.assertIn("Number(row.migration_count) !== 49", self.production)
+
+    def test_owner_directed_staff_cleanup_runs_after_schema_49_and_before_worker_deploy(self):
+        self.assertIn("owner_directed_orphan_profiles", self.production)
+        self.assertIn("owner_directed_stale_assignments", self.production)
+        self.assertIn("scripts/reconcile_owner_directed_staff_cleanup.sql", self.production)
+        self.assertIn("staff_account_audit", self.production)
+        self.assertIn("owner_directed_role_revocation_audits", self.production)
+        self.assertLess(
+            self.production.index("Verify production schema and migration ledger after migration"),
+            self.production.index("Reconcile owner-directed staff deactivation and stale team-leader assignment"),
+        )
+        self.assertLess(
+            self.production.index("Reconcile owner-directed staff deactivation and stale team-leader assignment"),
+            self.production.index("Deploy reviewed Worker code to production"),
+        )
 
     def test_production_accepts_null_for_anonymous_better_auth_session(self):
         self.assertIn(
@@ -57,10 +72,12 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("summary.active_staff_profiles >= 1", self.production)
         self.assertNotIn("summary.active_staff_profiles === 1", self.production)
         self.assertNotIn("summary.assigned_role_codes === 1", self.production)
-        self.assertIn("summary.active_profiles_without_role === 0", self.production)
-        self.assertIn("summary.assignments_on_inactive_profiles === 0", self.production)
+        self.assertIn("summary.active_profiles_without_role === summary.owner_directed_orphan_profiles", self.production)
+        self.assertIn("summary.assignments_on_inactive_profiles === summary.owner_directed_stale_assignments", self.production)
+        self.assertIn("summary.invalid_first_login_setups === summary.owner_directed_orphan_profiles", self.production)
+        self.assertIn("summary.owner_directed_orphan_profiles <= 1", self.production)
+        self.assertIn("summary.owner_directed_stale_assignments <= 1", self.production)
         self.assertIn("summary.active_staff_without_credential === 0", self.production)
-        self.assertIn("summary.invalid_first_login_setups === 0", self.production)
         self.assertIn("if (!rosterReady)", self.production)
         self.assertIn("Production cutover blocked:", self.production)
         self.assertIn("Additional staff accounts may be added through staff account creation and first-login onboarding", self.production)

@@ -149,6 +149,112 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         )
         self.assertEqual(self.db.execute("PRAGMA foreign_key_check").fetchall(), [])
 
+    def test_owner_directed_staff_cleanup_reconciles_only_audited_profiles(self):
+        now = "2026-11-24T12:00:00.000Z"
+        church_id = "owner-cleanup-church"
+        branch_id = "owner-cleanup-branch"
+        reason = "Owner-directed removal of login access; preserve ministry history."
+        self.db.execute(
+            "INSERT INTO church(id,name,created_at,updated_at) VALUES(?,?,?,?)",
+            (church_id, "Owner Cleanup Test Church", now, now),
+        )
+        self.db.execute(
+            "INSERT INTO branch(id,church_id,name,timezone,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+            (branch_id, church_id, "Owner Cleanup Test Branch", "Africa/Accra", now, now),
+        )
+        identities = [
+            ("cleanup-admin-user", "cleanup-admin-profile", "Admin", "cleanup-admin@example.test", 0),
+            ("cleanup-orphan-user", "cleanup-orphan-profile", "Orphan Member", "cleanup-orphan@example.test", 1),
+            ("cleanup-inactive-user", "cleanup-inactive-profile", "Inactive Leader", "cleanup-inactive@example.test", 1),
+            ("cleanup-unrelated-user", "cleanup-unrelated-profile", "Unrelated Pending", "cleanup-unrelated@example.test", 1),
+        ]
+        for user_id, profile_id, name, email, must_change in identities:
+            self.db.execute(
+                'INSERT INTO "user"(id,name,email,emailVerified,image,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?)',
+                (user_id, name, email, 1, None, 1, 1),
+            )
+            self.db.execute(
+                """INSERT INTO staff_profile
+                   (id,auth_user_id,full_name,email,account_status,created_at,updated_at,
+                    must_change_password,password_setup_expires_at)
+                   VALUES(?,?,?,?, 'active',?,?,?,'2000-01-01T00:00:00.000Z')""",
+                (profile_id, user_id, name, email, now, now, must_change),
+            )
+
+        admin_role_id = self.db.execute("SELECT id FROM role WHERE code='admin_pastor'").fetchone()[0]
+        leader_role_id = self.db.execute("SELECT id FROM role WHERE code='team_leader'").fetchone()[0]
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at)
+               VALUES('cleanup-admin-assignment','cleanup-admin-profile',?,?,'cleanup-admin-profile','2000-01-01T00:00:00.000Z',?)""",
+            (admin_role_id, branch_id, now),
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at,reason)
+               VALUES('cleanup-inactive-assignment','cleanup-inactive-profile',?,?,'cleanup-admin-profile','2000-01-01T00:00:00.000Z',?,
+                      'Previously approved team leader assignment restored during account reactivation.')""",
+            (leader_role_id, branch_id, now),
+        )
+        self.db.execute(
+            """UPDATE staff_profile
+               SET account_status='inactive',deactivated_at=?,
+                   account_status_changed_by='cleanup-admin-profile',
+                   account_status_changed_branch_id=?,
+                   account_status_reason=?,updated_at=?
+               WHERE id='cleanup-inactive-profile'""",
+            (now, branch_id, reason, now),
+        )
+        for audit_id, target_id in [
+            ("cleanup-orphan-owner-audit", "cleanup-orphan-profile"),
+            ("cleanup-inactive-owner-audit", "cleanup-inactive-profile"),
+        ]:
+            self.db.execute(
+                """INSERT INTO staff_access_audit
+                   (id,branch_id,actor_profile_id,target_profile_id,action,reason,metadata,created_at)
+                   VALUES(?,?,?,?,?,?,?,?)""",
+                (audit_id, branch_id, "cleanup-admin-profile", target_id, "account_deactivated",
+                 reason, '{"operation":"owner_directed_account_reset","identity_anonymized":true}', now),
+            )
+
+        script = (Path(__file__).resolve().parents[1] / "scripts" /
+                  "reconcile_owner_directed_staff_cleanup.sql").read_text(encoding="utf-8")
+        self.db.executescript(script)
+
+        orphan = self.db.execute(
+            "SELECT account_status,full_name,email FROM staff_profile WHERE id='cleanup-orphan-profile'"
+        ).fetchone()
+        self.assertEqual(orphan, ("inactive", "Orphan Member", "cleanup-orphan@example.test"))
+        self.assertEqual(
+            self.db.execute("""SELECT COUNT(*) FROM staff_account_audit
+                               WHERE target_profile_id='cleanup-orphan-profile'
+                                 AND action='account_deactivated' AND reason=?""", (reason,)).fetchone()[0],
+            1,
+        )
+        self.assertEqual(
+            self.db.execute("""SELECT COUNT(*) FROM staff_access_audit
+                               WHERE id='owner-reset-reconciled-cleanup-orphan-profile'
+                                 AND action='account_deactivated'
+                                 AND json_extract(metadata,'$.identity_anonymized')=0""").fetchone()[0],
+            1,
+        )
+        assignment = self.db.execute(
+            "SELECT revoked_at,revoked_by,reason FROM staff_role_assignment WHERE id='cleanup-inactive-assignment'"
+        ).fetchone()
+        self.assertIsNotNone(assignment[0])
+        self.assertEqual(assignment[1:], ("cleanup-admin-profile", reason))
+        self.assertEqual(
+            self.db.execute("""SELECT COUNT(*) FROM staff_access_audit
+                               WHERE id='owner-reset-role-revoked-cleanup-inactive-assignment'
+                                 AND action='role_revoked'""").fetchone()[0],
+            1,
+        )
+        self.assertEqual(
+            self.db.execute("SELECT account_status FROM staff_profile WHERE id='cleanup-unrelated-profile'").fetchone()[0],
+            "active",
+        )
+        self.assertEqual(self.db.execute("PRAGMA foreign_key_check").fetchall(), [])
+
     def test_report_event_registration_checkin_and_closeout_lifecycle(self):
         now = "2026-11-22T23:00:00.000Z"
         church_id = "acceptance-church"
