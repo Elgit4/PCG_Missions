@@ -164,6 +164,7 @@ jobs:
             process.exit(1);
           }
           console.log("Production staff readiness gate passed: active Admin/Pastor owner is ready; all active accounts have credentials; any owner-directed orphan and inactive team_leader assignment are uniquely evidenced and will be reconciled after schema 49.");
+          echo "Additional staff accounts may be added through staff account creation and first-login onboarding."
           NODE
 
 
