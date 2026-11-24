@@ -18,6 +18,15 @@ class AuthenticatedAcceptanceRateLimitTests(unittest.TestCase):
         self.assertIn("await signIn(firstLoginUser", harness)
         self.assertIn("await signIn(resetTarget", harness)
 
+    def test_prayer_acceptance_uses_ephemeral_grants_without_weakening_production_policy(self):
+        harness = (ROOT / "cloudflare" / "scripts" / "run_authenticated_acceptance.mjs").read_text(encoding="utf-8")
+
+        self.assertIn("const prayerDefaultPolicy = await d1(", harness)
+        self.assertIn("PRAYER_DEFAULT_POLICY_DENIAL_PASSED", harness)
+        self.assertIn("INSERT OR IGNORE INTO role_capability", harness)
+        self.assertIn("DELETE FROM role_capability", harness)
+        self.assertIn("PRAYER_TEST_GRANTS_REMOVED", harness)
+
 
 if __name__ == "__main__":
     unittest.main()
