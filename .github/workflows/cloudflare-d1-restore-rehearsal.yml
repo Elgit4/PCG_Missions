@@ -49,10 +49,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if grep -q 'diagnostic_detail' cloudflare/src/index.ts; then
-            echo "Unexpected diagnostic detail field found in the Worker source." >&2
-            exit 1
-          fi
+          ! grep -q 'diagnostic_detail' cloudflare/src/index.ts
           grep -q 'D1_RATE_LIMIT_WRITE_FAILED' cloudflare/src/index.ts
           echo "Authentication diagnostics expose stable error codes only; SQL parameters and client addresses are not returned."
 
@@ -87,7 +84,7 @@ jobs:
           echo "id=$DB_ID" >> "$GITHUB_OUTPUT"
           echo "Created isolated EU D1 database: $DB_NAME"
 
-      - name: Apply the complete schema 47 migration chain
+      - name: Apply the complete schema 49 migration chain
         env:
           DB_NAME: ${{ steps.database.outputs.name }}
           DB_ID: ${{ steps.database.outputs.id }}
@@ -105,9 +102,9 @@ jobs:
 
           [vars]
           APP_ENV = "non-production"
-          APP_ALLOWED_ORIGINS = "http://localhost:8787"
+          APP_ALLOWED_ORIGINS = "http://localhost:8787,http://localhost:8788"
           BETTER_AUTH_URL = "http://localhost:8787"
-          BETTER_AUTH_TRUSTED_ORIGINS = "http://localhost:8787"
+          BETTER_AUTH_TRUSTED_ORIGINS = "http://localhost:8787,http://localhost:8788"
           BETTER_AUTH_SECRET = "${AUTH_SECRET}"
 
           [[d1_databases]]
@@ -137,9 +134,9 @@ jobs:
             exit "$migration_status"
           fi
           npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
-            --command "SELECT CASE WHEN schema_version=47 AND environment='non-production' THEN 'SCHEMA_47_READY' ELSE 'SCHEMA_INVALID' END AS status FROM app_meta WHERE id=1;"
+            --command "SELECT CASE WHEN schema_version=49 AND environment='non-production' THEN 'SCHEMA_49_READY' ELSE 'SCHEMA_INVALID' END AS status FROM app_meta WHERE id=1;"
           npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
-            --command "SELECT CASE WHEN COUNT(*)=47 THEN 'MIGRATION_LEDGER_47_READY' ELSE 'MIGRATION_LEDGER_INVALID' END AS status FROM d1_migrations;"
+            --command "SELECT CASE WHEN COUNT(*)=49 THEN 'MIGRATION_LEDGER_49_READY' ELSE 'MIGRATION_LEDGER_INVALID' END AS status FROM d1_migrations;"
           echo "Remote D1 binding enabled for the authenticated Worker acceptance run."
 
       - name: Verify D1 write budget before authenticated acceptance
@@ -211,9 +208,9 @@ jobs:
           BOOKMARK="$(echo "$RESPONSE" | jq -r '.result.bookmark')"
           test -n "$BOOKMARK" && test "$BOOKMARK" != "null"
           echo "value=$BOOKMARK" >> "$GITHUB_OUTPUT"
-          echo "Captured schema 47 pre-acceptance bookmark."
+          echo "Captured schema 49 pre-acceptance bookmark."
 
-      - name: Run authenticated API acceptance against temporary Worker
+      - name: Run authenticated API and browser acceptance through temporary Pages proxy
         working-directory: cloudflare
         env:
           DB_ID: ${{ steps.database.outputs.id }}
@@ -221,22 +218,67 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
           WORKER_URL: "http://127.0.0.1:8787"
+          PCG_BROWSER_CREDENTIALS_PATH: ${{ runner.temp }}/pcg-browser-credentials.json
+          PCG_BROWSER_BASE_URL: "http://localhost:8788"
         shell: bash
         run: |
           set -euo pipefail
+          PAGES_PID=""
           npx wrangler dev --config wrangler.restore-rehearsal.toml \
             --ip 0.0.0.0 --port 8787 </dev/null > "$RUNNER_TEMP/pcg-acceptance-worker.log" 2>&1 &
           WORKER_PID=$!
-          trap 'pkill -P "$WORKER_PID" 2>/dev/null || true; kill "$WORKER_PID" 2>/dev/null || true; wait "$WORKER_PID" 2>/dev/null || true' EXIT
-          for _ in $(seq 1 30); do
+          cleanup() {
+            if [[ -n "$PAGES_PID" ]]; then
+              pkill -P "$PAGES_PID" 2>/dev/null || true
+              kill "$PAGES_PID" 2>/dev/null || true
+              wait "$PAGES_PID" 2>/dev/null || true
+            fi
+            pkill -P "$WORKER_PID" 2>/dev/null || true
+            kill "$WORKER_PID" 2>/dev/null || true
+            wait "$WORKER_PID" 2>/dev/null || true
+            rm -f "$PCG_BROWSER_CREDENTIALS_PATH" ../web/.dev.vars
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 30); do
             if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://127.0.0.1:8787/health >/dev/null; then
               echo "Temporary authenticated Worker is healthy."
               set +e
               node scripts/run_authenticated_acceptance.mjs
               ACCEPTANCE_EXIT=$?
               set -e
-              grep -E "FOLLOWUP_TASK_UPDATE_CONFLICT|REPORT_REVIEW|EVENT_CLOSEOUT" "$RUNNER_TEMP/pcg-acceptance-worker.log" || true
-              exit "$ACCEPTANCE_EXIT"
+              grep -E "FOLLOWUP_TASK_UPDATE_CONFLICT|REPORT_REVIEW|EVENT_CLOSEOUT|AUTH_SIGNIN" "$RUNNER_TEMP/pcg-acceptance-worker.log" || true
+              if [[ "$ACCEPTANCE_EXIT" -ne 0 ]]; then
+                exit "$ACCEPTANCE_EXIT"
+              fi
+
+              echo "Building the actual Pages application for browser acceptance."
+              (cd ../web && npm ci --no-audit --no-fund && npm run build)
+              npm install --no-save --no-audit --no-fund playwright
+              npx playwright install --with-deps chromium
+
+              echo "PCG_MISSIONS_API_ORIGIN=http://127.0.0.1:8787" > ../web/.dev.vars
+              (cd ../web && ../cloudflare/node_modules/.bin/wrangler pages dev dist \
+                --ip 0.0.0.0 --port 8788 --compatibility-date 2026-11-22 \
+                --binding PCG_MISSIONS_API_ORIGIN=http://127.0.0.1:8787) \
+                </dev/null > "$RUNNER_TEMP/pcg-acceptance-pages.log" 2>&1 &
+              PAGES_PID=$!
+
+              pages_ready=0
+              for pages_attempt in $(seq 1 45); do
+                if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://localhost:8788/ >/dev/null; then
+                  pages_ready=1
+                  break
+                fi
+                sleep 1
+              done
+              if [[ "$pages_ready" -ne 1 ]]; then
+                cat "$RUNNER_TEMP/pcg-acceptance-pages.log"
+                echo "Temporary Pages application did not become healthy." >&2
+                exit 1
+              fi
+
+              node scripts/run_browser_acceptance.mjs
+              exit 0
             fi
             sleep 1
           done
@@ -264,9 +306,9 @@ jobs:
           echo "$RESTORE_RESPONSE" | jq -e '.success == true' >/dev/null
           echo "$RESTORE_RESPONSE" | jq -r '.result.message'
 
-          for _ in $(seq 1 12); do
+          for attempt in $(seq 1 12); do
             VERIFY="$(npx wrangler d1 execute "$DB_NAME" --remote --json --config wrangler.restore-rehearsal.toml \
-              --command "SELECT (SELECT schema_version FROM app_meta WHERE id=1) AS schema_version, (SELECT environment FROM app_meta WHERE id=1) AS environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='restore_rehearsal_probe') AS probe_table_count, (SELECT COUNT(*) FROM staff_profile) AS qa_profile_count, (SELECT COUNT(*) FROM ministry_report) AS qa_report_count, (SELECT COUNT(*) FROM event) AS qa_event_count;")"
+              --command "SELECT (SELECT schema_version FROM app_meta WHERE id=1) AS schema_version, (SELECT environment FROM app_meta WHERE id=1) AS environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='restore_rehearsal_probe') AS probe_table_count, (SELECT COUNT(*) FROM staff_profile) AS qa_profile_count, (SELECT COUNT(*) FROM ministry_report) AS qa_report_count, (SELECT COUNT(*) FROM event) AS qa_event_count, ((SELECT COUNT(*) FROM church)+(SELECT COUNT(*) FROM branch)+(SELECT COUNT(*) FROM staff_role_assignment)+(SELECT COUNT(*) FROM staff_access_audit)+(SELECT COUNT(*) FROM staff_role_elevation_request)+(SELECT COUNT(*) FROM staff_role_elevation_audit)+(SELECT COUNT(*) FROM staff_role_revocation_request)+(SELECT COUNT(*) FROM staff_role_revocation_audit)+(SELECT COUNT(*) FROM team)+(SELECT COUNT(*) FROM staff_team_membership)+(SELECT COUNT(*) FROM service_area)+(SELECT COUNT(*) FROM team_management_audit)+(SELECT COUNT(*) FROM contact)+(SELECT COUNT(*) FROM contact_assignment)+(SELECT COUNT(*) FROM contact_capture)+(SELECT COUNT(*) FROM contact_interaction)+(SELECT COUNT(*) FROM contact_note)+(SELECT COUNT(*) FROM followup_task)+(SELECT COUNT(*) FROM followup_task_event)+(SELECT COUNT(*) FROM event_staff_assignment)+(SELECT COUNT(*) FROM event_team_assignment)+(SELECT COUNT(*) FROM event_idempotency_receipt)+(SELECT COUNT(*) FROM event_checkin)+(SELECT COUNT(*) FROM event_registration)+(SELECT COUNT(*) FROM event_closeout)+(SELECT COUNT(*) FROM event_closeout_event)+(SELECT COUNT(*) FROM report_review_event)+(SELECT COUNT(*) FROM prayer_request)+(SELECT COUNT(*) FROM prayer_assignment)+(SELECT COUNT(*) FROM prayer_access_audit)+(SELECT COUNT(*) FROM sensitive_record_access_audit)+(SELECT COUNT(*) FROM staff_record_share)+(SELECT COUNT(*) FROM staff_notification)) AS qa_business_rows;")"
             SCHEMA="$(echo "$VERIFY" | jq -r '.[0].results[0].schema_version // empty')"
             ENVIRONMENT="$(echo "$VERIFY" | jq -r '.[0].results[0].environment // empty')"
             MIGRATIONS="$(echo "$VERIFY" | jq -r '.[0].results[0].migration_count // empty')"
@@ -274,13 +316,14 @@ jobs:
             PROFILES="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_profile_count // empty')"
             REPORTS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_report_count // empty')"
             EVENTS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_event_count // empty')"
-            if [ "$SCHEMA" = "47" ] && [ "$ENVIRONMENT" = "non-production" ] && [ "$MIGRATIONS" = "47" ] && [ "$PROBE" = "0" ] && [ "$PROFILES" = "0" ] && [ "$REPORTS" = "0" ] && [ "$EVENTS" = "0" ]; then
-              echo "RESTORE_REHEARSAL_PASSED: schema 47 and all 47 migration records preserved; synthetic identities, report/event records and post-bookmark probe removed."
+            BUSINESS_ROWS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_business_rows // empty')"
+            if [ "$SCHEMA" = "49" ] && [ "$ENVIRONMENT" = "non-production" ] && [ "$MIGRATIONS" = "49" ] && [ "$PROBE" = "0" ] && [ "$PROFILES" = "0" ] && [ "$REPORTS" = "0" ] && [ "$EVENTS" = "0" ] && [ "$BUSINESS_ROWS" = "0" ]; then
+              echo "RESTORE_REHEARSAL_PASSED: schema 49 and all 49 migration records preserved; all synthetic business/audit rows and the post-bookmark probe removed."
               exit 0
             fi
             sleep 5
           done
-          echo "D1 restore verification did not return to the pre-acceptance schema 47 bookmark." >&2
+          echo "D1 restore verification did not return to the pre-acceptance schema 49 bookmark." >&2
           exit 1
 
       - name: Delete isolated rehearsal database

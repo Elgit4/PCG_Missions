@@ -26,6 +26,12 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("needs.production-data-restore-rehearsal.result == 'success'", self.production)
         self.assertIn("Require active Admin/Pastor owner and clean onboarded staff roster before restore rehearsal", self.production)
 
+    def test_preview_and_production_health_gates_require_schema_49(self):
+        self.assertIn("schema_version!==49", self.preview)
+        self.assertIn("schema_version!==49", self.production)
+        self.assertIn("Number(row.schema_version) !== 49", self.production)
+        self.assertIn("Number(row.migration_count) !== 49", self.production)
+
     def test_production_accepts_null_for_anonymous_better_auth_session(self):
         self.assertIn(
             'if(p!==null && (typeof p!=="object" || Array.isArray(p) || p.error)) process.exit(1)',
