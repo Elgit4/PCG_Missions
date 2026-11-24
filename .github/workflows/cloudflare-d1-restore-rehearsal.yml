@@ -3,11 +3,6 @@ name: Cloudflare D1 Restore and Authenticated API Rehearsal
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches:
-      - migration/cloudflare-auth-consolidation
-    paths:
-      - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
 
 permissions:
   contents: read
