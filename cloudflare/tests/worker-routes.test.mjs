@@ -396,7 +396,7 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           ["contacts.interaction.create", "branch"],
         ]
       : roleCode === "team_leader"
-        ? [["team.read", "team"], ["area.read", "team"]]
+        ? [["team.read", "team"], ["area.read", "team"], ["contacts.read", "team"]]
         : [];
   for (const grant of additionalCapabilities) {
     if (!capabilityRows.some(([code, scope]) => code === grant[0] && scope === grant[1])) {
