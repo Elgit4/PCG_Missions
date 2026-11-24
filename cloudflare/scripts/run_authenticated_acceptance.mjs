@@ -1149,6 +1149,57 @@ if (scheduledReminderAfterReassignment.due_tasks_found !== 1 ||
     scheduledReminderAfterReassignment.notifications_created !== 1) {
   throw new Error("Reassigning a due task did not create one reminder for the new assignee: " + JSON.stringify(scheduledReminderAfterReassignment));
 }
+
+const revokedReminderRole = await api(adminCookie, "/api/v1/staff/roles", "POST", {
+  target_profile_id: unassigned.profileId,
+  role_code: "field_worker",
+  reason: "Synthetic acceptance creates a role assignment that is revoked before due-reminder processing.",
+});
+if (revokedReminderRole.status !== 201 || !revokedReminderRole.payload?.data?.id) {
+  throw new Error("Could not create the revoked-role reminder fixture.");
+}
+const revokedReminderRoleId = revokedReminderRole.payload.data.id;
+const revokedReminderRoleResult = await api(
+  adminCookie,
+  "/api/v1/staff/roles/" + revokedReminderRoleId,
+  "DELETE",
+  { reason: "Synthetic acceptance verifies revoked staff cannot receive scheduled reminders." },
+);
+if (revokedReminderRoleResult.status !== 200) {
+  throw new Error("Could not revoke the reminder fixture role before scheduled processing.");
+}
+const revokedAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/tasks", "POST", {
+  contact_id: contactId,
+  assignee_user_id: worker.userId,
+  priority: 2,
+  due_at: new Date(Date.now() - 10_000).toISOString(),
+  task_note: "Synthetic revoked-assignee reminder exclusion fixture",
+}, "qa-revoked-reminder-" + runId);
+if (revokedAssigneeTaskCreate.status !== 201 || !revokedAssigneeTaskCreate.payload?.data?.id) {
+  throw new Error("Could not create the revoked-assignee follow-up fixture.");
+}
+const revokedAssigneeTaskId = revokedAssigneeTaskCreate.payload.data.id;
+// Seed the otherwise-invalid historical assignment directly in disposable D1.
+// This deliberately bypasses the API's assignment guard so the scheduler's
+// own active-role exclusion is tested independently.
+await d1(
+  "UPDATE followup_task SET assignee_user_id=? WHERE id=? AND branch_id=?",
+  [unassigned.userId, revokedAssigneeTaskId, branchId],
+);
+const scheduledReminderForRevokedAssignee = await processDueFollowupReminders(
+  { DB: scheduledReminderDb },
+  Date.now(),
+);
+const revokedAssigneeReminderCount = (await d1(
+  "SELECT COUNT(*) AS count FROM staff_notification WHERE target_type='followup_task' AND target_id=? AND category='system'",
+  [revokedAssigneeTaskId],
+))[0]?.count;
+if (scheduledReminderForRevokedAssignee.due_tasks_found !== 0 ||
+    scheduledReminderForRevokedAssignee.notifications_created !== 0 ||
+    Number(revokedAssigneeReminderCount) !== 0) {
+  throw new Error("Scheduled follow-up processor notified a user whose role assignment had been revoked.");
+}
+
 const scheduledReminderRows = await d1(
   "SELECT id,branch_id,recipient_user_id,category,target_type,target_id,idempotency_key FROM staff_notification WHERE target_type='followup_task' AND target_id=? AND category='system' ORDER BY created_at,id",
   [scheduledReminderTaskId],
@@ -1652,6 +1703,8 @@ const checks = {
     scheduledReminderReplay.notifications_created === 0 &&
     scheduledReminderAfterReschedule.notifications_created === 1 &&
     scheduledReminderAfterReassignment.notifications_created === 1 &&
+    scheduledReminderForRevokedAssignee.notifications_created === 0 &&
+    Number(revokedAssigneeReminderCount) === 0 &&
     scheduledReminderRows.length === 3 &&
     workerReminderRows.length === 2 && volunteerReminderRows.length === 1,
   scheduledReminderRecipientScoped: Boolean(scheduledReminderNotification) &&
