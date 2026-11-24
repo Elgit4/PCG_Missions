@@ -1,5 +1,7 @@
 name: Validate PCG Missions Production Workflow
 
+# Keep this gate limited to the production release workflow; unrelated shell scripts have separate tests.
+
 on:
   push:
     branches:
