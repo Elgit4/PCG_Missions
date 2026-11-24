@@ -17,7 +17,7 @@ describe("Cloudflare Better Auth browser client", () => {
     expect(url).toBe("/api/auth/sign-in/email");
     expect(init.credentials).toBe("include");
     expect(new Headers(init.headers).has("Authorization")).toBe(false);
-    expect(JSON.parse(String(init.body))).toEqual({ email: "staff@example.test", password: "A-valid-password" });
+    expect(JSON.parse(String(init.body))).toEqual({ email: "staff@example.test", password: "A-valid-password", rememberMe: true });
   });
 
   it("restores session through the cookie endpoint", async () => {
