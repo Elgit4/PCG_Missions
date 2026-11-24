@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   production-roster-preflight:
-    name: Require active Admin/Pastor owner and clean onboarded staff roster before restore rehearsal
+    name: Verify Admin/Pastor owner and guarded roster baseline before restore rehearsal
     if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -49,7 +49,35 @@ jobs:
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           npx --yes wrangler@4.166.0 whoami
 
+      - name: Confirm exact owner-approved production test-login cleanup baseline
+        id: owner_cleanup_preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute pcg-missions-production --remote --env production --json --file=./scripts/preflight_test_staff_login_cleanup.sql > /tmp/pcg-owner-cleanup-preflight.json
+          node - /tmp/pcg-owner-cleanup-preflight.json <<'NODE'
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const candidates = [];
+          const visit = (value) => {
+            if (Array.isArray(value)) return value.forEach(visit);
+            if (!value || typeof value !== "object") return;
+            if (Object.hasOwn(value, "cleanup_allowed")) candidates.push(value);
+            Object.values(value).forEach(visit);
+          };
+          visit(payload);
+          const row = candidates[0];
+          if (!row || Number(row.cleanup_allowed) !== 1) {
+            console.error("Production test-login cleanup preflight failed. The environment, exact owner-approved staff targets, or zero-business-data condition did not match.");
+            process.exit(1);
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, "cleanup_allowed=true\n");
+          console.log("OWNER_APPROVED_CLEANUP_BASELINE_CONFIRMED");
+          NODE
+
       - name: Verify production Admin/Pastor bootstrap and report staff roster readiness
+        env:
+          OWNER_CLEANUP_ALLOWED: \${{ steps.owner_cleanup_preflight.outputs.cleanup_allowed }}
         shell: bash
         run: |
           set -euo pipefail
@@ -132,11 +160,16 @@ jobs:
             summary.assignments_on_inactive_profiles === 0 &&
             summary.active_staff_without_credential === 0 &&
             summary.invalid_first_login_setups === 0;
-          if (!rosterReady) {
-            console.error("Production cutover blocked: require one credential-ready active Admin/Pastor owner; every other active staff account must have a valid credential and effective role. Resolve stale assignments and expired first-login setups before production migration. Additional staff accounts may be added through staff account creation and first-login onboarding after cutover.");
+          const ownerCleanupAllowed = process.env.OWNER_CLEANUP_ALLOWED === "true";
+          if (!rosterReady && !ownerCleanupAllowed) {
+            console.error("Production cutover blocked: roster is neither clean nor the exact owner-approved test-login cleanup baseline.");
             process.exit(1);
           }
-          console.log("Production staff readiness gate passed: at least one credential-ready active Admin/Pastor owner; all active staff have credentials and effective roles; no stale assignments or expired first-login setups.");
+          if (rosterReady) {
+            console.log("Production staff readiness gate passed: active staff have credentials and effective roles; no stale assignments or expired first-login setups.");
+          } else {
+            console.log("Production roster matches the exact owner-approved cleanup baseline. The guarded production job will remove the two test logins after migration 0047 and verify the roster again before deployment.");
+          }
           NODE
 
 
