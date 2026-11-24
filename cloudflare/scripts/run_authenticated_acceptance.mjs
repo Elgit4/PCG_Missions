@@ -1051,10 +1051,16 @@ if (scheduledReminderReplay.due_tasks_found !== 0 ||
   throw new Error("Repeated scheduled invocation created or selected a duplicate reminder: " + JSON.stringify(scheduledReminderReplay));
 }
 const rescheduledReminderDueAt = new Date(Date.now() - 30_000).toISOString();
-await d1(
-  "UPDATE followup_task SET due_at=?,updated_at=? WHERE id=? AND status IN ('open','in_progress')",
-  [rescheduledReminderDueAt, new Date().toISOString(), scheduledReminderTaskId],
+const reminderReschedule = await api(
+  workerCookie,
+  "/api/v1/followup/tasks/" + scheduledReminderTaskId,
+  "PATCH",
+  { due_at: rescheduledReminderDueAt },
 );
+if (reminderReschedule.status !== 200 ||
+    reminderReschedule.payload?.data?.due_at !== rescheduledReminderDueAt) {
+  throw new Error("Scheduled reminder fixture could not be rescheduled through the authenticated follow-up workflow.");
+}
 const scheduledReminderAfterReschedule = await processDueFollowupReminders(
   { DB: scheduledReminderDb },
   Date.now(),
