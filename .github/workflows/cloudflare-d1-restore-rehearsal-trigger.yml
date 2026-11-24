@@ -6,6 +6,7 @@ on:
       - migration/cloudflare-auth-consolidation
     paths:
       - ".github/workflows/cloudflare-d1-restore-rehearsal-trigger.yml"
+      - "cloudflare/scripts/run_authenticated_acceptance.mjs"
 
 permissions:
   contents: read
