@@ -644,7 +644,12 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
             const [title, body, , updated_at] = this.values;
             announcementRow = { ...announcementRow, title, body, updated_at };
           }
-          return { success: true, meta: { changes: 1 } };
+          return {
+            success: true,
+            // Calendar update triggers append an audit row in addition to
+            // the entry update, so D1 reports two changes.
+            meta: { changes: this.sql.includes("UPDATE calendar_entry") ? 2 : 1 },
+          };
         },
       };
       return statement;
