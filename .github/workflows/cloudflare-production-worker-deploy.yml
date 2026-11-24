@@ -77,7 +77,7 @@ jobs:
 
       - name: Verify production Admin/Pastor bootstrap and report staff roster readiness
         env:
-          OWNER_CLEANUP_ALLOWED: \${{ steps.owner_cleanup_preflight.outputs.cleanup_allowed }}
+          OWNER_CLEANUP_ALLOWED: ${{ steps.owner_cleanup_preflight.outputs.cleanup_allowed }}
         shell: bash
         run: |
           set -euo pipefail
