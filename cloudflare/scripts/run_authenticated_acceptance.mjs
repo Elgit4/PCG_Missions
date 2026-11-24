@@ -499,9 +499,13 @@ const assignmentPrecheck = await d1(
        JOIN role_capability rc ON rc.role_id=r.id
        JOIN capability c ON c.id=rc.capability_id AND c.code='contacts.assign' AND c.is_active=1
        WHERE ra.staff_profile_id=? AND ra.branch_id=? AND ra.revoked_at IS NULL
-         AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?)) AS admin_assign_grants`,
+         AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?)) AS admin_assign_grants,
+     (SELECT COUNT(*) FROM staff_profile WHERE id=? AND auth_user_id=? AND account_status='active') AS admin_identity_active,
+     (SELECT COUNT(*) FROM contact WHERE id=? AND branch_id=? AND contact_status='active') AS contact_active,
+     (SELECT COUNT(*) FROM branch WHERE id=? AND is_active=1) AS branch_active`,
   [contactId, branchId, contactId, branchId, new Date().toISOString(), new Date().toISOString(),
-   teamId, branchId, admin.profileId, branchId, new Date().toISOString(), new Date().toISOString()],
+   teamId, branchId, admin.profileId, branchId, new Date().toISOString(), new Date().toISOString(),
+   admin.profileId, admin.userId, contactId, branchId, branchId],
 );
 console.log("CONTACT_ASSIGNMENT_PRECHECK", JSON.stringify(assignmentPrecheck[0] ?? {}));
 
