@@ -1,5 +1,8 @@
 # PCG Missions — Cloudflare migration status
 
+> **Historical snapshot — 22 November 2026.** This file is retained for migration history and is not the current release status. As of 24 November, the main branch contains the schema-49 release candidate and the scheduled follow-up reminder processor; preview deployment of that candidate is in progress. Production remains on D1 schema 45 and Worker version 20. The latest guarded release rehearsal passed roster preflight but stopped at D1 error 7500 before production mutation. Use [OPERATIONS_RUNBOOK.md](./OPERATIONS_RUNBOOK.md) and [PRODUCTION_CUTOVER_READINESS_2026-11-24.md](../docs/PRODUCTION_CUTOVER_READINESS_2026-11-24.md) for current controls and blockers.
+
+
 **Verified:** 22 November 2026 (UTC)  
 **Branch:** `migration/cloudflare-auth-consolidation`  
 **Status:** Cloudflare production baseline remains live. Preview target is schema 47 with the current Worker. Production schema and Worker have not received the schema 47 release.
