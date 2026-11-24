@@ -263,15 +263,13 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
                 ("2026-11-27T12:00:00.000Z", assignment_id),
             )
 
-    def test_owner_cleanup_refuses_non_production_database(self):
+    def test_owner_cleanup_preflight_refuses_non_production_database(self):
         environment = self.db.execute(
             "SELECT environment FROM app_meta WHERE id = 1"
         ).fetchone()[0]
         self.assertEqual(environment, "non-production")
-        cleanup = (Path(__file__).resolve().parents[1] / "scripts" / "remove_test_staff_logins.sql").read_text(encoding="utf-8")
-
-        with self.assertRaises(sqlite3.IntegrityError):
-            self.db.executescript(cleanup)
+        preflight = (Path(__file__).resolve().parents[1] / "scripts" / "preflight_test_staff_login_cleanup.sql").read_text(encoding="utf-8")
+        self.assertEqual(self.db.execute(preflight).fetchone()[0], 0)
 
     def test_owner_cleanup_removes_test_logins_but_preserves_staff_history_and_allows_reuse(self):
         now = "2026-11-23T23:00:00.000Z"
@@ -354,6 +352,8 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         )
 
         self.db.execute("UPDATE app_meta SET environment='production' WHERE id=1")
+        preflight = (Path(__file__).resolve().parents[1] / "scripts" / "preflight_test_staff_login_cleanup.sql").read_text(encoding="utf-8")
+        self.assertEqual(self.db.execute(preflight).fetchone()[0], 1)
         cleanup = Path(__file__).resolve().parents[1] / "scripts" / "remove_test_staff_logins.sql"
         script = cleanup.read_text(encoding="utf-8")
         self.db.executescript(script)
