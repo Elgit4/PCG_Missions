@@ -110,4 +110,5 @@ SELECT
   (SELECT COUNT(*) FROM followup_task) AS followup_tasks,
   (SELECT COUNT(*) FROM event) AS events,
   (SELECT COUNT(*) FROM ministry_report) AS reports,
-  (SELECT COUNT(*) FROM prayer_request) AS prayer_requests;
+  (SELECT COUNT(*) FROM prayer_request) AS prayer_requests
+FROM app_meta WHERE id = 1;
