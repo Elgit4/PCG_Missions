@@ -1,0 +1,47 @@
+name: CMI Edge Function checks
+
+on:
+  push:
+    branches: [main, backend/cmi-foundation]
+    paths:
+      - "supabase/functions/**"
+      - ".github/workflows/cmi-edge-functions.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "supabase/functions/**"
+      - ".github/workflows/cmi-edge-functions.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cmi-edge-functions-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  edge-functions:
+    name: Format, lint, type-check and unit-test Edge Functions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Format check
+        run: deno fmt --check supabase/functions
+
+      - name: Lint
+        run: deno lint supabase/functions
+
+      - name: Type check
+        run: deno check supabase/functions/health-check/index.ts
+
+      - name: Unit tests
+        run: deno test --allow-env supabase/functions/_shared/http_test.ts

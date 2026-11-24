@@ -1,0 +1,138 @@
+name: PCG Missions Cloudflare Auth Preview Release
+
+on:
+  push:
+    branches:
+      - migration/cloudflare-auth-consolidation
+    paths:
+      - "cloudflare/src/**"
+      - "cloudflare/migrations/**"
+      - "cloudflare/scripts/**"
+      - "cloudflare/tests/**"
+      - "cloudflare/package.json"
+      - "cloudflare/wrangler.toml"
+      - ".github/workflows/cloudflare-preview-deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+# Keep routine preview releases separate from the expensive full restore rehearsal, which runs before production cutover.
+concurrency:
+  group: pcg-missions-preview-release-v3
+  cancel-in-progress: false
+
+jobs:
+  validate-migrate-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    defaults:
+      run:
+        working-directory: cloudflare
+    env:
+      CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - name: Check out Cloudflare auth consolidation
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Worker dependencies
+        run: npm install --no-package-lock --ignore-scripts --no-audit --no-fund
+
+      - name: Validate SQLite migrations and security invariants
+        working-directory: .
+        run: python -m unittest discover -s cloudflare/tests -p "test_*.py" -v
+
+      - name: Type-check and test Cloudflare Worker
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Require preview deployment credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+            echo "::error title=Cloudflare token unavailable::CLOUDFLARE_API_TOKEN is not available to this GitHub Actions workflow."
+            exit 1
+          fi
+          npx wrangler whoami
+
+      # Build once and retain the exact artifact so a Cloudflare-connector
+      # deployment can reuse this tested bundle without rebuilding from source.
+      - name: Build the Better Auth preview Worker bundle
+        run: |
+          rm -rf dist
+          npx wrangler deploy --env preview --dry-run --outdir dist
+          test -s dist/index.js
+          node --check dist/index.js
+
+      - name: Upload the exact preview bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: pcg-missions-auth-preview-bundle
+          path: cloudflare/dist/index.js
+          if-no-files-found: error
+          retention-days: 2
+
+      - name: Apply forward-only schema 49 to the isolated EU preview D1
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          npx wrangler d1 migrations apply pcg-missions-migration-test --remote --env preview 2>&1 | tee /tmp/pcg-preview-migrations.log
+          migration_status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$migration_status" -ne 0 ]] && grep -Eiq "7500|daily row write limit|free tier" /tmp/pcg-preview-migrations.log; then
+            reset_at="$(date -u -d '00:05 tomorrow' +%s)"
+            now="$(date -u +%s)"
+            wait_seconds=$((reset_at - now))
+            if [[ "$wait_seconds" -le 0 || "$wait_seconds" -gt 18000 ]]; then
+              echo "::error title=D1 free-tier daily write limit::Cloudflare D1 returned code 7500. Re-run after the UTC quota reset or use a paid D1 plan."
+              exit 1
+            fi
+            echo "::warning title=D1 daily write quota exhausted::Waiting until 00:05 UTC for the account's daily row-write quota to reset, then retrying the same forward-only preview migration."
+            sleep "$wait_seconds"
+            npx wrangler d1 migrations apply pcg-missions-migration-test --remote --env preview
+          elif [[ "$migration_status" -ne 0 ]]; then
+            exit "$migration_status"
+          fi
+
+      - name: Preflight Worker script write permission without changing traffic
+        run: npx wrangler versions upload --env preview --message "PCG Missions Better Auth schema 49 deployment preflight"
+
+      # BETTER_AUTH_SECRET was provisioned directly on the isolated preview Worker.
+      # Keep it out of GitHub logs and repository configuration.
+
+      - name: Deploy Better Auth Worker to preview only
+        run: npx wrangler deploy --env preview
+
+      - name: Verify deployed preview health and anonymous boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
+          health="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error "$url/health")"
+          echo "$health"
+          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="non-production" || p.schema_version!==49 || p.auth_configuration!=="ready") process.exit(1)' "$health"
+          me_status="$(curl --silent --show-error -o /tmp/me.json -w "%{http_code}" "$url/api/v1/me")"
+          cat /tmp/me.json
+          test "$me_status" = "401"
+          node -e 'const p=JSON.parse(require("fs").readFileSync("/tmp/me.json","utf8")); if(p.error?.code!=="UNAUTHENTICATED") process.exit(1)'
+          session_status="$(curl --silent --show-error -o /tmp/session.json -w "%{http_code}" "$url/api/auth/get-session")"
+          cat /tmp/session.json
+          test "$session_status" = "200"

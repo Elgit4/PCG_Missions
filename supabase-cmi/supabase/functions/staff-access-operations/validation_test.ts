@@ -1,0 +1,72 @@
+import {
+  parseAccessMutation,
+  parsePathUuid,
+  parseRoleAssignment,
+} from "./validation.ts";
+const b = "20000000-0000-4000-8000-000000000001",
+  p = "30000000-0000-4000-8000-000000000001";
+Deno.test("role assignment accepts known roles and explicit timestamp offsets", () => {
+  const r = parseRoleAssignment({
+    branch_id: b,
+    staff_profile_id: p,
+    role_code: "field_worker",
+    starts_at: "2026-11-09T12:00:00Z",
+    ends_at: "2026-12-09T12:00:00+00:00",
+    reason: "Approved assignment for field operations",
+  });
+  if (!r.ok || !r.value.ends_at) throw new Error("Valid assignment rejected.");
+});
+Deno.test("role assignment rejects forged actor and capability fields", () => {
+  const r = parseRoleAssignment({
+    branch_id: b,
+    staff_profile_id: p,
+    role_code: "admin_pastor",
+    starts_at: "2026-11-09T12:00:00Z",
+    reason: "Approved role assignment",
+    actor_id: "forged",
+    capabilities: ["access.role.assign"],
+  });
+  if (r.ok) throw new Error("Untrusted authorization fields accepted.");
+});
+Deno.test("role assignment rejects invalid roles, IDs, times, intervals and reasons", () => {
+  const x = {
+    branch_id: b,
+    staff_profile_id: p,
+    role_code: "field_worker",
+    starts_at: "2026-11-09T12:00:00Z",
+    reason: "Approved role assignment",
+  };
+  for (
+    const v of [
+      { ...x, role_code: "super_admin" },
+      { ...x, branch_id: "bad" },
+      { ...x, starts_at: "2026-11-09T12:00:00" },
+      { ...x, ends_at: "2026-11-08T12:00:00Z" },
+      { ...x, reason: "short" },
+    ]
+  ) {
+    if (parseRoleAssignment(v).ok) {
+      throw new Error("Invalid assignment accepted.");
+    }
+  }
+});
+Deno.test("account mutation cannot select target status", () => {
+  if (
+    !parseAccessMutation({
+      branch_id: b,
+      reason: "Staff member has left the ministry team",
+    }).ok
+  ) throw new Error("Valid request rejected.");
+  if (
+    parseAccessMutation({
+      branch_id: b,
+      reason: "Staff member has left the ministry team",
+      account_status: "active",
+    }).ok
+  ) throw new Error("Caller selected status.");
+});
+Deno.test("path IDs must be UUIDs", () => {
+  if (parsePathUuid(p) !== p || parsePathUuid("staff-1") !== null) {
+    throw new Error("Path UUID validation failed.");
+  }
+});

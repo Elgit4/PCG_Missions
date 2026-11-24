@@ -1,0 +1,15 @@
+# Environment secrets and local configuration
+.env
+.env.*
+!.env.example
+supabase/.env
+supabase/.env.*
+!supabase/.env.example
+
+# Supabase CLI local state
+supabase/.temp/
+supabase/.branches/
+
+# Local database / container state
+.DS_Store
+Thumbs.db

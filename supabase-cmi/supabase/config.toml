@@ -1,0 +1,94 @@
+# CMI Follow-up's isolated local Supabase workspace.
+# This is deliberately separate from /supabase, which contains historical
+# ChurchConnect migrations and must never be applied to the CMI database.
+project_id = "pcg-missions-cmi-local"
+
+[api]
+enabled = true
+port = 55321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 500
+
+[db]
+port = 55322
+shadow_port = 55320
+major_version = 17
+
+[db.seed]
+enabled = false
+
+[studio]
+enabled = true
+port = 55323
+
+# Keep the local email-capture service isolated from other Supabase projects.
+[local_smtp]
+enabled = true
+port = 55324
+smtp_port = 55325
+pop3_port = 55326
+
+[auth]
+enabled = true
+site_url = "http://localhost:5173"
+additional_redirect_urls = ["http://localhost:5173/**"]
+
+[functions.public-content]
+# Public, read-only projection. The function enforces GET/OPTIONS and exact origin allowlisting.
+verify_jwt = false
+
+
+[functions.staff-session]
+# Staff JWT required. The function also validates the token with Supabase Auth.
+verify_jwt = true
+
+[functions.staff-operations]
+# Staff JWT required. Business access is separately checked against capabilities.
+verify_jwt = true
+
+[functions.pastoral-operations]
+# Restricted narratives are returned only through audited server transactions.
+verify_jwt = true
+
+[functions.staff-access-operations]
+# Protected staff access administration; validates JWT and database capabilities.
+verify_jwt = true
+
+[functions.event-operations]
+# Branch-scoped private event-draft operations.
+verify_jwt = true
+
+[functions.announcement-operations]
+# Branch-scoped private announcement-draft operations.
+verify_jwt = true
+
+[functions.content-operations]
+# Branch-scoped private sermon and welcome-message drafts.
+verify_jwt = true
+
+[functions.calendar-operations]
+# Branch-scoped calendar operations.
+verify_jwt = true
+
+[functions.team-operations]
+# Branch-scoped team membership and service-area administration.
+verify_jwt = true
+
+[functions.report-operations]
+# Authenticated typed ministry reports with own/team/branch scope enforcement.
+verify_jwt = true
+
+
+[functions.staff-auth]
+# Public recovery request + one-time bootstrap routes use dedicated abuse controls
+# and a server-only bootstrap token. Authenticated admin routes validate JWTs in code.
+verify_jwt = false
+
+[functions.staff-notifications]
+# Private per-recipient notification inbox; branch and recipient ownership are checked in code.
+verify_jwt = true
+
+[functions.event-flyers]
+# Private, branch-authorised event flyer upload and short-lived preview URLs.
+verify_jwt = true

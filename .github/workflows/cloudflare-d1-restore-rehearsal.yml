@@ -1,0 +1,333 @@
+name: Cloudflare D1 Restore and Authenticated API Rehearsal
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches:
+      - migration/cloudflare-auth-consolidation
+    paths:
+      - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcg-missions-d1-restore-rehearsal-v3
+  # Never cancel a live restore rehearsal: it may leave a remote D1 database behind.
+  cancel-in-progress: false
+
+jobs:
+  restore-rehearsal:
+    runs-on: ubuntu-latest
+    # Allow one quota-reset wait (up to five hours) plus the actual restore and acceptance run.
+    timeout-minutes: 360
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
+    steps:
+      - name: Check out migration branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Require the reviewed Better Auth D1 adapter
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'drizzleAdapter' cloudflare/src/auth.ts
+          grep -q 'authSchema' cloudflare/src/auth.ts
+          echo "Authenticated restore rehearsal is testing the Drizzle-backed Better Auth implementation."
+
+      - name: Verify non-production auth diagnostics do not expose query details
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! grep -q 'diagnostic_detail' cloudflare/src/index.ts
+          grep -q 'D1_RATE_LIMIT_WRITE_FAILED' cloudflare/src/index.ts
+          echo "Authentication diagnostics expose stable error codes only; SQL parameters and client addresses are not returned."
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Worker tooling
+        working-directory: cloudflare
+        run: npm install --no-audit --no-fund
+
+      - name: Create isolated EU rehearsal database
+        id: database
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${CLOUDFLARE_API_TOKEN:-}" ]; then
+            echo "CLOUDFLARE_API_TOKEN is required" >&2
+            exit 1
+          fi
+          DB_NAME="pcg-missions-restore-rehearsal-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -X POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -n --arg name "$DB_NAME" '{name:$name,jurisdiction:"eu",read_replication:{mode:"disabled"}}')")"
+          echo "$RESPONSE" | jq -e '.success == true' >/dev/null
+          DB_ID="$(echo "$RESPONSE" | jq -r '.result.uuid')"
+          test -n "$DB_ID" && test "$DB_ID" != "null"
+          echo "name=$DB_NAME" >> "$GITHUB_OUTPUT"
+          echo "id=$DB_ID" >> "$GITHUB_OUTPUT"
+          echo "Created isolated EU D1 database: $DB_NAME"
+
+      - name: Apply the complete schema 49 migration chain
+        env:
+          DB_NAME: ${{ steps.database.outputs.name }}
+          DB_ID: ${{ steps.database.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          AUTH_SECRET="$(openssl rand -hex 32)"
+          echo "::add-mask::$AUTH_SECRET"
+          cat > cloudflare/wrangler.restore-rehearsal.toml <<EOF
+          name = "pcg-missions-restore-rehearsal"
+          main = "src/index.ts"
+          account_id = "${CLOUDFLARE_ACCOUNT_ID}"
+          compatibility_date = "2026-11-22"
+          compatibility_flags = ["nodejs_compat"]
+
+          [vars]
+          APP_ENV = "non-production"
+          APP_ALLOWED_ORIGINS = "http://localhost:8787,http://localhost:8788"
+          BETTER_AUTH_URL = "http://localhost:8787"
+          BETTER_AUTH_TRUSTED_ORIGINS = "http://localhost:8787,http://localhost:8788"
+          BETTER_AUTH_SECRET = "${AUTH_SECRET}"
+
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "${DB_NAME}"
+          database_id = "${DB_ID}"
+          migrations_dir = "migrations"
+          remote = true
+          EOF
+          cd cloudflare
+          set +e
+          npx wrangler d1 migrations apply "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml 2>&1 | tee /tmp/pcg-d1-migrations.log
+          migration_status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$migration_status" -ne 0 ]] && grep -Eiq "7500|daily row write limit" /tmp/pcg-d1-migrations.log; then
+            reset_at="$(date -u -d '00:05 tomorrow' +%s)"
+            now="$(date -u +%s)"
+            wait_seconds=$((reset_at - now))
+            if [[ "$wait_seconds" -le 0 || "$wait_seconds" -gt 18000 ]]; then
+              echo "::error title=D1 free-tier daily write limit::Cloudflare D1 returned code 7500. Re-run this recovery rehearsal after the UTC daily quota reset or use a paid D1 plan."
+              exit 1
+            fi
+            echo "::warning title=D1 daily write quota exhausted::Waiting until 00:05 UTC for the account's daily row-write quota to reset, then retrying the same isolated migration database."
+            sleep "$wait_seconds"
+            npx wrangler d1 migrations apply "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml
+          elif [[ "$migration_status" -ne 0 ]]; then
+            exit "$migration_status"
+          fi
+          npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
+            --command "SELECT CASE WHEN schema_version=49 AND environment='non-production' THEN 'SCHEMA_49_READY' ELSE 'SCHEMA_INVALID' END AS status FROM app_meta WHERE id=1;"
+          npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
+            --command "SELECT CASE WHEN COUNT(*)=49 THEN 'MIGRATION_LEDGER_49_READY' ELSE 'MIGRATION_LEDGER_INVALID' END AS status FROM d1_migrations;"
+          echo "Remote D1 binding enabled for the authenticated Worker acceptance run."
+
+      - name: Verify D1 write budget before authenticated acceptance
+        working-directory: cloudflare
+        env:
+          DB_NAME: ${{ steps.database.outputs.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          probe_id="pcg-rate-limit-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          probe_key="pcg-rate-limit-probe-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          insert_sql="INSERT INTO rateLimit (id,key,count,lastRequest) VALUES ('${probe_id}','${probe_key}',1,$(date -u +%s%3N))"
+          delete_sql="DELETE FROM rateLimit WHERE id='${probe_id}'"
+
+          wait_for_quota_reset() {
+            reset_at="$(date -u -d '00:05 tomorrow' +%s)"
+            now="$(date -u +%s)"
+            wait_seconds=$((reset_at - now))
+            if [[ "$wait_seconds" -le 0 || "$wait_seconds" -gt 18000 ]]; then
+              echo "::error title=D1 free-tier daily write limit::Cloudflare D1 row-write quota is exhausted outside the supported five-hour wait window."
+              return 1
+            fi
+            echo "::warning title=D1 daily write quota exhausted::Waiting until 00:05 UTC before retrying the authenticated acceptance write probe."
+            sleep "$wait_seconds"
+          }
+
+          run_probe_sql() {
+            local sql="$1"
+            local log_file="$2"
+            set +e
+            npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml --command "$sql" 2>&1 | tee "$log_file"
+            local status=${PIPESTATUS[0]}
+            set -e
+            if [[ "$status" -ne 0 ]] && grep -Eiq "7500|daily row write limit|free tier" "$log_file"; then
+              return 75
+            fi
+            return "$status"
+          }
+
+          if run_probe_sql "$insert_sql" /tmp/pcg-restore-write-probe-insert.log; then
+            :
+          else
+            status=$?
+            if [[ "$status" -ne 75 ]]; then exit "$status"; fi
+            wait_for_quota_reset
+            run_probe_sql "$insert_sql" /tmp/pcg-restore-write-probe-insert-retry.log
+          fi
+
+          if run_probe_sql "$delete_sql" /tmp/pcg-restore-write-probe-delete.log; then
+            :
+          else
+            status=$?
+            if [[ "$status" -ne 75 ]]; then exit "$status"; fi
+            wait_for_quota_reset
+            run_probe_sql "$delete_sql" /tmp/pcg-restore-write-probe-delete-retry.log
+          fi
+
+      - name: Capture pre-acceptance Time Travel bookmark
+        id: bookmark
+        env:
+          DB_ID: ${{ steps.database.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DB_ID}/time_travel/bookmark")"
+          echo "$RESPONSE" | jq -e '.success == true' >/dev/null
+          BOOKMARK="$(echo "$RESPONSE" | jq -r '.result.bookmark')"
+          test -n "$BOOKMARK" && test "$BOOKMARK" != "null"
+          echo "value=$BOOKMARK" >> "$GITHUB_OUTPUT"
+          echo "Captured schema 49 pre-acceptance bookmark."
+
+      - name: Run authenticated API and browser acceptance through temporary Pages proxy
+        working-directory: cloudflare
+        env:
+          DB_ID: ${{ steps.database.outputs.id }}
+          DB_NAME: ${{ steps.database.outputs.name }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
+          WORKER_URL: "http://127.0.0.1:8787"
+          PCG_BROWSER_CREDENTIALS_PATH: ${{ runner.temp }}/pcg-browser-credentials.json
+          PCG_BROWSER_BASE_URL: "http://localhost:8788"
+        shell: bash
+        run: |
+          set -euo pipefail
+          PAGES_PID=""
+          npx wrangler dev --config wrangler.restore-rehearsal.toml \
+            --ip 0.0.0.0 --port 8787 </dev/null > "$RUNNER_TEMP/pcg-acceptance-worker.log" 2>&1 &
+          WORKER_PID=$!
+          cleanup() {
+            if [[ -n "$PAGES_PID" ]]; then
+              pkill -P "$PAGES_PID" 2>/dev/null || true
+              kill "$PAGES_PID" 2>/dev/null || true
+              wait "$PAGES_PID" 2>/dev/null || true
+            fi
+            pkill -P "$WORKER_PID" 2>/dev/null || true
+            kill "$WORKER_PID" 2>/dev/null || true
+            wait "$WORKER_PID" 2>/dev/null || true
+            rm -f "$PCG_BROWSER_CREDENTIALS_PATH" ../web/.dev.vars
+          }
+          trap cleanup EXIT
+          for attempt in $(seq 1 30); do
+            if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://127.0.0.1:8787/health >/dev/null; then
+              echo "Temporary authenticated Worker is healthy."
+              set +e
+              node scripts/run_authenticated_acceptance.mjs
+              ACCEPTANCE_EXIT=$?
+              set -e
+              grep -E "FOLLOWUP_TASK_UPDATE_CONFLICT|REPORT_REVIEW|EVENT_CLOSEOUT|AUTH_SIGNIN" "$RUNNER_TEMP/pcg-acceptance-worker.log" || true
+              if [[ "$ACCEPTANCE_EXIT" -ne 0 ]]; then
+                exit "$ACCEPTANCE_EXIT"
+              fi
+
+              echo "Building the actual Pages application for browser acceptance."
+              (cd ../web && npm ci --no-audit --no-fund && npm run build)
+              npm install --no-save --no-audit --no-fund playwright
+              npx playwright install --with-deps chromium
+
+              echo "PCG_MISSIONS_API_ORIGIN=http://127.0.0.1:8787" > ../web/.dev.vars
+              (cd ../web && ../cloudflare/node_modules/.bin/wrangler pages dev dist \
+                --ip 0.0.0.0 --port 8788 --compatibility-date 2026-11-22 \
+                --binding PCG_MISSIONS_API_ORIGIN=http://127.0.0.1:8787) \
+                </dev/null > "$RUNNER_TEMP/pcg-acceptance-pages.log" 2>&1 &
+              PAGES_PID=$!
+
+              pages_ready=0
+              for pages_attempt in $(seq 1 45); do
+                if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://localhost:8788/ >/dev/null; then
+                  pages_ready=1
+                  break
+                fi
+                sleep 1
+              done
+              if [[ "$pages_ready" -ne 1 ]]; then
+                cat "$RUNNER_TEMP/pcg-acceptance-pages.log"
+                echo "Temporary Pages application did not become healthy." >&2
+                exit 1
+              fi
+
+              node scripts/run_browser_acceptance.mjs
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/pcg-acceptance-worker.log"
+          echo "Temporary Worker did not become healthy." >&2
+          exit 1
+
+      - name: Restore to pre-acceptance bookmark and verify
+        env:
+          DB_ID: ${{ steps.database.outputs.id }}
+          DB_NAME: ${{ steps.database.outputs.name }}
+          BOOKMARK: ${{ steps.bookmark.outputs.value }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd cloudflare
+          npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
+            --command "CREATE TABLE restore_rehearsal_probe(id TEXT PRIMARY KEY, marker TEXT NOT NULL); INSERT INTO restore_rehearsal_probe(id,marker) VALUES('probe-1','before-restore');"
+          npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
+            --command "SELECT CASE WHEN marker='before-restore' THEN 'PROBE_WRITE_CONFIRMED' ELSE 'PROBE_WRITE_FAILED' END AS status FROM restore_rehearsal_probe WHERE id='probe-1';"
+
+          RESTORE_RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -X POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DB_ID}/time_travel/restore?bookmark=${BOOKMARK}" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")"
+          echo "$RESTORE_RESPONSE" | jq -e '.success == true' >/dev/null
+          echo "$RESTORE_RESPONSE" | jq -r '.result.message'
+
+          for attempt in $(seq 1 12); do
+            VERIFY="$(npx wrangler d1 execute "$DB_NAME" --remote --json --config wrangler.restore-rehearsal.toml \
+              --command "SELECT (SELECT schema_version FROM app_meta WHERE id=1) AS schema_version, (SELECT environment FROM app_meta WHERE id=1) AS environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='restore_rehearsal_probe') AS probe_table_count, (SELECT COUNT(*) FROM staff_profile) AS qa_profile_count, (SELECT COUNT(*) FROM ministry_report) AS qa_report_count, (SELECT COUNT(*) FROM event) AS qa_event_count, ((SELECT COUNT(*) FROM church)+(SELECT COUNT(*) FROM branch)+(SELECT COUNT(*) FROM staff_role_assignment)+(SELECT COUNT(*) FROM staff_access_audit)+(SELECT COUNT(*) FROM staff_role_elevation_request)+(SELECT COUNT(*) FROM staff_role_elevation_audit)+(SELECT COUNT(*) FROM staff_role_revocation_request)+(SELECT COUNT(*) FROM staff_role_revocation_audit)+(SELECT COUNT(*) FROM team)+(SELECT COUNT(*) FROM staff_team_membership)+(SELECT COUNT(*) FROM service_area)+(SELECT COUNT(*) FROM team_management_audit)+(SELECT COUNT(*) FROM contact)+(SELECT COUNT(*) FROM contact_assignment)+(SELECT COUNT(*) FROM contact_capture)+(SELECT COUNT(*) FROM contact_interaction)+(SELECT COUNT(*) FROM contact_note)+(SELECT COUNT(*) FROM followup_task)+(SELECT COUNT(*) FROM followup_task_event)+(SELECT COUNT(*) FROM event_staff_assignment)+(SELECT COUNT(*) FROM event_team_assignment)+(SELECT COUNT(*) FROM event_idempotency_receipt)+(SELECT COUNT(*) FROM event_checkin)+(SELECT COUNT(*) FROM event_registration)+(SELECT COUNT(*) FROM event_closeout)+(SELECT COUNT(*) FROM event_closeout_event)+(SELECT COUNT(*) FROM report_review_event)+(SELECT COUNT(*) FROM prayer_request)+(SELECT COUNT(*) FROM prayer_assignment)+(SELECT COUNT(*) FROM prayer_access_audit)+(SELECT COUNT(*) FROM sensitive_record_access_audit)+(SELECT COUNT(*) FROM staff_record_share)+(SELECT COUNT(*) FROM staff_notification)) AS qa_business_rows;")"
+            SCHEMA="$(echo "$VERIFY" | jq -r '.[0].results[0].schema_version // empty')"
+            ENVIRONMENT="$(echo "$VERIFY" | jq -r '.[0].results[0].environment // empty')"
+            MIGRATIONS="$(echo "$VERIFY" | jq -r '.[0].results[0].migration_count // empty')"
+            PROBE="$(echo "$VERIFY" | jq -r '.[0].results[0].probe_table_count // empty')"
+            PROFILES="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_profile_count // empty')"
+            REPORTS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_report_count // empty')"
+            EVENTS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_event_count // empty')"
+            BUSINESS_ROWS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_business_rows // empty')"
+            if [ "$SCHEMA" = "48" ] && [ "$ENVIRONMENT" = "non-production" ] && [ "$MIGRATIONS" = "49" ] && [ "$PROBE" = "0" ] && [ "$PROFILES" = "0" ] && [ "$REPORTS" = "0" ] && [ "$EVENTS" = "0" ] && [ "$BUSINESS_ROWS" = "0" ]; then
+              echo "RESTORE_REHEARSAL_PASSED: schema 49 and all 49 migration records preserved; all synthetic business/audit rows and the post-bookmark probe removed."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "D1 restore verification did not return to the pre-acceptance schema 49 bookmark." >&2
+          exit 1
+
+      - name: Delete isolated rehearsal database
+        if: always() && steps.database.outputs.id != ''
+        env:
+          DB_ID: ${{ steps.database.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail-with-body --silent --show-error \
+            -X DELETE "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DB_ID}" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" | jq -e '.success == true' >/dev/null
+          rm -f cloudflare/wrangler.restore-rehearsal.toml
