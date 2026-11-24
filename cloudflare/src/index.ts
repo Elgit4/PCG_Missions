@@ -2958,7 +2958,14 @@ async function reassignFollowupTask(
         (nextAssignee !== null && (results[2]?.meta?.changes ?? 0) !== 1)) {
       return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_CHANGED" } }, requestId, origin);
     }
-  } catch {
+  } catch (error) {
+    console.error("FOLLOWUP_REASSIGNMENT_CONFLICT", {
+      requestId,
+      taskId,
+      scopeMode: access.decision.scopeMode,
+      teamId,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return json(409, { ok: false, error: { code: "FOLLOWUP_REASSIGNMENT_CONFLICT" } }, requestId, origin);
   }
   const updatedTask = await env.DB.prepare(`
