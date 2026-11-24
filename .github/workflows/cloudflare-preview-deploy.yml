@@ -3,6 +3,7 @@ name: PCG Missions Cloudflare Auth Preview Release
 on:
   push:
     branches:
+      - main
       - migration/cloudflare-auth-consolidation
     paths:
       - "cloudflare/src/**"
