@@ -155,7 +155,7 @@ jobs:
     secrets: inherit
 
   production-worker:
-    needs: production-data-restore-rehearsal
+    needs: [restore-rehearsal, production-data-restore-rehearsal]
     name: Validate, migrate and deploy the production Worker
     if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' && needs.restore-rehearsal.result == 'success' && needs.production-data-restore-rehearsal.result == 'success' }}
     runs-on: ubuntu-latest
