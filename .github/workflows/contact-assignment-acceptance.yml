@@ -1,0 +1,24 @@
+name: Contact Assignment Authenticated Acceptance
+
+on:
+  push:
+    branches:
+      - fix/contact-assignment-handoff-acceptance
+    paths:
+      - ".github/workflows/contact-assignment-acceptance.yml"
+      - "cloudflare/scripts/run_authenticated_acceptance.mjs"
+      - "cloudflare/src/index.ts"
+      - "cloudflare/migrations/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcg-missions-contact-assignment-acceptance
+  cancel-in-progress: false
+
+jobs:
+  isolated-eu-acceptance:
+    name: Isolated D1 restore and full authenticated API acceptance
+    uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
+    secrets: inherit
