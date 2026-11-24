@@ -4417,7 +4417,10 @@ async function handleCalendarEntryCancellation(
     entryId, branchId, current.updated_at,
   ).run();
   if (!result.success) return json(500, { ok: false, error: { code: "CALENDAR_CANCELLATION_FAILED" } }, requestId, origin);
-  if ((result.meta?.changes ?? 0) !== 1) {
+  // The calendar audit trigger writes an additional row for this update.
+  // Treat D1's trigger-inclusive change count as successful when at least
+  // the calendar entry itself was changed.
+  if ((result.meta?.changes ?? 0) < 1) {
     return json(409, { ok: false, error: { code: "CALENDAR_ENTRY_CHANGED" } }, requestId, origin);
   }
   return json(200, { ok: true, data: { entry_id: entryId, status: "cancelled" } }, requestId, origin);
