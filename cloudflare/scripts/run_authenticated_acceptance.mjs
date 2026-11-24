@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { hash } from "bcryptjs";
 
 const databaseId = process.env.DB_ID;
@@ -167,6 +168,13 @@ await d1(
 );
 
 const admin = await insertUser("admin_pastor", "admin", null, true);
+if (process.env.PCG_BROWSER_CREDENTIALS_PATH) {
+  writeFileSync(
+    process.env.PCG_BROWSER_CREDENTIALS_PATH,
+    JSON.stringify({ email: admin.email, password: admin.password, userId: admin.userId }),
+    { mode: 0o600 },
+  );
+}
 // These bootstrap-slot resets exist only in this disposable D1 fixture. They
 // create a second synthetic reviewer and a second-branch administrator so the
 // two-person-control and cross-branch tests exercise real database triggers.
