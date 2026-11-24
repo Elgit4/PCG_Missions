@@ -2909,7 +2909,7 @@ async function reassignFollowupTask(
   try {
     const statements: D1PreparedStatement[] = [
       env.DB.prepare(`
-        UPDATE followup_task ft
+        UPDATE followup_task AS ft
         SET assignee_user_id = ?, team_id = ?, updated_at = ?
         WHERE ft.id = ? AND ft.branch_id = ? AND (${predicate.sql})
           AND (${targetPredicate})
@@ -2976,7 +2976,7 @@ async function reassignFollowupTask(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    const diagnostic = message.match(/FOLLOWUP_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR|no such column|no such table|wrong number of arguments/)?.[0] ?? "D1_BATCH_ERROR";
+    const diagnostic = message.match(/FOLLOWUP_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR|syntax error|no such column|no such table|wrong number of arguments/)?.[0] ?? "D1_BATCH_ERROR";
     console.log("FOLLOWUP_REASSIGNMENT_BATCH_FAILED", JSON.stringify({
       diagnostic,
       batchSummary,
