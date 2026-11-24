@@ -149,6 +149,16 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         )
         self.assertEqual(self.db.execute("PRAGMA foreign_key_check").fetchall(), [])
 
+    def test_owner_cleanup_refuses_non_production_database(self):
+        environment = self.db.execute(
+            "SELECT environment FROM app_meta WHERE id = 1"
+        ).fetchone()[0]
+        self.assertEqual(environment, "non-production")
+        cleanup = (Path(__file__).resolve().parents[1] / "scripts" / "remove_test_staff_logins.sql").read_text(encoding="utf-8")
+
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.db.executescript(cleanup)
+
     def test_owner_cleanup_removes_test_logins_but_preserves_staff_history_and_allows_reuse(self):
         now = "2026-11-23T23:00:00.000Z"
         owner_profile = "ff3da224-34df-4702-93fd-6011cc52e4e9"
