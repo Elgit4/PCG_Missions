@@ -1865,6 +1865,7 @@ async function assignContact(
 
   const transitionAt = new Date(Date.now() + 1000).toISOString();
   const assignmentId = crypto.randomUUID();
+  let batchSummary = { updateSuccess: false, updateChanges: -1, insertSuccess: false, insertChanges: -1 };
   try {
     const results = await env.DB.batch([
       env.DB.prepare(`
@@ -1897,13 +1898,22 @@ async function assignContact(
         ...contactPredicate.values,
       ),
     ]);
-    if (results.some((result) => !result.success) || (results[1]?.meta?.changes ?? 0) !== 1) {
-      throw new Error("CONTACT_ASSIGNMENT_BATCH_FAILED");
+    batchSummary = {
+      updateSuccess: results[0]?.success === true,
+      updateChanges: results[0]?.meta?.changes ?? -1,
+      insertSuccess: results[1]?.success === true,
+      insertChanges: results[1]?.meta?.changes ?? -1,
+    };
+    if (results.some((result) => !result.success)) {
+      throw new Error("CONTACT_ASSIGNMENT_SQL_FAILED");
+    }
+    if (batchSummary.insertChanges !== 1) {
+      throw new Error("CONTACT_ASSIGNMENT_INSERT_NO_ROW");
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     const diagnostic = message.match(/CONTACT_ASSIGNMENT_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR/)?.[0] ?? "D1_BATCH_ERROR";
-    console.error("CONTACT_ASSIGNMENT_BATCH_FAILED", diagnostic);
+    console.error("CONTACT_ASSIGNMENT_BATCH_FAILED", diagnostic, JSON.stringify(batchSummary));
     return json(409, { ok: false, error: { code: "CONTACT_ASSIGNMENT_CONFLICT" } }, requestId, origin);
   }
   const assignment = {

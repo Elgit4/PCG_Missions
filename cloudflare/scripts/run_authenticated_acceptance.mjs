@@ -493,6 +493,8 @@ const assignmentPrecheck = await d1(
      (SELECT COUNT(*) FROM contact_assignment WHERE contact_id=? AND branch_id=?) AS assignment_count,
      (SELECT COUNT(*) FROM contact_assignment WHERE contact_id=? AND branch_id=?
        AND starts_at<=? AND (ends_at IS NULL OR ends_at>?)) AS current_assignments,
+     (SELECT COUNT(*) FROM contact_assignment WHERE contact_id=? AND branch_id=?
+       AND starts_at>? AND (ends_at IS NULL OR ends_at>?)) AS future_assignments,
      (SELECT COUNT(*) FROM team WHERE id=? AND branch_id=? AND is_active=1) AS target_team_active,
      (SELECT COUNT(*) FROM staff_role_assignment ra
        JOIN role r ON r.id=ra.role_id AND r.code='admin_pastor'
@@ -504,6 +506,7 @@ const assignmentPrecheck = await d1(
      (SELECT COUNT(*) FROM contact WHERE id=? AND branch_id=? AND contact_status='active') AS contact_active,
      (SELECT COUNT(*) FROM branch WHERE id=? AND is_active=1) AS branch_active`,
   [contactId, branchId, contactId, branchId, new Date().toISOString(), new Date().toISOString(),
+   contactId, branchId, new Date().toISOString(), new Date().toISOString(),
    teamId, branchId, admin.profileId, branchId, new Date().toISOString(), new Date().toISOString(),
    admin.profileId, admin.userId, contactId, branchId, branchId],
 );

@@ -6,6 +6,7 @@ on:
       - migration/cloudflare-auth-consolidation
     paths:
       - ".github/workflows/cloudflare-d1-restore-rehearsal-trigger.yml"
+      - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
       - "cloudflare/scripts/run_authenticated_acceptance.mjs"
       - "cloudflare/scripts/run_browser_acceptance.mjs"
       - "cloudflare/migrations/**"
@@ -18,7 +19,7 @@ permissions:
 
 concurrency:
   group: pcg-missions-d1-restore-rehearsal-trigger
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   restore-and-acceptance:
