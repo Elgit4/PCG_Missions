@@ -302,7 +302,7 @@ jobs:
 
           for attempt in $(seq 1 12); do
             VERIFY="$(npx wrangler d1 execute "$DB_NAME" --remote --json --config wrangler.restore-rehearsal.toml \
-              --command "SELECT (SELECT schema_version FROM app_meta WHERE id=1) AS schema_version, (SELECT environment FROM app_meta WHERE id=1) AS environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='restore_rehearsal_probe') AS probe_table_count, (SELECT COUNT(*) FROM staff_profile) AS qa_profile_count, (SELECT COUNT(*) FROM ministry_report) AS qa_report_count, (SELECT COUNT(*) FROM event) AS qa_event_count;")"
+              --command "SELECT (SELECT schema_version FROM app_meta WHERE id=1) AS schema_version, (SELECT environment FROM app_meta WHERE id=1) AS environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='restore_rehearsal_probe') AS probe_table_count, (SELECT COUNT(*) FROM staff_profile) AS qa_profile_count, (SELECT COUNT(*) FROM ministry_report) AS qa_report_count, (SELECT COUNT(*) FROM event) AS qa_event_count, ((SELECT COUNT(*) FROM church)+(SELECT COUNT(*) FROM branch)+(SELECT COUNT(*) FROM staff_role_assignment)+(SELECT COUNT(*) FROM staff_access_audit)+(SELECT COUNT(*) FROM staff_role_elevation_request)+(SELECT COUNT(*) FROM staff_role_elevation_audit)+(SELECT COUNT(*) FROM staff_role_revocation_request)+(SELECT COUNT(*) FROM staff_role_revocation_audit)+(SELECT COUNT(*) FROM team)+(SELECT COUNT(*) FROM staff_team_membership)+(SELECT COUNT(*) FROM service_area)+(SELECT COUNT(*) FROM team_management_audit)+(SELECT COUNT(*) FROM contact)+(SELECT COUNT(*) FROM contact_assignment)+(SELECT COUNT(*) FROM contact_capture)+(SELECT COUNT(*) FROM contact_interaction)+(SELECT COUNT(*) FROM contact_note)+(SELECT COUNT(*) FROM followup_task)+(SELECT COUNT(*) FROM followup_task_event)+(SELECT COUNT(*) FROM event_staff_assignment)+(SELECT COUNT(*) FROM event_team_assignment)+(SELECT COUNT(*) FROM event_idempotency_receipt)+(SELECT COUNT(*) FROM event_checkin)+(SELECT COUNT(*) FROM event_registration)+(SELECT COUNT(*) FROM event_closeout)+(SELECT COUNT(*) FROM event_closeout_event)+(SELECT COUNT(*) FROM report_review_event)+(SELECT COUNT(*) FROM prayer_request)+(SELECT COUNT(*) FROM prayer_assignment)+(SELECT COUNT(*) FROM prayer_access_audit)+(SELECT COUNT(*) FROM sensitive_record_access_audit)+(SELECT COUNT(*) FROM staff_record_share)+(SELECT COUNT(*) FROM staff_notification)) AS qa_business_rows;")"
             SCHEMA="$(echo "$VERIFY" | jq -r '.[0].results[0].schema_version // empty')"
             ENVIRONMENT="$(echo "$VERIFY" | jq -r '.[0].results[0].environment // empty')"
             MIGRATIONS="$(echo "$VERIFY" | jq -r '.[0].results[0].migration_count // empty')"
@@ -310,8 +310,9 @@ jobs:
             PROFILES="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_profile_count // empty')"
             REPORTS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_report_count // empty')"
             EVENTS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_event_count // empty')"
-            if [ "$SCHEMA" = "47" ] && [ "$ENVIRONMENT" = "non-production" ] && [ "$MIGRATIONS" = "47" ] && [ "$PROBE" = "0" ] && [ "$PROFILES" = "0" ] && [ "$REPORTS" = "0" ] && [ "$EVENTS" = "0" ]; then
-              echo "RESTORE_REHEARSAL_PASSED: schema 47 and all 47 migration records preserved; synthetic identities, report/event records and post-bookmark probe removed."
+            BUSINESS_ROWS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_business_rows // empty')"
+            if [ "$SCHEMA" = "47" ] && [ "$ENVIRONMENT" = "non-production" ] && [ "$MIGRATIONS" = "47" ] && [ "$PROBE" = "0" ] && [ "$PROFILES" = "0" ] && [ "$REPORTS" = "0" ] && [ "$EVENTS" = "0" ] && [ "$BUSINESS_ROWS" = "0" ]; then
+              echo "RESTORE_REHEARSAL_PASSED: schema 47 and all 47 migration records preserved; all synthetic business/audit rows and the post-bookmark probe removed."
               exit 0
             fi
             sleep 5
