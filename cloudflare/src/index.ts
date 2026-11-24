@@ -2879,7 +2879,7 @@ async function reassignFollowupTask(
   try {
     const statements: D1PreparedStatement[] = [
       env.DB.prepare(`
-        UPDATE followup_task ft
+        UPDATE followup_task AS ft
         SET assignee_user_id = ?, team_id = ?, updated_at = ?
         WHERE ft.id = ? AND ft.branch_id = ? AND (${predicate.sql})
           AND (${targetPredicate})
