@@ -1,4 +1,5 @@
 from pathlib import Path
+import tomllib
 import unittest
 
 
@@ -101,6 +102,15 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
 
     def test_new_preview_release_uses_a_fresh_concurrency_group(self):
         self.assertIn("pcg-missions-preview-release-v3", self.preview)
+
+    def test_followup_cron_is_production_only(self):
+        config = tomllib.loads((ROOT / "cloudflare" / "wrangler.toml").read_text(encoding="utf-8"))
+        self.assertEqual(
+            config["env"]["production"]["triggers"]["crons"],
+            ["*/15 * * * *"],
+        )
+        self.assertNotIn("triggers", config)
+        self.assertNotIn("triggers", config["env"].get("preview", {}))
 
 
 if __name__ == "__main__":
