@@ -951,7 +951,7 @@ test("Team Leader directory reads return only own-team data and omit staff ident
   assert.ok(contactsPayload.data.some((contact) => contact.id === CONTACT_ID));
   const contactQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM contact c") && call.sql.includes("team_member.auth_user_id"));
   assert.ok(contactQuery);
-  assert.match(contactQuery.sql, /JOIN staff_profile team_member ON team_member\.id = tm\.staff_profile_id/);
+  assert.match(contactQuery.sql, /JOIN staff_profile team_member\s+ON team_member\.id = tm\.staff_profile_id/);
   assert.match(contactQuery.sql, /team_member\.auth_user_id = \?/);
   assert.ok(contactQuery.values.includes(AUTH_USER_ID));
 });
