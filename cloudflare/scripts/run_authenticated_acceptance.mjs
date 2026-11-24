@@ -86,27 +86,43 @@ async function waitForSignInRateLimitSlot() {
   // uses many synthetic accounts from one local Worker IP, so pace every
   // positive and negative attempt without weakening the production policy.
   if (lastSignInAttemptAt > 0) {
-    const remaining = 16_000 - (Date.now() - lastSignInAttemptAt);
+    const remaining = 30_000 - (Date.now() - lastSignInAttemptAt);
     if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
   }
   lastSignInAttemptAt = Date.now();
 }
 
 async function signIn(identity, label, rememberMe = false) {
-  await waitForSignInRateLimitSlot();
-  const response = await fetchWithTimeout(`${workerUrl}/api/auth/sign-in/email`, {
-    method: "POST",
-    headers: { origin, "content-type": "application/json" },
-    body: JSON.stringify({ email: identity.email, password: identity.password, rememberMe }),
-  });
-  const bodyText = await response.text();
-  if (!response.ok) throw new Error(`${label} Better Auth sign-in failed (${response.status}): ${bodyText.slice(0, 500)}`);
-  const setCookies = typeof response.headers.getSetCookie === "function"
-    ? response.headers.getSetCookie()
-    : [response.headers.get("set-cookie") || ""];
-  const cookie = setCookies.map(value => value.split(";", 1)[0]).filter(Boolean).join("; ");
-  if (!cookie) throw new Error(`${label} sign-in did not return a session cookie`);
-  return cookie;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await waitForSignInRateLimitSlot();
+    console.log("AUTH_SIGNIN_ATTEMPT", label, new Date().toISOString(), attempt + 1);
+    const response = await fetchWithTimeout(workerUrl + "/api/auth/sign-in/email", {
+      method: "POST",
+      headers: { origin, "content-type": "application/json" },
+      body: JSON.stringify({ email: identity.email, password: identity.password, rememberMe }),
+    });
+    const bodyText = await response.text();
+    if (response.status === 429 && attempt < 2) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const backoff = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.max(65_000, retryAfter * 1000)
+        : 65_000;
+      console.warn("AUTH_SIGNIN_RATE_LIMITED", label, "retry_ms=" + backoff);
+      await new Promise((resolve) => setTimeout(resolve, backoff));
+      lastSignInAttemptAt = 0;
+      continue;
+    }
+    if (!response.ok) {
+      throw new Error(label + " Better Auth sign-in failed (" + response.status + "): " + bodyText.slice(0, 500));
+    }
+    const setCookies = typeof response.headers.getSetCookie === "function"
+      ? response.headers.getSetCookie()
+      : [response.headers.get("set-cookie") || ""];
+    const cookie = setCookies.map((value) => value.split(";", 1)[0]).filter(Boolean).join("; ");
+    if (!cookie) throw new Error(label + " sign-in did not return a session cookie");
+    return cookie;
+  }
+  throw new Error(label + " Better Auth sign-in exceeded the retry limit");
 }
 
 async function api(cookie, path, method = "GET", body = undefined, idempotencyKey = undefined, selectedBranchId = branchId) {
