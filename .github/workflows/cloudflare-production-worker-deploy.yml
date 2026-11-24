@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   production-roster-preflight:
-    name: Verify Admin/Pastor owner and guarded roster baseline before restore rehearsal
+    name: Require active Admin/Pastor owner and verify owner-directed cleanup candidates before restore rehearsal
     if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -183,7 +183,7 @@ jobs:
     secrets: inherit
 
   production-worker:
-    needs: production-data-restore-rehearsal
+    needs: [restore-rehearsal, production-data-restore-rehearsal]
     name: Validate, migrate and deploy the production Worker
     if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' && needs.restore-rehearsal.result == 'success' && needs.production-data-restore-rehearsal.result == 'success' }}
     runs-on: ubuntu-latest
