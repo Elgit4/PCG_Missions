@@ -2898,6 +2898,14 @@ async function reassignFollowupTask(
     team_id: nextTeam,
     reason,
   });
+  let batchSummary = {
+    updateSuccess: false,
+    updateChanges: -1,
+    eventSuccess: false,
+    eventChanges: -1,
+    notificationSuccess: null as boolean | null,
+    notificationChanges: -1,
+  };
   try {
     const statements: D1PreparedStatement[] = [
       env.DB.prepare(`
@@ -2952,15 +2960,31 @@ async function reassignFollowupTask(
       ));
     }
     const results = await env.DB.batch(statements);
+    batchSummary = {
+      updateSuccess: results[0]?.success === true,
+      updateChanges: results[0]?.meta?.changes ?? -1,
+      eventSuccess: results[1]?.success === true,
+      eventChanges: results[1]?.meta?.changes ?? -1,
+      notificationSuccess: results[2] ? results[2].success === true : null,
+      notificationChanges: results[2]?.meta?.changes ?? -1,
+    };
     if (results.some((result) => !result.success) ||
         (results[0]?.meta?.changes ?? 0) < 1 ||
-        (results[1]?.meta?.changes ?? 0) !== 1 ||
-        (nextAssignee !== null && (results[2]?.meta?.changes ?? 0) !== 1)) {
+        batchSummary.eventChanges !== 1 ||
+        (nextAssignee !== null && batchSummary.notificationChanges !== 1)) {
       return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_CHANGED" } }, requestId, origin);
     }
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const diagnostic = message.match(/FOLLOWUP_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR|no such column|no such table|wrong number of arguments/)?.[0] ?? "D1_BATCH_ERROR";
+    console.log("FOLLOWUP_REASSIGNMENT_BATCH_FAILED", JSON.stringify({
+      diagnostic,
+      batchSummary,
+      errorName: error instanceof Error ? error.name : typeof error,
+    }));
     return json(409, { ok: false, error: { code: "FOLLOWUP_REASSIGNMENT_CONFLICT" } }, requestId, origin);
   }
+
   const updatedTask = await env.DB.prepare(`
     SELECT id, branch_id, contact_id, assignee_user_id, team_id, priority,
            due_at, status, task_note, created_at, updated_at
