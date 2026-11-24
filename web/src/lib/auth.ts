@@ -68,7 +68,7 @@ export class PcgAuthClient {
   }
 
   async signIn(email: string, password: string): Promise<AuthSession> {
-    const payload = await this.request("sign-in/email", "POST", { email: email.trim().toLowerCase(), password });
+    const payload = await this.request("sign-in/email", "POST", { email: email.trim().toLowerCase(), password, rememberMe: true });
     const user = payload?.user as AuthUser | undefined;
     const session = payload?.session as AuthSession["session"] | undefined;
     if (!user || typeof user.id !== "string") throw new AuthClientError(502, "INVALID_AUTH_RESPONSE", "The sign-in service did not return a valid staff session.");
