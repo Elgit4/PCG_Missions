@@ -22,9 +22,11 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("production-roster-preflight:", self.production)
         self.assertIn("restore-rehearsal:\n    needs: production-roster-preflight", self.production)
         self.assertIn("production-data-restore-rehearsal:\n    needs: restore-rehearsal", self.production)
-        self.assertIn("production-worker:\n    needs: [restore-rehearsal, production-data-restore-rehearsal]", self.production)
+        self.assertIn("production-worker:\n    needs: production-data-restore-rehearsal", self.production)
         self.assertIn("needs.production-data-restore-rehearsal.result == 'success'", self.production)
-        self.assertIn("Require active Admin/Pastor owner and clean onboarded staff roster before restore rehearsal", self.production)
+        self.assertIn("Verify Admin/Pastor owner and guarded roster baseline before restore rehearsal", self.production)
+        self.assertIn("preflight_test_staff_login_cleanup.sql", self.production)
+        self.assertIn("OWNER_CLEANUP_ALLOWED", self.production)
 
     def test_production_accepts_null_for_anonymous_better_auth_session(self):
         self.assertIn(
@@ -55,9 +57,11 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("summary.assignments_on_inactive_profiles === 0", self.production)
         self.assertIn("summary.active_staff_without_credential === 0", self.production)
         self.assertIn("summary.invalid_first_login_setups === 0", self.production)
-        self.assertIn("if (!rosterReady)", self.production)
+        self.assertIn("if (!rosterReady && !ownerCleanupAllowed)", self.production)
+        self.assertIn("remove_test_staff_logins.sql", self.production)
+        self.assertIn("PRODUCTION_ROSTER_AND_OWNER_CLEANUP_VERIFIED", self.production)
         self.assertIn("Production cutover blocked:", self.production)
-        self.assertIn("Additional staff accounts may be added through staff account creation and first-login onboarding", self.production)
+        self.assertIn("owner-approved cleanup baseline", self.production)
         self.assertNotIn("Production will enter Admin/Pastor bootstrap mode.", self.production)
 
     def test_routine_preview_does_not_import_from_legacy_postgres_or_probe_rate_limit_writes(self):

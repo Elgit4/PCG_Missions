@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   production-roster-preflight:
-    name: Require active Admin/Pastor owner and clean onboarded staff roster before restore rehearsal
+    name: Verify Admin/Pastor owner and guarded roster baseline before restore rehearsal
     if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -49,7 +49,35 @@ jobs:
           test -n "${CLOUDFLARE_API_TOKEN:-}"
           npx --yes wrangler@4.166.0 whoami
 
+      - name: Confirm exact owner-approved production test-login cleanup baseline
+        id: owner_cleanup_preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute pcg-missions-production --remote --env production --json --file=./scripts/preflight_test_staff_login_cleanup.sql > /tmp/pcg-owner-cleanup-preflight.json
+          node - /tmp/pcg-owner-cleanup-preflight.json <<'NODE'
+          const fs = require("node:fs");
+          const payload = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const candidates = [];
+          const visit = (value) => {
+            if (Array.isArray(value)) return value.forEach(visit);
+            if (!value || typeof value !== "object") return;
+            if (Object.hasOwn(value, "cleanup_allowed")) candidates.push(value);
+            Object.values(value).forEach(visit);
+          };
+          visit(payload);
+          const row = candidates[0];
+          if (!row || Number(row.cleanup_allowed) !== 1) {
+            console.error("Production test-login cleanup preflight failed. The environment, exact owner-approved staff targets, or zero-business-data condition did not match.");
+            process.exit(1);
+          }
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, "cleanup_allowed=true\n");
+          console.log("OWNER_APPROVED_CLEANUP_BASELINE_CONFIRMED");
+          NODE
+
       - name: Verify production Admin/Pastor bootstrap and report staff roster readiness
+        env:
+          OWNER_CLEANUP_ALLOWED: ${{ steps.owner_cleanup_preflight.outputs.cleanup_allowed }}
         shell: bash
         run: |
           set -euo pipefail
@@ -132,11 +160,16 @@ jobs:
             summary.assignments_on_inactive_profiles === 0 &&
             summary.active_staff_without_credential === 0 &&
             summary.invalid_first_login_setups === 0;
-          if (!rosterReady) {
-            console.error("Production cutover blocked: require one credential-ready active Admin/Pastor owner; every other active staff account must have a valid credential and effective role. Resolve stale assignments and expired first-login setups before production migration. Additional staff accounts may be added through staff account creation and first-login onboarding after cutover.");
+          const ownerCleanupAllowed = process.env.OWNER_CLEANUP_ALLOWED === "true";
+          if (!rosterReady && !ownerCleanupAllowed) {
+            console.error("Production cutover blocked: roster is neither clean nor the exact owner-approved test-login cleanup baseline.");
             process.exit(1);
           }
-          console.log("Production staff readiness gate passed: at least one credential-ready active Admin/Pastor owner; all active staff have credentials and effective roles; no stale assignments or expired first-login setups.");
+          if (rosterReady) {
+            console.log("Production staff readiness gate passed: active staff have credentials and effective roles; no stale assignments or expired first-login setups.");
+          } else {
+            console.log("Production roster matches the exact owner-approved cleanup baseline. The guarded production job will remove the two test logins after migrations and verify the roster again before deployment.");
+          }
           NODE
 
 
@@ -155,7 +188,7 @@ jobs:
     secrets: inherit
 
   production-worker:
-    needs: [restore-rehearsal, production-data-restore-rehearsal]
+    needs: production-data-restore-rehearsal
     name: Validate, migrate and deploy the production Worker
     if: ${{ (github.ref == 'refs/heads/migration/cloudflare-auth-consolidation' || github.ref == 'refs/heads/main') && inputs.confirm_production == 'DEPLOY-PRODUCTION' && needs.restore-rehearsal.result == 'success' && needs.production-data-restore-rehearsal.result == 'success' }}
     runs-on: ubuntu-latest
@@ -264,7 +297,7 @@ jobs:
           preview="https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
           health="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error "$preview/health")"
           echo "$health"
-          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="non-production" || p.schema_version!==47 || p.auth_configuration!=="ready") process.exit(1)' "$health"
+          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="non-production" || p.schema_version!==49 || p.auth_configuration!=="ready") process.exit(1)' "$health"
           me_status="$(curl --silent --show-error -o /tmp/pcg-preview-me.json -w "%{http_code}" "$preview/api/v1/me")"
           test "$me_status" = "401"
           session_status="$(curl --silent --show-error -o /tmp/pcg-preview-session.json -w "%{http_code}" "$preview/api/auth/get-session")"
@@ -319,7 +352,7 @@ jobs:
           walk(root);
           const row = candidates[0];
           if (!row || row.environment !== "production" ||
-              ![45, 46, 47].includes(Number(row.schema_version)) ||
+              ![45, 46, 47, 48, 49].includes(Number(row.schema_version)) ||
               Number(row.schema_version) !== Number(row.latest_migration_id) ||
               Number(row.migration_count) !== Number(row.schema_version) ||
               Number(row.first_migration_id) !== 1 ||
@@ -391,11 +424,64 @@ jobs:
             exit "$migration_status"
           fi
 
+      - name: Apply the owner-approved test-login cleanup after migrations
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute pcg-missions-production --remote --env production --file=./scripts/remove_test_staff_logins.sql
+          echo "Owner-approved test-login cleanup SQL executed. The next step must verify retained profile history, anonymization, revoked access, and a clean release roster."
+
       - name: Verify production schema and migration ledger after migration
         shell: bash
         run: |
           set -euo pipefail
-          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "SELECT schema_version, environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT MIN(id) FROM d1_migrations) AS first_migration_id, (SELECT MAX(id) FROM d1_migrations) AS latest_migration_id, (SELECT SUM(id) FROM d1_migrations) AS migration_id_sum FROM app_meta WHERE id = 1" > /tmp/pcg-d1-after.json
+          npx wrangler d1 execute pcg-missions-production --remote --env production --json --command "
+            SELECT schema_version, environment,
+              (SELECT COUNT(*) FROM d1_migrations) AS migration_count,
+              (SELECT MIN(id) FROM d1_migrations) AS first_migration_id,
+              (SELECT MAX(id) FROM d1_migrations) AS latest_migration_id,
+              (SELECT SUM(id) FROM d1_migrations) AS migration_id_sum,
+              (SELECT COUNT(*) FROM role WHERE code IN ('admin_pastor','coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor')) AS configured_role_catalogue,
+              (SELECT COUNT(*) FROM staff_profile WHERE account_status='active' AND deactivated_at IS NULL) AS active_staff_profiles,
+              (SELECT COUNT(*) FROM user WHERE email NOT LIKE 'removed+%@invalid.example') AS auth_users,
+              (SELECT COUNT(DISTINCT userId) FROM account WHERE password IS NOT NULL) AS password_users,
+              (SELECT COUNT(*) FROM staff_profile s LEFT JOIN user u ON u.id=s.auth_user_id
+                LEFT JOIN account credential ON credential.userId=u.id AND credential.providerId='credential' AND credential.password IS NOT NULL
+                WHERE s.account_status='active' AND s.deactivated_at IS NULL AND (u.id IS NULL OR credential.id IS NULL)) AS active_staff_without_credential,
+              (SELECT COUNT(DISTINCT s.id) FROM staff_role_assignment a JOIN role r ON r.id=a.role_id
+                JOIN staff_profile s ON s.id=a.staff_profile_id JOIN user u ON u.id=s.auth_user_id
+                JOIN account credential ON credential.userId=u.id AND credential.password IS NOT NULL
+                WHERE r.code='admin_pastor' AND a.revoked_at IS NULL
+                  AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now')) AND datetime(a.starts_at)<=datetime('now')
+                  AND s.account_status='active' AND s.deactivated_at IS NULL
+                  AND (s.must_change_password=0 OR (s.password_setup_expires_at IS NOT NULL AND datetime(s.password_setup_expires_at)>datetime('now')))) AS active_admin_pastor_ready,
+              (SELECT COUNT(DISTINCT r.code) FROM staff_role_assignment a JOIN role r ON r.id=a.role_id
+                JOIN staff_profile s ON s.id=a.staff_profile_id
+                WHERE r.code IN ('admin_pastor','coordinator','team_leader','field_worker','follow_up_volunteer','prayer_intercessor')
+                  AND a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now') AND s.account_status='active' AND s.deactivated_at IS NULL) AS assigned_role_codes,
+              (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                AND NOT EXISTS (SELECT 1 FROM staff_role_assignment a WHERE a.staff_profile_id=s.id AND a.revoked_at IS NULL
+                  AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now')) AND datetime(a.starts_at)<=datetime('now'))) AS active_profiles_without_role,
+              (SELECT COUNT(*) FROM staff_role_assignment a JOIN staff_profile s ON s.id=a.staff_profile_id
+                WHERE a.revoked_at IS NULL AND (a.ends_at IS NULL OR datetime(a.ends_at)>datetime('now'))
+                  AND datetime(a.starts_at)<=datetime('now') AND (s.account_status<>'active' OR s.deactivated_at IS NOT NULL)) AS assignments_on_inactive_profiles,
+              (SELECT COUNT(*) FROM staff_profile s WHERE s.account_status='active' AND s.deactivated_at IS NULL
+                AND s.must_change_password=1 AND (s.password_setup_expires_at IS NULL OR datetime(s.password_setup_expires_at)<datetime('now'))) AS invalid_first_login_setups,
+              (SELECT COUNT(*) FROM staff_profile WHERE id IN ('d5c922ca-0e64-4a65-b14e-128c9131f79c','d9c55d3f-ec29-457f-a131-621a72d326e9')
+                AND account_status='inactive' AND full_name='Removed test account' AND email IS NULL AND password_setup_expires_at IS NULL) AS anonymized_staff_profiles,
+              (SELECT COUNT(*) FROM "user" u WHERE u.id IN ('a75f19b8-be85-4a90-835c-d8848bad8bc1','b831e1e5-e2f5-4257-bd90-e7c84c4e6c91')
+                AND u.name='Removed test account' AND u.email='removed+' || u.id || '@invalid.example' AND u.emailVerified=0) AS anonymized_auth_users,
+              (SELECT COUNT(*) FROM account WHERE userId IN ('a75f19b8-be85-4a90-835c-d8848bad8bc1','b831e1e5-e2f5-4257-bd90-e7c84c4e6c91')) AS target_credentials,
+              (SELECT COUNT(*) FROM session WHERE userId IN ('a75f19b8-be85-4a90-835c-d8848bad8bc1','b831e1e5-e2f5-4257-bd90-e7c84c4e6c91')) AS target_sessions,
+              (SELECT COUNT(*) FROM staff_push_subscription WHERE staff_profile_id IN ('d5c922ca-0e64-4a65-b14e-128c9131f79c','d9c55d3f-ec29-457f-a131-621a72d326e9')) AS target_push_subscriptions,
+              (SELECT COUNT(*) FROM staff_role_assignment WHERE id='b17e5a7f-a359-49c2-9cb6-a73f0245117d' AND revoked_at IS NULL) AS stale_active_assignment,
+              (SELECT COUNT(*) FROM staff_access_audit WHERE id LIKE 'owner-test-login-removal-complete-%') AS login_removal_audits,
+              (SELECT COUNT(*) FROM staff_access_audit WHERE id='owner-test-role-removal-complete-b17e5a7f-a359-49c2-9cb6-a73f0245117d') AS role_revocation_audit,
+              (SELECT COUNT(*) FROM staff_account_audit WHERE id='owner-test-account-removal-complete-nana') AS nana_account_audit,
+              (SELECT COUNT(*) FROM staff_account_audit WHERE target_profile_id='d5c922ca-0e64-4a65-b14e-128c9131f79c' AND action='account_deactivated') AS orphan_account_audit
+            FROM app_meta WHERE id = 1
+          " > /tmp/pcg-d1-after.json
           node --input-type=module <<'NODE'
           import fs from "node:fs";
           const root = JSON.parse(fs.readFileSync("/tmp/pcg-d1-after.json", "utf8"));
@@ -408,20 +494,54 @@ jobs:
           }
           walk(root);
           const row = candidates[0];
+          const expected = {
+            configured_role_catalogue: 6,
+            active_staff_profiles: 1,
+            auth_users: 1,
+            password_users: 1,
+            active_staff_without_credential: 0,
+            active_admin_pastor_ready: 1,
+            assigned_role_codes: 1,
+            active_profiles_without_role: 0,
+            assignments_on_inactive_profiles: 0,
+            invalid_first_login_setups: 0,
+            anonymized_staff_profiles: 2,
+            anonymized_auth_users: 2,
+            target_credentials: 0,
+            target_sessions: 0,
+            target_push_subscriptions: 0,
+            stale_active_assignment: 0,
+            login_removal_audits: 2,
+            role_revocation_audit: 1,
+            nana_account_audit: 1,
+            orphan_account_audit: 1
+          };
           if (!row || row.environment !== "production" ||
-              Number(row.schema_version) !== 47 ||
-              Number(row.latest_migration_id) !== 47 ||
-              Number(row.migration_count) !== 47 ||
+              Number(row.schema_version) !== 49 ||
+              Number(row.latest_migration_id) !== 49 ||
+              Number(row.migration_count) !== 49 ||
               Number(row.schema_version) !== Number(row.latest_migration_id) ||
               Number(row.migration_count) !== Number(row.schema_version) ||
               Number(row.first_migration_id) !== 1 ||
               Number(row.migration_id_sum) !== Number(row.schema_version) * (Number(row.schema_version) + 1) / 2) {
             throw new Error("Post-migration production marker/schema/ledger mismatch.");
           }
+          for (const [key, value] of Object.entries(expected)) {
+            if (Number(row[key]) !== value) {
+              throw new Error("Post-cleanup production roster/audit verification failed for " + key + ": expected " + value + ", received " + row[key]);
+            }
+          }
+          console.log("PRODUCTION_ROSTER_AND_OWNER_CLEANUP_VERIFIED");
           console.log(JSON.stringify({
             environment: row.environment,
             schema_version: row.schema_version,
-            latest_migration_id: row.latest_migration_id
+            latest_migration_id: row.latest_migration_id,
+            active_staff_profiles: row.active_staff_profiles,
+            active_admin_pastor_ready: row.active_admin_pastor_ready,
+            anonymized_staff_profiles: row.anonymized_staff_profiles,
+            anonymized_auth_users: row.anonymized_auth_users,
+            login_removal_audits: row.login_removal_audits,
+            role_revocation_audit: row.role_revocation_audit
           }));
           NODE
 
@@ -495,7 +615,7 @@ jobs:
           set -euo pipefail
           direct_health="$(curl --retry 5 --retry-delay 3 --retry-all-errors --fail --silent --show-error --max-time 30 "$WORKER_URL/health")"
           printf '%s\n' "$direct_health"
-          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==47||p.auth_configuration!=="ready")process.exit(1)' "$direct_health"
+          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==49||p.auth_configuration!=="ready")process.exit(1)' "$direct_health"
 
           for base in "$WORKER_URL" "$PAGES_URL"; do
             status="$(curl --silent --show-error --output /tmp/pcg-me.json --write-out "%{http_code}" --max-time 20 "$base/api/v1/me")"
@@ -507,7 +627,7 @@ jobs:
           test "$session_status" = "200"
 
           api_health="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error --max-time 20 "$PAGES_URL/api/v1/health")"
-          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==47||p.auth_configuration!=="ready")process.exit(1)' "$api_health"
+          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==49||p.auth_configuration!=="ready")process.exit(1)' "$api_health"
 
           cors_status="$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 20 -X OPTIONS "$WORKER_URL/api/auth/sign-in/email" -H "Origin: https://pcg-missions.pages.dev" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type")"
           test "$cors_status" = "204"
