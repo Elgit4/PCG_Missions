@@ -228,6 +228,129 @@ if (otherBranchWorkerMe.status !== 200 || otherBranchWorkerMe.payload?.ok !== tr
 }
 console.log("AUTHENTICATED_ME_ENDPOINTS_PASSED");
 
+const standardRoleAssignment = await api(adminCookie, "/api/v1/staff/roles", "POST", {
+  target_profile_id: unassigned.profileId,
+  role_code: "follow_up_volunteer",
+  reason: "Synthetic acceptance verifies standard role assignment and revocation.",
+});
+if (standardRoleAssignment.status !== 201 || !standardRoleAssignment.payload?.data?.id) {
+  throw new Error("Admin/Pastor standard role assignment failed: " + standardRoleAssignment.status + " " + JSON.stringify(standardRoleAssignment.payload));
+}
+const standardRoleAssignmentId = standardRoleAssignment.payload.data.id;
+const coordinatorRoleAssignmentDenied = await api(reviewerCookie, "/api/v1/staff/roles", "POST", {
+  target_profile_id: unassigned.profileId,
+  role_code: "team_leader",
+  reason: "This coordinator attempt must be denied by role authorization.",
+});
+if (coordinatorRoleAssignmentDenied.status !== 403) {
+  throw new Error("Coordinator unexpectedly gained the staff role-assignment capability.");
+}
+const standardRoleRevocation = await api(adminCookie, "/api/v1/staff/roles/" + standardRoleAssignmentId, "DELETE", {
+  reason: "Synthetic acceptance verifies standard role revocation and its audit record.",
+});
+if (standardRoleRevocation.status !== 200) {
+  throw new Error("Admin/Pastor standard role revocation failed: " + standardRoleRevocation.status + " " + JSON.stringify(standardRoleRevocation.payload));
+}
+const standardRoleState = (await d1(
+  "SELECT revoked_at,revoked_by FROM staff_role_assignment WHERE id=?",
+  [standardRoleAssignmentId],
+))[0];
+const standardRoleAudit = await d1(
+  "SELECT action FROM staff_access_audit WHERE target_profile_id=? AND json_extract(metadata,'$.assignment_id')=? ORDER BY created_at",
+  [unassigned.profileId, standardRoleAssignmentId],
+);
+if (!standardRoleState?.revoked_at || standardRoleState.revoked_by !== admin.profileId ||
+    !standardRoleAudit.some((row) => row.action === "role_assigned") ||
+    !standardRoleAudit.some((row) => row.action === "role_revoked")) {
+  throw new Error("Standard role assignment/revocation did not persist its exact assignment and audit trail.");
+}
+
+const elevationRequest = await api(adminCookie, "/api/v1/staff/role-elevations", "POST", {
+  target_profile_id: unassigned.profileId,
+  reason: "Synthetic acceptance verifies two-person Admin/Pastor elevation approval.",
+});
+if (elevationRequest.status !== 201 || !elevationRequest.payload?.data?.id) {
+  throw new Error("Admin/Pastor elevation request creation failed: " + elevationRequest.status + " " + JSON.stringify(elevationRequest.payload));
+}
+const elevationRequestId = elevationRequest.payload.data.id;
+const selfElevationApproval = await api(adminCookie, "/api/v1/staff/role-elevations/" + elevationRequestId + "/approve", "POST", {
+  review_reason: "The requesting administrator must not approve their own elevation request.",
+});
+if (selfElevationApproval.status !== 409) {
+  throw new Error("Admin/Pastor elevation self-approval was not rejected.");
+}
+const secondAdminPendingElevations = await api(secondAdminCookie, "/api/v1/staff/role-elevations");
+const pendingElevations = secondAdminPendingElevations.payload?.data ?? secondAdminPendingElevations.payload?.requests ?? [];
+if (secondAdminPendingElevations.status !== 200 ||
+    !pendingElevations.some((item) => item.id === elevationRequestId)) {
+  throw new Error("A distinct Admin/Pastor reviewer could not see the pending elevation request.");
+}
+const elevationApproval = await api(secondAdminCookie, "/api/v1/staff/role-elevations/" + elevationRequestId + "/approve", "POST", {
+  review_reason: "Distinct Admin/Pastor reviewer approves the synthetic role elevation.",
+});
+if (elevationApproval.status !== 200) {
+  throw new Error("Distinct Admin/Pastor elevation approval failed: " + elevationApproval.status + " " + JSON.stringify(elevationApproval.payload));
+}
+const elevationState = (await d1(
+  "SELECT status,requested_by,reviewed_by FROM staff_role_elevation_request WHERE id=?",
+  [elevationRequestId],
+))[0];
+const elevatedAdminAssignment = (await d1(
+  "SELECT a.id FROM staff_role_assignment a JOIN role r ON r.id=a.role_id WHERE a.staff_profile_id=? AND a.branch_id=? AND r.code='admin_pastor' AND a.revoked_at IS NULL AND a.starts_at<=? AND (a.ends_at IS NULL OR a.ends_at>?)",
+  [unassigned.profileId, branchId, new Date().toISOString(), new Date().toISOString()],
+))[0];
+if (elevationState?.status !== "applied" ||
+    elevationState.requested_by !== admin.profileId ||
+    elevationState.reviewed_by !== secondAdmin.profileId ||
+    !elevatedAdminAssignment?.id) {
+  throw new Error("Admin/Pastor elevation was not applied by a distinct reviewer.");
+}
+
+const secondAdminAssignment = (await d1(
+  "SELECT a.id FROM staff_role_assignment a JOIN role r ON r.id=a.role_id WHERE a.staff_profile_id=? AND a.branch_id=? AND r.code='admin_pastor' AND a.revoked_at IS NULL",
+  [secondAdmin.profileId, branchId],
+))[0];
+if (!secondAdminAssignment?.id) throw new Error("Second synthetic Admin/Pastor assignment was not found for revocation acceptance.");
+const adminRevocationRequest = await api(adminCookie, "/api/v1/staff/role-revocations", "POST", {
+  assignment_id: secondAdminAssignment.id,
+  reason: "Synthetic acceptance verifies two-person Admin/Pastor revocation approval.",
+});
+if (adminRevocationRequest.status !== 201 || !adminRevocationRequest.payload?.data?.id) {
+  throw new Error("Admin/Pastor revocation request creation failed: " + adminRevocationRequest.status + " " + JSON.stringify(adminRevocationRequest.payload));
+}
+const adminRevocationRequestId = adminRevocationRequest.payload.data.id;
+const selfRevocationApproval = await api(adminCookie, "/api/v1/staff/role-revocations/" + adminRevocationRequestId + "/approve", "POST", {
+  review_reason: "The requesting administrator must not approve their own revocation request.",
+});
+if (selfRevocationApproval.status !== 409) {
+  throw new Error("Admin/Pastor revocation self-approval was not rejected.");
+}
+const adminRevocationApproval = await api(unassignedCookie, "/api/v1/staff/role-revocations/" + adminRevocationRequestId + "/approve", "POST", {
+  review_reason: "A distinct elevated Admin/Pastor approves the synthetic revocation.",
+});
+if (adminRevocationApproval.status !== 200) {
+  throw new Error("Distinct Admin/Pastor revocation approval failed: " + adminRevocationApproval.status + " " + JSON.stringify(adminRevocationApproval.payload));
+}
+const adminRevocationState = (await d1(
+  "SELECT status,requested_by,reviewed_by FROM staff_role_revocation_request WHERE id=?",
+  [adminRevocationRequestId],
+))[0];
+const revokedAdminAssignment = (await d1(
+  "SELECT revoked_at,revoked_by,revocation_request_id FROM staff_role_assignment WHERE id=?",
+  [secondAdminAssignment.id],
+))[0];
+if (adminRevocationState?.status !== "applied" ||
+    adminRevocationState.requested_by !== admin.profileId ||
+    adminRevocationState.reviewed_by !== unassigned.profileId ||
+    !revokedAdminAssignment?.revoked_at ||
+    revokedAdminAssignment.revoked_by !== unassigned.profileId ||
+    revokedAdminAssignment.revocation_request_id !== adminRevocationRequestId) {
+  throw new Error("Admin/Pastor revocation was not applied with distinct request/reviewer identities and an audit link.");
+}
+console.log("STAFF_ROLE_LIFECYCLE_AND_DUAL_CONTROL_PASSED");
+
+
+
 const contactCapture = await api(workerCookie, "/api/v1/contacts", "POST", {
   first_name: "Synthetic",
   last_name: "Acceptance",
@@ -263,6 +386,77 @@ if (followupStarted.status !== 200) throw new Error("Follow-up start failed: " +
 const followupCompleted = await api(workerCookie, "/api/v1/followup/tasks/" + followupTaskId, "PATCH", { status: "completed" });
 if (followupCompleted.status !== 200) throw new Error("Follow-up completion failed: " + followupCompleted.status + " " + JSON.stringify(followupCompleted.payload));
 console.log("CONTACT_AND_FOLLOWUP_LIFECYCLE_PASSED");
+
+const otherBranchContactCapture = await api(otherBranchWorkerCookie, "/api/v1/contacts", "POST", {
+  first_name: "Other",
+  last_name: "Branch",
+  preferred_name: null,
+  phone_e164: null,
+  email: null,
+  age_range: null,
+  preferred_language: null,
+  service_area_id: null,
+  source_metadata: { device_type: "automated-cross-branch-test" },
+}, "qa-other-branch-contact-" + runId, otherBranchId);
+if (otherBranchContactCapture.status !== 201 || !otherBranchContactCapture.payload?.data?.id) {
+  throw new Error("Other-branch contact capture failed: " + otherBranchContactCapture.status + " " + JSON.stringify(otherBranchContactCapture.payload));
+}
+const otherBranchContactId = otherBranchContactCapture.payload.data.id;
+const otherBranchTaskCreate = await api(otherBranchWorkerCookie, "/api/v1/followup/tasks", "POST", {
+  contact_id: otherBranchContactId,
+  assignee_user_id: otherBranchWorker.userId,
+  priority: 2,
+  due_at: endsAt,
+  task_note: "Synthetic other-branch follow-up for isolation acceptance.",
+}, "qa-other-branch-followup-" + runId, otherBranchId);
+if (otherBranchTaskCreate.status !== 201 || !otherBranchTaskCreate.payload?.data?.id) {
+  throw new Error("Other-branch follow-up creation failed: " + otherBranchTaskCreate.status + " " + JSON.stringify(otherBranchTaskCreate.payload));
+}
+const otherBranchTaskId = otherBranchTaskCreate.payload.data.id;
+const otherBranchContactRead = await api(otherBranchWorkerCookie, "/api/v1/contacts/" + otherBranchContactId, "GET", undefined, undefined, otherBranchId);
+if (otherBranchContactRead.status !== 200) {
+  throw new Error("Other-branch worker could not read its own branch contact.");
+}
+const otherBranchTaskList = await api(otherBranchWorkerCookie, "/api/v1/followup/tasks?limit=50&offset=0&status=open", "GET", undefined, undefined, otherBranchId);
+if (otherBranchTaskList.status !== 200 || !otherBranchTaskList.payload?.data?.some((task) => task.id === otherBranchTaskId)) {
+  throw new Error("Other-branch worker could not read its own branch follow-up task.");
+}
+const branchOneCannotReadOtherContact = await api(adminCookie, "/api/v1/contacts/" + otherBranchContactId, "GET", undefined, undefined, branchId);
+if (![403, 404].includes(branchOneCannotReadOtherContact.status)) {
+  throw new Error("Branch-one Admin/Pastor read a contact from another branch.");
+}
+const branchTwoCannotReadBranchOneContact = await api(otherBranchWorkerCookie, "/api/v1/contacts/" + contactId, "GET", undefined, undefined, otherBranchId);
+if (![403, 404].includes(branchTwoCannotReadBranchOneContact.status)) {
+  throw new Error("Other-branch worker read a contact from the primary branch.");
+}
+const branchOneCannotReadOtherTask = await api(workerCookie, "/api/v1/followup/tasks?limit=50&offset=0&status=open", "GET");
+if (branchOneCannotReadOtherTask.status !== 200 ||
+    branchOneCannotReadOtherTask.payload?.data?.some((task) => task.id === otherBranchTaskId)) {
+  throw new Error("Primary-branch follow-up listing exposed an other-branch task.");
+}
+const branchOneCrossContactAssign = await api(adminCookie, "/api/v1/contacts/" + otherBranchContactId + "/assign", "POST", {
+  assignee_profile_id: worker.profileId,
+  reason: "This cross-branch contact assignment must be denied.",
+});
+if (![403, 404].includes(branchOneCrossContactAssign.status)) {
+  throw new Error("Primary-branch Admin/Pastor assigned a contact from another branch.");
+}
+const branchOneCrossTaskMutation = await api(adminCookie, "/api/v1/followup/tasks/" + otherBranchTaskId, "PATCH", {
+  status: "in_progress",
+});
+if (![403, 404].includes(branchOneCrossTaskMutation.status)) {
+  throw new Error("Primary-branch Admin/Pastor modified a follow-up task from another branch.");
+}
+const otherBranchContactAfterDeniedMutation = (await d1("SELECT branch_id,first_name FROM contact WHERE id=?", [otherBranchContactId]))[0];
+const otherBranchTaskAfterDeniedMutation = (await d1("SELECT status FROM followup_task WHERE id=?", [otherBranchTaskId]))[0];
+if (otherBranchContactAfterDeniedMutation?.branch_id !== otherBranchId ||
+    otherBranchContactAfterDeniedMutation?.first_name !== "Other" ||
+    otherBranchTaskAfterDeniedMutation?.status !== "open") {
+  throw new Error("A denied cross-branch mutation changed business data.");
+}
+console.log("CROSS_BRANCH_CONTACT_AND_FOLLOWUP_READ_MUTATION_ISOLATION_PASSED");
+
+
 
 // Verify team-scoped allocation, handoff, and assigned-only privacy across all six roles.
 const adminTeamAssign = await api(adminCookie, `/api/v1/contacts/${contactId}/assign`, "POST", {
