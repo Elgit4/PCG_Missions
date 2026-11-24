@@ -255,6 +255,7 @@ const flyerForm = new FormData();
 flyerForm.append("file", new Blob([flyerBytes], { type: "image/png" }), "synthetic-acceptance.png");
 let flyerUploadPayload;
 let flyerDownloadVerified = false;
+let flyerSignedUrl;
 let flyerRemovePayload;
 try {
   const flyerUploadResponse = await fetchWithTimeout(
@@ -276,7 +277,8 @@ try {
   if (flyerRead.status !== 200 || flyerRead.payload?.data?.object_path !== flyerUploadPayload.data.object_path) {
     throw new Error("Private event flyer metadata readback failed: " + flyerRead.status);
   }
-  const flyerDownload = await fetchWithTimeout(flyerRead.payload.data.signed_url);
+  flyerSignedUrl = flyerRead.payload.data.signed_url;
+  const flyerDownload = await fetchWithTimeout(flyerSignedUrl);
   const downloadedFlyerBytes = Buffer.from(await flyerDownload.arrayBuffer());
   flyerDownloadVerified = flyerDownload.ok && downloadedFlyerBytes.equals(flyerBytes);
   if (!flyerDownloadVerified) throw new Error("Signed event flyer URL did not return the uploaded bytes.");
@@ -287,7 +289,8 @@ try {
   }
 }
 const flyerAfterRemoval = await api(adminCookie, `/api/v1/events/${flyerEventId}/flyer`);
-if (!flyerDownloadVerified || flyerAfterRemoval.status !== 404) {
+const deletedFlyerObject = await fetchWithTimeout(flyerSignedUrl);
+if (!flyerDownloadVerified || flyerAfterRemoval.status !== 404 || deletedFlyerObject.ok) {
   throw new Error("Event flyer upload/read/delete lifecycle did not complete cleanly.");
 }
 console.log("PRIVATE_EVENT_FLYER_STORAGE_LIFECYCLE_PASSED");
