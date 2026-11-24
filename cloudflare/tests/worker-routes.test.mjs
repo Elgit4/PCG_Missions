@@ -537,6 +537,15 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
               roles_json: "[]",
             }] };
           }
+          if (this.sql.includes("FROM contact c") && this.sql.includes("team_member.auth_user_id")) {
+            return { results: [{
+              id: CONTACT_ID,
+              branch_id: BRANCH_ID,
+              first_name: "Ama",
+              last_name: "Mensah",
+              contact_status: "active",
+            }] };
+          }
           if (this.sql.includes("FROM calendar_entry")) return { results: calendarEntryRow ? [calendarEntryRow] : [] };
           if (this.sql.includes("FROM event_staff_assignment a")) return { results: eventStaffAssignment ? [eventStaffAssignment] : [] };
           if (this.sql.includes("FROM event_team_assignment a")) return { results: eventTeamAssignment ? [eventTeamAssignment] : [] };
@@ -932,6 +941,19 @@ test("Team Leader directory reads return only own-team data and omit staff ident
   const coverageQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM staff_area_coverage"));
   assert.ok(coverageQuery);
   assert.match(coverageQuery.sql, /covered_team\.is_active = 1/);
+
+  const contactsResponse = await worker.fetch(
+    authenticatedDirectoryRequest("/api/v1/contacts?limit=50&offset=0"),
+    fixture.env,
+  );
+  const contactsPayload = await contactsResponse.json();
+  assert.equal(contactsResponse.status, 200);
+  assert.ok(contactsPayload.data.some((contact) => contact.id === CONTACT_ID));
+  const contactQuery = calls.find((call) => call.kind === "all" && call.sql.includes("FROM contact c") && call.sql.includes("team_member.auth_user_id"));
+  assert.ok(contactQuery);
+  assert.match(contactQuery.sql, /JOIN staff_profile team_member ON team_member\.id = tm\.staff_profile_id/);
+  assert.match(contactQuery.sql, /team_member\.auth_user_id = \?/);
+  assert.ok(contactQuery.values.includes(AUTH_USER_ID));
 });
 
 test("Field Worker, Follow-up Volunteer and Prayer Intercessor cannot read team or service-area directories", async (t) => {
