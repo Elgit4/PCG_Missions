@@ -8,7 +8,7 @@ Cloudflare Pages serves the PWA. A same-origin Pages Function gateway forwards a
 - Browser → same-origin /api/v1/* → Cloudflare Worker business API.
 - Pages Function gateway forwards cookies, request bodies, branch context and idempotency keys to the Worker and returns its Set-Cookie headers.
 - Worker → EU Cloudflare D1 for authentication, staff identity, six-role authorization, ministry records, audit, reports, announcements, events and follow-up.
-- Worker → private Supabase Storage only for event-flyer upload and retrieval. Supabase Auth, Postgres and Edge Functions are not application dependencies.
+- Worker → private Supabase Storage only for event-flyer upload and retrieval. Supabase Auth, PostgREST, Edge Functions and Realtime are not application runtime dependencies. Supabase Postgres remains required underneath Storage for bucket/object metadata and authorization; do not stop it while the Storage bucket is retained.
 
 ## Pages project settings
 

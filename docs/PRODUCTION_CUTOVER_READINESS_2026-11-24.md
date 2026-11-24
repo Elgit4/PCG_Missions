@@ -36,7 +36,7 @@ Acceptance must cover:
 - Contact registration, follow-up creation, assignment, reassignment and handoff.
 - Recipient-scoped in-app notification creation, listing, read state and idempotency.
 - Ministry report submit, return, resubmit and approve lifecycle, including immutable history.
-- Event registration, idempotency, check-in, closeout submission and review.
+- Event registration, idempotency, check-in, closeout submission and review, plus Worker-mediated private flyer upload, signed URL readback and deletion through the retained Supabase Storage bucket.
 - Restricted prayer/care access and audit trails.
 - Foreign-key integrity and rollback behavior on failed writes.
 
@@ -77,7 +77,7 @@ Do not infer that a follow-up task should automatically notify a visitor. The fi
 
 ### E. Finish Supabase dependency retirement audit
 
-The current runtime boundary test asserts that the browser has no Supabase Auth/client dependency and that Worker Supabase credentials are confined to the private event-flyer Storage adapter. Preserve Supabase Storage for `pcg-missions-event-media`. Before retiring any other Supabase service, inspect all production frontend, Pages Functions, Worker, CI, migration/import scripts and environment configuration references. Remove obsolete Auth/Postgres dependencies only after proving they are not used by any production path.
+The current runtime boundary test asserts that the browser has no Supabase Auth/client dependency and that Worker Supabase credentials are confined to the private event-flyer Storage adapter. Preserve Supabase Storage for `pcg-missions-event-media`. Before retiring any other Supabase service, inspect all production frontend, Pages Functions, Worker, CI, migration/import scripts and environment configuration references. Supabase Auth, PostgREST, Edge Functions and Realtime are not used by the PCG Missions runtime. However, Supabase Storage stores bucket/object metadata and authorization state in the project Postgres database, so Postgres cannot be stopped while the event-media bucket remains in use. Full Supabase project retirement requires migrating the bucket and existing objects to Cloudflare R2 or another object store, verifying the Worker upload/read/delete lifecycle there, then removing the Supabase URL and service-role secret.
 
 ### F. Approve operational privacy and data-governance controls before real ministry data
 
