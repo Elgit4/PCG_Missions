@@ -1270,15 +1270,19 @@ function contactScopePredicate(
     sql: `EXISTS (
       SELECT 1
       FROM contact_assignment ca
+      JOIN team active_team
+        ON active_team.id = ca.team_id
+       AND active_team.branch_id = ca.branch_id
+       AND active_team.is_active = 1
       JOIN staff_team_membership tm
         ON tm.team_id = ca.team_id AND tm.branch_id = ca.branch_id
-      JOIN staff_profile scope_staff
-        ON scope_staff.id = tm.staff_profile_id
+      JOIN staff_profile team_member
+        ON team_member.id = tm.staff_profile_id
       WHERE ca.contact_id = ${alias}.id
         AND ca.branch_id = ${alias}.branch_id
-        AND scope_staff.auth_user_id = ?
-        AND scope_staff.account_status = 'active'
-        AND scope_staff.deactivated_at IS NULL
+        AND team_member.auth_user_id = ?
+        AND team_member.account_status = 'active'
+        AND team_member.deactivated_at IS NULL
         AND tm.membership_role = 'leader'
         AND tm.revoked_at IS NULL
         AND tm.starts_at <= ?
