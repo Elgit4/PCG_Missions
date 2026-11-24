@@ -305,16 +305,16 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
                 "INSERT INTO account(id,accountId,providerId,userId,password,createdAt,updatedAt) VALUES(?,?,'credential',?,?,1,1)",
                 (user_id + ":credential", user_id, user_id, "synthetic-bcrypt-hash"),
             )
-        for profile_id, user_id, name, email, status, must_change in (
-            (owner_profile, owner_user, "Elvis", "elviskwakuboateng63@gmail.com", "active", 0),
-            (nyarko_profile, nyarko_user, "Nyarko", "eltech6363@gmail.com", "active", 1),
-            (nana_profile, nana_user, "Nana", "nanaseiboateng15@gmail.com", "inactive", 1),
+        for profile_id, user_id, name, email, status, must_change, setup_expires_at in (
+            (owner_profile, owner_user, "Elvis", "elviskwakuboateng63@gmail.com", "active", 0, None),
+            (nyarko_profile, nyarko_user, "Nyarko", "eltech6363@gmail.com", "active", 1, "2026-11-13T21:25:46.391Z"),
+            (nana_profile, nana_user, "Nana", "nanaseiboateng15@gmail.com", "inactive", 1, "2026-11-21T20:18:20.336Z"),
         ):
             self.db.execute(
                 """INSERT INTO staff_profile
-                   (id,auth_user_id,full_name,email,account_status,deactivated_at,created_at,updated_at,must_change_password)
-                   VALUES(?,?,?,?,?,?,?,?,?)""",
-                (profile_id, user_id, name, email, status, now if status == "inactive" else None, now, now, must_change),
+                   (id,auth_user_id,full_name,email,account_status,deactivated_at,created_at,updated_at,must_change_password,password_setup_expires_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (profile_id, user_id, name, email, status, now if status == "inactive" else None, now, now, must_change, setup_expires_at),
             )
         self.db.executemany(
             """INSERT INTO session(id,expiresAt,token,createdAt,updatedAt,userId)
@@ -353,6 +353,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             ),
         )
 
+        self.db.execute("UPDATE app_meta SET environment='production' WHERE id=1")
         cleanup = Path(__file__).resolve().parents[1] / "scripts" / "remove_test_staff_logins.sql"
         script = cleanup.read_text(encoding="utf-8")
         self.db.executescript(script)
