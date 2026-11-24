@@ -417,7 +417,6 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
   const resetRequest = { id: "90000000-0000-4000-8000-000000000002", target_profile_id: COVERED_STAFF_ID, branch_id: BRANCH_ID, status: "pending", expires_at: "2099-01-01T00:00:00.000Z", auth_user_id: "10000000-0000-4000-8000-000000000002", email: "reset-target@example.test" };
   let followupTaskStatus = "open";
   let batchChangesOverride = null;
-  let batchChangesOverride = null;
   let calendarEntryRow = null;
   let announcementRow = null;
   const contentRows = [];
@@ -677,7 +676,6 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
     get writes() { return writes; },
     contentRows,
     setCalendarEntryRow(row) { calendarEntryRow = row; },
-    setBatchChanges(values) { batchChangesOverride = values; },
     setBatchChanges(values) { batchChangesOverride = values; },
     get calendarEntryRow() { return calendarEntryRow; },
     env: {
@@ -1348,37 +1346,6 @@ test("Admin/Pastor team handoff accepts D1 change counts including assignment au
   const fixture = authorizedDirectoryEnv("admin_pastor", [["contacts.assign", "branch"]]);
   // Assignment INSERT/UPDATE statements also write append-only audit rows by D1 trigger.
   // Some D1 result metadata includes both direct and trigger side-effect changes.
-  fixture.setBatchChanges([2, 2]);
-  const response = await worker.fetch(new Request("https://worker.example/api/v1/contacts/" + CONTACT_ID + "/assign", {
-    method: "POST",
-    headers: {
-      Cookie: "better-auth.session_token=verified-test-token",
-      "X-Branch-Id": BRANCH_ID,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      team_id: OWN_TEAM_ID,
-      reason: "Admin routes this visitor to the responsible ministry team.",
-    }),
-  }), fixture.env);
-  const payload = await response.json();
-
-  assert.equal(response.status, 201);
-  assert.equal(payload.ok, true);
-  assert.equal(payload.data.team_id, OWN_TEAM_ID);
-  assert.equal(fixture.batches.length, 1);
-  assert.equal(fixture.writes, 2);
-});
-
-test("Admin/Pastor team handoff accepts D1 change counts including assignment audit trigger rows", async (t) => {
-  t.mock.method(globalThis, "fetch", async (input) => {
-    const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
-    assert.equal(url.pathname, "/auth/v1/user");
-    return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
-  });
-  const fixture = authorizedDirectoryEnv("admin_pastor", [["contacts.assign", "branch"]]);
-  // Assignment writes also append audit rows through D1 triggers.
-  // D1 metadata can report the direct row plus those trigger side-effects.
   fixture.setBatchChanges([2, 2]);
   const response = await worker.fetch(new Request("https://worker.example/api/v1/contacts/" + CONTACT_ID + "/assign", {
     method: "POST",
