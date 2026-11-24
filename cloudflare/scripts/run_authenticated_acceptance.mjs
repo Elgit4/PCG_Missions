@@ -159,6 +159,7 @@ const secondAdmin = await insertUser("admin_pastor", "second-admin", null, true)
 await d1("UPDATE staff_admin_bootstrap_state SET remaining_slots=1 WHERE id=1");
 const otherBranchAdmin = await insertUser("admin_pastor", "other-branch-admin", null, true, otherBranchId);
 const worker = await insertUser("field_worker", "worker", admin.profileId);
+const elevationTarget = await insertUser("field_worker", "elevation-target", admin.profileId);
 const otherBranchWorker = await insertUser("field_worker", "other-branch-worker", otherBranchAdmin.profileId, false, otherBranchId);
 const reviewer = await insertUser("coordinator", "reviewer", admin.profileId);
 const unassigned = await insertUser("field_worker", "unassigned", admin.profileId);
@@ -196,6 +197,7 @@ if (unauthenticated.status !== 401) throw new Error(`Unauthenticated /api/v1/me 
 
 let adminCookie = await signIn(admin, "Admin/Pastor", true);
 const secondAdminCookie = await signIn(secondAdmin, "Second Admin/Pastor");
+const elevationTargetCookie = await signIn(elevationTarget, "Admin/Pastor elevation target");
 const otherBranchWorkerCookie = await signIn(otherBranchWorker, "Other-branch Field Worker");
 const workerCookie = await signIn(worker, "Field Worker");
 const reviewerCookie = await signIn(reviewer, "Coordinator");
@@ -208,6 +210,7 @@ console.log("BETTER_AUTH_SESSIONS_CREATED");
 for (const [cookie, label] of [
   [adminCookie, "Admin/Pastor"],
   [secondAdminCookie, "Second Admin/Pastor"],
+  [elevationTargetCookie, "Admin/Pastor elevation target"],
   [reviewerCookie, "Coordinator"],
   [teamLeaderCookie, "Team Leader"],
   [workerCookie, "Field Worker"],
@@ -230,7 +233,7 @@ if (otherBranchWorkerMe.status !== 200 || otherBranchWorkerMe.payload?.ok !== tr
 console.log("AUTHENTICATED_ME_ENDPOINTS_PASSED");
 
 const standardRoleAssignment = await api(adminCookie, "/api/v1/staff/roles", "POST", {
-  target_profile_id: unassigned.profileId,
+  target_profile_id: elevationTarget.profileId,
   role_code: "follow_up_volunteer",
   reason: "Synthetic acceptance verifies standard role assignment and revocation.",
 });
@@ -239,7 +242,7 @@ if (standardRoleAssignment.status !== 201 || !standardRoleAssignment.payload?.da
 }
 const standardRoleAssignmentId = standardRoleAssignment.payload.data.id;
 const coordinatorRoleAssignmentDenied = await api(reviewerCookie, "/api/v1/staff/roles", "POST", {
-  target_profile_id: unassigned.profileId,
+  target_profile_id: elevationTarget.profileId,
   role_code: "team_leader",
   reason: "This coordinator attempt must be denied by role authorization.",
 });
@@ -258,7 +261,7 @@ const standardRoleState = (await d1(
 ))[0];
 const standardRoleAudit = await d1(
   "SELECT action FROM staff_access_audit WHERE target_profile_id=? AND json_extract(metadata,'$.assignment_id')=? ORDER BY created_at",
-  [unassigned.profileId, standardRoleAssignmentId],
+  [elevationTarget.profileId, standardRoleAssignmentId],
 );
 if (!standardRoleState?.revoked_at || standardRoleState.revoked_by !== admin.profileId ||
     !standardRoleAudit.some((row) => row.action === "role_assigned") ||
@@ -267,7 +270,7 @@ if (!standardRoleState?.revoked_at || standardRoleState.revoked_by !== admin.pro
 }
 
 const elevationRequest = await api(adminCookie, "/api/v1/staff/role-elevations", "POST", {
-  target_profile_id: unassigned.profileId,
+  target_profile_id: elevationTarget.profileId,
   reason: "Synthetic acceptance verifies two-person Admin/Pastor elevation approval.",
 });
 if (elevationRequest.status !== 201 || !elevationRequest.payload?.data?.id) {
@@ -298,7 +301,7 @@ const elevationState = (await d1(
 ))[0];
 const elevatedAdminAssignment = (await d1(
   "SELECT a.id FROM staff_role_assignment a JOIN role r ON r.id=a.role_id WHERE a.staff_profile_id=? AND a.branch_id=? AND r.code='admin_pastor' AND a.revoked_at IS NULL AND a.starts_at<=? AND (a.ends_at IS NULL OR a.ends_at>?)",
-  [unassigned.profileId, branchId, new Date().toISOString(), new Date().toISOString()],
+  [elevationTarget.profileId, branchId, new Date().toISOString(), new Date().toISOString()],
 ))[0];
 if (elevationState?.status !== "applied" ||
     elevationState.requested_by !== admin.profileId ||
@@ -326,7 +329,7 @@ const selfRevocationApproval = await api(adminCookie, "/api/v1/staff/role-revoca
 if (selfRevocationApproval.status !== 409) {
   throw new Error("Admin/Pastor revocation self-approval was not rejected.");
 }
-const adminRevocationApproval = await api(unassignedCookie, "/api/v1/staff/role-revocations/" + adminRevocationRequestId + "/approve", "POST", {
+const adminRevocationApproval = await api(elevationTargetCookie, "/api/v1/staff/role-revocations/" + adminRevocationRequestId + "/approve", "POST", {
   review_reason: "A distinct elevated Admin/Pastor approves the synthetic revocation.",
 });
 if (adminRevocationApproval.status !== 200) {
@@ -342,9 +345,9 @@ const revokedAdminAssignment = (await d1(
 ))[0];
 if (adminRevocationState?.status !== "applied" ||
     adminRevocationState.requested_by !== admin.profileId ||
-    adminRevocationState.reviewed_by !== unassigned.profileId ||
+    adminRevocationState.reviewed_by !== elevationTarget.profileId ||
     !revokedAdminAssignment?.revoked_at ||
-    revokedAdminAssignment.revoked_by !== unassigned.profileId ||
+    revokedAdminAssignment.revoked_by !== elevationTarget.profileId ||
     revokedAdminAssignment.revocation_request_id !== adminRevocationRequestId) {
   throw new Error("Admin/Pastor revocation was not applied with distinct request/reviewer identities and an audit link.");
 }
