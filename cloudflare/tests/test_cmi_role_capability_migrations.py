@@ -149,6 +149,120 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         )
         self.assertEqual(self.db.execute("PRAGMA foreign_key_check").fetchall(), [])
 
+    def test_contact_assignment_can_be_ended_early_for_team_handoff(self):
+        now = "2026-11-23T12:00:00.000Z"
+        transition_at = "2026-11-23T12:00:01.000Z"
+        future_end = "2026-11-26T12:00:00.000Z"
+        church_id = "handoff-church"
+        branch_id = "handoff-branch"
+        admin_user_id = "handoff-admin-user"
+        worker_user_id = "handoff-worker-user"
+        admin_profile_id = "handoff-admin-profile"
+        worker_profile_id = "handoff-worker-profile"
+        contact_id = "handoff-contact"
+        assignment_id = "handoff-existing-assignment"
+        team_id = "handoff-team"
+
+        self.db.execute(
+            "INSERT INTO church(id,name,created_at,updated_at) VALUES(?,?,?,?)",
+            (church_id, "Handoff Test Church", now, now),
+        )
+        self.db.execute(
+            "INSERT INTO branch(id,church_id,name,timezone,created_at,updated_at) VALUES(?,?,?,?,?,?)",
+            (branch_id, church_id, "Handoff Test Branch", "Africa/Accra", now, now),
+        )
+        for user_id, name, email in (
+            (admin_user_id, "Admin", "handoff-admin@example.test"),
+            (worker_user_id, "Field Worker", "handoff-worker@example.test"),
+        ):
+            self.db.execute(
+                'INSERT INTO "user"(id,name,email,emailVerified,image,createdAt,updatedAt) VALUES(?,?,?,?,?,?,?)',
+                (user_id, name, email, 1, None, 1, 1),
+            )
+        for profile_id, user_id, name, email in (
+            (admin_profile_id, admin_user_id, "Admin", "handoff-admin@example.test"),
+            (worker_profile_id, worker_user_id, "Field Worker", "handoff-worker@example.test"),
+        ):
+            self.db.execute(
+                """INSERT INTO staff_profile
+                   (id,auth_user_id,full_name,email,account_status,created_at,updated_at,must_change_password)
+                   VALUES(?,?,?,?, 'active',?,?,0)""",
+                (profile_id, user_id, name, email, now, now),
+            )
+        admin_role_id = self.db.execute(
+            "SELECT id FROM role WHERE code='admin_pastor'"
+        ).fetchone()[0]
+        worker_role_id = self.db.execute(
+            "SELECT id FROM role WHERE code='field_worker'"
+        ).fetchone()[0]
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at)
+               VALUES('handoff-admin-role',?,?,?, ?,?,?)""",
+            (admin_profile_id, admin_role_id, branch_id, admin_profile_id, now, now),
+        )
+        self.db.execute(
+            """INSERT INTO staff_role_assignment
+               (id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at)
+               VALUES('handoff-worker-role',?,?,?, ?,?,?)""",
+            (worker_profile_id, worker_role_id, branch_id, admin_profile_id, now, now),
+        )
+        self.db.execute(
+            "INSERT INTO team(id,branch_id,name,created_at,updated_at) VALUES(?,?,?,?,?)",
+            (team_id, branch_id, "Follow-up Team", now, now),
+        )
+        self.db.execute(
+            """INSERT INTO contact(id,branch_id,first_name,last_name,created_at,updated_at)
+               VALUES(?,?,?,?,?,?)""",
+            (contact_id, branch_id, "Handoff", "Contact", now, now),
+        )
+        self.db.execute(
+            """INSERT INTO contact_assignment
+               (id,contact_id,branch_id,assignee_user_id,team_id,assigned_by,starts_at,ends_at,reason,created_at)
+               VALUES(?,?,?,?,NULL,?,?,?,?,?)""",
+            (assignment_id, contact_id, branch_id, worker_user_id, admin_user_id,
+             now, future_end, "Initial field-worker assignment", now),
+        )
+
+        self.db.execute(
+            """UPDATE contact_assignment
+               SET ends_at=?,ended_by=?,reason=?
+               WHERE id=?""",
+            (transition_at, admin_user_id, "Early handoff to the ministry team", assignment_id),
+        )
+        ended = self.db.execute(
+            "SELECT ends_at,ended_by,reason FROM contact_assignment WHERE id=?",
+            (assignment_id,),
+        ).fetchone()
+        self.assertEqual(ended, (transition_at, admin_user_id, "Early handoff to the ministry team"))
+        self.assertEqual(
+            self.db.execute(
+                "SELECT action FROM contact_assignment_audit WHERE assignment_id=? ORDER BY created_at DESC LIMIT 1",
+                (assignment_id,),
+            ).fetchone()[0],
+            "ended_early",
+        )
+
+        self.db.execute(
+            """INSERT INTO contact_assignment
+               (id,contact_id,branch_id,assignee_user_id,team_id,assigned_by,starts_at,reason,created_at)
+               VALUES('handoff-team-assignment',?,?,NULL,?,?,?,?,?)""",
+            (contact_id, branch_id, team_id, admin_user_id, transition_at,
+             "Transferred to the follow-up team", transition_at),
+        )
+        self.assertEqual(
+            self.db.execute(
+                "SELECT COUNT(*) FROM contact_assignment WHERE contact_id=? AND team_id=? AND ends_at IS NULL",
+                (contact_id, team_id),
+            ).fetchone()[0],
+            1,
+        )
+        with self.assertRaisesRegex(sqlite3.IntegrityError, "CONTACT_ASSIGNMENT_ALREADY_ENDED"):
+            self.db.execute(
+                "UPDATE contact_assignment SET ends_at=? WHERE id=?",
+                ("2026-11-27T12:00:00.000Z", assignment_id),
+            )
+
     def test_owner_cleanup_refuses_non_production_database(self):
         environment = self.db.execute(
             "SELECT environment FROM app_meta WHERE id = 1"
