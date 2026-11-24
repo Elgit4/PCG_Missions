@@ -7,6 +7,11 @@ on:
     paths:
       - ".github/workflows/cloudflare-d1-restore-rehearsal-trigger.yml"
       - "cloudflare/scripts/run_authenticated_acceptance.mjs"
+      - "cloudflare/scripts/run_browser_acceptance.mjs"
+      - "cloudflare/migrations/**"
+      - "cloudflare/tests/**"
+      - "cloudflare/src/**"
+      - "cloudflare/wrangler.toml"
 
 permissions:
   contents: read
