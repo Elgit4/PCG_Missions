@@ -1,6 +1,8 @@
 -- The handoff migration now records early termination as "ended_early".
 -- Expand the append-only audit table's action constraint without losing history.
 
+DROP TRIGGER IF EXISTS contact_assignment_audit_insert;
+DROP TRIGGER IF EXISTS contact_assignment_audit_end;
 DROP TRIGGER IF EXISTS contact_assignment_audit_no_update;
 DROP TRIGGER IF EXISTS contact_assignment_audit_no_delete;
 DROP TABLE IF EXISTS contact_assignment_audit_new;
@@ -41,6 +43,45 @@ CREATE TRIGGER contact_assignment_audit_no_delete
 BEFORE DELETE ON contact_assignment_audit
 BEGIN
   SELECT RAISE(ABORT, 'CONTACT_ASSIGNMENT_AUDIT_APPEND_ONLY');
+END;
+
+CREATE TRIGGER contact_assignment_audit_insert
+AFTER INSERT ON contact_assignment
+BEGIN
+  INSERT INTO contact_assignment_audit
+    (id, assignment_id, contact_id, branch_id, actor_user_id, action, reason, created_at)
+  VALUES (
+    'contact-assigned-' || lower(hex(randomblob(16))),
+    NEW.id,
+    NEW.contact_id,
+    NEW.branch_id,
+    NEW.assigned_by,
+    'assigned',
+    COALESCE(NEW.reason, 'Contact assigned to a staff member or team'),
+    NEW.created_at
+  );
+END;
+
+CREATE TRIGGER contact_assignment_audit_end
+AFTER UPDATE OF ends_at ON contact_assignment
+WHEN NEW.ends_at IS NOT NULL
+  AND (
+    OLD.ends_at IS NULL
+    OR julianday(NEW.ends_at) < julianday(OLD.ends_at)
+  )
+BEGIN
+  INSERT INTO contact_assignment_audit
+    (id, assignment_id, contact_id, branch_id, actor_user_id, action, reason, created_at)
+  VALUES (
+    'contact-ended-' || lower(hex(randomblob(16))),
+    NEW.id,
+    NEW.contact_id,
+    NEW.branch_id,
+    NEW.ended_by,
+    CASE WHEN OLD.ends_at IS NULL THEN 'ended' ELSE 'ended_early' END,
+    COALESCE(NEW.reason, 'Contact assignment ended'),
+    NEW.ends_at
+  );
 END;
 
 UPDATE app_meta SET schema_version = 49 WHERE id = 1;
