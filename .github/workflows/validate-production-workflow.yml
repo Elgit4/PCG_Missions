@@ -1,0 +1,21 @@
+name: Validate PCG Missions Production Workflow
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/cloudflare-production-worker-deploy.yml"
+      - ".github/workflows/cloudflare-production-release-trigger.yml"
+      - ".github/workflows/validate-production-workflow.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate all GitHub Actions workflow syntax and expressions
+        uses: docker://rhysd/actionlint:1.7.7
