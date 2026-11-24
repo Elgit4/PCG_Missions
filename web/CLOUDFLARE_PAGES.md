@@ -32,14 +32,18 @@ The Worker requires BETTER_AUTH_SECRET (at least 32 random characters), BETTER_A
 
 Never add the event-storage service key to Pages variables, browser build variables, source control or chat. Do not add Supabase URL or publishable keys to VITE_ variables. SMS remains disabled.
 
-## Release checks
+## Current guarded release checks
 
-1. Run schema/security tests, Worker typecheck, Worker local Better Auth integration, frontend typecheck, unit tests and frontend production build.
-2. Apply the forward-only D1 migration to the isolated EU preview database.
-3. Import the matching existing Supabase bcrypt credential hashes into Better Auth D1 account rows through a secret-protected migration job. The job validates identity IDs and emails and never logs credentials or hashes.
-4. Deploy only the preview Worker and verify schema 44, Better Auth session endpoint, anonymous API denial and exact-origin cookie gateway.
-5. Verify staff login/session restoration/sign-out, all six roles, branch/team/assigned scopes, staff account lifecycle, reset approval, reports, events, calendar, announcements, prayer/care, notifications and public content against non-production fixtures.
-6. Provision a separate production Worker and production-only D1 binding. Verify data reconciliation, foreign keys, monitoring, backup/restore and rollback before switching official Pages production.
-7. Only after Cloudflare production is verified should Supabase Auth, Supabase Postgres/Edge Functions and Vercel application hosting be retired. Keep the private event-media storage bucket.
+The numbered schema-44 and credential-import steps from the original migration are historical. Better Auth and the Cloudflare identity foundation are already present; do not repeat the one-time credential import.
 
-A preview build or anonymous health response alone is not production readiness.
+1. Run Cloudflare D1 Foundation CI, Worker tests/typecheck, Wrangler preview/production dry-run bundle checks, and frontend CI on the exact release commit.
+2. Deploy the candidate to the isolated preview Worker and verify health, Better Auth session boundary, anonymous authorization boundary and same-origin Pages proxy.
+3. Run the full isolated schema-49 authenticated acceptance harness. It must cover all six roles, branch/team/assignee isolation, login and password recovery, contacts/follow-up/reassignment/handoff, notification producers and recipient scope, report lifecycle, event registration/check-in/closeout, prayer/care restrictions, team/service-area administration, announcements/content/calendar and audit integrity.
+4. Clone production D1 into an isolated EU database, compare manifests and foreign keys, rehearse Time Travel restore, and securely delete the clone/export.
+5. Use only the guarded production release workflow. Capture the production bookmark, apply forward-only migrations, verify the migration ledger and roster reconciliation, then deploy Worker and Pages from the same reviewed commit.
+6. Verify production direct Worker and same-origin Pages health/session/CORS boundaries plus authenticated staff smoke tests. Keep automatic Pages production deployment disabled.
+7. Preserve Supabase Storage only for the private event-media bucket. Retire Supabase Auth/Postgres/Edge Functions only after a complete runtime/configuration audit proves there are no remaining production dependencies.
+
+The 24 November release attempt passed roster preflight but the isolated schema-49 rehearsal stopped with Cloudflare D1 error 7500 (daily free-tier row-write quota exhausted). Production was not modified. Scheduled follow-up reminders are now implemented on main as a release candidate, but are not operational in production until authenticated D1 acceptance and the guarded deployment pass. SMS remains disabled.
+
+A preview build or anonymous health response alone is not production readiness. The current source of truth is [cloudflare/OPERATIONS_RUNBOOK.md](../cloudflare/OPERATIONS_RUNBOOK.md) and [PRODUCTION_CUTOVER_READINESS_2026-11-24.md](../docs/PRODUCTION_CUTOVER_READINESS_2026-11-24.md).
