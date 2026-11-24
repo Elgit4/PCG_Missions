@@ -96,9 +96,9 @@ jobs:
 
           [vars]
           APP_ENV = "non-production"
-          APP_ALLOWED_ORIGINS = "http://localhost:8787"
+          APP_ALLOWED_ORIGINS = "http://localhost:8787,http://localhost:8788"
           BETTER_AUTH_URL = "http://localhost:8787"
-          BETTER_AUTH_TRUSTED_ORIGINS = "http://localhost:8787"
+          BETTER_AUTH_TRUSTED_ORIGINS = "http://localhost:8787,http://localhost:8788"
           BETTER_AUTH_SECRET = "${AUTH_SECRET}"
 
           [[d1_databases]]
@@ -204,7 +204,7 @@ jobs:
           echo "value=$BOOKMARK" >> "$GITHUB_OUTPUT"
           echo "Captured schema 47 pre-acceptance bookmark."
 
-      - name: Run authenticated API acceptance against temporary Worker
+      - name: Run authenticated API and browser acceptance through temporary Pages proxy
         working-directory: cloudflare
         env:
           DB_ID: ${{ steps.database.outputs.id }}
@@ -212,16 +212,25 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
           WORKER_URL: "http://127.0.0.1:8787"
+          PCG_BROWSER_CREDENTIALS_PATH: ${{ runner.temp }}/pcg-browser-credentials.json
+          PCG_BROWSER_BASE_URL: "http://localhost:8788"
         shell: bash
         run: |
           set -euo pipefail
+          PAGES_PID=""
           npx wrangler dev --config wrangler.restore-rehearsal.toml \
             --ip 0.0.0.0 --port 8787 </dev/null > "$RUNNER_TEMP/pcg-acceptance-worker.log" 2>&1 &
           WORKER_PID=$!
           cleanup() {
+            if [[ -n "$PAGES_PID" ]]; then
+              pkill -P "$PAGES_PID" 2>/dev/null || true
+              kill "$PAGES_PID" 2>/dev/null || true
+              wait "$PAGES_PID" 2>/dev/null || true
+            fi
             pkill -P "$WORKER_PID" 2>/dev/null || true
             kill "$WORKER_PID" 2>/dev/null || true
             wait "$WORKER_PID" 2>/dev/null || true
+            rm -f "$PCG_BROWSER_CREDENTIALS_PATH" ../web/.dev.vars
           }
           trap cleanup EXIT
           for attempt in $(seq 1 30); do
@@ -231,8 +240,39 @@ jobs:
               node scripts/run_authenticated_acceptance.mjs
               ACCEPTANCE_EXIT=$?
               set -e
-              grep -E "FOLLOWUP_TASK_UPDATE_CONFLICT|REPORT_REVIEW|EVENT_CLOSEOUT" "$RUNNER_TEMP/pcg-acceptance-worker.log" || true
-              exit "$ACCEPTANCE_EXIT"
+              grep -E "FOLLOWUP_TASK_UPDATE_CONFLICT|REPORT_REVIEW|EVENT_CLOSEOUT|AUTH_SIGNIN" "$RUNNER_TEMP/pcg-acceptance-worker.log" || true
+              if [[ "$ACCEPTANCE_EXIT" -ne 0 ]]; then
+                exit "$ACCEPTANCE_EXIT"
+              fi
+
+              echo "Building the actual Pages application for browser acceptance."
+              (cd ../web && npm ci --no-audit --no-fund && npm run build)
+              npm install --no-save --no-audit --no-fund playwright
+              npx playwright install --with-deps chromium
+
+              echo "PCG_MISSIONS_API_ORIGIN=http://127.0.0.1:8787" > ../web/.dev.vars
+              (cd ../web && ../cloudflare/node_modules/.bin/wrangler pages dev dist \
+                --ip 0.0.0.0 --port 8788 --compatibility-date 2026-11-22 \
+                --binding PCG_MISSIONS_API_ORIGIN=http://127.0.0.1:8787) \
+                </dev/null > "$RUNNER_TEMP/pcg-acceptance-pages.log" 2>&1 &
+              PAGES_PID=$!
+
+              pages_ready=0
+              for pages_attempt in $(seq 1 45); do
+                if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://localhost:8788/ >/dev/null; then
+                  pages_ready=1
+                  break
+                fi
+                sleep 1
+              done
+              if [[ "$pages_ready" -ne 1 ]]; then
+                cat "$RUNNER_TEMP/pcg-acceptance-pages.log"
+                echo "Temporary Pages application did not become healthy." >&2
+                exit 1
+              fi
+
+              node scripts/run_browser_acceptance.mjs
+              exit 0
             fi
             sleep 1
           done
