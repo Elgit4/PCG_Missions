@@ -19,5 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate all GitHub Actions workflow syntax and expressions
-        uses: docker://rhysd/actionlint:1.7.7
+      - name: Validate the production release workflow syntax and expressions
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 \
+            .github/workflows/cloudflare-production-worker-deploy.yml
