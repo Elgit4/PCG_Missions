@@ -1,4 +1,4 @@
-name: One-time Cloudflare D1 Restore and Authenticated Acceptance
+name: One-time Cloudflare D1 Restore and Expanded Authenticated Acceptance
 
 on:
   push:
@@ -16,6 +16,6 @@ concurrency:
 
 jobs:
   restore-and-acceptance:
-    name: Isolated EU D1 restore and authenticated API acceptance
+    name: Isolated EU D1 restore and expanded authenticated API acceptance
     uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
     secrets: inherit
