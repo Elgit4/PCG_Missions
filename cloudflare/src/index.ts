@@ -2959,11 +2959,38 @@ async function reassignFollowupTask(
       return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_CHANGED" } }, requestId, origin);
     }
   } catch (error) {
+    let foreignKeyDiagnostics: Record<string, unknown> | null = null;
+    try {
+      foreignKeyDiagnostics = await env.DB.prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM staff_profile WHERE auth_user_id = ?) AS actor_profile_by_auth_user_id,
+          (SELECT COUNT(*) FROM staff_profile WHERE id = ?) AS actor_profile_by_id,
+          (SELECT COUNT(*) FROM staff_profile WHERE auth_user_id = ?) AS target_profile_by_auth_user_id,
+          (SELECT COUNT(*) FROM branch WHERE id = ?) AS branch,
+          (SELECT COUNT(*) FROM followup_task WHERE id = ? AND branch_id = ?) AS task,
+          (SELECT COUNT(*) FROM contact c JOIN followup_task ft
+            ON ft.contact_id = c.id AND ft.branch_id = c.branch_id WHERE ft.id = ?) AS task_contact,
+          (SELECT COUNT(*) FROM team t JOIN followup_task ft
+            ON ft.team_id = t.id AND ft.branch_id = t.branch_id WHERE ft.id = ?) AS task_team
+      `).bind(
+        context.staff.userId,
+        context.staff.profileId,
+        nextAssignee,
+        context.activeBranch.branchId,
+        taskId,
+        context.activeBranch.branchId,
+        taskId,
+        taskId,
+      ).first<Record<string, unknown>>();
+    } catch {
+      foreignKeyDiagnostics = { query_failed: true };
+    }
     console.error("FOLLOWUP_REASSIGNMENT_CONFLICT", {
       requestId,
       taskId,
       scopeMode: access.decision.scopeMode,
       teamId,
+      foreignKeyDiagnostics,
       error: error instanceof Error ? error.message : String(error),
     });
     return json(409, { ok: false, error: { code: "FOLLOWUP_REASSIGNMENT_CONFLICT" } }, requestId, origin);
