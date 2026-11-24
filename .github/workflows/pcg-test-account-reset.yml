@@ -1,11 +1,12 @@
 name: Owner-approved removal of PCG Missions test logins
 
 on:
-  push:
-    branches:
-      - migration/cloudflare-auth-consolidation
-    paths:
-      - ".github/workflows/pcg-test-account-reset.yml"
+  workflow_dispatch:
+    inputs:
+      confirm_production:
+        description: Type REMOVE-TEST-LOGINS to authorize this one-time production credential cleanup
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -18,6 +19,7 @@ concurrency:
 jobs:
   remove-test-logins:
     name: Preserve ministry history and release the two test email addresses
+    if: ${{ inputs.confirm_production == 'REMOVE-TEST-LOGINS' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     environment: production
@@ -26,6 +28,14 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Require exact one-time production confirmation
+        shell: bash
+        env:
+          CONFIRMATION: ${{ inputs.confirm_production }}
+        run: |
+          set -euo pipefail
+          test "$CONFIRMATION" = "REMOVE-TEST-LOGINS"
+
       - name: Check out the reviewed cleanup and migration scripts
         uses: actions/checkout@v4
         with:
