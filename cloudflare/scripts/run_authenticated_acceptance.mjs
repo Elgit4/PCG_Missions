@@ -49,7 +49,7 @@ async function d1(sql, params = []) {
   return payload.result?.[0]?.results ?? [];
 }
 
-async function insertUser(roleCode, label, assignerProfileId, bootstrapAdmin = false) {
+async function insertUser(roleCode, label, assignerProfileId, bootstrapAdmin = false, targetBranchId = branchId) {
   const userId = randomUUID();
   const profileId = randomUUID();
   const email = `qa-${runId}-${label}@example.test`;
@@ -74,7 +74,7 @@ async function insertUser(roleCode, label, assignerProfileId, bootstrapAdmin = f
   const assignedBy = bootstrapAdmin ? profileId : assignerProfileId;
   await d1(
     "INSERT INTO staff_role_assignment(id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at) VALUES(?,?,?,?,?,?,?)",
-    [randomUUID(), profileId, roleRows[0].id, branchId, assignedBy, new Date(nowMs - 3600000).toISOString(), now],
+    [randomUUID(), profileId, roleRows[0].id, targetBranchId, assignedBy, new Date(nowMs - 3600000).toISOString(), now],
   );
   return { userId, profileId, email, password };
 }
@@ -85,18 +85,18 @@ async function waitForSignInRateLimitSlot() {
   // uses many synthetic accounts from one local Worker IP, so pace every
   // positive and negative attempt without weakening the production policy.
   if (lastSignInAttemptAt > 0) {
-    const remaining = 12_500 - (Date.now() - lastSignInAttemptAt);
+    const remaining = 16_000 - (Date.now() - lastSignInAttemptAt);
     if (remaining > 0) await new Promise((resolve) => setTimeout(resolve, remaining));
   }
   lastSignInAttemptAt = Date.now();
 }
 
-async function signIn(identity, label) {
+async function signIn(identity, label, rememberMe = false) {
   await waitForSignInRateLimitSlot();
   const response = await fetchWithTimeout(`${workerUrl}/api/auth/sign-in/email`, {
     method: "POST",
     headers: { origin, "content-type": "application/json" },
-    body: JSON.stringify({ email: identity.email, password: identity.password, rememberMe: false }),
+    body: JSON.stringify({ email: identity.email, password: identity.password, rememberMe }),
   });
   const bodyText = await response.text();
   if (!response.ok) throw new Error(`${label} Better Auth sign-in failed (${response.status}): ${bodyText.slice(0, 500)}`);
@@ -108,13 +108,13 @@ async function signIn(identity, label) {
   return cookie;
 }
 
-async function api(cookie, path, method = "GET", body = undefined, idempotencyKey = undefined) {
+async function api(cookie, path, method = "GET", body = undefined, idempotencyKey = undefined, selectedBranchId = branchId) {
   const response = await fetchWithTimeout(`${workerUrl}${path}`, {
     method,
     headers: {
       origin,
       cookie,
-      "x-branch-id": branchId,
+      "x-branch-id": selectedBranchId,
       ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
       ...(body === undefined ? {} : { "content-type": "application/json" }),
     },
@@ -133,6 +133,7 @@ const endsAt = new Date(now.getTime() + 2 * 60 * 60_000).toISOString();
 const today = nowIso.slice(0, 10);
 const churchId = randomUUID();
 const branchId = randomUUID();
+const otherBranchId = randomUUID();
 const eventId = randomUUID();
 
 await d1(
@@ -143,9 +144,21 @@ await d1(
   "INSERT INTO branch(id,church_id,name,timezone,is_active,created_at,updated_at) VALUES(?,?,?,'Africa/Accra',1,?,?)",
   [branchId, churchId, "Automated Acceptance Branch", nowIso, nowIso],
 );
+await d1(
+  "INSERT INTO branch(id,church_id,name,timezone,is_active,created_at,updated_at) VALUES(?,?,?,'Africa/Accra',1,?,?)",
+  [otherBranchId, churchId, "Automated Acceptance Isolation Branch", nowIso, nowIso],
+);
 
 const admin = await insertUser("admin_pastor", "admin", null, true);
+// These bootstrap-slot resets exist only in this disposable D1 fixture. They
+// create a second synthetic reviewer and a second-branch administrator so the
+// two-person-control and cross-branch tests exercise real database triggers.
+await d1("UPDATE staff_admin_bootstrap_state SET remaining_slots=1 WHERE id=1");
+const secondAdmin = await insertUser("admin_pastor", "second-admin", null, true);
+await d1("UPDATE staff_admin_bootstrap_state SET remaining_slots=1 WHERE id=1");
+const otherBranchAdmin = await insertUser("admin_pastor", "other-branch-admin", null, true, otherBranchId);
 const worker = await insertUser("field_worker", "worker", admin.profileId);
+const otherBranchWorker = await insertUser("field_worker", "other-branch-worker", otherBranchAdmin.profileId, false, otherBranchId);
 const reviewer = await insertUser("coordinator", "reviewer", admin.profileId);
 const unassigned = await insertUser("field_worker", "unassigned", admin.profileId);
 const teamLeader = await insertUser("team_leader", "team-leader", admin.profileId);
@@ -180,7 +193,9 @@ console.log("SYNTHETIC_IDENTITIES_SEEDED");
 const unauthenticated = await fetchWithTimeout(`${workerUrl}/api/v1/me`);
 if (unauthenticated.status !== 401) throw new Error(`Unauthenticated /api/v1/me expected 401, got ${unauthenticated.status}`);
 
-const adminCookie = await signIn(admin, "Admin/Pastor");
+let adminCookie = await signIn(admin, "Admin/Pastor", true);
+const secondAdminCookie = await signIn(secondAdmin, "Second Admin/Pastor");
+const otherBranchWorkerCookie = await signIn(otherBranchWorker, "Other-branch Field Worker");
 const workerCookie = await signIn(worker, "Field Worker");
 const reviewerCookie = await signIn(reviewer, "Coordinator");
 const unassignedCookie = await signIn(unassigned, "Unassigned Field Worker");
@@ -191,6 +206,7 @@ console.log("BETTER_AUTH_SESSIONS_CREATED");
 
 for (const [cookie, label] of [
   [adminCookie, "Admin/Pastor"],
+  [secondAdminCookie, "Second Admin/Pastor"],
   [reviewerCookie, "Coordinator"],
   [teamLeaderCookie, "Team Leader"],
   [workerCookie, "Field Worker"],
@@ -206,6 +222,10 @@ await d1(
   [eventId, branchId, "Authenticated Acceptance Event", startsAt, endsAt, "Africa/Accra", admin.userId, nowIso, nowIso, admin.userId],
 );
 
+const otherBranchWorkerMe = await api(otherBranchWorkerCookie, "/api/v1/me", "GET", undefined, undefined, otherBranchId);
+if (otherBranchWorkerMe.status !== 200 || otherBranchWorkerMe.payload?.ok !== true) {
+  throw new Error("Other-branch Field Worker could not establish its own branch context.");
+}
 console.log("AUTHENTICATED_ME_ENDPOINTS_PASSED");
 
 const contactCapture = await api(workerCookie, "/api/v1/contacts", "POST", {
