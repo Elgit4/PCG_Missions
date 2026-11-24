@@ -365,7 +365,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         ).fetchone()
         self.assertEqual(inactive, ("inactive", "Inactive Leader", "cleanup-inactive@example.test"))
         self.assertEqual(
-            self.db.execute('SELECT name,email,emailVerified FROM "user" WHERE id="cleanup-orphan-user"').fetchone(),
+            self.db.execute('SELECT name,email,emailVerified FROM "user" WHERE id=?', ("cleanup-orphan-user",)).fetchone(),
             ("Orphan Member", "cleanup-orphan@example.test", 1),
         )
         self.assertEqual(
