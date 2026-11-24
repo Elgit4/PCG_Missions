@@ -50,7 +50,12 @@ jobs:
         run: npm test
       - name: Validate preview and production Wrangler bundles and trigger configuration
         run: |
-          npx wrangler deploy --env preview --dry-run
-          npx wrangler deploy --env production --dry-run
+          rm -rf /tmp/pcg-preview-worker-build /tmp/pcg-production-worker-build
+          npx wrangler deploy --env preview --dry-run --outdir /tmp/pcg-preview-worker-build
+          test -s /tmp/pcg-preview-worker-build/worker.js
+          node --check /tmp/pcg-preview-worker-build/worker.js
+          npx wrangler deploy --env production --dry-run --outdir /tmp/pcg-production-worker-build
+          test -s /tmp/pcg-production-worker-build/worker.js
+          node --check /tmp/pcg-production-worker-build/worker.js
       - name: Syntax-check authenticated acceptance harness
         run: node --check scripts/run_authenticated_acceptance.mjs
