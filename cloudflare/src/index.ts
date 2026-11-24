@@ -1897,7 +1897,9 @@ async function assignContact(
         ...contactPredicate.values,
       ),
     ]);
-    if (results.some((result) => !result.success) || (results[1]?.meta?.changes ?? 0) !== 1) {
+    // D1 change counts can include the append-only contact_assignment_audit trigger write.
+    // A successful target insert may therefore report more than one changed row.
+    if (results.some((result) => !result.success) || (results[1]?.meta?.changes ?? 0) < 1) {
       throw new Error("CONTACT_ASSIGNMENT_BATCH_FAILED");
     }
   } catch {
