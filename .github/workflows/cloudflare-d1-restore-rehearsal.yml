@@ -235,7 +235,7 @@ jobs:
               node scripts/run_authenticated_acceptance.mjs
               ACCEPTANCE_EXIT=$?
               set -e
-              grep -E "FOLLOWUP_TASK_UPDATE_CONFLICT|REPORT_REVIEW|EVENT_CLOSEOUT|AUTH_SIGNIN" "$RUNNER_TEMP/pcg-acceptance-worker.log" || true
+              grep -E "FOLLOWUP_TASK_UPDATE_CONFLICT|REPORT_REVIEW|EVENT_CLOSEOUT|AUTH_SIGNIN|CONTACT_ASSIGNMENT_BATCH_FAILED" "$RUNNER_TEMP/pcg-acceptance-worker.log" || true
               if [[ "$ACCEPTANCE_EXIT" -ne 0 ]]; then
                 exit "$ACCEPTANCE_EXIT"
               fi
