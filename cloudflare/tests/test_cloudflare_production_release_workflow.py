@@ -22,7 +22,7 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("production-roster-preflight:", self.production)
         self.assertIn("restore-rehearsal:\n    needs: production-roster-preflight", self.production)
         self.assertIn("production-data-restore-rehearsal:\n    needs: restore-rehearsal", self.production)
-        self.assertIn("production-worker:\n    needs: production-data-restore-rehearsal", self.production)
+        self.assertIn("production-worker:\n    needs: [restore-rehearsal, production-data-restore-rehearsal]", self.production)
         self.assertIn("needs.production-data-restore-rehearsal.result == 'success'", self.production)
         self.assertIn("Require active Admin/Pastor owner and clean onboarded staff roster before restore rehearsal", self.production)
 
