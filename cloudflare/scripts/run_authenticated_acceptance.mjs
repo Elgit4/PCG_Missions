@@ -268,7 +268,54 @@ const followupCompleted = await api(workerCookie, "/api/v1/followup/tasks/" + fo
 if (followupCompleted.status !== 200) throw new Error("Follow-up completion failed: " + followupCompleted.status + " " + JSON.stringify(followupCompleted.payload));
 console.log("CONTACT_AND_FOLLOWUP_LIFECYCLE_PASSED");
 
-// Verify team-scoped allocation, handoff, and assigned-only privacy across all six roles.
+// Capture non-sensitive state immediately before the branch-level assignment transition.
+const assignmentPreflight = await d1(`
+  SELECT json_object(
+    'contact_status', c.contact_status,
+    'branch_matches', CASE WHEN c.branch_id = ? THEN 1 ELSE 0 END,
+    'target_team_active', (
+      SELECT COUNT(*) FROM team t
+      WHERE t.id = ? AND t.branch_id = c.branch_id AND t.is_active = 1
+    ),
+    'active_assignments', (
+      SELECT COUNT(*) FROM contact_assignment ca
+      WHERE ca.contact_id = c.id AND ca.branch_id = c.branch_id
+        AND ca.starts_at <= ? AND (ca.ends_at IS NULL OR ca.ends_at > ?)
+    ),
+    'active_staff_assignments', (
+      SELECT COUNT(*) FROM contact_assignment ca
+      WHERE ca.contact_id = c.id AND ca.branch_id = c.branch_id
+        AND ca.assignee_user_id IS NOT NULL
+        AND ca.starts_at <= ? AND (ca.ends_at IS NULL OR ca.ends_at > ?)
+    ),
+    'active_team_assignments', (
+      SELECT COUNT(*) FROM contact_assignment ca
+      WHERE ca.contact_id = c.id AND ca.branch_id = c.branch_id
+        AND ca.team_id IS NOT NULL
+        AND ca.starts_at <= ? AND (ca.ends_at IS NULL OR ca.ends_at > ?)
+    ),
+    'admin_has_active_branch_assign_grant', EXISTS (
+      SELECT 1
+      FROM staff_profile sp
+      JOIN staff_role_assignment ra ON ra.staff_profile_id = sp.id
+      JOIN role r ON r.id = ra.role_id AND r.code = 'admin_pastor' AND r.is_active = 1
+      JOIN role_capability rc ON rc.role_id = r.id AND rc.scope_mode = 'branch'
+      JOIN capability cap ON cap.id = rc.capability_id AND cap.code = 'contacts.assign' AND cap.is_active = 1
+      WHERE sp.auth_user_id = ? AND sp.account_status = 'active'
+        AND ra.branch_id = c.branch_id AND ra.revoked_at IS NULL
+        AND ra.starts_at <= ? AND (ra.ends_at IS NULL OR ra.ends_at > ?)
+    )
+  ) AS diagnostics
+  FROM contact c
+  WHERE c.id = ? AND c.branch_id = ?
+`, [
+  branchId, teamId,
+  nowIso, nowIso, nowIso, nowIso, nowIso, nowIso,
+  admin.userId, nowIso, nowIso,
+  contactId, branchId,
+]);
+console.log("CONTACT_ASSIGNMENT_PRECHECK " + (assignmentPreflight[0]?.diagnostics ?? "missing"));
+
 const adminTeamAssign = await api(adminCookie, `/api/v1/contacts/${contactId}/assign`, "POST", {
   team_id: teamId,
   reason: "Admin routes the captured visitor to the responsible ministry team.",
