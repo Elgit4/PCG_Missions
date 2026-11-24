@@ -586,6 +586,30 @@ const outOfTeamHandoff = await api(teamLeaderCookie, `/api/v1/followup/tasks/${t
 if (outOfTeamHandoff.status !== 403 || outOfTeamHandoff.payload?.error?.code !== "FOLLOWUP_ASSIGNEE_OUTSIDE_TEAM") {
   throw new Error("Team Leader was not blocked from handing off a task outside their team.");
 }
+const teamHandoffPrecheck = await d1(
+  `SELECT
+     (SELECT COUNT(*) FROM followup_task WHERE id=? AND branch_id=? AND team_id=? AND assignee_user_id IS NULL) AS task_on_team,
+     (SELECT COUNT(*) FROM staff_profile WHERE id=? AND account_status='active' AND deactivated_at IS NULL) AS target_active,
+     (SELECT COUNT(*) FROM staff_team_membership WHERE staff_profile_id=? AND team_id=? AND branch_id=?
+       AND revoked_at IS NULL AND starts_at<=? AND (ends_at IS NULL OR ends_at>?)) AS target_membership,
+     (SELECT COUNT(*) FROM staff_role_assignment ra JOIN role r ON r.id=ra.role_id
+       WHERE ra.staff_profile_id=? AND ra.branch_id=? AND r.is_active=1 AND ra.revoked_at IS NULL
+       AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?)) AS target_role,
+     (SELECT COUNT(*) FROM staff_profile actor
+       JOIN staff_role_assignment aa ON aa.staff_profile_id=actor.id
+       JOIN role ar ON ar.id=aa.role_id AND ar.is_active=1
+       JOIN role_capability ac ON ac.role_id=ar.id
+       JOIN capability cap ON cap.id=ac.capability_id AND cap.code='followup.assign' AND cap.is_active=1
+       WHERE actor.auth_user_id=? AND actor.account_status='active'
+         AND aa.branch_id=? AND aa.revoked_at IS NULL AND aa.starts_at<=?
+         AND (aa.ends_at IS NULL OR aa.ends_at>?) AND ac.scope_mode='team') AS actor_team_assign_grant`,
+  [teamTaskId, branchId, teamId, followupVolunteer.profileId, followupVolunteer.profileId,
+   teamId, branchId, new Date().toISOString(), new Date().toISOString(),
+   followupVolunteer.profileId, branchId, new Date().toISOString(), new Date().toISOString(),
+   teamLeader.userId, branchId, new Date().toISOString(), new Date().toISOString()],
+);
+console.log("FOLLOWUP_REASSIGNMENT_PRECHECK", JSON.stringify(teamHandoffPrecheck[0] ?? {}));
+
 const teamTaskHandoff = await api(teamLeaderCookie, `/api/v1/followup/tasks/${teamTaskId}/assign`, "POST", {
   assignee_profile_id: followupVolunteer.profileId,
   reason: "Team Leader transfers this task to the responsible Follow-up Volunteer.",
