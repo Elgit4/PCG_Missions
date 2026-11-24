@@ -325,8 +325,13 @@ if (adminTeamAssign.status !== 201 || adminTeamAssign.payload?.data?.team_id !==
 }
 await new Promise((resolve) => setTimeout(resolve, 1250));
 const teamLeaderContacts = await api(teamLeaderCookie, "/api/v1/contacts?limit=50&offset=0");
-if (teamLeaderContacts.status !== 200 || !teamLeaderContacts.payload?.data?.some((contact) => contact.id === contactId)) {
-  throw new Error("Team Leader could not read a contact assigned to their active team.");
+const teamLeaderCanReadContact = teamLeaderContacts.payload?.data?.some((contact) => contact.id === contactId) ?? false;
+if (teamLeaderContacts.status !== 200 || !teamLeaderCanReadContact) {
+  const errorCode = teamLeaderContacts.payload?.error?.code ?? "none";
+  const returnedCount = Array.isArray(teamLeaderContacts.payload?.data) ? teamLeaderContacts.payload.data.length : -1;
+  throw new Error("Team Leader contact read failed: HTTP " + teamLeaderContacts.status +
+    ", error=" + errorCode + ", returned_count=" + returnedCount +
+    ", assigned_contact_visible=" + teamLeaderCanReadContact);
 }
 const crossTeamContactAssign = await api(teamLeaderCookie, `/api/v1/contacts/${contactId}/assign`, "POST", {
   team_id: outsideTeamId,
