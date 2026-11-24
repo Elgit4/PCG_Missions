@@ -900,7 +900,8 @@ test("Team Leader directory reads return only own-team data and omit staff ident
     assert.equal(url.pathname, "/auth/v1/user");
     return Response.json({ id: AUTH_USER_ID, email: "staff@example.com" });
   });
-  const { env, calls } = authorizedDirectoryEnv("team_leader");
+  const fixture = authorizedDirectoryEnv("team_leader");
+  const { env, calls } = fixture;
 
   const teamsResponse = await worker.fetch(
     authenticatedDirectoryRequest("/api/v1/teams?branch_id=" + BRANCH_ID),
