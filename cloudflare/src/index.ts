@@ -2969,7 +2969,7 @@ async function reassignFollowupTask(
       notificationChanges: results[2]?.meta?.changes ?? -1,
     };
     if (results.some((result) => !result.success) ||
-        (batchSummary.updateChanges ?? 0) < 1 ||
+        (results[0]?.meta?.changes ?? 0) < 1 ||
         batchSummary.eventChanges !== 1 ||
         (nextAssignee !== null && batchSummary.notificationChanges !== 1)) {
       return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_CHANGED" } }, requestId, origin);
