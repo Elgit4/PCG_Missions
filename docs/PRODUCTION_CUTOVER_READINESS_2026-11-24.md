@@ -87,6 +87,10 @@ The operations runbook currently requires approval of the church's privacy notic
 
 A separate D1 database named `pcg-missions-restore-rehearsal` remains in the Cloudflare account. Read-only inspection found schema version 43, one branch, three staff profiles, and no contacts, follow-up tasks, ministry reports or events. It is not bound to any of the currently listed application Worker scripts and is not referenced by the current per-run rehearsal workflow. Its staff-profile records have not been classified as synthetic, so it has deliberately **not** been deleted. Treat this as a post-cutover cleanup item: confirm data provenance and retention with the owner, then remove the database only if it is confirmed disposable and unreferenced.
 
+## Staff identity retention policy
+
+The legacy manually triggered PII-bound test-login reset workflow and its hardcoded preflight/anonymization SQL have been retired. The guarded production release uses only the non-destructive owner-audited reconciliation, preserving staff profile/user IDs, credentials and ministry history while deactivating eligible orphan accounts and revoking the specifically audited stale role. The original email addresses remain reserved on those retained identity records. Any future anonymization, credential deletion or email release requires a separate explicit owner decision and review.
+
 ## Guardrails
 
 - No production D1 writes while the release rehearsal is blocked by quota.

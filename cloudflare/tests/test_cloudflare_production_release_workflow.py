@@ -103,6 +103,14 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
     def test_new_preview_release_uses_a_fresh_concurrency_group(self):
         self.assertIn("pcg-missions-preview-release-v3", self.preview)
 
+    def test_legacy_destructive_test_login_reset_is_retired(self):
+        self.assertFalse((ROOT / ".github" / "workflows" / "pcg-test-account-reset.yml").exists())
+        self.assertFalse((ROOT / "cloudflare" / "scripts" / "preflight_test_staff_login_cleanup.sql").exists())
+        self.assertFalse((ROOT / "cloudflare" / "scripts" / "remove_test_staff_logins.sql").exists())
+        self.assertIn("scripts/reconcile_owner_directed_staff_cleanup.sql", self.production)
+        self.assertNotIn("remove_test_staff_logins.sql", self.production)
+        self.assertNotIn("preflight_test_staff_login_cleanup.sql", self.production)
+
     def test_followup_cron_is_production_only(self):
         config = tomllib.loads((ROOT / "cloudflare" / "wrangler.toml").read_text(encoding="utf-8"))
         self.assertEqual(
