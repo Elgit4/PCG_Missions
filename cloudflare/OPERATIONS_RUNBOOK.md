@@ -1,7 +1,7 @@
 # PCG Missions — Production operations runbook
 
 **Applies to:** Cloudflare production  
-**Last verified:** 22 November 2026 (UTC)
+**Last verified:** 24 November 2026 (UTC). Production cutover remains gated; this runbook records the current release controls and must not be read as evidence that the current release candidate is live.
 
 ## 1. Production endpoints and resources
 
@@ -42,20 +42,23 @@ Expected when signed out:
 
 A 401 from the unauthenticated staff-context check is expected. It is not evidence of an outage.
 
-## 4. Deploying Worker changes
+## 4. Guarded production release workflow
 
-Worker deployments are explicit and must not be triggered by an ordinary documentation or frontend-only change.
+Production releases must use `.github/workflows/cloudflare-production-worker-deploy.yml` (workflow name: **Cloudflare Production Worker Deploy**). The older `cloudflare-production-release.yml` and `cloudflare-production-release-trigger.yml` files are retired audit artifacts and intentionally fail if invoked; do not use them.
 
-1. Merge reviewed Worker code and migrations into `migration/cloudflare-auth-consolidation`.
-2. Confirm the Cloudflare D1 Foundation workflow is green: Python/SQLite migration-security tests, TypeScript type-check and Worker tests.
-3. Start **Cloudflare Production Worker Deploy** manually from the reviewed production branch.
-4. Enter the exact `DEPLOY-PRODUCTION` confirmation. The workflow uses the GitHub `production` environment.
-5. The workflow verifies the production database target and environment marker, records the current D1 Time Travel bookmark, applies pending forward-only migrations, verifies migration/schema consistency, deploys the Worker and checks direct Worker and same-origin Pages health/auth boundaries.
-6. Keep the workflow run and its bookmark artifact with the release record.
+The active workflow has two authorized entry paths: (a) manual `workflow_dispatch` from `migration/cloudflare-auth-consolidation` or `main`, with the exact `DEPLOY-PRODUCTION` confirmation; or (b) a push to `main` that changes only `.github/production/DEPLOY-PRODUCTION` and whose contents are exactly `DEPLOY-PRODUCTION`. Do not create that marker commit until every prerequisite is green and the owner explicitly authorizes the production release. A marker push starts the full guarded pipeline; it is not a harmless preview trigger.
 
-The workflow does not import credentials from Supabase. The one-time staff credential bridge was part of the initial cutover. Do not add `SUPABASE_SOURCE_DB_URL` back to routine Worker deployment requirements.
+The pipeline orders its gates as follows:
+1. Read-only production roster preflight (six-role catalogue, credential-ready active Admin/Pastor owner, active staff credentials, and narrowly owner-authorized cleanup candidates).
+2. Full isolated D1 restore and six-role authenticated acceptance rehearsal.
+3. Full production-data export into an ephemeral runner and import into an isolated EU D1 clone, manifest/foreign-key comparison, Time Travel restore probe, and cleanup.
+4. Current-source CI/preview acceptance and production-target/environment checks.
+5. Production D1 bookmark, forward-only migrations, schema/ledger verification and controlled write-budget probe.
+6. Production Worker deployment, explicit Pages build/deploy, and direct plus same-origin health/session/CORS smoke tests.
 
-Before using the production workflow for the first time, configure the GitHub repository's `production` environment with required reviewers and restrict deployment branches to `migration/cloudflare-auth-consolidation`. The workflow confirmation is an additional guard, not a replacement for environment protection.
+The workflow is deliberately serial and protected by the GitHub `production` environment. Keep required reviewers and branch restrictions enabled. Do not bypass a failed job, manually apply migrations, or deploy Worker/Pages separately to get around a failed gate. The Pages Git integration's automatic production deployment remains disabled; the guarded workflow performs the explicit Pages deployment after all gates pass.
+
+The workflow does not import credentials from Supabase. The one-time staff credential bridge was part of the earlier migration. Do not add `SUPABASE_SOURCE_DB_URL` back to routine Worker deployment requirements.
 
 ## 5. Pages deployment
 
@@ -116,6 +119,7 @@ Do not create a secret in Pages. Never expose a secret through any `VITE_*` vari
 - Do not load real visitor, prayer or care records before the church's privacy notice, lawful purposes, retention/deletion rules, data-controller contact and pastoral-access policy are approved.
 - Prayer and care narratives are sensitive records. Do not use broad exports or screenshots for debugging; use request IDs and safe metadata.
 - Keep SMS/Arkesel disabled. No scheduled workflow may dispatch messages.
+- The current Worker source has a `fetch` handler only; it has no `scheduled()` handler, and the production Worker has no Cron Trigger. Scheduled follow-up/reminder processing and scheduled publishing are therefore not operational. Do not attach a Cron Trigger or claim these automations are live until an idempotent, observable scheduled handler and its D1 integration tests are implemented and accepted.
 - Keep Transport, public self-registration and offline staff data disabled until their separate security and operational acceptance gates pass.
 
 ## 10. Incident response
@@ -141,4 +145,5 @@ Do not create a secret in Pages. Never expose a secret through any `VITE_*` vari
 - [ ] Pages deployment is on the reviewed commit; same-origin health/session checks pass.
 - [ ] Email sender tested or manual handoff procedure confirmed.
 - [ ] Privacy and retention approval recorded before real ministry data is entered.
+- [ ] Scheduled processing has an implemented `scheduled()` handler, Cron configuration, idempotency/retry controls and authenticated-domain integration tests; until then, automated follow-up/reminders and scheduled publishing are explicitly marked unavailable.
 - [ ] SMS remains disabled.
