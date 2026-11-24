@@ -1913,7 +1913,11 @@ async function assignContact(
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     const diagnostic = message.match(/CONTACT_ASSIGNMENT_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR/)?.[0] ?? "D1_BATCH_ERROR";
-    console.error("CONTACT_ASSIGNMENT_BATCH_FAILED", diagnostic, JSON.stringify(batchSummary));
+    console.log("CONTACT_ASSIGNMENT_BATCH_FAILED", JSON.stringify({
+      diagnostic,
+      batchSummary,
+      errorName: error instanceof Error ? error.name : typeof error,
+    }));
     return json(409, { ok: false, error: { code: "CONTACT_ASSIGNMENT_CONFLICT" } }, requestId, origin);
   }
   const assignment = {
