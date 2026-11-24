@@ -1368,6 +1368,26 @@ test("Admin/Pastor team handoff accepts D1 change counts including assignment au
   assert.equal(fixture.writes, 2);
 });
 
+test("Team Leader contact scope resolves the auth user to the staff profile for membership checks", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ id: AUTH_USER_ID, email: "staff@example.com" }),
+  );
+  const fixture = authorizedDirectoryEnv("team_leader", [["contacts.read", "team"]]);
+  const response = await worker.fetch(
+    authenticatedDirectoryRequest("/api/v1/contacts?limit=50&offset=0"),
+    fixture.env,
+  );
+  assert.equal(response.status, 200);
+  const query = fixture.calls.find((call) =>
+    call.kind === "all" && call.sql.includes("FROM contact c") && call.sql.includes("SELECT c.id")
+  );
+  assert.ok(query, "team-scoped contact list query must execute");
+  assert.match(query.sql, /JOIN staff_profile scope_staff\\s+ON scope_staff\\.id = tm\\.staff_profile_id/);
+  assert.match(query.sql, /scope_staff\\.auth_user_id = \\?/);
+  assert.ok(query.values.includes(AUTH_USER_ID), "team membership predicate must bind the authenticated user ID");
+  assert.ok(!query.values.includes(STAFF_PROFILE_ID), "the auth-user parameter must not be replaced with a profile ID");
+});
+
 test("Team Leader can assign a contact only within the leader's active team", async (t) => {
   t.mock.method(globalThis, "fetch", async (input) => {
     const url = input instanceof URL ? input : new URL(typeof input === "string" ? input : input.url);
