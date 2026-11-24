@@ -128,7 +128,7 @@ jobs:
             exit "$migration_status"
           fi
           npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
-            --command "SELECT CASE WHEN schema_version=48 AND environment='non-production' THEN 'SCHEMA_47_READY' ELSE 'SCHEMA_INVALID' END AS status FROM app_meta WHERE id=1;"
+            --command "SELECT CASE WHEN schema_version=48 AND environment='non-production' THEN 'SCHEMA_48_READY' ELSE 'SCHEMA_INVALID' END AS status FROM app_meta WHERE id=1;"
           npx wrangler d1 execute "$DB_NAME" --remote --config wrangler.restore-rehearsal.toml \
             --command "SELECT CASE WHEN COUNT(*)=48 THEN 'MIGRATION_LEDGER_48_READY' ELSE 'MIGRATION_LEDGER_INVALID' END AS status FROM d1_migrations;"
           echo "Remote D1 binding enabled for the authenticated Worker acceptance run."
