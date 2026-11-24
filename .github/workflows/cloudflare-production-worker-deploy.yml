@@ -1,5 +1,7 @@
 name: Cloudflare Production Worker Deploy
 
+# This workflow is validated by validate-production-workflow.yml before release.
+
 on:
   workflow_call:
     inputs:
