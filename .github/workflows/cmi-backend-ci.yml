@@ -235,7 +235,7 @@ jobs:
           cp supabase-cmi/schema-drafts/cmi_typed_ministry_reports.test.sql supabase-cmi/supabase/tests/cmi_typed_ministry_reports.test.sql
 
       - name: Start isolated local CMI stack and apply CMI migrations
-        run: supabase --workdir supabase-cmi start --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+        run: supabase --workdir supabase-cmi start
 
       - name: Run CMI database tests
         run: supabase --workdir supabase-cmi test db

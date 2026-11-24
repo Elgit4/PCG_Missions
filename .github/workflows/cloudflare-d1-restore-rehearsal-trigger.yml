@@ -1,4 +1,4 @@
-name: One-time Cloudflare D1 Restore and Authenticated Acceptance
+name: One-time Cloudflare D1 Restore and Expanded Authenticated Acceptance
 
 on:
   push:
@@ -6,16 +6,23 @@ on:
       - migration/cloudflare-auth-consolidation
     paths:
       - ".github/workflows/cloudflare-d1-restore-rehearsal-trigger.yml"
+      - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
+      - "cloudflare/scripts/run_authenticated_acceptance.mjs"
+      - "cloudflare/scripts/run_browser_acceptance.mjs"
+      - "cloudflare/migrations/**"
+      - "cloudflare/tests/**"
+      - "cloudflare/src/**"
+      - "cloudflare/wrangler.toml"
 
 permissions:
   contents: read
 
 concurrency:
   group: pcg-missions-d1-restore-rehearsal-trigger
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   restore-and-acceptance:
-    name: Isolated EU D1 restore and authenticated API acceptance
+    name: Isolated EU D1 restore and expanded authenticated API acceptance
     uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
     secrets: inherit

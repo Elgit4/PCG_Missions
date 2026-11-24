@@ -3,17 +3,12 @@ name: Cloudflare Production Data Clone and Restore Rehearsal
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches:
-      - migration/cloudflare-auth-consolidation
-    paths:
-      - ".github/workflows/cloudflare-production-data-restore-rehearsal.yml"
 
 permissions:
   contents: read
 
 concurrency:
-  group: pcg-missions-production-data-restore-rehearsal-v1
+  group: pcg-missions-production-data-restore-rehearsal-v2
   cancel-in-progress: false
 
 jobs:
@@ -119,21 +114,6 @@ jobs:
           sha256sum /tmp/pcg-production-clone.sql | awk '{print "Private temporary production export SHA-256: " $1}'
           echo "The SQL export remains on this ephemeral runner only; it will not be uploaded as a workflow artifact or printed."
 
-      - name: Wait for the account D1 write quota to reset before importing the production clone
-        shell: bash
-        run: |
-          set -euo pipefail
-          reset_at="$(date -u -d 'today 00:05:00' +%s)"
-          now="$(date -u +%s)"
-          if [[ "$reset_at" -le "$now" ]]; then
-            reset_at="$(date -u -d 'tomorrow 00:05:00' +%s)"
-          fi
-          wait_seconds=$((reset_at-now))
-          if [[ "$wait_seconds" -gt 0 ]]; then
-            echo "Waiting until the next 00:05 UTC D1 row-write quota reset before creating/importing the temporary clone."
-            sleep "$wait_seconds"
-          fi
-
       - name: Create an isolated EU D1 database for the production-data clone
         id: database
         shell: bash
@@ -174,7 +154,16 @@ jobs:
           migrations_dir = "migrations"
           remote = true
           EOF
-          npx wrangler d1 execute "$DB_NAME" --remote --config /tmp/pcg-production-clone.wrangler.toml --file=/tmp/pcg-production-clone.sql --yes
+          set +e
+          npx wrangler d1 execute "$DB_NAME" --remote --config /tmp/pcg-production-clone.wrangler.toml --file=/tmp/pcg-production-clone.sql --yes 2>&1 | tee /tmp/pcg-production-clone-import.log
+          import_status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$import_status" -ne 0 ]] && grep -Eiq "7500|daily row write limit|free tier" /tmp/pcg-production-clone-import.log; then
+            echo "::error title=D1 daily write quota exhausted::The isolated production-data clone import did not run. Retry after the 00:05 UTC quota reset; production data remains unchanged."
+            exit 1
+          elif [[ "$import_status" -ne 0 ]]; then
+            exit "$import_status"
+          fi
 
       - name: Compare production and clone manifests and enforce referential integrity
         env:

@@ -16,5 +16,5 @@ jobs:
       - name: Explain the retired preview smoke workflow
         run: |
           echo "This legacy artifact-branch smoke workflow is retired."
-          echo "The active preview release workflow performs the current schema 47 health and anonymous-boundary checks."
+          echo "The active preview release workflow performs the current schema 49 health and anonymous-boundary checks."
           echo "No D1, Worker, Pages, Supabase or SMS changes were made."
