@@ -47,6 +47,11 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
             self.production.index("Deploy reviewed Worker code to production"),
         )
 
+    def test_current_source_gates_accept_successful_main_or_migration_branch_runs(self):
+        self.assertIn("for source_branch in main migration/cloudflare-auth-consolidation; do", self.production)
+        self.assertIn('branch="$source_branch"', self.production)
+        self.assertIn("sort -u", self.production)
+
     def test_production_accepts_null_for_anonymous_better_auth_session(self):
         self.assertIn(
             'if(p!==null && (typeof p!=="object" || Array.isArray(p) || p.error)) process.exit(1)',
