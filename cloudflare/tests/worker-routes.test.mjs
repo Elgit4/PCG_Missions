@@ -1382,8 +1382,9 @@ test("Team Leader contact scope resolves the auth user to the staff profile for 
     call.kind === "all" && call.sql.includes("FROM contact c") && call.sql.includes("SELECT c.id")
   );
   assert.ok(query, "team-scoped contact list query must execute");
-  assert.match(query.sql, /JOIN staff_profile scope_staff\\s+ON scope_staff\\.id = tm\\.staff_profile_id/);
-  assert.match(query.sql, /scope_staff\\.auth_user_id = \\?/);
+  assert.ok(query.sql.includes("JOIN staff_profile scope_staff"));
+  assert.ok(query.sql.includes("ON scope_staff.id = tm.staff_profile_id"));
+  assert.ok(query.sql.includes("scope_staff.auth_user_id = ?"));
   assert.ok(query.values.includes(AUTH_USER_ID), "team membership predicate must bind the authenticated user ID");
   assert.ok(!query.values.includes(STAFF_PROFILE_ID), "the auth-user parameter must not be replaced with a profile ID");
 });
