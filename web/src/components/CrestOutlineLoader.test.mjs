@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { CrestOutlineLoader } from './CrestOutlineLoader.tsx';
 import { pcgCrestOutlinePath } from '../assets/pcg-crest-outline.ts';
-const visualSystem = readFileSync(new URL('../visual-system.css', import.meta.url), 'utf8');
+const visualSystem = readFileSync(new URL('../../production.css', import.meta.url), 'utf8');
 describe('CrestOutlineLoader', () => {
  it('renders one unfilled compound path immediately', () => {
   const markup = renderToStaticMarkup(createElement(CrestOutlineLoader));

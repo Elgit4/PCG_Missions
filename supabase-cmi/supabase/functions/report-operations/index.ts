@@ -11,6 +11,7 @@ import {
   canReviewReport,
   canSelectReportEvent,
   canSelectReportTeam,
+  hasEligibleReportEventAssignment,
   canSubmitOwnReport,
 } from "./access.ts";
 import { isUuid, parseReportCorrection, parseReportCreate, parseReportListQuery, parseReview } from "./validation.ts";
@@ -178,24 +179,33 @@ Deno.serve(async (request: Request) => {
       }
       const now = new Date().toISOString();
       const { data: staffAssignments, error: staffAssignmentError } = await auth.service
-        .from("event_staff_assignment").select("event_id")
+        .from("event_staff_assignment").select("event_id,assignment_role")
         .eq("branch_id", branchId).eq("staff_auth_user_id", auth.actorId)
         .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
         .is("revoked_at", null);
       if (staffAssignmentError) throw new Error("REPORT_EVENT_ASSIGNMENT_LOOKUP_FAILED");
+      const eligibleStaffEventIds = (staffAssignments ?? [])
+        .filter((row: { assignment_role: string }) =>
+          hasEligibleReportEventAssignment([row.assignment_role])
+        )
+        .map((row: { event_id: string }) => row.event_id);
       const teamIds = await activeTeamIds(auth.service, auth.profileId, branchId);
       let teamEventIds: string[] = [];
       if (teamIds.length) {
         const { data: teamAssignments, error: teamAssignmentError } = await auth.service
-          .from("event_team_assignment").select("event_id")
+          .from("event_team_assignment").select("event_id,assignment_role")
           .eq("branch_id", branchId).in("team_id", teamIds)
           .lte("starts_at", now).or(`ends_at.is.null,ends_at.gt.${now}`)
           .is("revoked_at", null);
         if (teamAssignmentError) throw new Error("REPORT_TEAM_EVENT_ASSIGNMENT_LOOKUP_FAILED");
-        teamEventIds = (teamAssignments ?? []).map((row: { event_id: string }) => row.event_id);
+        teamEventIds = (teamAssignments ?? [])
+          .filter((row: { assignment_role: string }) =>
+            hasEligibleReportEventAssignment([row.assignment_role])
+          )
+          .map((row: { event_id: string }) => row.event_id);
       }
       const eventIds = [...new Set([
-        ...(staffAssignments ?? []).map((row: { event_id: string }) => row.event_id),
+        ...eligibleStaffEventIds,
         ...teamEventIds,
       ])];
       if (!eventIds.length) {
@@ -330,27 +340,36 @@ Deno.serve(async (request: Request) => {
       if (value.event_id) {
         const now = new Date().toISOString();
         const { data: staffAssignments, error: staffAssignmentError } = await auth.service
-          .from("event_staff_assignment").select("id")
+          .from("event_staff_assignment").select("assignment_role")
           .eq("branch_id", value.branch_id).eq("event_id", value.event_id)
           .eq("staff_auth_user_id", auth.actorId).lte("starts_at", now)
-          .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null).limit(1);
+          .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null);
         if (staffAssignmentError) throw new Error("REPORT_EVENT_ASSIGNMENT_LOOKUP_FAILED");
+        const hasStaffAssignment = hasEligibleReportEventAssignment(
+          (staffAssignments ?? []).map((row: { assignment_role: string }) =>
+            row.assignment_role
+          ),
+        );
         let hasTeamAssignment = false;
-        if (!staffAssignments?.length) {
+        if (!hasStaffAssignment) {
           const teamIds = await activeTeamIds(auth.service, auth.profileId, value.branch_id);
           if (teamIds.length) {
             const { data: teamAssignments, error: teamAssignmentError } = await auth.service
-              .from("event_team_assignment").select("id")
+              .from("event_team_assignment").select("assignment_role")
               .eq("branch_id", value.branch_id).eq("event_id", value.event_id)
               .in("team_id", teamIds).lte("starts_at", now)
-              .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null).limit(1);
+              .or(`ends_at.is.null,ends_at.gt.${now}`).is("revoked_at", null);
             if (teamAssignmentError) throw new Error("REPORT_TEAM_EVENT_ASSIGNMENT_LOOKUP_FAILED");
-            hasTeamAssignment = !!teamAssignments?.length;
+            hasTeamAssignment = hasEligibleReportEventAssignment(
+              (teamAssignments ?? []).map((row: { assignment_role: string }) =>
+                row.assignment_role
+              ),
+            );
           }
         }
         if (
           !canSelectReportEvent(
-            Boolean(staffAssignments?.length),
+            hasStaffAssignment,
             hasTeamAssignment,
           )
         ) {

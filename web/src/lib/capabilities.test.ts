@@ -47,41 +47,49 @@ describe("capability-driven staff navigation", () => {
     expect(getAvailableStaffPages(baseSession)).toEqual([]);
   });
 
-  it("keeps pastoral and report pages unavailable without supported list APIs", () => {
-    const session = {
+  it("opens Prayer only with its assigned-read capability and keeps reports separately gated", () => {
+    const assignedPrayerAccess = {
       ...baseSession,
       capabilities: [
         { code: "prayer.request.read.assigned", scope_mode: "assigned", branch_id: "branch-a" },
-        { code: "report.read", scope_mode: "branch", branch_id: "branch-a" },
       ],
     };
-    expect(canOpenStaffPage(session, "Prayer", "branch-a")).toBe(false);
-    expect(canOpenStaffPage(session, "Reports", "branch-a")).toBe(false);
+    const broadReadOnly = {
+      ...baseSession,
+      capabilities: [
+        { code: "prayer.request.read", scope_mode: "branch", branch_id: "branch-a" },
+      ],
+    };
+    expect(canOpenStaffPage(assignedPrayerAccess, "Prayer", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(assignedPrayerAccess, "Prayer", "branch-b")).toBe(false);
+    expect(canOpenStaffPage(broadReadOnly, "Prayer", "branch-a")).toBe(false);
+    expect(canOpenStaffPage(assignedPrayerAccess, "Reports", "branch-a")).toBe(false);
+    expect(getAvailableStaffPages(assignedPrayerAccess, "branch-a")).toContain("Prayer");
   });
 
-  it("opens ministry reports only with the explicit D-12 own or review grants", () => {
+  it("opens ministry reports only with the scoped read or review grants", () => {
     const ownReportAccess = {
       ...baseSession,
       capabilities: [
-        { code: "report.read.own", scope_mode: "self", branch_id: "branch-a" },
+        { code: "report.read.scoped", scope_mode: "self", branch_id: "branch-a" },
       ],
     };
     const teamReportAccess = {
       ...baseSession,
       capabilities: [
-        { code: "report.review.team", scope_mode: "team", branch_id: "branch-a" },
+        { code: "report.review.scoped", scope_mode: "team", branch_id: "branch-a" },
       ],
     };
     const branchReportAccess = {
       ...baseSession,
       capabilities: [
-        { code: "report.review.branch", scope_mode: "branch", branch_id: "branch-a" },
+        { code: "report.review.scoped", scope_mode: "branch", branch_id: "branch-a" },
       ],
     };
     const submitOnly = {
       ...baseSession,
       capabilities: [
-        { code: "report.submit.own", scope_mode: "self", branch_id: "branch-a" },
+        { code: "report.submit.scoped", scope_mode: "self", branch_id: "branch-a" },
       ],
     };
     const prayerIntercessor = {
@@ -99,6 +107,29 @@ describe("capability-driven staff navigation", () => {
     expect(getAvailableStaffPages(ownReportAccess, "branch-a")).toContain("Reports");
   });
 
+  it("opens Teams & Areas for read-only branch and team directory grants", () => {
+    const coordinatorRead = {
+      ...baseSession,
+      capabilities: [
+        { code: "team.read", scope_mode: "branch", branch_id: "branch-a" },
+        { code: "area.read", scope_mode: "branch", branch_id: "branch-a" },
+      ],
+    };
+    const teamLeaderRead = {
+      ...baseSession,
+      roles: [{ code: "team_leader", name: "Team Leader", branch_id: "branch-a" }],
+      capabilities: [
+        { code: "team.read", scope_mode: "team", branch_id: "branch-a" },
+        { code: "area.read", scope_mode: "team", branch_id: "branch-a" },
+      ],
+    };
+
+    expect(canOpenStaffPage(coordinatorRead, "Teams & Areas", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(teamLeaderRead, "Teams & Areas", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(coordinatorRead, "Teams & Areas", "branch-b")).toBe(false);
+    expect(getAvailableStaffPages(teamLeaderRead, "branch-a")).toContain("Teams & Areas");
+  });
+
   it("shows Teams & Areas only with an explicit branch management grant", () => {
     const noGrant = { ...baseSession, capabilities: [] };
     const teamGrant = { ...baseSession, capabilities: [{ code: "team.manage", scope_mode: "branch", branch_id: "branch-a" }] };
@@ -107,6 +138,34 @@ describe("capability-driven staff navigation", () => {
     expect(canOpenStaffPage(teamGrant, "Teams & Areas", "branch-a")).toBe(true);
     expect(canOpenStaffPage(areaGrant, "Teams & Areas", "branch-a")).toBe(true);
     expect(canOpenStaffPage(teamGrant, "Teams & Areas", "branch-b")).toBe(false);
+  });
+
+  it("allows coordinator and Team Leader directory browsing without granting management controls", () => {
+    const coordinatorReadOnly = {
+      ...baseSession,
+      roles: [{ code: "coordinator", name: "Coordinator", branch_id: "branch-a" }],
+      capabilities: [
+        { code: "team.read", scope_mode: "branch", branch_id: "branch-a" },
+        { code: "area.read", scope_mode: "branch", branch_id: "branch-a" },
+      ],
+    };
+    const teamLeaderReadOnly = {
+      ...baseSession,
+      roles: [{ code: "team_leader", name: "Team Leader", branch_id: "branch-a" }],
+      capabilities: [
+        { code: "team.read", scope_mode: "team", branch_id: "branch-a" },
+      ],
+    };
+    const fieldWorker = {
+      ...baseSession,
+      roles: [{ code: "field_worker", name: "Field Worker", branch_id: "branch-a" }],
+      capabilities: [],
+    };
+
+    expect(canOpenStaffPage(coordinatorReadOnly, "Teams & Areas", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(teamLeaderReadOnly, "Teams & Areas", "branch-a")).toBe(true);
+    expect(canOpenStaffPage(fieldWorker, "Teams & Areas", "branch-a")).toBe(false);
+    expect(canOpenStaffPage(teamLeaderReadOnly, "Teams & Areas", "branch-b")).toBe(false);
   });
 
   it("shows event drafts only with event read or management grants", () => {

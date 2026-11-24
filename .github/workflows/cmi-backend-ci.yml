@@ -76,8 +76,11 @@ jobs:
       - name: Type-check public-content Edge Function
         run: deno check supabase-cmi/supabase/functions/public-content/index.ts
 
-      - name: Test public-content request validation
-        run: deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
+      - name: Test public-content request validation and CORS
+        run: |
+          deno test supabase-cmi/supabase/functions/public-content/validation_test.ts
+          deno test supabase-cmi/supabase/functions/public-content/cors_test.ts
+          deno test supabase-cmi/supabase/functions/public-content/public-projection_test.ts
 
       - name: Type-check staff session Edge Function
         run: deno check supabase-cmi/supabase/functions/staff-session/index.ts
@@ -103,6 +106,9 @@ jobs:
       - name: Test temporary password generation policy
         run: deno test supabase-cmi/supabase/functions/staff-auth/temporary_password_test.ts
 
+      - name: Test staff credential delivery fallback
+        run: deno test supabase-cmi/supabase/functions/staff-auth/credential-delivery_test.ts
+
       - name: Test one-time administrator bootstrap state
         run: deno test supabase-cmi/supabase/functions/staff-auth/bootstrap_state_test.ts
 
@@ -126,6 +132,24 @@ jobs:
 
       - name: Test event draft request validation
         run: deno test supabase-cmi/supabase/functions/event-operations/validation_test.ts
+
+      - name: Type-check event flyer Edge Function
+        run: deno check supabase-cmi/supabase/functions/event-flyers/index.ts
+
+      - name: Test event flyer validation
+        run: deno test supabase-cmi/supabase/functions/event-flyers/validation_test.ts
+
+      - name: Test event flyer replacement rollback and cleanup
+        run: deno test supabase-cmi/supabase/functions/event-flyers/operations_test.ts
+
+      - name: Test event flyer authorization scopes
+        run: deno test supabase-cmi/supabase/functions/event-flyers/access_test.ts
+
+      - name: Type-check staff notifications Edge Function
+        run: deno check supabase-cmi/supabase/functions/staff-notifications/index.ts
+
+      - name: Test staff notification recipient isolation
+        run: deno test supabase-cmi/supabase/functions/staff-notifications/access_test.ts
 
       - name: Type-check announcement operations Edge Function
         run: deno check supabase-cmi/supabase/functions/announcement-operations/index.ts
@@ -189,7 +213,7 @@ jobs:
       - name: Assert the isolated CMI CLI project layout
         run: |
           test -f supabase-cmi/supabase/config.toml
-          test -f supabase-cmi/supabase/migrations/20261108010000_cmi_identity_authorization_foundation.sql
+          test -f supabase-cmi/supabase/migrations/20261110134538_cmi_identity_authorization_foundation.sql
           test -f supabase-cmi/supabase/tests/identity_authorization_foundation.test.sql
           test ! -e supabase-cmi/supabase/migrations/20261107001200_churchconnect_core_schema.sql
 
@@ -211,7 +235,7 @@ jobs:
           cp supabase-cmi/schema-drafts/cmi_typed_ministry_reports.test.sql supabase-cmi/supabase/tests/cmi_typed_ministry_reports.test.sql
 
       - name: Start isolated local CMI stack and apply CMI migrations
-        run: supabase --workdir supabase-cmi start
+        run: supabase --workdir supabase-cmi start --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
 
       - name: Run CMI database tests
         run: supabase --workdir supabase-cmi test db

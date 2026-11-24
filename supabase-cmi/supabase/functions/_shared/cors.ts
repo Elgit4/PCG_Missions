@@ -6,7 +6,10 @@
  * Additional exact origins (for controlled preview/development use) may be
  * supplied as a comma-separated environment value. Never use a wildcard.
  */
-const FIRST_PARTY_ORIGINS = ["https://pcg-missions.vercel.app"] as const;
+const FIRST_PARTY_ORIGINS = [
+  "https://pcg-missions.vercel.app",
+  "https://pcg-missions.pages.dev",
+] as const;
 
 export const CMI_CORS_ALLOWED_METHODS = "GET, POST, PATCH, OPTIONS";
 export const CMI_CORS_ALLOWED_HEADERS = [

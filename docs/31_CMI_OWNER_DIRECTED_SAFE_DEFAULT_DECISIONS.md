@@ -92,6 +92,19 @@ The product owner instructed engineering to implement the remaining safe operati
 
 This adds seven explicit grants (65 total across the six roles). The grants do not authorize announcement/content publication, public registration, capacity reservation, transport, attendance/check-in, event closeout, report/export, team administration, pastoral mutation, SMS or offline use. Each request remains authenticated and server-authorized against active branch assignment and the exact capability. Lower roles receive no additional grant. See migration `20261112193000_admin_pastor_branch_draft_module_grants.sql` and the matching pgTAP assertions.
 
+## 7.2 Owner-directed amendment — non-transport event operations (19 November 2026)
+
+The product owner has directed completion of the non-transport event workflows in the master scope. This amendment supersedes the earlier temporary statement in section 7.1 that check-in remains ungranted. To preserve least privilege for the six-role model, the initial operational grants are limited to Admin/Pastor at the active branch scope:
+
+- event.registration.manage.scoped: staff-only registration, registration cancellation and finite-capacity administration. Public self-registration and contact-directory lookup remain disabled.
+- event.checkin.scoped: staff-assisted check-in of active registrations. One check-in per registration, atomic idempotency receipts, and no offline check-in.
+- event.closeout.submit and event.closeout.review: branch-scoped closeout submission and independent review, restricted to Admin/Pastor. The submitter cannot review their own closeout; registration and check-in counts are calculated from the event ledger, and transport counts remain null.
+- Transport remains excluded. No transport reservation, boarding, seat capacity or dispatch UI is enabled.
+- No check-in or registration capability is added to Coordinator, Team Leader, Field Worker, Follow-up Volunteer or Prayer Intercessor in this release.
+- Check-in requires a published event and an active branch-scoped Admin/Pastor assignment. A checked-in registration cannot be cancelled. Registration cancellation is atomic and releases capacity only before the event starts.
+
+This amendment records implementation scope and an intentionally narrow first-release role allocation. It does not authorise public registration, offline storage, unapproved use of attendee data or production deployment. The registration/check-in routes and migrations must pass current-head CI and authenticated role acceptance before release.
+
 ## 7. Change control
 
 This is the product owner's current engineering baseline. Stakeholders may request amendments at any time. Each amendment must record the requested change, rationale, approver, date, impact on roles/data/security, migration plan, tests and rollback. A later stakeholder change does not retroactively make the present least-privilege baseline unsafe or invalid.

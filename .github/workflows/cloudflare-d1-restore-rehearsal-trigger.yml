@@ -1,0 +1,21 @@
+name: One-time Cloudflare D1 Restore and Authenticated Acceptance
+
+on:
+  push:
+    branches:
+      - migration/cloudflare-auth-consolidation
+    paths:
+      - ".github/workflows/cloudflare-d1-restore-rehearsal-trigger.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcg-missions-d1-restore-rehearsal-trigger
+  cancel-in-progress: false
+
+jobs:
+  restore-and-acceptance:
+    name: Isolated EU D1 restore and authenticated API acceptance
+    uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
+    secrets: inherit

@@ -1,0 +1,291 @@
+name: Cloudflare Production Data Clone and Restore Rehearsal
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches:
+      - migration/cloudflare-auth-consolidation
+    paths:
+      - ".github/workflows/cloudflare-production-data-restore-rehearsal.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcg-missions-production-data-restore-rehearsal-v1
+  cancel-in-progress: false
+
+jobs:
+  production-data-clone:
+    name: Export production D1 to a private temporary EU clone, verify and restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    environment: production
+    env:
+      CLOUDFLARE_ACCOUNT_ID: "1697f36d4227453d2e25cfb49b347e5f"
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      SOURCE_DB_NAME: pcg-missions-production
+    steps:
+      - name: Check out reviewed migration source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Node.js and Wrangler
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify Cloudflare access
+        working-directory: cloudflare
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}"
+          npx --yes wrangler@4.166.0 whoami
+          npm install --no-package-lock --ignore-scripts --no-audit --no-fund
+
+      - name: Capture the production database manifest (counts only)
+        working-directory: cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute "$SOURCE_DB_NAME" --remote --env production --json --command "
+            SELECT json_object(
+              'schema_version',(SELECT schema_version FROM app_meta WHERE id=1),
+              'environment',(SELECT environment FROM app_meta WHERE id=1),
+              'migration_count',(SELECT COUNT(*) FROM d1_migrations),
+              'latest_migration',(SELECT MAX(id) FROM d1_migrations),
+              'churches',(SELECT COUNT(*) FROM church),
+              'branches',(SELECT COUNT(*) FROM branch),
+              'staff_profiles',(SELECT COUNT(*) FROM staff_profile),
+              'contacts',(SELECT COUNT(*) FROM contact),
+              'followup_tasks',(SELECT COUNT(*) FROM followup_task),
+              'events',(SELECT COUNT(*) FROM event),
+              'ministry_reports',(SELECT COUNT(*) FROM ministry_report),
+              'prayer_requests',(SELECT COUNT(*) FROM prayer_request),
+              'care_records',(SELECT COUNT(*) FROM care_record)
+            ) AS manifest
+          " > /tmp/pcg-production-source-manifest.json
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const p=JSON.parse(fs.readFileSync("/tmp/pcg-production-source-manifest.json","utf8"));
+          const row=p?.[0]?.results?.[0];
+          if(!row?.manifest) throw new Error("Production D1 manifest query returned no row.");
+          const manifest=JSON.parse(row.manifest);
+          if(manifest.environment!=="production"||Number(manifest.schema_version)<45||
+             Number(manifest.migration_count)!==Number(manifest.latest_migration)) {
+            throw new Error("Production D1 migration marker or ledger is inconsistent.");
+          }
+          fs.writeFileSync("/tmp/pcg-production-source-manifest.normalized.json",JSON.stringify(manifest));
+          console.log(JSON.stringify({
+            schema_version:manifest.schema_version,
+            migration_count:manifest.migration_count,
+            branches:manifest.branches,
+            staff_profiles:manifest.staff_profiles,
+            contacts:manifest.contacts,
+            followup_tasks:manifest.followup_tasks,
+            events:manifest.events,
+            ministry_reports:manifest.ministry_reports
+          }));
+          NODE
+
+      - name: Verify the database has no unsupported virtual tables
+        working-directory: cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute "$SOURCE_DB_NAME" --remote --env production --json --command "
+            SELECT COUNT(*) AS virtual_tables
+            FROM sqlite_master
+            WHERE type='table' AND upper(COALESCE(sql,'')) LIKE 'CREATE VIRTUAL TABLE%'
+          " > /tmp/pcg-production-virtual-tables.json
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const p=JSON.parse(fs.readFileSync("/tmp/pcg-production-virtual-tables.json","utf8"));
+          const n=Number(p?.[0]?.results?.[0]?.virtual_tables);
+          if(n!==0) throw new Error("Production D1 has virtual tables; standard importable D1 export is not available.");
+          NODE
+
+      - name: Export the complete production D1 database into ephemeral runner storage
+        working-directory: cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 export "$SOURCE_DB_NAME" --remote --env production --output=/tmp/pcg-production-clone.sql
+          test -s /tmp/pcg-production-clone.sql
+          test "$(wc -c < /tmp/pcg-production-clone.sql)" -lt 5368709120
+          sha256sum /tmp/pcg-production-clone.sql | awk '{print "Private temporary production export SHA-256: " $1}'
+          echo "The SQL export remains on this ephemeral runner only; it will not be uploaded as a workflow artifact or printed."
+
+      - name: Wait for the account D1 write quota to reset before importing the production clone
+        shell: bash
+        run: |
+          set -euo pipefail
+          reset_at="$(date -u -d 'today 00:05:00' +%s)"
+          now="$(date -u +%s)"
+          if [[ "$reset_at" -le "$now" ]]; then
+            reset_at="$(date -u -d 'tomorrow 00:05:00' +%s)"
+          fi
+          wait_seconds=$((reset_at-now))
+          if [[ "$wait_seconds" -gt 0 ]]; then
+            echo "Waiting until the next 00:05 UTC D1 row-write quota reset before creating/importing the temporary clone."
+            sleep "$wait_seconds"
+          fi
+
+      - name: Create an isolated EU D1 database for the production-data clone
+        id: database
+        shell: bash
+        run: |
+          set -euo pipefail
+          DB_NAME="pcg-missions-production-clone-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -X POST "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "$(jq -n --arg name "$DB_NAME" '{name:$name,jurisdiction:"eu",read_replication:{mode:"disabled"}}')")"
+          echo "$RESPONSE" | jq -e '.success == true' >/dev/null
+          DB_ID="$(echo "$RESPONSE" | jq -r '.result.uuid')"
+          test -n "$DB_ID" && test "$DB_ID" != "null"
+          echo "name=$DB_NAME" >> "$GITHUB_OUTPUT"
+          echo "id=$DB_ID" >> "$GITHUB_OUTPUT"
+          echo "Created temporary EU D1 recovery clone: $DB_NAME"
+
+      - name: Import the full production export into the isolated D1 clone
+        env:
+          DB_NAME: ${{ steps.database.outputs.name }}
+          DB_ID: ${{ steps.database.outputs.id }}
+        working-directory: cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/pcg-production-clone.wrangler.toml <<EOF
+          name = "pcg-missions-production-data-clone-rehearsal"
+          main = "src/index.ts"
+          account_id = "${CLOUDFLARE_ACCOUNT_ID}"
+          compatibility_date = "2026-11-22"
+          compatibility_flags = ["nodejs_compat"]
+
+          [[d1_databases]]
+          binding = "DB"
+          database_name = "${DB_NAME}"
+          database_id = "${DB_ID}"
+          migrations_dir = "migrations"
+          remote = true
+          EOF
+          npx wrangler d1 execute "$DB_NAME" --remote --config /tmp/pcg-production-clone.wrangler.toml --file=/tmp/pcg-production-clone.sql --yes
+
+      - name: Compare production and clone manifests and enforce referential integrity
+        env:
+          DB_NAME: ${{ steps.database.outputs.name }}
+        working-directory: cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 execute "$DB_NAME" --remote --config /tmp/pcg-production-clone.wrangler.toml --json --command "
+            SELECT json_object(
+              'schema_version',(SELECT schema_version FROM app_meta WHERE id=1),
+              'environment',(SELECT environment FROM app_meta WHERE id=1),
+              'migration_count',(SELECT COUNT(*) FROM d1_migrations),
+              'latest_migration',(SELECT MAX(id) FROM d1_migrations),
+              'churches',(SELECT COUNT(*) FROM church),
+              'branches',(SELECT COUNT(*) FROM branch),
+              'staff_profiles',(SELECT COUNT(*) FROM staff_profile),
+              'contacts',(SELECT COUNT(*) FROM contact),
+              'followup_tasks',(SELECT COUNT(*) FROM followup_task),
+              'events',(SELECT COUNT(*) FROM event),
+              'ministry_reports',(SELECT COUNT(*) FROM ministry_report),
+              'prayer_requests',(SELECT COUNT(*) FROM prayer_request),
+              'care_records',(SELECT COUNT(*) FROM care_record)
+            ) AS manifest
+          " > /tmp/pcg-production-clone-manifest.json
+          npx wrangler d1 execute "$DB_NAME" --remote --config /tmp/pcg-production-clone.wrangler.toml --json --command "PRAGMA foreign_key_check" > /tmp/pcg-production-clone-foreign-keys.json
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const source=JSON.parse(fs.readFileSync("/tmp/pcg-production-source-manifest.normalized.json","utf8"));
+          const payload=JSON.parse(fs.readFileSync("/tmp/pcg-production-clone-manifest.json","utf8"));
+          const row=payload?.[0]?.results?.[0];
+          if(!row?.manifest) throw new Error("Clone manifest query returned no row.");
+          const clone=JSON.parse(row.manifest);
+          if(source.environment!==clone.environment||
+             Number(source.schema_version)!==Number(clone.schema_version)||
+             Number(source.migration_count)!==Number(clone.migration_count)||
+             Number(source.latest_migration)!==Number(clone.latest_migration)) {
+            throw new Error("The production-data clone does not preserve its schema marker and migration ledger.");
+          }
+          for(const key of ["churches","branches","staff_profiles","contacts","followup_tasks","events","ministry_reports","prayer_requests","care_records"]) {
+            if(Number(source[key])!==Number(clone[key])) {
+              throw new Error("Production-data clone row count differs for " + key + ".");
+            }
+          }
+          const fk=JSON.parse(fs.readFileSync("/tmp/pcg-production-clone-foreign-keys.json","utf8"));
+          const results=fk?.[0]?.results ?? [];
+          if(results.length!==0) throw new Error("Production-data clone has foreign-key violations.");
+          console.log("Production-data clone matches the production schema, migration ledger and ministry row counts; foreign_key_check is clean.");
+          NODE
+
+      - name: Capture clone bookmark, write a controlled probe, restore and recheck
+        id: clone-bookmark
+        env:
+          DB_ID: ${{ steps.database.outputs.id }}
+          DB_NAME: ${{ steps.database.outputs.name }}
+        working-directory: cloudflare
+        shell: bash
+        run: |
+          set -euo pipefail
+          RESPONSE="$(curl --fail-with-body --silent --show-error \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DB_ID}/time_travel/bookmark")"
+          echo "$RESPONSE" | jq -e '.success == true' >/dev/null
+          BOOKMARK="$(echo "$RESPONSE" | jq -r '.result.bookmark')"
+          test -n "$BOOKMARK" && test "$BOOKMARK" != "null"
+          npx wrangler d1 execute "$DB_NAME" --remote --config /tmp/pcg-production-clone.wrangler.toml --command "CREATE TABLE restore_rehearsal_probe(id TEXT PRIMARY KEY,marker TEXT NOT NULL); INSERT INTO restore_rehearsal_probe VALUES('production-clone-probe','before-restore');"
+          RESTORE="$(curl --fail-with-body --silent --show-error -X POST \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DB_ID}/time_travel/restore?bookmark=${BOOKMARK}" \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}")"
+          echo "$RESTORE" | jq -e '.success == true' >/dev/null
+          npx wrangler d1 execute "$DB_NAME" --remote --config /tmp/pcg-production-clone.wrangler.toml --json --command "
+            SELECT (SELECT schema_version FROM app_meta WHERE id=1) AS schema_version,
+                   (SELECT environment FROM app_meta WHERE id=1) AS environment,
+                   (SELECT COUNT(*) FROM d1_migrations) AS migration_count,
+                   (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='restore_rehearsal_probe') AS probe_tables,
+                   (SELECT COUNT(*) FROM staff_profile) AS staff_profiles,
+                   (SELECT COUNT(*) FROM contact) AS contacts,
+                   (SELECT COUNT(*) FROM followup_task) AS followup_tasks,
+                   (SELECT COUNT(*) FROM event) AS events,
+                   (SELECT COUNT(*) FROM ministry_report) AS reports,
+                   (SELECT COUNT(*) FROM prayer_request) AS prayer_requests
+          " > /tmp/pcg-production-clone-after-restore.json
+          node --input-type=module <<'NODE'
+          import fs from "node:fs";
+          const src=JSON.parse(fs.readFileSync("/tmp/pcg-production-source-manifest.normalized.json","utf8"));
+          const p=JSON.parse(fs.readFileSync("/tmp/pcg-production-clone-after-restore.json","utf8"));
+          const r=p?.[0]?.results?.[0];
+          if(!r||Number(r.schema_version)!==Number(src.schema_version)||r.environment!==src.environment||
+             Number(r.migration_count)!==Number(src.migration_count)||Number(r.probe_tables)!==0||
+             Number(r.staff_profiles)!==Number(src.staff_profiles)||Number(r.contacts)!==Number(src.contacts)||
+             Number(r.followup_tasks)!==Number(src.followup_tasks)||Number(r.events)!==Number(src.events)||
+             Number(r.reports)!==Number(src.ministry_reports)||Number(r.prayer_requests)!==Number(src.prayer_requests)) {
+            throw new Error("Restored production clone did not return to its exact pre-probe data state.");
+          }
+          console.log("PRODUCTION_DATA_RESTORE_REHEARSAL_PASSED: production data, marker, migration ledger and key ministry counts survived restore; synthetic probe was removed.");
+          NODE
+
+      - name: Delete clone database and purge private export from runner
+        if: always()
+        env:
+          DB_ID: ${{ steps.database.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${DB_ID:-}" ]]; then
+            curl --fail-with-body --silent --show-error \
+              -X DELETE "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/d1/database/${DB_ID}" \
+              -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" | jq -e '.success == true' >/dev/null
+          fi
+          rm -f /tmp/pcg-production-clone.sql /tmp/pcg-production-clone.wrangler.toml \
+            /tmp/pcg-production-source-manifest.json /tmp/pcg-production-source-manifest.normalized.json \
+            /tmp/pcg-production-clone-manifest.json /tmp/pcg-production-clone-foreign-keys.json \
+            /tmp/pcg-production-clone-after-restore.json
+          echo "The temporary clone was deleted and the production export removed. No production data or SQL export was uploaded as an artifact."

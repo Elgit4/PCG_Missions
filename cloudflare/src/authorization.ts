@@ -109,6 +109,21 @@ WHERE sp.id = ?
           AND (rs.ends_at IS NULL OR rs.ends_at > ?)
       )
     )
+    OR (
+      rc.scope_mode = 'oversight'
+      AND c.code IN ('prayer.oversight.read', 'care.oversight.read')
+    )
+    OR (
+      rc.scope_mode = 'assigned'
+      AND c.code IN ('prayer.request.read.assigned', 'care.record.read.assigned')
+    )
+    -- Contact capture has no existing record ID; the create handler binds the new contact to its actor.
+    OR (
+      rc.scope_mode = 'assigned'
+      AND c.code = 'contacts.create'
+      AND ? = ''
+      AND ? = ''
+    )
     OR (rc.scope_mode = 'self' AND ? = sp.id)
   )
 ORDER BY CASE rc.scope_mode
@@ -140,8 +155,8 @@ export async function authorizeCapability(
   const recordId = input.recordId ?? "";
   const teamId = input.teamId ?? "";
 
-  // Event/oversight scope remains fail-closed until its domain-specific
-  // assignment model and predicates are migrated and reviewed.
+  // Oversight and pastoral assigned capabilities are resolved at active-branch scope here;
+  // the calling handler must still constrain the record query and live assignment predicates.
   const row = await db.prepare(AUTHORIZATION_SQL).bind(
     input.branchId,
     input.actorProfileId,
@@ -166,6 +181,8 @@ export async function authorizeCapability(
     recordId,
     input.now,
     input.now,
+    resourceType,
+    recordId,
     input.actorProfileId,
   ).first<{ scope_mode: AuthorizationScope; sensitivity: AuthorizationDecision["sensitivity"] }>();
 

@@ -1,5 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.0";
 import {
+  createPublicContentAllowedOrigins,
+  createPublicContentCorsHeaders,
+  createPublicContentPreflightResponse,
+} from "./cors.ts";
+import {
   getScheduledPublicationFilter,
   parsePublicContentRequest,
   PUBLIC_RESOURCES,
@@ -8,12 +13,8 @@ import {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
 const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-const allowedOrigins = new Set(
-  (Deno.env.get("PUBLIC_CONTENT_ALLOWED_ORIGINS") ??
-    "https://pcg-missions.vercel.app")
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean),
+const allowedOrigins = createPublicContentAllowedOrigins(
+  Deno.env.get("PUBLIC_CONTENT_ALLOWED_ORIGINS"),
 );
 
 const supabase = supabaseUrl && serviceRoleKey
@@ -42,12 +43,12 @@ function response(
   origin: string | null,
 ): Response {
   const headers = new Headers(baseHeaders);
-  if (status < 200 || status >= 300) headers.set("Cache-Control", "no-store");
-  if (origin && allowedOrigins.has(origin)) {
-    headers.set("Access-Control-Allow-Origin", origin);
-    headers.set("Access-Control-Allow-Methods", "GET, OPTIONS");
-    headers.set("Access-Control-Allow-Headers", "Content-Type");
+  for (
+    const [key, value] of createPublicContentCorsHeaders(origin, allowedOrigins)
+  ) {
+    headers.set(key, value);
   }
+  if (status < 200 || status >= 300) headers.set("Cache-Control", "no-store");
   return new Response(JSON.stringify(body), { status, headers });
 }
 
@@ -62,16 +63,7 @@ Deno.serve(async (request: Request) => {
     if (origin && !allowedOrigins.has(origin)) {
       return response({ error: "Origin not allowed." }, 403, null);
     }
-    return new Response(null, {
-      status: 204,
-      headers: {
-        ...(origin ? { "Access-Control-Allow-Origin": origin } : {}),
-        "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Max-Age": "600",
-        "Vary": "Origin",
-      },
-    });
+    return createPublicContentPreflightResponse(origin, allowedOrigins);
   }
 
   if (request.method !== "GET") {

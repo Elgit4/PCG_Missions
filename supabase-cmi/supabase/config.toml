@@ -22,6 +22,13 @@ enabled = false
 enabled = true
 port = 55323
 
+# Keep the local email-capture service isolated from other Supabase projects.
+[local_smtp]
+enabled = true
+port = 55324
+smtp_port = 55325
+pop3_port = 55326
+
 [auth]
 enabled = true
 site_url = "http://localhost:5173"
@@ -77,3 +84,11 @@ verify_jwt = true
 # Public recovery request + one-time bootstrap routes use dedicated abuse controls
 # and a server-only bootstrap token. Authenticated admin routes validate JWTs in code.
 verify_jwt = false
+
+[functions.staff-notifications]
+# Private per-recipient notification inbox; branch and recipient ownership are checked in code.
+verify_jwt = true
+
+[functions.event-flyers]
+# Private, branch-authorised event flyer upload and short-lived preview URLs.
+verify_jwt = true

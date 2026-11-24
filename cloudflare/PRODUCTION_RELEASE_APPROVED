@@ -1,0 +1,9 @@
+PCG Missions production cutover approval marker.
+
+This one-time marker triggers the guarded Cloudflare production release workflow. The workflow validates schema, credentials, Better Auth, storage-secret availability, Pages configuration, and production smoke checks before declaring the release complete.
+
+Release retry: Pages configuration was applied and is verified before frontend deployment.
+
+Retry: production Pages deployment now validates public endpoints rather than the restricted token API.
+
+Final retry: Pages frontend deployment is triggered by the configured Git integration from the reviewed web release commit.

@@ -2,7 +2,7 @@
 -- Synthetic fixtures only. Executed by the isolated CMI CI workflow.
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(77);
+select plan(124);
 
 select has_table('public','event','event table exists');
 select has_table('public','event_staff_assignment','typed staff assignment table exists');
@@ -73,8 +73,8 @@ select extensions.ok(
   ),
   'no client policies exist before trusted public projections and reviewed role grants'
 );
-select extensions.is((select count(*)::integer from public.role_capability),76,
-  'the owner-directed visitor MVP role baseline remains present');
+select extensions.is((select count(*)::integer from public.role_capability),80,
+  'the owner-directed role grants include staff registration, check-in and closeout');
 
 select extensions.ok(
   has_table_privilege('service_role','public.event','SELECT')
@@ -84,10 +84,15 @@ select extensions.ok(
   and has_table_privilege('service_role','public.sermon','UPDATE')
   and has_table_privilege('service_role','public.church_public_profile','SELECT')
   and not has_table_privilege('service_role','public.event','DELETE')
-  and not has_table_privilege('service_role','public.event_registration','INSERT')
+  and has_table_privilege('service_role','public.event_registration','INSERT')
+  and has_table_privilege('service_role','public.event_idempotency_receipt','INSERT')
+  and not has_table_privilege('anon','public.event_registration','INSERT')
+  and not has_table_privilege('authenticated','public.event_registration','INSERT')
+  and not has_table_privilege('anon','public.event_idempotency_receipt','INSERT')
+  and not has_table_privilege('authenticated','public.event_idempotency_receipt','INSERT')
   and not has_table_privilege('anon','public.event','SELECT')
   and not has_table_privilege('authenticated','public.sermon','SELECT'),
-  'service_role has explicit least-privilege calendar/event/content access while browser access and registration writes stay closed'
+  'service_role has the limited event transaction writes required by the server RPCs while browser registration and public-content access stay closed'
 );
 
 -- Keep the Edge Function's fixed public projections aligned with real schema columns.
@@ -146,6 +151,18 @@ insert into auth.users (
 );
 insert into public.staff_profile(auth_user_id,full_name,account_status)
 values ('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','Synthetic Event Tester','active');
+insert into auth.users (
+ instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,
+ raw_app_meta_data,raw_user_meta_data,created_at,updated_at
+) values (
+ '00000000-0000-0000-0000-000000000000',
+ 'cccccccc-cccc-4ccc-8ccc-cccccccccccc','authenticated','authenticated',
+ 'cmi-event-reviewer@example.invalid','not-a-real-password-hash',now(),
+ '{"provider":"email","providers":["email"]}'::jsonb,'{}'::jsonb,now(),now()
+);
+insert into public.staff_profile(auth_user_id,full_name,account_status)
+values ('cccccccc-cccc-4ccc-8ccc-cccccccccccc','Synthetic Event Reviewer','active');
+
 insert into public.church(id,name,timezone)
 values ('11000000-0000-4000-8000-000000000001','Synthetic Event Test Church','Africa/Accra');
 insert into public.branch(id,church_id,name,code) values
@@ -170,6 +187,42 @@ values
  ('51000000-0000-4000-8000-000000000002','21000000-0000-4000-8000-000000000002',
   'Synthetic Event B',now()+interval '2 days',now()+interval '2 days 2 hours',
   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','draft','private','closed');
+
+
+insert into public.event(
+ id,branch_id,title,starts_at,ends_at,created_by,capacity,status,visibility,registration_state
+) values (
+ '51000000-0000-4000-8000-000000000003',
+ '21000000-0000-4000-8000-000000000001',
+ 'Synthetic Staff Registration Event',
+ now()+interval '3 days',
+ now()+interval '3 days 2 hours',
+ 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+ 2,'published','staff','open'
+);
+
+insert into public.staff_role_assignment(
+ staff_profile_id,role_id,branch_id,assigned_by,starts_at,reason
+)
+select sp.id,r.id,'21000000-0000-4000-8000-000000000001',sp.id,
+ now()-interval '1 hour','Synthetic staff registration test fixture'
+from public.staff_profile sp
+cross join public.role r
+where sp.auth_user_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+  and r.code='admin_pastor';
+
+
+insert into public.staff_role_assignment(
+ staff_profile_id,role_id,branch_id,assigned_by,starts_at,reason
+)
+select reviewer.id, r.id, '21000000-0000-4000-8000-000000000001', owner.id,
+ now()-interval '1 hour','Synthetic independent event closeout reviewer'
+from public.staff_profile reviewer
+join public.staff_profile owner
+  on owner.auth_user_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+cross join public.role r
+where reviewer.auth_user_id='cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+  and r.code='admin_pastor';
 
 select extensions.throws_ok(
  $q$insert into public.event(branch_id,title,starts_at,ends_at,created_by)
@@ -533,6 +586,641 @@ select extensions.ok(
   and not has_function_privilege('anon','public.prevent_event_closeout_event_mutation()','EXECUTE')
   and not has_function_privilege('authenticated','public.prevent_event_closeout_event_mutation()','EXECUTE'),
   'trigger-only event integrity functions are not executable by browser roles'
+);
+
+
+select has_function(
+ 'public','cmi_staff_register_event_attendee',
+ array['uuid','uuid','uuid','uuid','smallint','text','text','text'],
+ 'staff registration transaction function exists'
+);
+select ok(
+ not has_function_privilege(
+  'anon',
+  'public.cmi_staff_register_event_attendee(uuid,uuid,uuid,uuid,smallint,text,text,text)',
+  'EXECUTE'
+ ),
+ 'anonymous role cannot execute staff registration transaction'
+);
+select ok(
+ not has_function_privilege(
+  'authenticated',
+  'public.cmi_staff_register_event_attendee(uuid,uuid,uuid,uuid,smallint,text,text,text)',
+  'EXECUTE'
+ ),
+ 'authenticated browser role cannot execute staff registration transaction'
+);
+select ok(
+ has_function_privilege(
+  'service_role',
+  'public.cmi_staff_register_event_attendee(uuid,uuid,uuid,uuid,smallint,text,text,text)',
+  'EXECUTE'
+ ),
+ 'trusted service role can execute staff registration transaction'
+);
+select ok(
+ not (
+  select prosecdef
+  from pg_proc
+  where oid='public.cmi_staff_register_event_attendee(uuid,uuid,uuid,uuid,smallint,text,text,text)'::regprocedure
+ ),
+ 'staff registration transaction uses SECURITY INVOKER'
+);
+select ok(
+ (
+  select coalesce(array_to_string(proconfig,','),'') like '%search_path=pg_catalog%'
+  from pg_proc
+  where oid='public.cmi_staff_register_event_attendee(uuid,uuid,uuid,uuid,smallint,text,text,text)'::regprocedure
+ ),
+ 'staff registration transaction pins search_path'
+);
+select is(
+ (
+  select count(*)::integer
+  from public.role_capability rc
+  join public.role r on r.id=rc.role_id
+  join public.capability c on c.id=rc.capability_id
+  where r.code='admin_pastor'
+    and c.code='event.registration.manage.scoped'
+    and rc.scope_mode='branch'
+ ),
+ 1,
+ 'only the intended Admin/Pastor branch registration grant is added'
+);
+select ok(
+ has_table_privilege('service_role','public.event_registration','SELECT')
+ and has_table_privilege('service_role','public.event_registration','INSERT')
+ and has_table_privilege('service_role','public.event_idempotency_receipt','SELECT')
+ and has_table_privilege('service_role','public.event_idempotency_receipt','INSERT')
+ and not has_table_privilege('anon','public.event_registration','INSERT')
+ and not has_table_privilege('authenticated','public.event_registration','INSERT'),
+ 'registration and receipt writes remain service-role-only'
+);
+
+set local role service_role;
+select ok(
+ (public.cmi_staff_register_event_attendee(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  '61000000-0000-4000-8000-000000000020',
+  1::smallint, repeat('11',32),'Atomic Staff Attendee','+233241234567'
+ )->'registration'->>'attendee_name_snapshot') = 'Atomic Staff Attendee'
+ and (
+  public.cmi_staff_register_event_attendee(
+   'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+   '51000000-0000-4000-8000-000000000003',
+   '21000000-0000-4000-8000-000000000001',
+   '61000000-0000-4000-8000-000000000020',
+   1::smallint, repeat('11',32),'Atomic Staff Attendee','+233241234567'
+  )->>'replayed'
+ )::boolean = true,
+ 'staff registration succeeds and a retry replays without creating a duplicate'
+);
+select throws_ok(
+ $q$select public.cmi_staff_register_event_attendee(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  '61000000-0000-4000-8000-000000000020',
+  1::smallint, repeat('22',32),'Different Attendee',null
+ )$q$,
+ '23505','EVENT_IDEMPOTENCY_KEY_REUSED',
+ 'same idempotency key cannot be replayed with a different request digest'
+);
+select ok(
+ (public.cmi_staff_register_event_attendee(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  '61000000-0000-4000-8000-000000000021',
+  1::smallint, repeat('33',32),'Second Staff Attendee',null
+ )->'registration'->>'attendee_name_snapshot') = 'Second Staff Attendee',
+ 'a distinct idempotency key creates a second registration within capacity'
+);
+select ok(
+  (public.cmi_staff_cancel_event_registration(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    (select id from public.event_registration
+      where event_id='51000000-0000-4000-8000-000000000003'
+        and attendee_name_snapshot='Second Staff Attendee'
+      limit 1),
+    '61000000-0000-4000-8000-000000000030',
+    1::smallint, repeat('77',32)
+  )->'registration'->>'status') = 'cancelled'
+  and (
+    public.cmi_staff_cancel_event_registration(
+      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      '51000000-0000-4000-8000-000000000003',
+      '21000000-0000-4000-8000-000000000001',
+      (select id from public.event_registration
+        where event_id='51000000-0000-4000-8000-000000000003'
+          and attendee_name_snapshot='Second Staff Attendee'
+        limit 1),
+      '61000000-0000-4000-8000-000000000030',
+      1::smallint, repeat('77',32)
+    )->>'replayed'
+  )::boolean = true,
+  'staff registration cancellation releases capacity and retries replay without duplicate effects'
+);
+select ok(
+  (public.cmi_staff_register_event_attendee(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    '61000000-0000-4000-8000-000000000031',
+    1::smallint, repeat('88',32),'Replacement Attendee',null
+  )->'registration'->>'attendee_name_snapshot') = 'Replacement Attendee',
+  'released capacity can be reused by a new staff registration'
+);
+select ok(
+  (
+    select count(*)=2
+    from public.event_registration
+    where event_id='51000000-0000-4000-8000-000000000003'
+      and status <> 'cancelled'
+  ),
+  'cancelled registrations are excluded from active capacity counts'
+);
+select ok(
+  exists(
+    select 1 from public.event_idempotency_receipt
+    where event_id='51000000-0000-4000-8000-000000000003'
+      and operation='registration_cancel'
+      and caller_class='staff'
+      and actor_user_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+      and idempotency_key='61000000-0000-4000-8000-000000000030'
+      and digest_key_version=1
+      and request_digest=decode(repeat('77',32),'hex')
+      and resource_type='event_registration'
+      and response_status=200
+  ),
+  'registration cancellation writes its idempotency receipt atomically'
+);
+select throws_ok(
+ $q$select public.cmi_staff_register_event_attendee(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  '61000000-0000-4000-8000-000000000032',
+  1::smallint, repeat('44',32),'Capacity Overflow Attendee',null
+ )$q$,
+ 'P0001','EVENT_CAPACITY_REACHED',
+ 'finite event capacity is enforced by the database transaction'
+);
+select throws_ok(
+ $q$select public.cmi_staff_register_event_attendee(
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  '61000000-0000-4000-8000-000000000023',
+  1::smallint, repeat('55',32),'Unauthorized Attendee',null
+ )$q$,
+ '42501','EVENT_REGISTRATION_NOT_AUTHORIZED',
+ 'staff without the branch registration capability cannot register attendees'
+);
+select throws_ok(
+ $q$select public.cmi_staff_register_event_attendee(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000001',
+  '21000000-0000-4000-8000-000000000001',
+  '61000000-0000-4000-8000-000000000024',
+  1::smallint, repeat('66',32),'Public Event Attempt',null
+ )$q$,
+ 'P0001','EVENT_REGISTRATION_CLOSED',
+ 'staff RPC refuses a public event even when its public registration state is open'
+);
+select throws_ok(
+ $q$select public.cmi_staff_register_event_attendee(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000002',
+  '21000000-0000-4000-8000-000000000002',
+  '61000000-0000-4000-8000-000000000025',
+  1::smallint, repeat('77',32),'Cross Branch Registration Attempt',null
+ )$q$,
+ '42501','EVENT_REGISTRATION_NOT_AUTHORIZED',
+ 'a branch A Admin/Pastor assignment cannot authorize event registration in branch B'
+);
+
+select has_function(
+ 'public','cmi_staff_checkin_event_registration',
+ array['uuid','uuid','uuid','uuid','uuid','smallint','text'],
+ 'staff event check-in transaction function exists'
+);
+select ok(
+ not has_function_privilege(
+  'anon',
+  'public.cmi_staff_checkin_event_registration(uuid,uuid,uuid,uuid,uuid,smallint,text)',
+  'EXECUTE'
+ ),
+ 'anonymous role cannot execute staff check-in transaction'
+);
+select ok(
+ not has_function_privilege(
+  'authenticated',
+  'public.cmi_staff_checkin_event_registration(uuid,uuid,uuid,uuid,uuid,smallint,text)',
+  'EXECUTE'
+ ),
+ 'authenticated browser role cannot execute staff check-in transaction directly'
+);
+select ok(
+ has_function_privilege(
+  'service_role',
+  'public.cmi_staff_checkin_event_registration(uuid,uuid,uuid,uuid,uuid,smallint,text)',
+  'EXECUTE'
+ ),
+ 'trusted service role can execute staff check-in transaction'
+);
+select is(
+ (
+  select count(*)::integer
+  from public.role_capability rc
+  join public.role r on r.id=rc.role_id
+  join public.capability c on c.id=rc.capability_id
+  where c.code='event.checkin.scoped'
+    and rc.scope_mode='branch'
+    and r.code='admin_pastor'
+ ),
+ 1,
+ 'only Admin/Pastor receives branch-scoped event check-in'
+);
+select is(
+ (
+  select count(*)::integer
+  from public.role_capability rc
+  join public.role r on r.id=rc.role_id
+  join public.capability c on c.id=rc.capability_id
+  where c.code='event.checkin.scoped'
+    and r.code <> 'admin_pastor'
+ ),
+ 0,
+ 'no lower role receives event check-in access in the initial release'
+);
+
+set local role service_role;
+select ok(
+ (
+  public.cmi_staff_checkin_event_registration(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    (select id from public.event_registration
+      where event_id='51000000-0000-4000-8000-000000000003'
+        and attendee_name_snapshot='Atomic Staff Attendee'
+      limit 1),
+    '61000000-0000-4000-8000-000000000040',
+    1::smallint, repeat('99',32)
+  )->'checkin'->>'attendee_name_snapshot'
+ ) = 'Atomic Staff Attendee'
+ and (
+  public.cmi_staff_checkin_event_registration(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    (select id from public.event_registration
+      where event_id='51000000-0000-4000-8000-000000000003'
+        and attendee_name_snapshot='Atomic Staff Attendee'
+      limit 1),
+    '61000000-0000-4000-8000-000000000040',
+    1::smallint, repeat('99',32)
+  )->>'replayed'
+ )::boolean = true,
+ 'staff check-in records an attendee and a retry replays without another row'
+);
+select throws_ok(
+ $q$select public.cmi_staff_checkin_event_registration(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  (select id from public.event_registration
+    where event_id='51000000-0000-4000-8000-000000000003'
+      and attendee_name_snapshot='Atomic Staff Attendee'
+    limit 1),
+  '61000000-0000-4000-8000-000000000041',
+  1::smallint, repeat('aa',32)
+ )$q$,
+ 'P0001','EVENT_REGISTRATION_ALREADY_CHECKED_IN',
+ 'a second independent check-in for one registration is rejected'
+);
+select throws_ok(
+ $q$select public.cmi_staff_checkin_event_registration(
+  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  (select id from public.event_registration
+    where event_id='51000000-0000-4000-8000-000000000003'
+      and attendee_name_snapshot='Replacement Attendee'
+    limit 1),
+  '61000000-0000-4000-8000-000000000042',
+  1::smallint, repeat('bb',32)
+ )$q$,
+ '42501','EVENT_CHECKIN_NOT_AUTHORIZED',
+ 'staff without branch check-in capability cannot check in attendees'
+);
+select throws_ok(
+ $q$select public.cmi_staff_cancel_event_registration(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  (select id from public.event_registration
+    where event_id='51000000-0000-4000-8000-000000000003'
+      and attendee_name_snapshot='Atomic Staff Attendee'
+    limit 1),
+  '61000000-0000-4000-8000-000000000043',
+  1::smallint, repeat('cc',32)
+ )$q$,
+ 'P0001','EVENT_REGISTRATION_ALREADY_CHECKED_IN',
+ 'a checked-in registration cannot be cancelled to manipulate attendance or capacity'
+);
+select throws_ok(
+ $q$select public.cmi_staff_checkin_event_registration(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000002',
+  '21000000-0000-4000-8000-000000000002',
+  '71000000-0000-4000-8000-000000000099',
+  '61000000-0000-4000-8000-000000000044',
+  1::smallint, repeat('bc',32)
+ )$q$,
+ '42501','EVENT_CHECKIN_NOT_AUTHORIZED',
+ 'a branch A Admin/Pastor assignment cannot authorize check-in in branch B'
+);
+reset role;
+select ok(
+ exists(
+  select 1 from public.event_checkin
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and attendee_name_snapshot='Atomic Staff Attendee'
+    and source='staff'
+ )
+ and exists(
+  select 1 from public.event_idempotency_receipt
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and operation='event_checkin'
+    and caller_class='staff'
+    and actor_user_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    and idempotency_key='61000000-0000-4000-8000-000000000040'
+    and digest_key_version=1
+    and request_digest=decode(repeat('99',32),'hex')
+    and resource_type='event_checkin'
+ ),
+ 'check-in and its HMAC receipt are committed together'
+);
+
+reset role;
+select ok(
+ exists(
+  select 1 from public.event_registration
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and attendee_name_snapshot='Atomic Staff Attendee'
+    and contact_id is null
+    and attendee_email_snapshot is null
+    and registration_source='staff'
+    and attendee_phone_snapshot='+233241234567'
+ )
+ and (
+  select count(*)=2 from public.event_registration
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and status <> 'cancelled'
+ ),
+ 'staff registration stores only minimized snapshots without creating or linking contacts'
+);
+select ok(
+ exists(
+  select 1 from public.event_idempotency_receipt
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and operation='staff_registration'
+    and caller_class='staff'
+    and actor_user_id='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+    and idempotency_key='61000000-0000-4000-8000-000000000020'
+    and digest_key_version=1
+    and request_digest=decode(repeat('11',32),'hex')
+    and resource_type='event_registration'
+ )
+ and (
+  select count(*)=3 from public.event_idempotency_receipt
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and operation='staff_registration'
+ ),
+ 'registration and HMAC receipt are committed together with the key version and actor'
+);
+
+
+-- Closeout runs only after the event ends. The event has one check-in and two
+-- active registrations after the earlier cancellation/capacity test.
+update public.event
+   set starts_at=now()-interval '2 days',
+       ends_at=now()-interval '1 hour'
+ where id='51000000-0000-4000-8000-000000000003';
+
+select has_function(
+ 'public','cmi_staff_submit_event_closeout',
+ array['uuid','uuid','uuid','uuid','smallint','text','text'],
+ 'staff event closeout submit transaction exists'
+);
+select has_function(
+ 'public','cmi_staff_review_event_closeout',
+ array['uuid','uuid','uuid','uuid','text','text','uuid','smallint','text'],
+ 'staff event closeout review transaction exists'
+);
+select ok(
+ not has_function_privilege(
+  'anon',
+  'public.cmi_staff_submit_event_closeout(uuid,uuid,uuid,uuid,smallint,text,text)',
+  'EXECUTE'
+ )
+ and not has_function_privilege(
+  'authenticated',
+  'public.cmi_staff_submit_event_closeout(uuid,uuid,uuid,uuid,smallint,text,text)',
+  'EXECUTE'
+ )
+ and has_function_privilege(
+  'service_role',
+  'public.cmi_staff_submit_event_closeout(uuid,uuid,uuid,uuid,smallint,text,text)',
+  'EXECUTE'
+ ),
+ 'closeout submit transaction is service-role-only'
+);
+select ok(
+ not has_function_privilege(
+  'anon',
+  'public.cmi_staff_review_event_closeout(uuid,uuid,uuid,uuid,text,text,uuid,smallint,text)',
+  'EXECUTE'
+ )
+ and not has_function_privilege(
+  'authenticated',
+  'public.cmi_staff_review_event_closeout(uuid,uuid,uuid,uuid,text,text,uuid,smallint,text)',
+  'EXECUTE'
+ )
+ and has_function_privilege(
+  'service_role',
+  'public.cmi_staff_review_event_closeout(uuid,uuid,uuid,uuid,text,text,uuid,smallint,text)',
+  'EXECUTE'
+ ),
+ 'closeout review transaction is service-role-only'
+);
+select is(
+ (
+  select count(*)::integer
+  from public.role_capability rc
+  join public.role r on r.id=rc.role_id
+  join public.capability c on c.id=rc.capability_id
+  where r.code='admin_pastor'
+    and c.code='event.closeout.submit'
+    and rc.scope_mode='branch'
+ ),
+ 1,
+ 'Admin/Pastor receives one branch-scoped closeout submission grant'
+);
+select is(
+ (
+  select count(*)::integer
+  from public.role_capability rc
+  join public.role r on r.id=rc.role_id
+  join public.capability c on c.id=rc.capability_id
+  where r.code='admin_pastor'
+    and c.code='event.closeout.review'
+    and rc.scope_mode='branch'
+ ),
+ 1,
+ 'Admin/Pastor receives one branch-scoped closeout review grant'
+);
+
+set local role service_role;
+select throws_ok(
+ $q$select public.cmi_staff_submit_event_closeout(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000002',
+  '21000000-0000-4000-8000-000000000002',
+  '61000000-0000-4000-8000-000000000053',
+  1::smallint, repeat('bd',32),'Cross-branch closeout attempt'
+ )$q$,
+ '42501','EVENT_CLOSEOUT_SUBMIT_NOT_AUTHORIZED',
+ 'a branch A Admin/Pastor assignment cannot submit a closeout in branch B'
+);
+select throws_ok(
+ $q$select public.cmi_staff_review_event_closeout(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000002',
+  '21000000-0000-4000-8000-000000000002',
+  '71000000-0000-4000-8000-000000000099',
+  'approved',null,
+  '61000000-0000-4000-8000-000000000054',
+  1::smallint, repeat('be',32)
+ )$q$,
+ '42501','EVENT_CLOSEOUT_REVIEW_NOT_AUTHORIZED',
+ 'a branch A Admin/Pastor assignment cannot review a closeout in branch B'
+);
+select ok(
+ (
+  public.cmi_staff_submit_event_closeout(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    '61000000-0000-4000-8000-000000000050',
+    1::smallint, repeat('dd',32),'Synthetic event closeout summary'
+  )->'closeout'->>'status'
+ ) = 'submitted'
+ and (
+  public.cmi_staff_submit_event_closeout(
+    'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    '61000000-0000-4000-8000-000000000050',
+    1::smallint, repeat('dd',32),'Synthetic event closeout summary'
+  )->>'replayed'
+ )::boolean = true,
+ 'event closeout submission is atomic and same-key retries replay'
+);
+select throws_ok(
+ $q$select public.cmi_staff_review_event_closeout(
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '51000000-0000-4000-8000-000000000003',
+  '21000000-0000-4000-8000-000000000001',
+  (select id from public.event_closeout
+    where event_id='51000000-0000-4000-8000-000000000003'),
+  'approved',null,
+  '61000000-0000-4000-8000-000000000051',
+  1::smallint, repeat('ee',32)
+ )$q$,
+ '42501','EVENT_CLOSEOUT_SELF_REVIEW',
+ 'the closeout submitter cannot approve their own event closeout'
+);
+select ok(
+ (
+  public.cmi_staff_review_event_closeout(
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    (select id from public.event_closeout
+      where event_id='51000000-0000-4000-8000-000000000003'),
+    'approved',null,
+    '61000000-0000-4000-8000-000000000052',
+    1::smallint, repeat('ff',32)
+  )->'closeout'->>'status'
+ ) = 'approved'
+ and (
+  public.cmi_staff_review_event_closeout(
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '51000000-0000-4000-8000-000000000003',
+    '21000000-0000-4000-8000-000000000001',
+    (select id from public.event_closeout
+      where event_id='51000000-0000-4000-8000-000000000003'),
+    'approved',null,
+    '61000000-0000-4000-8000-000000000052',
+    1::smallint, repeat('ff',32)
+  )->>'replayed'
+ )::boolean = true,
+ 'a different authorized Admin/Pastor can approve and the review request replays'
+);
+reset role;
+select ok(
+ exists(
+  select 1 from public.event_closeout
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and status='approved'
+    and attendee_count=1
+    and registration_count=2
+    and transport_seat_count is null
+    and summary_notes='Synthetic event closeout summary'
+    and reviewed_by='cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+ )
+ and exists(
+  select 1 from public.event_idempotency_receipt
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and operation='closeout_submit'
+    and idempotency_key='61000000-0000-4000-8000-000000000050'
+    and digest_key_version=1
+    and request_digest=decode(repeat('dd',32),'hex')
+ )
+ and exists(
+  select 1 from public.event_idempotency_receipt
+  where event_id='51000000-0000-4000-8000-000000000003'
+    and operation='closeout_review'
+    and idempotency_key='61000000-0000-4000-8000-000000000052'
+    and digest_key_version=1
+    and request_digest=decode(repeat('ff',32),'hex')
+ )
+ and (
+  select count(*)=2 from public.event_closeout_event history
+  join public.event_closeout closeout on closeout.id=history.closeout_id
+  where closeout.event_id='51000000-0000-4000-8000-000000000003'
+ ),
+ 'closeout counts, HMAC receipts and append-only submitted/approved history are retained'
+);
+select is(
+ (select status from public.event where id='51000000-0000-4000-8000-000000000003'),
+ 'completed',
+ 'submitting closeout completes the event lifecycle'
+);
+
+
+select ok(
+  has_table_privilege('service_role','public.event_team_assignment','SELECT')
+  and not has_table_privilege('anon','public.event_team_assignment','SELECT')
+  and not has_table_privilege('authenticated','public.event_team_assignment','SELECT'),
+  'Event and report Edge Functions can read team assignments while browser roles remain denied'
 );
 
 select * from finish();

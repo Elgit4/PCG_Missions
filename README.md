@@ -6,13 +6,27 @@
 
 The CMI Follow-up v2.1 target scope covers church field capture, contacts, follow-up, prayer and care, events, attendance, calendar, announcements, visitor-facing content, ministry reports and team administration. The scope below describes intended product capability; see the deployment snapshot before treating a feature as operational.
 
+## Verified release status — 20 November 2026
+
+**Production and PR #82 are separate release states.** Vercel production remains READY on `main` at `b83d1feb44fe5cca1e2ddc7d8026a7126a10d385`. PR #82 remains open and Draft; its source changes are not in production.
+
+The latest verified PR application-code checkpoint is `e104f032e5c7fbf51d759d51886e157ad1cb3076`: CMI frontend CI (run `44718314508`), CMI web CI (run `44718314524`) and CMI backend CI (run `44718314514`) all passed on this exact commit. Frontend CI passed type-check, lint, dependency audit, 122 unit tests and production build; web CI passed type-check, lint, 123 unit tests and production build. Backend CI passed Deno formatting/lint/type-check and request-validation/authorization tests, replayed the ordered migrations on an isolated local Supabase stack, passed all 12 staged pgTAP suites, and shut the stack down cleanly. The latest UI audit also serializes event registration/check-in/cancellation mutations and blocks staff registration until finite capacity is configured; focused regression tests passed. The task contact-picker HTTP 401 session-expiry fix, Ministry Reports detail/pagination stale-response guards, StaffWorkspace contact/follow-up pagination guards, and workspace branch-scope guard are also covered by passing tests. The latest Vercel preview remains blocked by the provider build-rate limit; the earlier READY preview is not an exact-head preview and is not evidence for the current branch head.
+
+Recent flyer hardening separates the approved staff-role and team-role allowlists, rejects Transport and unknown assignment roles, and protects replacement/removal with compare-and-set metadata updates. Stale concurrent updates return HTTP 409 and roll back only the new upload. Tests cover authorization allowlists and stale-replacement rollback.
+
+Hosted Supabase still has 17 migrations through `20261112220204`. It does not yet include the three source-controlled Ministry Report migrations or the seven PR #82 migrations. The `report-operations`, `staff-notifications` and `event-flyers` Edge Functions are not deployed; `event-operations` remains on hosted version 14. These workflows remain source-only until intended-environment migration/function rollout is separately planned and approved.
+
+The first Admin/Pastor login issue was repaired through a narrowly guarded role-assignment restore and matching audit entry; the account owner confirmed sign-in works. SMS/Arkesel remains deferred, Cloudflare migration remains cancelled, Transport remains excluded, offline staff data/workflows remain disabled, and the existing crest loader remains unchanged.
+
+A green CI run or READY preview is not production release approval. Authenticated negative integration tests, six-role acceptance, hosted schema/function reconciliation, security-advisory review, PWA install-surface checks, operational configuration, privacy/restore readiness and separate staging/production approval remain open. See [the current implementation status](supabase-cmi/IMPLEMENTATION_STATUS.md) and [the delivery plan](docs/32_REMAINING_PRODUCT_WORK_AND_DELIVERY_PLAN.md).
+
 ## Current product baseline
 
 - **Staff access:** Supabase Auth email/password, short-lived temporary onboarding credentials and mandatory first-login password replacement.
 - **Roles:** Admin/Pastor, Coordinator, Team leader, Field worker, Follow-up volunteer and Prayer intercessor. Users may hold multiple roles, with effective permissions constrained by record, team, event and assignment scope.
 - **Experiences:** authenticated staff workspace is deployed; a separate public visitor site remains to be completed.
 - **Contacts:** scoped listing, search, detail, ordinary notes and interaction history are deployed. Contact capture exists but currently fails closed until its server-side idempotency secret is configured; duplicate merge remains unimplemented. Offline capture is disabled.
-- **Events:** backend private-draft endpoints are deployed; new Admin/Pastor draft screens and grants are pending CI/review in the current feature branch. Public registration, transactional capacity, transport, check-in and closeout remain incomplete.
+- **Events:** production currently has private-draft endpoints. PR #82 contains the staff-only non-transport registration/capacity, check-in and closeout workflows with Admin/Pastor scope; these remain source-only pending hosted migration/function rollout and authenticated acceptance. Public self-registration and Transport remain disabled.
 - **Prayer and care:** restricted pastoral information and assigned intercessor access.
 - **Public content:** church profile, active events, welcome content, published sermons/daily words and digital tracts.
 - **Offline:** disabled for the initial production release until encrypted local storage, device binding, expiry and conflict-recovery tests pass.
@@ -29,7 +43,7 @@ The feature branch `feat/admin-operational-modules-and-hardening` contains capab
 
 **Known production blockers:**
 - Contact capture returns HTTP 503 `IDEMPOTENCY_NOT_CONFIGURED` when `CMI_CONTACT_IDEMPOTENCY_HMAC_KEY` is missing/too short or its version setting is invalid. Follow-up task creation requires the separate `CMI_FOLLOWUP_IDEMPOTENCY_HMAC_KEY`. Both must be generated and configured as Supabase Edge Function secrets; never place them in frontend variables, GitHub source or chat. The connected tool session cannot write Supabase secrets.
-- Staff invitation/recovery email uses Resend's test sender domain `onboarding@resend.dev`. A domain controlled by the church/project owner must be verified and `CMI_AUTH_EMAIL_FROM` updated. One staff profile already exists after an invitation-email failure; do not recreate that account.
+- PR #83 adds email-free staff onboarding in source: administrators receive a one-time temporary password for private handoff, while the staff member's email remains the Supabase Auth login identifier. No invitation email is sent by that flow. This change is not live until reviewed, merged and deployed. Recovery notifications may still use the configured Resend sender. One staff profile already exists from an earlier invitation attempt; do not recreate it.
 - Two staff profiles are active; one has completed first-login password setup and one still requires it. There are currently no seeded contact or follow-up business records.
 
 Still incomplete or gated: separate public visitor site, full contact merge lifecycle, team administration, typed ministry reports/review/exports, public event registration and capacity reservation, transport, attendance/check-in and closeout, announcement/content publishing, pastoral mutations, SMS campaigns/dispatch/automation, offline capture/sync and retention automation. The pastoral-operations function remains undeployed pending independent security review. SMS remains disabled until the provider/sender and privacy/consent gates are approved.
