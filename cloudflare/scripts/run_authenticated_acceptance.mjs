@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { hash } from "bcryptjs";
+import { processDueFollowupReminders } from "../src/scheduled-followup-reminders.ts";
 
 const databaseId = process.env.DB_ID;
 const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -404,6 +405,20 @@ const followupCreate = await api(workerCookie, "/api/v1/followup/tasks", "POST",
 if (followupCreate.status !== 201) throw new Error("Field Worker self-assigned follow-up creation failed: " + followupCreate.status + " " + JSON.stringify(followupCreate.payload));
 const followupTaskId = followupCreate.payload?.data?.id;
 if (!followupTaskId) throw new Error("Follow-up creation response did not include a task id");
+
+const initialReminderDueAt = new Date(Date.now() - 60_000).toISOString();
+const scheduledReminderTaskCreate = await api(workerCookie, "/api/v1/followup/tasks", "POST", {
+  contact_id: contactId,
+  assignee_user_id: worker.userId,
+  priority: 2,
+  due_at: initialReminderDueAt,
+  task_note: "Synthetic due-reminder acceptance task",
+}, "qa-scheduled-reminder-" + runId);
+if (scheduledReminderTaskCreate.status !== 201) {
+  throw new Error("Scheduled reminder fixture creation failed: " + scheduledReminderTaskCreate.status + " " + JSON.stringify(scheduledReminderTaskCreate.payload));
+}
+const scheduledReminderTaskId = scheduledReminderTaskCreate.payload?.data?.id;
+if (!scheduledReminderTaskId) throw new Error("Scheduled reminder fixture did not return a task id");
 
 const followupList = await api(workerCookie, "/api/v1/followup/tasks?limit=50&offset=0&status=open");
 if (followupList.status !== 200 || !followupList.payload?.data?.some((task) => task.id === followupTaskId)) {
@@ -1001,13 +1016,80 @@ if (Number(prayerGrantsAfterCleanup[0]?.count) !== 0 || prayerShareAfterCleanup.
 console.log("PRAYER_TEST_GRANTS_REMOVED");
 console.log("ASSIGNED_PRAYER_ACCESS_AND_CROSS_ROLE_DENIAL_PASSED");
 
+const scheduledReminderDb = {
+  prepare(sql) {
+    let values = [];
+    return {
+      bind(...nextValues) { values = nextValues; return this; },
+      async all() { return { results: await d1(sql, values) }; },
+      async run() {
+        await d1(sql, values);
+        return { success: true, meta: { changes: 1 } };
+      },
+    };
+  },
+  async batch(statements) {
+    const results = [];
+    for (const statement of statements) results.push(await statement.run());
+    return results;
+  },
+};
+const scheduledReminderFirstRun = await processDueFollowupReminders(
+  { DB: scheduledReminderDb },
+  Date.now(),
+);
+if (scheduledReminderFirstRun.due_tasks_found !== 1 ||
+    scheduledReminderFirstRun.notifications_created !== 1) {
+  throw new Error("Scheduled follow-up processor did not create exactly one due-task reminder: " + JSON.stringify(scheduledReminderFirstRun));
+}
+const scheduledReminderReplay = await processDueFollowupReminders(
+  { DB: scheduledReminderDb },
+  Date.now(),
+);
+if (scheduledReminderReplay.due_tasks_found !== 0 ||
+    scheduledReminderReplay.notifications_created !== 0) {
+  throw new Error("Repeated scheduled invocation created or selected a duplicate reminder: " + JSON.stringify(scheduledReminderReplay));
+}
+const rescheduledReminderDueAt = new Date(Date.now() - 30_000).toISOString();
+await d1(
+  "UPDATE followup_task SET due_at=?,updated_at=? WHERE id=? AND status IN ('open','in_progress')",
+  [rescheduledReminderDueAt, new Date().toISOString(), scheduledReminderTaskId],
+);
+const scheduledReminderAfterReschedule = await processDueFollowupReminders(
+  { DB: scheduledReminderDb },
+  Date.now(),
+);
+if (scheduledReminderAfterReschedule.due_tasks_found !== 1 ||
+    scheduledReminderAfterReschedule.notifications_created !== 1) {
+  throw new Error("Rescheduling a due task did not produce one new idempotent reminder: " + JSON.stringify(scheduledReminderAfterReschedule));
+}
+const scheduledReminderRows = await d1(
+  "SELECT id,branch_id,recipient_user_id,category,target_type,target_id,idempotency_key FROM staff_notification WHERE target_type='followup_task' AND target_id=? AND category='system' ORDER BY created_at",
+  [scheduledReminderTaskId],
+);
+if (scheduledReminderRows.length !== 2 ||
+    scheduledReminderRows.some((row) => row.recipient_user_id !== worker.userId ||
+      row.branch_id !== branchId || row.target_type !== "followup_task" ||
+      row.category !== "system") ||
+    scheduledReminderRows[0].idempotency_key === scheduledReminderRows[1].idempotency_key) {
+  throw new Error("Scheduled reminders were not persisted once per due instant for the current branch assignee.");
+}
+console.log("SCHEDULED_FOLLOWUP_REMINDER_IDEMPOTENCY_AND_RESCHEDULE_PASSED");
+
 const inbox = await api(workerCookie, "/api/v1/notifications?branch_id=" + branchId + "&limit=50");
 if (inbox.status !== 200) throw new Error("Worker notification inbox failed: " + inbox.status + " " + JSON.stringify(inbox.payload));
 const workerNotifications = inbox.payload?.data?.notifications ?? [];
 const followupNotification = workerNotifications.find((notice) => notice.target_id === followupTaskId);
 if (!followupNotification) throw new Error("Follow-up assignment notification was not present in the assigned worker inbox");
+const scheduledReminderNotification = workerNotifications.find((notice) =>
+  notice.target_id === scheduledReminderTaskId && notice.category === "system");
+if (!scheduledReminderNotification) {
+  throw new Error("Scheduled due reminder was not present in the current assignee's in-app inbox.");
+}
 const adminInbox = await api(adminCookie, "/api/v1/notifications?branch_id=" + branchId + "&limit=50");
-if (adminInbox.status !== 200 || (adminInbox.payload?.data?.notifications ?? []).some((notice) => notice.id === followupNotification.id)) {
+if (adminInbox.status !== 200 ||
+    (adminInbox.payload?.data?.notifications ?? []).some((notice) =>
+      notice.id === followupNotification.id || notice.id === scheduledReminderNotification.id)) {
   throw new Error("Notification inbox exposed a worker notification to another staff member");
 }
 const readNotice = await api(workerCookie, "/api/v1/notifications/" + followupNotification.id + "/read", "POST", { branch_id: branchId });
@@ -1469,6 +1551,12 @@ const checks = {
   reportReviewNotificationTargetsReport: reportNotice?.target_type === "ministry_report" && reportNotice?.target_id === reportId,
   followupTaskCompleted: followupState?.status === "completed" && Number(followupEventCount) === 3,
   followupNotificationTargetsTask: followupNotice?.target_type === "followup_task" && followupNotice?.target_id === followupTaskId,
+  scheduledFollowupReminderIdempotency: scheduledReminderFirstRun.notifications_created === 1 &&
+    scheduledReminderReplay.notifications_created === 0 &&
+    scheduledReminderAfterReschedule.notifications_created === 1 &&
+    scheduledReminderRows.length === 2,
+  scheduledReminderRecipientScoped: Boolean(scheduledReminderNotification) &&
+    !(adminInbox.payload?.data?.notifications ?? []).some((notice) => notice.id === scheduledReminderNotification.id),
   notificationInboxRecipientScoped: workerNotifications.some((notice) => notice.id === followupNotification.id) &&
     !(adminInbox.payload?.data?.notifications ?? []).some((notice) => notice.id === followupNotification.id),
   notificationReadIsolation: readNotice.payload?.data?.updated === true && crossReadNotice.payload?.data?.updated === false,
