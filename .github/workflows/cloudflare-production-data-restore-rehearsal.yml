@@ -3,11 +3,6 @@ name: Cloudflare Production Data Clone and Restore Rehearsal
 on:
   workflow_call:
   workflow_dispatch:
-  push:
-    branches:
-      - migration/cloudflare-auth-consolidation
-    paths:
-      - ".github/workflows/cloudflare-production-data-restore-rehearsal.yml"
 
 permissions:
   contents: read
