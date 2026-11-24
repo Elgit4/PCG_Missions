@@ -49,7 +49,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ! grep -q 'diagnostic_detail' cloudflare/src/index.ts
+          if grep -q 'diagnostic_detail' cloudflare/src/index.ts; then
+            echo "Unexpected query-detail diagnostics found in the Worker source." >&2
+            exit 1
+          fi
           grep -q 'D1_RATE_LIMIT_WRITE_FAILED' cloudflare/src/index.ts
           echo "Authentication diagnostics expose stable error codes only; SQL parameters and client addresses are not returned."
 
@@ -239,7 +242,7 @@ jobs:
             rm -f "$PCG_BROWSER_CREDENTIALS_PATH" ../web/.dev.vars
           }
           trap cleanup EXIT
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://127.0.0.1:8787/health >/dev/null; then
               echo "Temporary authenticated Worker is healthy."
               set +e
@@ -264,7 +267,7 @@ jobs:
               PAGES_PID=$!
 
               pages_ready=0
-              for pages_attempt in $(seq 1 45); do
+              for _ in $(seq 1 45); do
                 if curl --noproxy '*' --silent --show-error --fail --connect-timeout 1 --max-time 2 http://localhost:8788/ >/dev/null; then
                   pages_ready=1
                   break
@@ -278,6 +281,8 @@ jobs:
               fi
 
               node scripts/run_browser_acceptance.mjs
+              cleanup
+              trap - EXIT
               exit 0
             fi
             sleep 1
@@ -306,9 +311,9 @@ jobs:
           echo "$RESTORE_RESPONSE" | jq -e '.success == true' >/dev/null
           echo "$RESTORE_RESPONSE" | jq -r '.result.message'
 
-          for attempt in $(seq 1 12); do
+          for _ in $(seq 1 12); do
             VERIFY="$(npx wrangler d1 execute "$DB_NAME" --remote --json --config wrangler.restore-rehearsal.toml \
-              --command "SELECT (SELECT schema_version FROM app_meta WHERE id=1) AS schema_version, (SELECT environment FROM app_meta WHERE id=1) AS environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='restore_rehearsal_probe') AS probe_table_count, (SELECT COUNT(*) FROM staff_profile) AS qa_profile_count, (SELECT COUNT(*) FROM ministry_report) AS qa_report_count, (SELECT COUNT(*) FROM event) AS qa_event_count, ((SELECT COUNT(*) FROM church)+(SELECT COUNT(*) FROM branch)+(SELECT COUNT(*) FROM staff_role_assignment)+(SELECT COUNT(*) FROM staff_access_audit)+(SELECT COUNT(*) FROM staff_role_elevation_request)+(SELECT COUNT(*) FROM staff_role_elevation_audit)+(SELECT COUNT(*) FROM staff_role_revocation_request)+(SELECT COUNT(*) FROM staff_role_revocation_audit)+(SELECT COUNT(*) FROM team)+(SELECT COUNT(*) FROM staff_team_membership)+(SELECT COUNT(*) FROM service_area)+(SELECT COUNT(*) FROM team_management_audit)+(SELECT COUNT(*) FROM contact)+(SELECT COUNT(*) FROM contact_assignment)+(SELECT COUNT(*) FROM contact_capture)+(SELECT COUNT(*) FROM contact_interaction)+(SELECT COUNT(*) FROM contact_note)+(SELECT COUNT(*) FROM followup_task)+(SELECT COUNT(*) FROM followup_task_event)+(SELECT COUNT(*) FROM event_staff_assignment)+(SELECT COUNT(*) FROM event_team_assignment)+(SELECT COUNT(*) FROM event_idempotency_receipt)+(SELECT COUNT(*) FROM event_checkin)+(SELECT COUNT(*) FROM event_registration)+(SELECT COUNT(*) FROM event_closeout)+(SELECT COUNT(*) FROM event_closeout_event)+(SELECT COUNT(*) FROM report_review_event)+(SELECT COUNT(*) FROM prayer_request)+(SELECT COUNT(*) FROM prayer_assignment)+(SELECT COUNT(*) FROM prayer_access_audit)+(SELECT COUNT(*) FROM sensitive_record_access_audit)+(SELECT COUNT(*) FROM staff_record_share)+(SELECT COUNT(*) FROM staff_notification)) AS qa_business_rows;")"
+              --command "SELECT (SELECT schema_version FROM app_meta WHERE id=1) AS schema_version, (SELECT environment FROM app_meta WHERE id=1) AS environment, (SELECT COUNT(*) FROM d1_migrations) AS migration_count, (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='restore_rehearsal_probe') AS probe_table_count, (SELECT COUNT(*) FROM staff_profile) AS qa_profile_count, (SELECT COUNT(*) FROM ministry_report) AS qa_report_count, (SELECT COUNT(*) FROM event) AS qa_event_count, ((SELECT COUNT(*) FROM church)+(SELECT COUNT(*) FROM branch)+(SELECT COUNT(*) FROM staff_role_assignment)+(SELECT COUNT(*) FROM staff_access_audit)+(SELECT COUNT(*) FROM staff_role_elevation_request)+(SELECT COUNT(*) FROM staff_role_elevation_audit)+(SELECT COUNT(*) FROM staff_role_revocation_request)+(SELECT COUNT(*) FROM staff_role_revocation_audit)+(SELECT COUNT(*) FROM team)+(SELECT COUNT(*) FROM staff_team_membership)+(SELECT COUNT(*) FROM service_area)+(SELECT COUNT(*) FROM team_management_audit)+(SELECT COUNT(*) FROM contact)+(SELECT COUNT(*) FROM contact_assignment)+(SELECT COUNT(*) FROM contact_capture)+(SELECT COUNT(*) FROM contact_interaction)+(SELECT COUNT(*) FROM contact_note)+(SELECT COUNT(*) FROM followup_task)+(SELECT COUNT(*) FROM followup_task_event)+(SELECT COUNT(*) FROM event_staff_assignment)+(SELECT COUNT(*) FROM event_team_assignment)+(SELECT COUNT(*) FROM event_idempotency_receipt)+(SELECT COUNT(*) FROM event_checkin)+(SELECT COUNT(*) FROM event_registration)+(SELECT COUNT(*) FROM event_closeout)+(SELECT COUNT(*) FROM event_closeout_event)+(SELECT COUNT(*) FROM report_review_event)+(SELECT COUNT(*) FROM prayer_request)+(SELECT COUNT(*) FROM prayer_assignment)+(SELECT COUNT(*) FROM prayer_access_audit)+(SELECT COUNT(*) FROM sensitive_record_access_audit)+(SELECT COUNT(*) FROM staff_record_share)+(SELECT COUNT(*) FROM staff_notification)+(SELECT COUNT(*) FROM announcement)+(SELECT COUNT(*) FROM announcement_delivery)+(SELECT COUNT(*) FROM announcement_read_receipt)+(SELECT COUNT(*) FROM sermon)+(SELECT COUNT(*) FROM calendar_entry)+(SELECT COUNT(*) FROM calendar_entry_change_audit)+(SELECT COUNT(*) FROM staff_password_reset_request)+(SELECT COUNT(*) FROM staff_password_reset_audit)+(SELECT COUNT(*) FROM staff_account_audit)) AS qa_business_rows, ((SELECT COUNT(*) FROM [user])+(SELECT COUNT(*) FROM account)+(SELECT COUNT(*) FROM session)+(SELECT COUNT(*) FROM verification)+(SELECT COUNT(*) FROM rateLimit)) AS qa_auth_rows;")"
             SCHEMA="$(echo "$VERIFY" | jq -r '.[0].results[0].schema_version // empty')"
             ENVIRONMENT="$(echo "$VERIFY" | jq -r '.[0].results[0].environment // empty')"
             MIGRATIONS="$(echo "$VERIFY" | jq -r '.[0].results[0].migration_count // empty')"
@@ -317,8 +322,9 @@ jobs:
             REPORTS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_report_count // empty')"
             EVENTS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_event_count // empty')"
             BUSINESS_ROWS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_business_rows // empty')"
-            if [ "$SCHEMA" = "49" ] && [ "$ENVIRONMENT" = "non-production" ] && [ "$MIGRATIONS" = "49" ] && [ "$PROBE" = "0" ] && [ "$PROFILES" = "0" ] && [ "$REPORTS" = "0" ] && [ "$EVENTS" = "0" ] && [ "$BUSINESS_ROWS" = "0" ]; then
-              echo "RESTORE_REHEARSAL_PASSED: schema 49 and all 49 migration records preserved; all synthetic business/audit rows and the post-bookmark probe removed."
+            AUTH_ROWS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_auth_rows // empty')"
+            if [ "$SCHEMA" = "49" ] && [ "$ENVIRONMENT" = "non-production" ] && [ "$MIGRATIONS" = "49" ] && [ "$PROBE" = "0" ] && [ "$PROFILES" = "0" ] && [ "$REPORTS" = "0" ] && [ "$EVENTS" = "0" ] && [ "$BUSINESS_ROWS" = "0" ] && [ "$AUTH_ROWS" = "0" ]; then
+              echo "RESTORE_REHEARSAL_PASSED: schema 49 and all 49 migration records preserved; all synthetic business/audit/auth rows and the post-bookmark probe removed."
               exit 0
             fi
             sleep 5
