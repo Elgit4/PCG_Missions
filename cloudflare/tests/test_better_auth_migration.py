@@ -20,7 +20,7 @@ class BetterAuthMigrationTests(unittest.TestCase):
                       VALUES (?,?,?,?,?,?,?,'supabase')
                     """, (user_id, "Staff " + str(index), "staff" + str(index) + "@example.test", 1, None, 1, 1))
                 db.commit()
-        self.assertEqual(db.execute("SELECT schema_version FROM app_meta WHERE id=1").fetchone()[0], 47)
+        self.assertEqual(db.execute("SELECT schema_version FROM app_meta WHERE id=1").fetchone()[0], 48)
         self.assertEqual(db.execute("SELECT environment FROM app_meta WHERE id=1").fetchone()[0], "non-production")
         expected_grants = [["admin_pastor","report.review.scoped","branch"],["coordinator","report.review.scoped","branch"],["team_leader","report.review.scoped","team"],["field_worker","report.submit.scoped","self"],["follow_up_volunteer","report.submit.scoped","self"],["admin_pastor","event.closeout.submit","branch"],["admin_pastor","event.closeout.review","branch"],["coordinator","event.closeout.review","branch"]]
         actual_grants = db.execute("""
@@ -53,7 +53,7 @@ class BetterAuthMigrationTests(unittest.TestCase):
             db.executescript(migration.read_text(encoding="utf-8"))
         self.assertEqual(
             db.execute("SELECT schema_version,environment FROM app_meta WHERE id=1").fetchone(),
-            (47, "production"),
+            (48, "production"),
         )
         self.assertEqual(db.execute("PRAGMA foreign_key_check").fetchall(), [])
         db.close()
