@@ -255,6 +255,7 @@ const flyerForm = new FormData();
 flyerForm.append("file", new Blob([flyerBytes], { type: "image/png" }), "synthetic-acceptance.png");
 let flyerUploadPayload;
 let flyerDownloadVerified = false;
+let flyerSignedUrl;
 let flyerRemovePayload;
 try {
   const flyerUploadResponse = await fetchWithTimeout(
@@ -276,7 +277,8 @@ try {
   if (flyerRead.status !== 200 || flyerRead.payload?.data?.object_path !== flyerUploadPayload.data.object_path) {
     throw new Error("Private event flyer metadata readback failed: " + flyerRead.status);
   }
-  const flyerDownload = await fetchWithTimeout(flyerRead.payload.data.signed_url);
+  flyerSignedUrl = flyerRead.payload.data.signed_url;
+  const flyerDownload = await fetchWithTimeout(flyerSignedUrl);
   const downloadedFlyerBytes = Buffer.from(await flyerDownload.arrayBuffer());
   flyerDownloadVerified = flyerDownload.ok && downloadedFlyerBytes.equals(flyerBytes);
   if (!flyerDownloadVerified) throw new Error("Signed event flyer URL did not return the uploaded bytes.");
@@ -287,7 +289,8 @@ try {
   }
 }
 const flyerAfterRemoval = await api(adminCookie, `/api/v1/events/${flyerEventId}/flyer`);
-if (!flyerDownloadVerified || flyerAfterRemoval.status !== 404) {
+const deletedFlyerObject = await fetchWithTimeout(flyerSignedUrl);
+if (!flyerDownloadVerified || flyerAfterRemoval.status !== 404 || deletedFlyerObject.ok) {
   throw new Error("Event flyer upload/read/delete lifecycle did not complete cleanly.");
 }
 console.log("PRIVATE_EVENT_FLYER_STORAGE_LIFECYCLE_PASSED");
@@ -1129,18 +1132,122 @@ if (scheduledReminderAfterReschedule.due_tasks_found !== 1 ||
     scheduledReminderAfterReschedule.notifications_created !== 1) {
   throw new Error("Rescheduling a due task did not produce one new idempotent reminder: " + JSON.stringify(scheduledReminderAfterReschedule));
 }
+const reminderReassignment = await api(
+  adminCookie,
+  "/api/v1/followup/tasks/" + scheduledReminderTaskId + "/assign",
+  "POST",
+  {
+    assignee_profile_id: followupVolunteer.profileId,
+    reason: "Synthetic acceptance verifies due reminders follow the current assignee.",
+  },
+);
+if (reminderReassignment.status !== 200) {
+  throw new Error("Admin/Pastor could not reassign the scheduled reminder fixture: " + reminderReassignment.status + " " + JSON.stringify(reminderReassignment.payload));
+}
+const scheduledReminderAfterReassignment = await processDueFollowupReminders(
+  { DB: scheduledReminderDb },
+  Date.now(),
+);
+if (scheduledReminderAfterReassignment.due_tasks_found !== 1 ||
+    scheduledReminderAfterReassignment.notifications_created !== 1) {
+  throw new Error("Reassigning a due task did not create one reminder for the new assignee: " + JSON.stringify(scheduledReminderAfterReassignment));
+}
+
+const revokedReminderRole = await api(adminCookie, "/api/v1/staff/roles", "POST", {
+  target_profile_id: unassigned.profileId,
+  role_code: "field_worker",
+  reason: "Synthetic acceptance creates a role assignment that is revoked before due-reminder processing.",
+});
+if (revokedReminderRole.status !== 201 || !revokedReminderRole.payload?.data?.id) {
+  throw new Error("Could not create the revoked-role reminder fixture.");
+}
+const revokedReminderRoleId = revokedReminderRole.payload.data.id;
+const revokedReminderRoleResult = await api(
+  adminCookie,
+  "/api/v1/staff/roles/" + revokedReminderRoleId,
+  "DELETE",
+  { reason: "Synthetic acceptance verifies revoked staff cannot receive scheduled reminders." },
+);
+if (revokedReminderRoleResult.status !== 200) {
+  throw new Error("Could not revoke the reminder fixture role before scheduled processing.");
+}
+const revokedAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/tasks", "POST", {
+  contact_id: contactId,
+  assignee_user_id: worker.userId,
+  priority: 2,
+  due_at: new Date(Date.now() - 10_000).toISOString(),
+  task_note: "Synthetic revoked-assignee reminder exclusion fixture",
+}, "qa-revoked-reminder-" + runId);
+if (revokedAssigneeTaskCreate.status !== 201 || !revokedAssigneeTaskCreate.payload?.data?.id) {
+  throw new Error("Could not create the revoked-assignee follow-up fixture.");
+}
+const revokedAssigneeTaskId = revokedAssigneeTaskCreate.payload.data.id;
+// Seed the otherwise-invalid historical assignment directly in disposable D1.
+// This deliberately bypasses the API's assignment guard so the scheduler's
+// own active-role exclusion is tested independently.
+await d1(
+  "UPDATE followup_task SET assignee_user_id=? WHERE id=? AND branch_id=?",
+  [unassigned.userId, revokedAssigneeTaskId, branchId],
+);
+const scheduledReminderForRevokedAssignee = await processDueFollowupReminders(
+  { DB: scheduledReminderDb },
+  Date.now(),
+);
+const revokedAssigneeReminderCount = (await d1(
+  "SELECT COUNT(*) AS count FROM staff_notification WHERE target_type='followup_task' AND target_id=? AND category='system'",
+  [revokedAssigneeTaskId],
+))[0]?.count;
+if (scheduledReminderForRevokedAssignee.due_tasks_found !== 0 ||
+    scheduledReminderForRevokedAssignee.notifications_created !== 0 ||
+    Number(revokedAssigneeReminderCount) !== 0) {
+  throw new Error("Scheduled follow-up processor notified a user whose role assignment had been revoked.");
+}
+
+const inactiveReminderUser = await insertUser("field_worker", "inactive-reminder", admin.profileId);
+await d1("UPDATE staff_profile SET account_status='inactive' WHERE id=?", [inactiveReminderUser.profileId]);
+const inactiveAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/tasks", "POST", {
+  contact_id: contactId,
+  assignee_user_id: worker.userId,
+  priority: 2,
+  due_at: new Date(Date.now() - 10_000).toISOString(),
+  task_note: "Synthetic inactive-assignee reminder exclusion fixture",
+}, "qa-inactive-reminder-" + runId);
+if (inactiveAssigneeTaskCreate.status !== 201 || !inactiveAssigneeTaskCreate.payload?.data?.id) {
+  throw new Error("Could not create the inactive-assignee follow-up fixture.");
+}
+const inactiveAssigneeTaskId = inactiveAssigneeTaskCreate.payload.data.id;
+await d1(
+  "UPDATE followup_task SET assignee_user_id=? WHERE id=? AND branch_id=?",
+  [inactiveReminderUser.userId, inactiveAssigneeTaskId, branchId],
+);
+const scheduledReminderForInactiveAssignee = await processDueFollowupReminders(
+  { DB: scheduledReminderDb },
+  Date.now(),
+);
+const inactiveAssigneeReminderCount = (await d1(
+  "SELECT COUNT(*) AS count FROM staff_notification WHERE target_type='followup_task' AND target_id=? AND category='system'",
+  [inactiveAssigneeTaskId],
+))[0]?.count;
+if (scheduledReminderForInactiveAssignee.due_tasks_found !== 0 ||
+    scheduledReminderForInactiveAssignee.notifications_created !== 0 ||
+    Number(inactiveAssigneeReminderCount) !== 0) {
+  throw new Error("Scheduled follow-up processor notified an inactive staff profile.");
+}
+
 const scheduledReminderRows = await d1(
-  "SELECT id,branch_id,recipient_user_id,category,target_type,target_id,idempotency_key FROM staff_notification WHERE target_type='followup_task' AND target_id=? AND category='system' ORDER BY created_at",
+  "SELECT id,branch_id,recipient_user_id,category,target_type,target_id,idempotency_key FROM staff_notification WHERE target_type='followup_task' AND target_id=? AND category='system' ORDER BY created_at,id",
   [scheduledReminderTaskId],
 );
-if (scheduledReminderRows.length !== 2 ||
-    scheduledReminderRows.some((row) => row.recipient_user_id !== worker.userId ||
-      row.branch_id !== branchId || row.target_type !== "followup_task" ||
-      row.category !== "system") ||
-    scheduledReminderRows[0].idempotency_key === scheduledReminderRows[1].idempotency_key) {
-  throw new Error("Scheduled reminders were not persisted once per due instant for the current branch assignee.");
+const workerReminderRows = scheduledReminderRows.filter((row) => row.recipient_user_id === worker.userId);
+const volunteerReminderRows = scheduledReminderRows.filter((row) => row.recipient_user_id === followupVolunteer.userId);
+if (scheduledReminderRows.length !== 3 || workerReminderRows.length !== 2 ||
+    volunteerReminderRows.length !== 1 ||
+    scheduledReminderRows.some((row) => row.branch_id !== branchId ||
+      row.target_type !== "followup_task" || row.category !== "system") ||
+    new Set(scheduledReminderRows.map((row) => row.idempotency_key)).size !== 3) {
+  throw new Error("Scheduled reminders did not follow due-time and current-assignee idempotency boundaries.");
 }
-console.log("SCHEDULED_FOLLOWUP_REMINDER_IDEMPOTENCY_AND_RESCHEDULE_PASSED");
+console.log("SCHEDULED_FOLLOWUP_REMINDER_IDEMPOTENCY_RESCHEDULE_AND_REASSIGNMENT_PASSED");
 
 const inbox = await api(workerCookie, "/api/v1/notifications?branch_id=" + branchId + "&limit=50");
 if (inbox.status !== 200) throw new Error("Worker notification inbox failed: " + inbox.status + " " + JSON.stringify(inbox.payload));
@@ -1152,10 +1259,18 @@ const scheduledReminderNotification = workerNotifications.find((notice) =>
 if (!scheduledReminderNotification) {
   throw new Error("Scheduled due reminder was not present in the current assignee's in-app inbox.");
 }
+const volunteerInbox = await api(followupVolunteerCookie, "/api/v1/notifications?branch_id=" + branchId + "&limit=50");
+const volunteerNotifications = volunteerInbox.payload?.data?.notifications ?? [];
+const reassignedReminderNotification = volunteerNotifications.find((notice) =>
+  notice.target_id === scheduledReminderTaskId && notice.category === "system");
+if (volunteerInbox.status !== 200 || !reassignedReminderNotification) {
+  throw new Error("The new assignee did not receive the due reminder in their own in-app inbox.");
+}
 const adminInbox = await api(adminCookie, "/api/v1/notifications?branch_id=" + branchId + "&limit=50");
 if (adminInbox.status !== 200 ||
     (adminInbox.payload?.data?.notifications ?? []).some((notice) =>
-      notice.id === followupNotification.id || notice.id === scheduledReminderNotification.id)) {
+      notice.id === followupNotification.id || notice.id === scheduledReminderNotification.id ||
+      notice.id === reassignedReminderNotification.id)) {
   throw new Error("Notification inbox exposed a worker notification to another staff member");
 }
 const readNotice = await api(workerCookie, "/api/v1/notifications/" + followupNotification.id + "/read", "POST", { branch_id: branchId });
@@ -1621,9 +1736,17 @@ const checks = {
   scheduledFollowupReminderIdempotency: scheduledReminderFirstRun.notifications_created === 1 &&
     scheduledReminderReplay.notifications_created === 0 &&
     scheduledReminderAfterReschedule.notifications_created === 1 &&
-    scheduledReminderRows.length === 2,
+    scheduledReminderAfterReassignment.notifications_created === 1 &&
+    scheduledReminderForRevokedAssignee.notifications_created === 0 &&
+    Number(revokedAssigneeReminderCount) === 0 &&
+    scheduledReminderForInactiveAssignee.notifications_created === 0 &&
+    Number(inactiveAssigneeReminderCount) === 0 &&
+    scheduledReminderRows.length === 3 &&
+    workerReminderRows.length === 2 && volunteerReminderRows.length === 1,
   scheduledReminderRecipientScoped: Boolean(scheduledReminderNotification) &&
-    !(adminInbox.payload?.data?.notifications ?? []).some((notice) => notice.id === scheduledReminderNotification.id),
+    Boolean(reassignedReminderNotification) &&
+    !(adminInbox.payload?.data?.notifications ?? []).some((notice) =>
+      notice.id === scheduledReminderNotification.id || notice.id === reassignedReminderNotification.id),
   notificationInboxRecipientScoped: workerNotifications.some((notice) => notice.id === followupNotification.id) &&
     !(adminInbox.payload?.data?.notifications ?? []).some((notice) => notice.id === followupNotification.id),
   notificationReadIsolation: readNotice.payload?.data?.updated === true && crossReadNotice.payload?.data?.updated === false,
