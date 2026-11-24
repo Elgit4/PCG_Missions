@@ -16,13 +16,7 @@ if (!credentials.email || !credentials.password || !credentials.userId) {
   throw new Error("The temporary browser credentials file is incomplete.");
 }
 
-function sqlLiteral(value) {
-  if (value === null || value === undefined) return "NULL";
-  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "NULL";
-  return "'" + String(value).replaceAll("'", "''") + "'";
-}
-
-async function d1(sql) {
+async function d1(sql, params = []) {
   const response = await fetch(
     "https://api.cloudflare.com/client/v4/accounts/" + accountId + "/d1/database/" + databaseId + "/query",
     {
@@ -31,7 +25,7 @@ async function d1(sql) {
         authorization: "Bearer " + apiToken,
         "content-type": "application/json",
       },
-      body: JSON.stringify({ sql }),
+      body: JSON.stringify({ sql, params: params.map((value) => String(value)) }),
       signal: AbortSignal.timeout(20_000),
     },
   );
@@ -96,13 +90,13 @@ try {
   );
 
   const sessionRows = await d1(
-    "SELECT id,expiresAt FROM session WHERE userId=" + sqlLiteral(credentials.userId) + " ORDER BY createdAt DESC LIMIT 1",
+    "SELECT id,expiresAt FROM session WHERE userId=? ORDER BY createdAt DESC LIMIT 1", [credentials.userId],
   );
   const sessionId = sessionRows[0]?.id;
   assert(sessionId, "The browser-created Better Auth session was not found in temporary D1.");
 
   const dueExpiry = Date.now() + 5 * 24 * 60 * 60 * 1000;
-  await d1("UPDATE session SET expiresAt=" + dueExpiry + " WHERE id=" + sqlLiteral(sessionId));
+  await d1("UPDATE session SET expiresAt=? WHERE id=?", [dueExpiry, sessionId]);
 
   const refreshResponsePromise = page.waitForResponse(
     (response) => response.url().includes("/api/auth/get-session") && response.request().method() === "POST",
@@ -113,7 +107,7 @@ try {
   assert(refreshResponse.status() === 200, "The browser's deferred Better Auth session refresh failed.");
   await page.getByRole("button", { name: "Sign out" }).first().waitFor({ state: "visible", timeout: 30_000 });
 
-  const refreshedRows = await d1("SELECT expiresAt FROM session WHERE id=" + sqlLiteral(sessionId));
+  const refreshedRows = await d1("SELECT expiresAt FROM session WHERE id=?", [sessionId]);
   assert(
     Number(refreshedRows[0]?.expiresAt) > dueExpiry,
     "The browser client did not extend the server-side session expiry after refresh.",
