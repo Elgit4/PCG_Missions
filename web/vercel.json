@@ -1,6 +1,0 @@
-{
-  "rewrites": [
-    { "source": "/visit", "destination": "/index.html" },
-    { "source": "/visit/:path*", "destination": "/index.html" }
-  ]
-}

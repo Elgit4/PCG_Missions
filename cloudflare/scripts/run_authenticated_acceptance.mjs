@@ -486,6 +486,25 @@ console.log("CROSS_BRANCH_CONTACT_AND_FOLLOWUP_READ_MUTATION_ISOLATION_PASSED");
 
 
 
+// Record only aggregate state before the handoff so a D1 trigger conflict can be diagnosed
+// without logging visitor identity, staff credentials, or contact details.
+const assignmentPrecheck = await d1(
+  `SELECT
+     (SELECT COUNT(*) FROM contact_assignment WHERE contact_id=? AND branch_id=?) AS assignment_count,
+     (SELECT COUNT(*) FROM contact_assignment WHERE contact_id=? AND branch_id=?
+       AND starts_at<=? AND (ends_at IS NULL OR ends_at>?)) AS current_assignments,
+     (SELECT COUNT(*) FROM team WHERE id=? AND branch_id=? AND is_active=1) AS target_team_active,
+     (SELECT COUNT(*) FROM staff_role_assignment ra
+       JOIN role r ON r.id=ra.role_id AND r.code='admin_pastor'
+       JOIN role_capability rc ON rc.role_id=r.id
+       JOIN capability c ON c.id=rc.capability_id AND c.code='contacts.assign' AND c.is_active=1
+       WHERE ra.staff_profile_id=? AND ra.branch_id=? AND ra.revoked_at IS NULL
+         AND ra.starts_at<=? AND (ra.ends_at IS NULL OR ra.ends_at>?)) AS admin_assign_grants`,
+  [contactId, branchId, contactId, branchId, new Date().toISOString(), new Date().toISOString(),
+   teamId, branchId, admin.profileId, branchId, new Date().toISOString(), new Date().toISOString()],
+);
+console.log("CONTACT_ASSIGNMENT_PRECHECK", JSON.stringify(assignmentPrecheck[0] ?? {}));
+
 // Verify team-scoped allocation, handoff, and assigned-only privacy across all six roles.
 const adminTeamAssign = await api(adminCookie, `/api/v1/contacts/${contactId}/assign`, "POST", {
   team_id: teamId,
