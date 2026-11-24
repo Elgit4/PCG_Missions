@@ -828,6 +828,53 @@ const followupState = (await d1("SELECT status FROM followup_task WHERE id=?", [
 const followupEventCount = (await d1("SELECT COUNT(*) AS count FROM followup_task_event WHERE task_id=?", [followupTaskId]))[0]?.count;
 const followupNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='followup_assigned' ORDER BY created_at DESC LIMIT 1", [worker.userId]))[0];
 
+// The owner-approved six-role policy deliberately grants no staff role the
+// ability to create or share prayer requests. Verify that default before adding
+// temporary grants to this disposable D1 fixture so assigned-inbox reads can
+// still be exercised end-to-end without changing production authorization.
+const prayerDefaultPolicy = await d1(
+  `SELECT COUNT(*) AS count
+   FROM role_capability rc
+   JOIN role r ON r.id=rc.role_id
+   JOIN capability c ON c.id=rc.capability_id
+   WHERE r.code='admin_pastor'
+     AND c.code IN ('prayer.request.create','prayer.request.share')`,
+);
+if (Number(prayerDefaultPolicy[0]?.count) !== 0) {
+  throw new Error("Production-safe default unexpectedly grants prayer creation or sharing to Admin/Pastor.");
+}
+const defaultPrayerShareDenied = await api(
+  adminCookie,
+  "/api/v1/pastoral/prayer/requests/" + randomUUID() + "/shares",
+  "POST",
+  {},
+);
+if (defaultPrayerShareDenied.status !== 403) {
+  throw new Error("Admin/Pastor unexpectedly received prayer-sharing access under the default role policy.");
+}
+console.log("PRAYER_DEFAULT_POLICY_DENIAL_PASSED");
+
+await d1(
+  `INSERT OR IGNORE INTO role_capability(role_id,capability_id,scope_mode,created_at)
+   SELECT r.id,c.id,'branch',?
+   FROM role r
+   JOIN capability c ON c.code IN ('prayer.request.create','prayer.request.share')
+   WHERE r.code='admin_pastor'`,
+  [new Date().toISOString()],
+);
+const prayerTestGrantCount = await d1(
+  `SELECT COUNT(*) AS count
+   FROM role_capability rc
+   JOIN role r ON r.id=rc.role_id
+   JOIN capability c ON c.id=rc.capability_id
+   WHERE r.code='admin_pastor'
+     AND c.code IN ('prayer.request.create','prayer.request.share')
+     AND rc.scope_mode='branch'`,
+);
+if (Number(prayerTestGrantCount[0]?.count) !== 2) {
+  throw new Error("Disposable prayer acceptance fixture did not receive its two temporary grants.");
+}
+
 const prayerRequestId = randomUUID();
 const unassignedPrayerRequestId = randomUUID();
 const prayerCreatedAt = new Date().toISOString();
@@ -848,7 +895,7 @@ const prayerShare = await api(adminCookie, "/api/v1/pastoral/prayer/requests/" +
   starts_at: prayerShareStartsAt,
 });
 if (prayerShare.status !== 201 || !prayerShare.payload?.assignment_id || !prayerShare.payload?.share_id) {
-  throw new Error("Admin/Pastor could not assign the synthetic prayer request: " + prayerShare.status + " " + JSON.stringify(prayerShare.payload));
+  throw new Error("Temporary Admin/Pastor prayer fixture grant could not assign the synthetic request: " + prayerShare.status + " " + JSON.stringify(prayerShare.payload));
 }
 await new Promise((resolve) => setTimeout(resolve, 3200));
 const assignedPrayerInbox = await api(prayerIntercessorCookie, "/api/v1/pastoral/prayer/assigned?limit=25&offset=0");
@@ -904,6 +951,30 @@ if (prayerAssignmentState?.intercessor_user_id !== prayerIntercessor.userId ||
     Number(sensitivePrayerAuditCount) < 1) {
   throw new Error("Assigned prayer workflow did not persist its assignment and both sensitive-read audit records.");
 }
+await d1(
+  `DELETE FROM role_capability
+   WHERE role_id=(SELECT id FROM role WHERE code='admin_pastor')
+     AND capability_id IN (SELECT id FROM capability WHERE code IN ('prayer.request.create','prayer.request.share'))
+     AND scope_mode='branch'`,
+);
+const prayerGrantsAfterCleanup = await d1(
+  `SELECT COUNT(*) AS count
+   FROM role_capability rc
+   JOIN role r ON r.id=rc.role_id
+   JOIN capability c ON c.id=rc.capability_id
+   WHERE r.code='admin_pastor'
+     AND c.code IN ('prayer.request.create','prayer.request.share')`,
+);
+const prayerShareAfterCleanup = await api(
+  adminCookie,
+  "/api/v1/pastoral/prayer/requests/" + prayerRequestId + "/shares",
+  "POST",
+  {},
+);
+if (Number(prayerGrantsAfterCleanup[0]?.count) !== 0 || prayerShareAfterCleanup.status !== 403) {
+  throw new Error("Temporary prayer fixture grants were not fully removed after acceptance.");
+}
+console.log("PRAYER_TEST_GRANTS_REMOVED");
 console.log("ASSIGNED_PRAYER_ACCESS_AND_CROSS_ROLE_DENIAL_PASSED");
 
 const inbox = await api(workerCookie, "/api/v1/notifications?branch_id=" + branchId + "&limit=50");
