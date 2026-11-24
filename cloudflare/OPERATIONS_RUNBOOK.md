@@ -118,7 +118,7 @@ Do not create a secret in Pages. Never expose a secret through any `VITE_*` vari
 - Use synthetic people and contact details in preview/testing.
 - Do not load real visitor, prayer or care records before the church's privacy notice, lawful purposes, retention/deletion rules, data-controller contact and pastoral-access policy are approved.
 - Prayer and care narratives are sensitive records. Do not use broad exports or screenshots for debugging; use request IDs and safe metadata.
-- Keep SMS/Arkesel disabled. No scheduled workflow may dispatch messages.
+- Keep SMS/Arkesel disabled. Scheduled processing may create staff-only in-app due reminders only; no scheduled path may dispatch SMS, email or push.
 - The production Worker currently deployed (version 20 at the 24 November checkpoint) has a `fetch` handler only and no Cron Trigger, so scheduled processing is not operational in production. The current `main` release candidate now includes a `scheduled()` handler and a production-only 15-minute Cron configuration for generic, staff-only due-follow-up in-app reminders. That candidate must still pass the full authenticated D1 acceptance and guarded production release before the Cron becomes active. Do not describe reminders as live until production deployment and a verified scheduled invocation have both succeeded. No scheduled path may dispatch SMS, email or push.
 - Keep Transport, public self-registration and offline staff data disabled until their separate security and operational acceptance gates pass.
 
@@ -145,5 +145,7 @@ Do not create a secret in Pages. Never expose a secret through any `VITE_*` vari
 - [ ] Pages deployment is on the reviewed commit; same-origin health/session checks pass.
 - [ ] Email sender tested or manual handoff procedure confirmed.
 - [ ] Privacy and retention approval recorded before real ministry data is entered.
-- [ ] Scheduled processing has an implemented `scheduled()` handler, Cron configuration, idempotency/retry controls and authenticated-domain integration tests; until then, automated follow-up/reminders and scheduled publishing are explicitly marked unavailable.
+- [ ] Scheduled follow-up reminders pass the authenticated D1 tests for due selection, current assignee/branch scope, duplicate invocation, reschedule, reassignment and inactive/revoked staff exclusion. After production deployment, verify the 15-minute Cron Trigger is present and observe a successful scheduled invocation. Until then, reminders are not live.
+- [ ] Event media acceptance proves Worker-mediated flyer upload, signed readback and object deletion against the private Supabase Storage bucket. Keep the service-role key Worker-only.
+- [ ] Announcement drafts remain private; scheduled public announcement publishing is not part of this release and must not be implied by the follow-up reminder Cron.
 - [ ] SMS remains disabled.
