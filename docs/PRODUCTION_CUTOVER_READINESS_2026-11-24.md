@@ -36,7 +36,7 @@ Acceptance must cover:
 - Contact registration, follow-up creation, assignment, reassignment and handoff.
 - Recipient-scoped in-app notification creation, listing, read state and idempotency.
 - Ministry report submit, return, resubmit and approve lifecycle, including immutable history.
-- Event registration, idempotency, check-in, closeout submission and review.
+- Event registration, idempotency, check-in, closeout submission and review, plus Worker-mediated private flyer upload, signed URL readback and deletion through the retained Supabase Storage bucket.
 - Restricted prayer/care access and audit trails.
 - Foreign-key integrity and rollback behavior on failed writes.
 
