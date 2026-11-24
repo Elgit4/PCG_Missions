@@ -665,7 +665,14 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
         }
       }
       calls.push({ kind: "batch", statements: statements.length });
-      return statements.map(() => ({ success: true, meta: { changes: 1 } }));
+      return statements.map((statement) => ({
+        success: true,
+        // Contact assignment writes fire audit triggers, so D1 reports
+        // two changes for each assignment statement (record + audit row).
+        meta: {
+          changes: statement.sql.includes("contact_assignment") ? 2 : 1,
+        },
+      }));
     },
   };
 
