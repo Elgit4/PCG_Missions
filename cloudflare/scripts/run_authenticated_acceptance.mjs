@@ -552,6 +552,29 @@ const assignment = await api(adminCookie, `/api/v1/events/${eventId}/staff-assig
 });
 if (assignment.status !== 201) throw new Error(`Event assignment failed: ${assignment.status} ${JSON.stringify(assignment.payload)}`);
 
+const crossBranchEventRegistration = await api(
+  otherBranchWorkerCookie,
+  "/api/v1/events/" + eventId + "/registrations",
+  "POST",
+  {
+    idempotency_key: "qa-cross-branch-register-" + runId,
+    attendee_name: "Cross-branch unauthorized guest",
+    attendee_phone: null,
+  },
+  "qa-cross-branch-register-" + runId,
+  otherBranchId,
+);
+if (![403, 404].includes(crossBranchEventRegistration.status)) {
+  throw new Error("Other-branch worker registered an attendee for an event outside their branch.");
+}
+const crossBranchEventRegistrationCount = (await d1(
+  "SELECT COUNT(*) AS count FROM event_registration WHERE event_id=?",
+  [eventId],
+))[0]?.count;
+if (Number(crossBranchEventRegistrationCount) !== 0) {
+  throw new Error("Cross-branch event registration denial still created a registration.");
+}
+
 const unassignedRegistration = await api(unassignedCookie, `/api/v1/events/${eventId}/registrations`, "POST", {
   idempotency_key: `qa-unassigned-register-${runId}`,
   attendee_name: "Unauthorized QA Guest",
@@ -636,6 +659,52 @@ const report = await api(workerCookie, "/api/v1/reports", "POST", {
 if (report.status !== 201) throw new Error(`Ministry report submission failed: ${report.status} ${JSON.stringify(report.payload)}`);
 const reportId = report.payload?.data?.id;
 if (!reportId) throw new Error("Ministry report response did not include a report id");
+
+const otherBranchReport = await api(otherBranchWorkerCookie, "/api/v1/reports", "POST", {
+  branch_id: otherBranchId,
+  report_type: "daily_evangelism",
+  period_start: today,
+  period_end: today,
+  team_id: null,
+  event_id: null,
+  contacts_captured: 1,
+  gospel_presentations: 1,
+  decisions_for_christ: 0,
+  followup_required: 1,
+  followup_completed: 0,
+  visits_completed: 0,
+  calls_completed: 0,
+  events_supported: 0,
+  attendance_count: 0,
+}, undefined, otherBranchId);
+if (otherBranchReport.status !== 201 || !otherBranchReport.payload?.data?.id) {
+  throw new Error("Other-branch ministry report creation failed: " + otherBranchReport.status + " " + JSON.stringify(otherBranchReport.payload));
+}
+const otherBranchReportId = otherBranchReport.payload.data.id;
+const otherBranchReportRead = await api(otherBranchWorkerCookie, "/api/v1/reports/" + otherBranchReportId, "GET", undefined, undefined, otherBranchId);
+if (otherBranchReportRead.status !== 200) {
+  throw new Error("Other-branch report author could not read their own submitted report.");
+}
+const primaryBranchReportRead = await api(reviewerCookie, "/api/v1/reports/" + otherBranchReportId, "GET");
+if (![403, 404].includes(primaryBranchReportRead.status)) {
+  throw new Error("Primary-branch Coordinator read a report from another branch.");
+}
+const primaryBranchReportReview = await api(reviewerCookie, "/api/v1/reports/" + otherBranchReportId + "/review", "POST", {
+  decision: "approved",
+  comment: "This cross-branch review must be rejected.",
+});
+if (![403, 404].includes(primaryBranchReportReview.status)) {
+  throw new Error("Primary-branch Coordinator reviewed a report from another branch.");
+}
+const otherBranchReportAfterDeniedReview = (await d1(
+  "SELECT status FROM ministry_report WHERE id=?",
+  [otherBranchReportId],
+))[0];
+if (otherBranchReportAfterDeniedReview?.status !== "submitted") {
+  throw new Error("Denied cross-branch report review changed the other-branch report.");
+}
+console.log("CROSS_BRANCH_REPORT_READ_AND_REVIEW_ISOLATION_PASSED");
+
 console.log("REPORT_CREATE_STATUS", report.payload?.data?.status);
 console.log("REPORT_D1_STATUS_AFTER_CREATE", JSON.stringify(await d1("SELECT status,last_action_id FROM ministry_report WHERE id=?", [reportId])));
 
@@ -693,6 +762,84 @@ const followupState = (await d1("SELECT status FROM followup_task WHERE id=?", [
 const followupEventCount = (await d1("SELECT COUNT(*) AS count FROM followup_task_event WHERE task_id=?", [followupTaskId]))[0]?.count;
 const followupNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='followup_assigned' ORDER BY created_at DESC LIMIT 1", [worker.userId]))[0];
 
+const prayerRequestId = randomUUID();
+const unassignedPrayerRequestId = randomUUID();
+const prayerCreatedAt = new Date().toISOString();
+const assignedPrayerNarrative = "Synthetic confidential prayer request for assigned-intercessor acceptance.";
+const unassignedPrayerNarrative = "Synthetic prayer request that must remain outside the assigned inbox.";
+await d1(
+  "INSERT INTO prayer_request(id,branch_id,contact_id,created_by,request_text,status,sensitivity,expires_at,answered_at,created_at,updated_at) VALUES(?,?,NULL,?,?,'open','highly_restricted',NULL,NULL,?,?)",
+  [prayerRequestId, branchId, admin.userId, assignedPrayerNarrative, prayerCreatedAt, prayerCreatedAt],
+);
+await d1(
+  "INSERT INTO prayer_request(id,branch_id,contact_id,created_by,request_text,status,sensitivity,expires_at,answered_at,created_at,updated_at) VALUES(?,?,NULL,?,?,'open','highly_restricted',NULL,NULL,?,?)",
+  [unassignedPrayerRequestId, branchId, admin.userId, unassignedPrayerNarrative, prayerCreatedAt, prayerCreatedAt],
+);
+const prayerShareStartsAt = new Date(Date.now() + 3000).toISOString();
+const prayerShare = await api(adminCookie, "/api/v1/pastoral/prayer/requests/" + prayerRequestId + "/shares", "POST", {
+  staff_profile_id: prayerIntercessor.profileId,
+  purpose: "Assigned prayer support for the confidential acceptance request.",
+  starts_at: prayerShareStartsAt,
+});
+if (prayerShare.status !== 201 || !prayerShare.payload?.assignment_id || !prayerShare.payload?.share_id) {
+  throw new Error("Admin/Pastor could not assign the synthetic prayer request: " + prayerShare.status + " " + JSON.stringify(prayerShare.payload));
+}
+await new Promise((resolve) => setTimeout(resolve, 3200));
+const assignedPrayerInbox = await api(prayerIntercessorCookie, "/api/v1/pastoral/prayer/assigned?limit=25&offset=0");
+const assignedPrayerRows = assignedPrayerInbox.payload?.data?.requests ?? [];
+if (assignedPrayerInbox.status !== 200 ||
+    !assignedPrayerRows.some((request) => request.id === prayerRequestId) ||
+    assignedPrayerRows.some((request) => request.id === unassignedPrayerRequestId)) {
+  throw new Error("Prayer Intercessor assigned inbox did not enforce live assignment scope.");
+}
+const assignedPrayerRead = await api(
+  prayerIntercessorCookie,
+  "/api/v1/pastoral/prayer/requests/" + prayerRequestId + "/read",
+  "POST",
+  { branch_id: branchId, access_mode: "assigned" },
+);
+if (assignedPrayerRead.status !== 200 ||
+    assignedPrayerRead.payload?.data?.request?.request_text !== assignedPrayerNarrative) {
+  throw new Error("Assigned Prayer Intercessor could not read the assigned prayer narrative.");
+}
+const unassignedPrayerRead = await api(
+  prayerIntercessorCookie,
+  "/api/v1/pastoral/prayer/requests/" + unassignedPrayerRequestId + "/read",
+  "POST",
+  { branch_id: branchId, access_mode: "assigned" },
+);
+if (unassignedPrayerRead.status !== 404) {
+  throw new Error("Prayer Intercessor read a prayer request without a live assignment.");
+}
+const crossRolePrayerRead = await api(
+  workerCookie,
+  "/api/v1/pastoral/prayer/requests/" + prayerRequestId + "/read",
+  "POST",
+  { branch_id: branchId, access_mode: "assigned" },
+);
+if (crossRolePrayerRead.status !== 403) {
+  throw new Error("Field Worker unexpectedly read an assigned prayer narrative.");
+}
+const prayerAssignmentState = (await d1(
+  "SELECT intercessor_user_id,revoked_at FROM prayer_assignment WHERE id=?",
+  [prayerShare.payload.assignment_id],
+))[0];
+const prayerAuditCount = (await d1(
+  "SELECT COUNT(*) AS count FROM prayer_access_audit WHERE prayer_request_id=? AND actor_user_id=?",
+  [prayerRequestId, prayerIntercessor.userId],
+))[0]?.count;
+const sensitivePrayerAuditCount = (await d1(
+  "SELECT COUNT(*) AS count FROM sensitive_record_access_audit WHERE record_type='prayer_request' AND record_id=? AND actor_profile_id=?",
+  [prayerRequestId, prayerIntercessor.profileId],
+))[0]?.count;
+if (prayerAssignmentState?.intercessor_user_id !== prayerIntercessor.userId ||
+    prayerAssignmentState?.revoked_at !== null ||
+    Number(prayerAuditCount) < 1 ||
+    Number(sensitivePrayerAuditCount) < 1) {
+  throw new Error("Assigned prayer workflow did not persist its assignment and both sensitive-read audit records.");
+}
+console.log("ASSIGNED_PRAYER_ACCESS_AND_CROSS_ROLE_DENIAL_PASSED");
+
 const inbox = await api(workerCookie, "/api/v1/notifications?branch_id=" + branchId + "&limit=50");
 if (inbox.status !== 200) throw new Error("Worker notification inbox failed: " + inbox.status + " " + JSON.stringify(inbox.payload));
 const workerNotifications = inbox.payload?.data?.notifications ?? [];
@@ -723,6 +870,45 @@ if (authenticatedSessionResponse.status !== 200 ||
   throw new Error("Authenticated Better Auth session retrieval failed.");
 }
 console.log("AUTHENTICATED_SESSION_RETRIEVAL_PASSED");
+
+// Exercise Better Auth's deferred refresh contract against the real temporary D1 session.
+const adminSessionId = authenticatedSessionPayload.session.id;
+const refreshDueExpiry = Date.now() + 5 * 24 * 60 * 60 * 1000;
+await d1("UPDATE session SET expiresAt=? WHERE id=?", [refreshDueExpiry, adminSessionId]);
+const sessionNeedsRefreshResponse = await fetchWithTimeout(workerUrl + "/api/auth/get-session", {
+  headers: { origin, cookie: adminCookie },
+});
+const sessionNeedsRefreshPayload = await sessionNeedsRefreshResponse.json().catch(() => null);
+const sessionAfterRead = (await d1("SELECT expiresAt FROM session WHERE id=?", [adminSessionId]))[0];
+if (sessionNeedsRefreshResponse.status !== 200 ||
+    sessionNeedsRefreshPayload?.needsRefresh !== true ||
+    Number(sessionAfterRead?.expiresAt) !== refreshDueExpiry) {
+  throw new Error("Deferred session refresh GET did not remain read-only and report needsRefresh.");
+}
+const sessionRefreshResponse = await fetchWithTimeout(workerUrl + "/api/auth/get-session", {
+  method: "POST",
+  headers: { origin, cookie: adminCookie, "content-type": "application/json" },
+  body: JSON.stringify({}),
+});
+const sessionRefreshPayload = await sessionRefreshResponse.json().catch(() => null);
+const refreshedSessionRow = (await d1(
+  "SELECT expiresAt,updatedAt FROM session WHERE id=?",
+  [adminSessionId],
+))[0];
+const refreshedSetCookies = typeof sessionRefreshResponse.headers.getSetCookie === "function"
+  ? sessionRefreshResponse.headers.getSetCookie()
+  : [sessionRefreshResponse.headers.get("set-cookie") || ""];
+const refreshedAdminCookie = refreshedSetCookies.map((value) => value.split(";", 1)[0]).filter(Boolean).join("; ");
+if (sessionRefreshResponse.status !== 200 ||
+    sessionRefreshPayload?.session?.id !== adminSessionId ||
+    Number(refreshedSessionRow?.expiresAt) <= refreshDueExpiry ||
+    !refreshedAdminCookie.includes("session_token=")) {
+  throw new Error("Deferred session refresh POST did not extend the session and issue a replacement cookie.");
+}
+adminCookie = refreshedAdminCookie;
+console.log("DEFERRED_SESSION_REFRESH_PASSED");
+
+
 
 // Exercise a genuine first-login password gate and prove that the old credential is no longer valid.
 const firstLoginCookie = await signIn(firstLoginUser, "First-login Field Worker");
