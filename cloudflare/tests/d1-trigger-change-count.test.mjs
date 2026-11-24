@@ -20,6 +20,8 @@ test("contact capture and follow-up updates accept D1 trigger side effects witho
   assert.match(updateTask, /UPDATE followup_task AS ft/);
   assert.match(updateTask, /results\[0\]\?\.meta\?\.changes \?\? 0\) < 1/);
   const reassignTask = section("async function reassignFollowupTask(", "async function handleAnnouncementCollection(");
+  assert.match(reassignTask, /UPDATE followup_task AS ft/);
+  assert.doesNotMatch(reassignTask, /UPDATE followup_task ft/);
   assert.match(reassignTask, /results\[0\]\?\.meta\?\.changes \?\? 0\) < 1/);
 });
 
