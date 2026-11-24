@@ -1,6 +1,6 @@
 name: Cloudflare Production Worker Deploy
 
-# This workflow is validated by validate-production-workflow.yml before release.
+# Production deployment is permitted only through the exact owner-authorized release marker.
 
 on:
   workflow_call:
