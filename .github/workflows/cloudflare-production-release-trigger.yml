@@ -1,25 +1,17 @@
-name: Authorised PCG Missions Production Release
+name: Retired — PCG Missions Production Release Trigger
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - ".github/production/DEPLOY-PRODUCTION"
+  workflow_dispatch:
 
 permissions:
   contents: read
-  actions: read
-
-concurrency:
-  group: pcg-missions-production-release-authorized-trigger
-  cancel-in-progress: false
 
 jobs:
-  release:
-    name: Invoke the full guarded production release
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    uses: ./.github/workflows/cloudflare-production-worker-deploy.yml
-    with:
-      confirm_production: DEPLOY-PRODUCTION
-    secrets: inherit
+  retired:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain the direct guarded release entry point
+        run: |
+          echo "This wrapper is retired. The guarded production release now runs directly from the authorized marker."
+          echo "Use .github/workflows/cloudflare-production-worker-deploy.yml."
+          exit 1
