@@ -5,9 +5,15 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - main
       - migration/cloudflare-auth-consolidation
     paths:
       - ".github/workflows/cloudflare-d1-restore-rehearsal.yml"
+      - "cloudflare/scripts/run_authenticated_acceptance.mjs"
+      - "cloudflare/src/auth.ts"
+      - "cloudflare/src/auth-schema.ts"
+      - "cloudflare/migrations/**"
+      - "cloudflare/wrangler.toml"
 
 permissions:
   contents: read
