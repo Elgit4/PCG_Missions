@@ -80,7 +80,7 @@ async function insertUser(roleCode, label, assignerProfileId, bootstrapAdmin = f
 }
 
 let lastSignInAttemptAt = 0;
-// Sixteen seconds between starts keeps the shared local IP below Better Auth's five-per-minute ceiling.
+// Thirty seconds between starts keeps the shared local IP well below Better Auth's five-per-minute ceiling.
 async function waitForSignInRateLimitSlot() {
   // Better Auth limits /sign-in/email per client IP. This isolated rehearsal
   // uses many synthetic accounts from one local Worker IP, so pace every
