@@ -14,7 +14,7 @@ class AuthenticatedAcceptanceRateLimitTests(unittest.TestCase):
         self.assertIn("const SIGN_IN_RATE_LIMIT_INTERVAL_MS = 20_000;", harness)
         self.assertIn("const SIGN_IN_RATE_LIMIT_RETRY_MS = 61_000;", harness)
         self.assertIn("async function signInAttempt(identity, label)", harness)
-        self.assertIn("response.status === 429", harness)
+        self.assertIn("response.status !== 429", harness)
         self.assertIn("await signInAttempt(firstLoginUser", harness)
         self.assertIn("await signInAttempt(resetTarget", harness)
 
