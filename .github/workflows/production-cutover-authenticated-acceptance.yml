@@ -1,0 +1,24 @@
+name: Production Cutover Authenticated Acceptance
+
+on:
+  push:
+    branches:
+      - verify/production-cutover-acceptance
+    paths:
+      - ".github/workflows/production-cutover-authenticated-acceptance.yml"
+      - "cloudflare/src/index.ts"
+      - "cloudflare/scripts/run_authenticated_acceptance.mjs"
+      - "cloudflare/migrations/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pcg-missions-production-cutover-acceptance
+  cancel-in-progress: false
+
+jobs:
+  isolated-eu-acceptance:
+    name: Full D1 restore and authenticated API acceptance
+    uses: ./.github/workflows/cloudflare-d1-restore-rehearsal.yml
+    secrets: inherit
