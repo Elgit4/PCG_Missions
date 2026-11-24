@@ -257,12 +257,12 @@ jobs:
             local jq_filter runs accepted sha
             jq_filter=".workflow_runs[] | select(.path == \".github/workflows/${workflow_file}\" and .conclusion == \"success\") | .head_sha"
             runs="$(
-  {
-    for source_branch in main migration/cloudflare-auth-consolidation; do
-      gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="$source_branch" -F per_page=100 --jq "$jq_filter"
-    done
-  } | awk 'NF' | sort -u
-)"
+              {
+                for source_branch in main migration/cloudflare-auth-consolidation; do
+                  gh api --method GET "repos/${GITHUB_REPOSITORY}/actions/runs" -f branch="$source_branch" -F per_page=100 --jq "$jq_filter"
+                done
+              } | awk 'NF' | sort -u
+            )"
             accepted=""
             while IFS= read -r sha; do
               [[ -z "$sha" ]] && continue
