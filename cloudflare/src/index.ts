@@ -316,8 +316,8 @@ async function revokeStaffRole(
       ),
     ]);
     if (results.some((result) => !result.success) ||
-        (results[0]?.meta?.changes ?? 0) !== 1 ||
-        (results[1]?.meta?.changes ?? 0) !== 1) {
+        (results[0]?.meta?.changes ?? 0) < 1 ||
+        (results[1]?.meta?.changes ?? 0) < 1) {
       return json(409, { ok: false, error: { code: "ROLE_ASSIGNMENT_CHANGED" } }, requestId, origin);
     }
   } catch {
