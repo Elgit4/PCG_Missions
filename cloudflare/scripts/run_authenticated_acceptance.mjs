@@ -244,7 +244,7 @@ const flyerEventCreate = await api(adminCookie, "/api/v1/events", "POST", {
   capacity: 5,
 });
 if (flyerEventCreate.status !== 201 || !flyerEventCreate.payload?.data?.id) {
-  throw new Error("Could not create the temporary draft event for flyer-storage acceptance: " + flyerEventCreate.status);
+  throw new Error("Could not create the temporary draft event for flyer-storage acceptance: " + flyerEventCreate.status + " " + JSON.stringify(flyerEventCreate.payload));
 }
 const flyerEventId = flyerEventCreate.payload.data.id;
 const flyerBytes = Buffer.from([
