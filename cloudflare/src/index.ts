@@ -4579,8 +4579,8 @@ async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:
     ? signedPayload.signedURL
     : new URL("/storage/v1"+(signedPayload.signedURL.startsWith("/")?signedPayload.signedURL:"/"+signedPayload.signedURL),env.SUPABASE_URL).toString();
   const now=new Date().toISOString();
-  const updated=await env.DB.prepare("UPDATE event SET flyer_key=?,flyer_content_type=?,flyer_size=?,flyer_updated_at=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
-    .bind(key,type,file.size,now,now,eventId,branchId).run();
+  const updated=await env.DB.prepare("UPDATE event SET flyer_key=?,flyer_content_type=?,flyer_size=?,flyer_updated_at=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
+    .bind(key,type,file.size,now,context.staff.userId,now,eventId,branchId).run();
   if(!updated.success||(updated.meta?.changes??0)<1){
     await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);
     return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
@@ -4639,9 +4639,12 @@ async function handleEventCollection(request:Request,env:Env,requestId:string,or
   if(Date.parse(String(value.ends_at))<=Date.parse(String(value.starts_at))) return json(400,{ok:false,error:{code:"INVALID_EVENT_TIME_RANGE"}},requestId,origin);
   const id=crypto.randomUUID(),now=new Date().toISOString();
   try{
-    await env.DB.prepare("INSERT INTO event(id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,status,visibility,registration_state,transport_enabled,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'draft','private','closed',0,?,?,?)")
-      .bind(id,branchId,value.title,value.description??null,value.starts_at,value.ends_at,value.timezone,value.location??null,value.capacity??null,context.staff.userId,now,now).run();
-  }catch{return json(409,{ok:false,error:{code:"EVENT_CREATE_FAILED"}},requestId,origin);}
+    await env.DB.prepare("INSERT INTO event(id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,status,visibility,registration_state,transport_enabled,created_by,last_modified_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'draft','private','closed',0,?,?,?,?)")
+      .bind(id,branchId,value.title,value.description??null,value.starts_at,value.ends_at,value.timezone,value.location??null,value.capacity??null,context.staff.userId,context.staff.userId,now,now).run();
+  }catch(error){
+    console.error(JSON.stringify({event:"EVENT_CREATE_FAILED",requestId,error:error instanceof Error?error.message:"unknown"}));
+    return json(409,{ok:false,error:{code:"EVENT_CREATE_FAILED"}},requestId,origin);
+  }
   const event=await env.DB.prepare("SELECT "+EVENT_RESPONSE_COLUMNS+" FROM event WHERE id=? AND branch_id=?").bind(id,branchId).first<Record<string,unknown>>();
   if(!event) return json(500,{ok:false,error:{code:"EVENT_CREATE_FAILED"}},requestId,origin);
   return json(201,{ok:true,data:event},requestId,origin);
@@ -4671,6 +4674,7 @@ async function handleEventItem(request:Request,env:Env,eventId:string,requestId:
   const assignments=Object.keys(fields.values).map(key=>key+"=?");
   const values=Object.values(fields.values);
   const now=new Date().toISOString();
+  assignments.push("last_modified_by=?");values.push(context.staff.userId);
   assignments.push("updated_at=?");values.push(now);
   const result=await env.DB.prepare("UPDATE event SET "+assignments.join(",")+" WHERE id=? AND branch_id=? AND status='draft' AND registration_state='closed'")
     .bind(...values,eventId,branchId).run();
@@ -4821,8 +4825,8 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     const current=await env.DB.prepare("SELECT flyer_key FROM event WHERE id=? AND branch_id=?").bind(eventId,branchId).first<{flyer_key:string|null}>();
     if(!current?.flyer_key) return json(200,{ok:true,data:{removed:false}},requestId,origin);
     const now=new Date().toISOString();
-    const result=await env.DB.prepare("UPDATE event SET flyer_key=NULL,flyer_content_type=NULL,flyer_size=NULL,flyer_updated_at=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
-      .bind(now,now,eventId,branchId).run();
+    const result=await env.DB.prepare("UPDATE event SET flyer_key=NULL,flyer_content_type=NULL,flyer_size=NULL,flyer_updated_at=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
+      .bind(now,context.staff.userId,now,eventId,branchId).run();
     if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
     await eventFlyerStorageRequest(env,current.flyer_key,"DELETE").catch(()=>undefined);
     return json(200,{ok:true,data:{removed:true}},requestId,origin);
@@ -4832,8 +4836,8 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     if(event.status==="completed") return json(409,{ok:false,error:{code:"EVENT_ALREADY_COMPLETED"}},requestId,origin);
     if(event.status==="cancelled") return json(200,{ok:true,data:{event_id:eventId,status:"cancelled"}},requestId,origin);
-    const result=await env.DB.prepare("UPDATE event SET status='cancelled',registration_state='closed',updated_at=? WHERE id=? AND branch_id=? AND status IN ('draft','published')")
-      .bind(now,eventId,branchId).run();
+    const result=await env.DB.prepare("UPDATE event SET status='cancelled',registration_state='closed',last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status IN ('draft','published')")
+      .bind(context.staff.userId,now,eventId,branchId).run();
     if(!result.success||(result.meta?.changes??0)<1) return json(409,{ok:false,error:{code:"EVENT_CANCELLATION_CONFLICT"}},requestId,origin);
     return json(200,{ok:true,data:{event_id:eventId,status:"cancelled"}},requestId,origin);
   }
@@ -4843,8 +4847,8 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     const action=parts[5]==="open"?"open":parts[5]==="close"?"close":null;
     if(!action) return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
     const state=action==="open"?"open":"closed";
-    const result=await env.DB.prepare("UPDATE event SET registration_state=?,updated_at=? WHERE id=? AND branch_id=?")
-      .bind(state,now,eventId,branchId).run();
+    const result=await env.DB.prepare("UPDATE event SET registration_state=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=?")
+      .bind(state,context.staff.userId,now,eventId,branchId).run();
     if((result.meta?.changes??0)<1) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
     return json(200,{data:{...event,registration_state:state,updated_at:now}},requestId,origin);
   }
