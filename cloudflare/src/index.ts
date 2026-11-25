@@ -342,6 +342,12 @@ async function revokeStaffRole(
     if (results.some((result) => !result.success) ||
         (results[0]?.meta?.changes ?? 0) !== 1 ||
         (results[1]?.meta?.changes ?? 0) !== 1) {
+      console.log("STAFF_ROLE_REVOCATION_BATCH_MISMATCH", JSON.stringify({
+        updateSuccess: results[0]?.success ?? false,
+        updateChanges: results[0]?.meta?.changes ?? 0,
+        auditSuccess: results[1]?.success ?? false,
+        auditChanges: results[1]?.meta?.changes ?? 0,
+      }));
       return json(409, { ok: false, error: { code: "ROLE_ASSIGNMENT_CHANGED" } }, requestId, origin);
     }
   } catch {
