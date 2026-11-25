@@ -980,6 +980,29 @@ if (Number(prayerTestGrantCount[0]?.count) !== 2) {
   throw new Error("Disposable prayer acceptance fixture did not receive its two temporary grants.");
 }
 
+// A live explicit share is a narrower, record-specific authorization path.
+// The baseline role has only assigned-inbox access; grant explicit-share read
+// only inside this disposable fixture so the database trigger can validate it.
+const defaultExplicitShareGrant = await d1(
+  `SELECT COUNT(*) AS count
+   FROM role_capability rc
+   JOIN role r ON r.id=rc.role_id
+   JOIN capability c ON c.id=rc.capability_id
+   WHERE r.code='prayer_intercessor'
+     AND c.code='prayer.request.read'
+     AND rc.scope_mode='explicit_share'`,
+);
+if (Number(defaultExplicitShareGrant[0]?.count) !== 0) {
+  throw new Error("Prayer Intercessor unexpectedly has an explicit-share grant in the baseline policy.");
+}
+await d1(
+  `INSERT OR IGNORE INTO role_capability(role_id,capability_id,scope_mode,created_at)
+   SELECT r.id,c.id,'explicit_share',?
+   FROM role r JOIN capability c ON c.code='prayer.request.read'
+   WHERE r.code='prayer_intercessor'`,
+  [new Date().toISOString()],
+);
+
 const prayerRequestId = randomUUID();
 const unassignedPrayerRequestId = randomUUID();
 const prayerCreatedAt = new Date().toISOString();
