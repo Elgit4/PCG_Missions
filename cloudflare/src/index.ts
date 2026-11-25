@@ -5767,7 +5767,8 @@ async function sharePrayerRequest(
         (results[1]?.meta?.changes ?? 0) < 1) {
       throw new Error("PRAYER_SHARE_CREATE_FAILED");
     }
-  } catch {
+  } catch (error) {
+    console.log("PRAYER_SHARE_BATCH_FAILED", JSON.stringify(safeDatabaseErrorDiagnostics(error)));
     return json(409, { ok: false, error: { code: "PRAYER_SHARE_CONFLICT" } }, requestId, origin);
   }
   return json(201, {
