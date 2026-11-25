@@ -13,10 +13,10 @@
 - Cloudflare Pages Functions forwards same-origin `/api/*` requests to the Cloudflare Worker.
 - Cloudflare Worker owns Better Auth, session cookies, authorization and application API routes.
 - Cloudflare D1 is the primary application and identity database.
-- Supabase is retained only for private event-flyer object storage.
+- Event-flyer media now uses the private EU Cloudflare KV namespace `pcg-missions-event-media`.
 - SMS/Arkesel remains disabled.
 
-The browser auth client uses Better Auth through same-origin `/api/auth`. Pages environment configuration contains only the API-origin variable; it does not contain Supabase Auth keys. The Worker uses `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` only for the private event-flyer storage path.
+The browser auth client uses Better Auth through same-origin `/api/auth`. Pages environment configuration contains only the API-origin variable. The Worker uses the `EVENT_MEDIA` KV binding for private event-flyer storage and HMAC-signed 15-minute media URLs. No Supabase credentials or runtime endpoints are required.
 
 ## Merged work and current preview release
 
@@ -93,6 +93,6 @@ The production D1 schema remains at 45. The schema 46 migration has been tested 
 
 - Keep SMS/Arkesel dispatch disabled.
 - Keep public self-registration and public prayer intake disabled.
-- Keep private event-flyer storage credentials Worker-only.
+- Keep the `EVENT_MEDIA` KV namespace private; do not enable public bucket access or expose object keys without signed URLs.
 - Do not send passwords, session cookies, service-role keys or private pastoral records through chat, logs or Git.
 - Do not declare the product fully production-ready based only on green CI, a healthy endpoint or a populated capability catalogue.
