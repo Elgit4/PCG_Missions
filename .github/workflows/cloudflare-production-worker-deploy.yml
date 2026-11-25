@@ -170,7 +170,7 @@ jobs:
             console.error("Production cutover blocked: require one credential-ready active Admin/Pastor owner; all active accounts must have credentials. Only the uniquely owner-audited orphan profile and inactive team_leader assignment may be reconciled after schema migration; all other roleless profiles, stale assignments and expired first-login setups block release.");
             process.exit(1);
           }
-          console.log("Production staff readiness gate passed: active Admin/Pastor owner is ready; all active accounts have credentials; any owner-directed orphan and inactive team_leader assignment are uniquely evidenced and will be reconciled after schema 49.");
+          console.log("Production staff readiness gate passed: active Admin/Pastor owner is ready; all active accounts have credentials; any owner-directed orphan and inactive team_leader assignment are uniquely evidenced and will be reconciled after schema 50.");
           console.log("Additional staff accounts may be added through staff account creation and first-login onboarding.");
           NODE
 
@@ -305,7 +305,7 @@ jobs:
           preview="https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
           health="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error "$preview/health")"
           echo "$health"
-          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="non-production" || p.schema_version!==49 || p.auth_configuration!=="ready") process.exit(1)' "$health"
+          node -e 'const p=JSON.parse(process.argv[1]); if(p.ok!==true || p.environment!=="non-production" || p.schema_version!==50 || p.auth_configuration!=="ready") process.exit(1)' "$health"
           me_status="$(curl --silent --show-error -o /tmp/pcg-preview-me.json -w "%{http_code}" "$preview/api/v1/me")"
           test "$me_status" = "401"
           session_status="$(curl --silent --show-error -o /tmp/pcg-preview-session.json -w "%{http_code}" "$preview/api/auth/get-session")"
@@ -360,7 +360,7 @@ jobs:
           walk(root);
           const row = candidates[0];
           if (!row || row.environment !== "production" ||
-              ![45, 46, 47, 48, 49].includes(Number(row.schema_version)) ||
+              ![45, 46, 47, 48, 49, 50].includes(Number(row.schema_version)) ||
               Number(row.schema_version) !== Number(row.latest_migration_id) ||
               Number(row.migration_count) !== Number(row.schema_version) ||
               Number(row.first_migration_id) !== 1 ||
@@ -450,9 +450,9 @@ jobs:
           walk(root);
           const row = candidates[0];
           if (!row || row.environment !== "production" ||
-              Number(row.schema_version) !== 49 ||
-              Number(row.latest_migration_id) !== 49 ||
-              Number(row.migration_count) !== 49 ||
+              Number(row.schema_version) !== 50 ||
+              Number(row.latest_migration_id) !== 50 ||
+              Number(row.migration_count) !== 50 ||
               Number(row.schema_version) !== Number(row.latest_migration_id) ||
               Number(row.migration_count) !== Number(row.schema_version) ||
               Number(row.first_migration_id) !== 1 ||
@@ -608,7 +608,7 @@ jobs:
           set -euo pipefail
           direct_health="$(curl --retry 5 --retry-delay 3 --retry-all-errors --fail --silent --show-error --max-time 30 "$WORKER_URL/health")"
           printf '%s\n' "$direct_health"
-          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==49||p.auth_configuration!=="ready")process.exit(1)' "$direct_health"
+          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==50||p.auth_configuration!=="ready")process.exit(1)' "$direct_health"
 
           for base in "$WORKER_URL" "$PAGES_URL"; do
             status="$(curl --silent --show-error --output /tmp/pcg-me.json --write-out "%{http_code}" --max-time 20 "$base/api/v1/me")"
@@ -620,7 +620,7 @@ jobs:
           test "$session_status" = "200"
 
           api_health="$(curl --retry 3 --retry-delay 2 --retry-all-errors --fail --silent --show-error --max-time 20 "$PAGES_URL/api/v1/health")"
-          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==49||p.auth_configuration!=="ready")process.exit(1)' "$api_health"
+          node -e 'const p=JSON.parse(process.argv[1]);if(p.ok!==true||p.environment!=="production"||p.schema_version!==50||p.auth_configuration!=="ready")process.exit(1)' "$api_health"
 
           cors_status="$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" --max-time 20 -X OPTIONS "$WORKER_URL/api/auth/sign-in/email" -H "Origin: https://pcg-missions.pages.dev" -H "Access-Control-Request-Method: POST" -H "Access-Control-Request-Headers: content-type")"
           test "$cors_status" = "204"
