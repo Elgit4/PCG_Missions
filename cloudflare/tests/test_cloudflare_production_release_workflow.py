@@ -29,7 +29,7 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
 
     def test_preview_and_production_health_gates_require_schema_50(self):
         self.assertIn("schema_version!==50", self.preview)
-        self.assertIn("schema_version!==49", self.production)
+        self.assertIn("schema_version!==50", self.production)
         self.assertIn("Number(row.schema_version) !== 50", self.production)
         self.assertIn("Number(row.migration_count) !== 50", self.production)
 
