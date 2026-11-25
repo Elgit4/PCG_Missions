@@ -71,13 +71,15 @@ async function insertUser(roleCode, label, assignerProfileId, bootstrapAdmin = f
     "INSERT INTO staff_profile(id,auth_user_id,full_name,email,account_status,created_at,updated_at,must_change_password) VALUES(?,?,?,?,'active',?,?,0)",
     [profileId, userId, `PCG QA ${label}`, email, now, now],
   );
-  const roleRows = await d1("SELECT id FROM role WHERE code=? AND is_active=1", [roleCode]);
-  if (roleRows.length !== 1) throw new Error(`Missing active role: ${roleCode}`);
-  const assignedBy = bootstrapAdmin ? profileId : assignerProfileId;
-  await d1(
-    "INSERT INTO staff_role_assignment(id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at) VALUES(?,?,?,?,?,?,?)",
-    [randomUUID(), profileId, roleRows[0].id, targetBranchId, assignedBy, new Date(nowMs - 3600000).toISOString(), now],
-  );
+  if (roleCode) {
+    const roleRows = await d1("SELECT id FROM role WHERE code=? AND is_active=1", [roleCode]);
+    if (roleRows.length !== 1) throw new Error(`Missing active role: ${roleCode}`);
+    const assignedBy = bootstrapAdmin ? profileId : assignerProfileId;
+    await d1(
+      "INSERT INTO staff_role_assignment(id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at) VALUES(?,?,?,?,?,?,?)",
+      [randomUUID(), profileId, roleRows[0].id, targetBranchId, assignedBy, new Date(nowMs - 3600000).toISOString(), now],
+    );
+  }
   return { userId, profileId, email, password };
 }
 
@@ -1167,13 +1169,14 @@ if (scheduledReminderAfterReassignment.due_tasks_found !== 1 ||
   throw new Error("Reassigning a due task did not create one reminder for the new assignee: " + JSON.stringify(scheduledReminderAfterReassignment));
 }
 
+const revokedReminderUser = await insertUser(null, "revoked-reminder", admin.profileId);
 const revokedReminderRole = await api(adminCookie, "/api/v1/staff/roles", "POST", {
-  target_profile_id: unassigned.profileId,
+  target_profile_id: revokedReminderUser.profileId,
   role_code: "field_worker",
   reason: "Synthetic acceptance creates a role assignment that is revoked before due-reminder processing.",
 });
 if (revokedReminderRole.status !== 201 || !revokedReminderRole.payload?.data?.id) {
-  throw new Error("Could not create the revoked-role reminder fixture.");
+  throw new Error("Could not create the revoked-role reminder fixture: " + revokedReminderRole.status + " " + JSON.stringify(revokedReminderRole.payload));
 }
 const revokedReminderRoleId = revokedReminderRole.payload.data.id;
 const revokedReminderRoleResult = await api(
@@ -1201,7 +1204,7 @@ const revokedAssigneeTaskId = revokedAssigneeTaskCreate.payload.data.id;
 // own active-role exclusion is tested independently.
 await d1(
   "UPDATE followup_task SET assignee_user_id=? WHERE id=? AND branch_id=?",
-  [unassigned.userId, revokedAssigneeTaskId, branchId],
+  [revokedReminderUser.userId, revokedAssigneeTaskId, branchId],
 );
 const scheduledReminderForRevokedAssignee = await processDueFollowupReminders(
   { DB: scheduledReminderDb },
