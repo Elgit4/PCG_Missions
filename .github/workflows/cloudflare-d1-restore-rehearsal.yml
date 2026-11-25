@@ -3,7 +3,7 @@ name: Cloudflare D1 Restore and Authenticated API Rehearsal
 on:
   workflow_call:
   workflow_dispatch:
-  # Temporary non-production reproduction branch; remove after the D1 cause is isolated. Diagnostic rerun after event creator/modifier fix; external media excluded.
+  # Temporary non-production reproduction branch; remove after the D1 cause is isolated. Diagnostic rerun after event creator/modifier fix; external media excluded; prayer recipient fixture aligned.
   push:
     branches:
       - migration/followup-handoff-d1-diagnostic
