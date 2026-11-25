@@ -2976,11 +2976,22 @@ async function reassignFollowupTask(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    const diagnostic = message.match(/FOLLOWUP_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR|syntax error|no such column|no such table|wrong number of arguments/)?.[0] ?? "D1_BATCH_ERROR";
+    const cause = error instanceof Error ? error.cause : undefined;
+    const causeMessage = cause instanceof Error
+      ? cause.message
+      : typeof cause === "string"
+        ? cause
+        : cause && typeof cause === "object" && "message" in cause && typeof cause.message === "string"
+          ? cause.message
+          : "";
+    const diagnostic = message.match(/FOLLOWUP_[A-Z_]+|STAFF_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR|syntax error|no such column|no such table|wrong number of arguments/)?.[0] ?? "D1_BATCH_ERROR";
+    const causeDiagnostic = causeMessage.match(/FOLLOWUP_[A-Z_]+|STAFF_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR|syntax error|no such column|no such table|wrong number of arguments/)?.[0] ?? "D1_CAUSE_UNAVAILABLE";
     console.log("FOLLOWUP_REASSIGNMENT_BATCH_FAILED", JSON.stringify({
       diagnostic,
-      batchSummary,
+      causeDiagnostic,
       errorName: error instanceof Error ? error.name : typeof error,
+      errorCauseName: cause instanceof Error ? cause.name : typeof cause,
+      batchSummary,
     }));
     return json(409, { ok: false, error: { code: "FOLLOWUP_REASSIGNMENT_CONFLICT" } }, requestId, origin);
   }
