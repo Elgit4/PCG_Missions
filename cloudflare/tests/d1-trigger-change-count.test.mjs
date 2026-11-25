@@ -56,3 +56,11 @@ test("report resubmission and prayer sharing accept audit-triggered writes", () 
   const revoke = section("async function revokePrayerShare(", "async function updatePrayerRequestStatus(");
   assert.match(revoke, /results\[0\]\?\.meta\?\.changes \?\? 0\) < 1/);
 });
+
+test("follow-up reassignment reports only safe nested D1 cause codes", () => {
+  const reassignTask = section("async function reassignFollowupTask(", "async function handleAnnouncementCollection(");
+  assert.match(reassignTask, /error\.cause/);
+  assert.match(reassignTask, /causeDiagnostic/);
+  assert.match(reassignTask, /errorCauseName/);
+  assert.doesNotMatch(reassignTask, /console\.log\([^\n]*error\.message/);
+});
