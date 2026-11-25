@@ -232,69 +232,74 @@ const followupVolunteerCookie = await signIn(followupVolunteer, "Follow-up Volun
 const prayerIntercessorCookie = await signIn(prayerIntercessor, "Prayer Intercessor");
 console.log("BETTER_AUTH_SESSIONS_CREATED");
 
-const flyerStart = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
-const flyerEnd = new Date(Date.now() + 25 * 60 * 60_000).toISOString();
-const flyerEventCreate = await api(adminCookie, "/api/v1/events", "POST", {
-  title: "Synthetic Event Flyer Storage Acceptance",
-  description: "Temporary storage integration fixture.",
-  starts_at: flyerStart,
-  ends_at: flyerEnd,
-  timezone: "Africa/Accra",
-  location: "Synthetic QA",
-  capacity: 5,
-});
-if (flyerEventCreate.status !== 201 || !flyerEventCreate.payload?.data?.id) {
-  throw new Error("Could not create the temporary draft event for flyer-storage acceptance: " + flyerEventCreate.status + " " + JSON.stringify(flyerEventCreate.payload));
-}
-const flyerEventId = flyerEventCreate.payload.data.id;
-const flyerBytes = Buffer.from([
-  137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-]);
-const flyerForm = new FormData();
-flyerForm.append("file", new Blob([flyerBytes], { type: "image/png" }), "synthetic-acceptance.png");
-let flyerUploadPayload;
-let flyerDownloadVerified = false;
-let flyerSignedUrl;
-let flyerRemovePayload;
-try {
-  const flyerUploadResponse = await fetchWithTimeout(
-    `${workerUrl}/api/v1/events/${flyerEventId}/flyer`,
-    {
-      method: "POST",
-      headers: { origin, cookie: adminCookie, "x-branch-id": branchId },
-      body: flyerForm,
-    },
-  );
-  const flyerUploadText = await flyerUploadResponse.text();
-  try { flyerUploadPayload = flyerUploadText ? JSON.parse(flyerUploadText) : {}; }
-  catch { flyerUploadPayload = { raw: flyerUploadText }; }
-  if (flyerUploadResponse.status !== 200 || typeof flyerUploadPayload?.data?.signed_url !== "string") {
-    throw new Error("Private event flyer upload/signing failed: " + flyerUploadResponse.status + " " + JSON.stringify(flyerUploadPayload));
+if (process.env.PCG_SKIP_EVENT_MEDIA_ACCEPTANCE === "1") {
+  console.log("EVENT_MEDIA_STORAGE_LIFECYCLE_SKIPPED: this isolated D1 rehearsal has no configured private media provider; storage is tracked separately.");
+} else {
+  const flyerStart = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+  const flyerEnd = new Date(Date.now() + 25 * 60 * 60_000).toISOString();
+  const flyerEventCreate = await api(adminCookie, "/api/v1/events", "POST", {
+    title: "Synthetic Event Flyer Storage Acceptance",
+    description: "Temporary storage integration fixture.",
+    starts_at: flyerStart,
+    ends_at: flyerEnd,
+    timezone: "Africa/Accra",
+    location: "Synthetic QA",
+    capacity: 5,
+  });
+  if (flyerEventCreate.status !== 201 || !flyerEventCreate.payload?.data?.id) {
+    throw new Error("Could not create the temporary draft event for flyer-storage acceptance: " + flyerEventCreate.status + " " + JSON.stringify(flyerEventCreate.payload));
   }
-
-  const flyerRead = await api(adminCookie, `/api/v1/events/${flyerEventId}/flyer`);
-  if (flyerRead.status !== 200 || flyerRead.payload?.data?.object_path !== flyerUploadPayload.data.object_path) {
-    throw new Error("Private event flyer metadata readback failed: " + flyerRead.status);
+  const flyerEventId = flyerEventCreate.payload.data.id;
+  const flyerBytes = Buffer.from([
+    137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ]);
+  const flyerForm = new FormData();
+  flyerForm.append("file", new Blob([flyerBytes], { type: "image/png" }), "synthetic-acceptance.png");
+  let flyerUploadPayload;
+  let flyerDownloadVerified = false;
+  let flyerSignedUrl;
+  let flyerRemovePayload;
+  try {
+    const flyerUploadResponse = await fetchWithTimeout(
+      `${workerUrl}/api/v1/events/${flyerEventId}/flyer`,
+      {
+        method: "POST",
+        headers: { origin, cookie: adminCookie, "x-branch-id": branchId },
+        body: flyerForm,
+      },
+    );
+    const flyerUploadText = await flyerUploadResponse.text();
+    try { flyerUploadPayload = flyerUploadText ? JSON.parse(flyerUploadText) : {}; }
+    catch { flyerUploadPayload = { raw: flyerUploadText }; }
+    if (flyerUploadResponse.status !== 200 || typeof flyerUploadPayload?.data?.signed_url !== "string") {
+      throw new Error("Private event flyer upload/signing failed: " + flyerUploadResponse.status + " " + JSON.stringify(flyerUploadPayload));
+    }
+  
+    const flyerRead = await api(adminCookie, `/api/v1/events/${flyerEventId}/flyer`);
+    if (flyerRead.status !== 200 || flyerRead.payload?.data?.object_path !== flyerUploadPayload.data.object_path) {
+      throw new Error("Private event flyer metadata readback failed: " + flyerRead.status);
+    }
+    flyerSignedUrl = flyerRead.payload.data.signed_url;
+    const flyerDownload = await fetchWithTimeout(flyerSignedUrl);
+    const downloadedFlyerBytes = Buffer.from(await flyerDownload.arrayBuffer());
+    flyerDownloadVerified = flyerDownload.ok && downloadedFlyerBytes.equals(flyerBytes);
+    if (!flyerDownloadVerified) throw new Error("Signed event flyer URL did not return the uploaded bytes.");
+  } finally {
+    flyerRemovePayload = await api(adminCookie, `/api/v1/events/${flyerEventId}/flyer/remove`, "POST");
+    if (flyerRemovePayload.status !== 200) {
+      throw new Error("Temporary event flyer cleanup failed: " + flyerRemovePayload.status);
+    }
   }
-  flyerSignedUrl = flyerRead.payload.data.signed_url;
-  const flyerDownload = await fetchWithTimeout(flyerSignedUrl);
-  const downloadedFlyerBytes = Buffer.from(await flyerDownload.arrayBuffer());
-  flyerDownloadVerified = flyerDownload.ok && downloadedFlyerBytes.equals(flyerBytes);
-  if (!flyerDownloadVerified) throw new Error("Signed event flyer URL did not return the uploaded bytes.");
-} finally {
-  flyerRemovePayload = await api(adminCookie, `/api/v1/events/${flyerEventId}/flyer/remove`, "POST");
-  if (flyerRemovePayload.status !== 200) {
-    throw new Error("Temporary event flyer cleanup failed: " + flyerRemovePayload.status);
+  const flyerAfterRemoval = await api(adminCookie, `/api/v1/events/${flyerEventId}/flyer`);
+  const deletedFlyerObject = await fetchWithTimeout(flyerSignedUrl);
+  if (!flyerDownloadVerified || flyerAfterRemoval.status !== 404 || deletedFlyerObject.ok) {
+    throw new Error("Event flyer upload/read/delete lifecycle did not complete cleanly.");
   }
+  console.log("PRIVATE_EVENT_FLYER_STORAGE_LIFECYCLE_PASSED");
+  
+  
 }
-const flyerAfterRemoval = await api(adminCookie, `/api/v1/events/${flyerEventId}/flyer`);
-const deletedFlyerObject = await fetchWithTimeout(flyerSignedUrl);
-if (!flyerDownloadVerified || flyerAfterRemoval.status !== 404 || deletedFlyerObject.ok) {
-  throw new Error("Event flyer upload/read/delete lifecycle did not complete cleanly.");
-}
-console.log("PRIVATE_EVENT_FLYER_STORAGE_LIFECYCLE_PASSED");
-
 for (const [cookie, label] of [
   [adminCookie, "Admin/Pastor"],
   [secondAdminCookie, "Second Admin/Pastor"],
