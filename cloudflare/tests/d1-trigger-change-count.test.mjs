@@ -1,3 +1,4 @@
+// Regression coverage for D1 handoff diagnostics.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
