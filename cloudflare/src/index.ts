@@ -4660,8 +4660,8 @@ async function handleEventCollection(request:Request,env:Env,requestId:string,or
   if(Date.parse(String(value.ends_at))<=Date.parse(String(value.starts_at))) return json(400,{ok:false,error:{code:"INVALID_EVENT_TIME_RANGE"}},requestId,origin);
   const id=crypto.randomUUID(),now=new Date().toISOString();
   try{
-    await env.DB.prepare("INSERT INTO event(id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,status,visibility,registration_state,transport_enabled,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'draft','private','closed',0,?,?,?)")
-      .bind(id,branchId,value.title,value.description??null,value.starts_at,value.ends_at,value.timezone,value.location??null,value.capacity??null,context.staff.userId,now,now).run();
+    await env.DB.prepare("INSERT INTO event(id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,status,visibility,registration_state,transport_enabled,created_by,last_modified_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'draft','private','closed',0,?,?,?,?)")
+      .bind(id,branchId,value.title,value.description??null,value.starts_at,value.ends_at,value.timezone,value.location??null,value.capacity??null,context.staff.userId,context.staff.userId,now,now).run();
   }catch(error){
     console.log("EVENT_CREATE_FAILED",JSON.stringify(safeDatabaseErrorDiagnostics(error)));
     return json(409,{ok:false,error:{code:"EVENT_CREATE_FAILED"}},requestId,origin);
