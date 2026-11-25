@@ -20,7 +20,10 @@ head_sampling_rate = 0.1
 [vars]
 APP_ENV = "non-production"
 APP_ALLOWED_ORIGINS = "http://localhost:5173"
-SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
+
+[[kv_namespaces]]
+binding = "EVENT_MEDIA"
+id = "4c1b4d0c6066440ebdabfa75fd935dfe"
 
 [[d1_databases]]
 binding = "DB"
@@ -39,6 +42,10 @@ BETTER_AUTH_URL = "https://pcg-missions-api-preview.pcg-missions-nonprod.workers
 BETTER_AUTH_TRUSTED_ORIGINS = "https://migration-cloudflare-auth-co.pcg-missions.pages.dev,https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
 SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
 
+[[env.preview.kv_namespaces]]
+binding = "EVENT_MEDIA"
+id = "4c1b4d0c6066440ebdabfa75fd935dfe"
+
 [[env.preview.d1_databases]]
 binding = "DB"
 database_name = "pcg-missions-migration-test"
@@ -55,6 +62,10 @@ APP_ALLOWED_ORIGINS = "https://pcg-missions.pages.dev"
 BETTER_AUTH_URL = "https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev"
 BETTER_AUTH_TRUSTED_ORIGINS = "https://pcg-missions.pages.dev,https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev"
 SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
+
+[[env.production.kv_namespaces]]
+binding = "EVENT_MEDIA"
+id = "4c1b4d0c6066440ebdabfa75fd935dfe"
 
 [[env.production.d1_databases]]
 binding = "DB"
