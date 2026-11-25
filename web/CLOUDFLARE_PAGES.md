@@ -32,13 +32,15 @@ The Worker requires BETTER_AUTH_SECRET (at least 32 random characters), BETTER_A
 
 Never add the event-storage service key to Pages variables, browser build variables, source control or chat. Do not add Supabase URL or publishable keys to VITE_ variables. SMS remains disabled.
 
+25 November 2026 candidate note: the diagnostic migration branch adds schema migration 0050 to align the sensitive prayer-share insertion guard with the approved assigned-only Prayer Intercessor grant. D1 Foundation and Worker type-check are green on that candidate. The full authenticated schema-50 acceptance run is still pending; this is not a production release approval.
+
 ## Current guarded release checks
 
 The numbered schema-44 and credential-import steps from the original migration are historical. Better Auth and the Cloudflare identity foundation are already present; do not repeat the one-time credential import.
 
 1. Run Cloudflare D1 Foundation CI, Worker tests/typecheck, Wrangler preview/production dry-run bundle checks, and frontend CI on the exact release commit.
 2. Deploy the candidate to the isolated preview Worker and verify health, Better Auth session boundary, anonymous authorization boundary and same-origin Pages proxy.
-3. Run the full isolated schema-49 authenticated acceptance harness. It must cover all six roles, branch/team/assignee isolation, login and password recovery, contacts/follow-up/reassignment/handoff, notification producers and recipient scope, report lifecycle, event registration/check-in/closeout, prayer/care restrictions, team/service-area administration, announcements/content/calendar and audit integrity.
+3. Run the full isolated schema-50 authenticated acceptance harness. It must cover all six roles, branch/team/assignee isolation, login and password recovery, contacts/follow-up/reassignment/handoff, notification producers and recipient scope, report lifecycle, event registration/check-in/closeout, prayer/care restrictions, team/service-area administration, announcements/content/calendar and audit integrity.
 4. Clone production D1 into an isolated EU database, compare manifests and foreign keys, rehearse Time Travel restore, and securely delete the clone/export.
 5. Use only the guarded production release workflow. Capture the production bookmark, apply forward-only migrations, verify the migration ledger and roster reconciliation, then deploy Worker and Pages from the same reviewed commit.
 6. Verify production direct Worker and same-origin Pages health/session/CORS boundaries plus authenticated staff smoke tests. Keep automatic Pages production deployment disabled.
