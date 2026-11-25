@@ -27,7 +27,7 @@ The production Pages hostname is currently the Cloudflare \`pages.dev\` hostname
 - **Cloudflare Pages** serves the responsive web application and same-origin API/auth proxy.
 - **Cloudflare Worker** owns Better Auth staff authentication, session validation, capability checks, and the application API.
 - **Cloudflare D1** is the primary operational database for church, branch, staff identity, role/capability, contacts, follow-up, events, reports, announcements, notifications, audit, and other application records.
-- **Supabase Storage** is retained only for the private event-flyer media bucket. Its URL and service-role credential remain Worker-only and are not used for application authentication or the operational database.
+- **Cloudflare Workers KV** stores private event-flyer media in the EU namespace `pcg-missions-event-media`, accessed only through the Worker `EVENT_MEDIA` binding and 15-minute HMAC-signed URLs. No Supabase runtime credentials or endpoints are required.
 - **SMS/Arkesel** remains intentionally disabled. Routine deployment, testing, and acceptance must not send SMS.
 - Staff accounts are provisioned by authorised administrators. Public self-registration is not part of the staff authentication flow.
 
@@ -44,7 +44,7 @@ Authorisation is capability-based and branch/team scoped. Sensitive pastoral acc
 
 ## Current production release gate
 
-The production D1 database currently has schema 45, while preview has schema 47. Migration 0046 is a forward-only capability repair and has not been applied to production.
+The production D1 database currently has schema 45, while preview has schema 49. Migrations 46–49 remain pending in production and are applied only through the guarded, forward-only release workflow.
 
 The guarded release workflow requires all of the following before any production mutation:
 
@@ -101,10 +101,10 @@ The production workflow is manually dispatched from \`migration/cloudflare-auth-
 
 - Keep production D1 migrations forward-only. Never run a restore against the live production database as part of routine deployment.
 - Preserve the current production D1 Time Travel bookmark and retain independent backups before storing irreplaceable ministry records.
-- Keep \`BETTER_AUTH_SECRET\` and \`SUPABASE_SERVICE_ROLE_KEY\` as Worker secrets only.
+- Keep \`BETTER_AUTH_SECRET\` as a Worker secret only. Event media uses the private \`EVENT_MEDIA\` KV binding, not a Supabase service key.
 - Keep query-string redaction enabled in Worker observability configuration.
 - Keep SMS disabled until the provider, consent, template, opt-out, retry, and delivery-audit workflows have been explicitly accepted.
-- Do not remove the private flyer Storage dependency until its objects have been migrated and verified in a replacement.
+- Keep the private EU event-media KV namespace private; do not expose public object URLs or move media outside the Worker-signed delivery path.
 - Treat the six-role roster, real staff sign-in, password-change, session-refresh, sign-out, branch isolation, and feature-level acceptance as release gates.
 
 ## Operational references
