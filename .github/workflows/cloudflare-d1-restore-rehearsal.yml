@@ -3,6 +3,10 @@ name: Cloudflare D1 Restore and Authenticated API Rehearsal
 on:
   workflow_call:
   workflow_dispatch:
+  # Temporary non-production reproduction branch; remove after the D1 cause is isolated.
+  push:
+    branches:
+      - migration/followup-handoff-d1-diagnostic
 
 permissions:
   contents: read
