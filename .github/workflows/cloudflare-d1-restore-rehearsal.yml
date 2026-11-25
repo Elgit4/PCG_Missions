@@ -214,6 +214,7 @@ jobs:
           WORKER_URL: "http://127.0.0.1:8787"
           PCG_BROWSER_CREDENTIALS_PATH: ${{ runner.temp }}/pcg-browser-credentials.json
           PCG_BROWSER_BASE_URL: "http://localhost:8788"
+          PCG_SKIP_EVENT_MEDIA_ACCEPTANCE: "1"
         shell: bash
         run: |
           set -euo pipefail
