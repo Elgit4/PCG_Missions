@@ -18,6 +18,7 @@ concurrency:
 
 jobs:
   restore-rehearsal:
+    if: github.event_name != 'push' || contains(github.event.head_commit.message, '[run-handoff-diagnostic]')
     runs-on: ubuntu-latest
     # Allow one quota-reset wait (up to five hours) plus the actual restore and acceptance run.
     timeout-minutes: 360
