@@ -50,13 +50,24 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
             )
         }
 
-    def test_full_migration_chain_reaches_schema_49(self):
+    def test_full_migration_chain_reaches_schema_50(self):
         self.assertEqual(
             self.db.execute(
                 "SELECT schema_version, environment FROM app_meta WHERE id = 1"
             ).fetchone(),
-            (49, "non-production"),
+            (50, "non-production"),
         )
+
+    def test_sensitive_share_trigger_uses_current_assigned_read_capabilities(self):
+        trigger_sql = self.db.execute(
+            "SELECT sql FROM sqlite_schema WHERE type='trigger' AND name='staff_record_share_authorize_insert'"
+        ).fetchone()[0]
+        self.assertIn("prayer.request.read.assigned", trigger_sql)
+        self.assertIn("care.record.read.assigned", trigger_sql)
+        self.assertIn("rrc.scope_mode = 'assigned'", trigger_sql)
+        self.assertNotIn("'prayer.request.read'", trigger_sql)
+        self.assertNotIn("rrc.scope_mode = 'explicit_share'", trigger_sql)
+
         self.assertEqual(
             self.role_codes(),
             {
@@ -1008,7 +1019,7 @@ class CmiRoleCapabilityMigrationTests(unittest.TestCase):
         self.assertEqual(after, before)
         self.assertEqual(
             self.db.execute("SELECT schema_version FROM app_meta WHERE id = 1").fetchone()[0],
-            49,
+            50,
         )
 
     def test_worker_authorization_query_enforces_team_leader_membership_for_directory_read(self):
