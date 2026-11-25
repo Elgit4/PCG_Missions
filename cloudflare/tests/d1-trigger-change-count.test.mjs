@@ -58,10 +58,14 @@ test("report resubmission and prayer sharing accept audit-triggered writes", () 
   assert.match(revoke, /results\[0\]\?\.meta\?\.changes \?\? 0\) < 1/);
 });
 
-test("follow-up reassignment reports only safe nested D1 cause codes", () => {
+test("D1 diagnostics expose only safe nested cause codes across handoff and event creation", () => {
+  const diagnostics = section("function safeDatabaseErrorDiagnostics(", "function allowedOrigins(");
+  assert.match(diagnostics, /error\.cause/);
+  assert.match(diagnostics, /causeDiagnostic/);
+  assert.match(diagnostics, /errorCauseName/);
+  assert.doesNotMatch(diagnostics, /return[^\n]*message/);
   const reassignTask = section("async function reassignFollowupTask(", "async function handleAnnouncementCollection(");
-  assert.match(reassignTask, /error\.cause/);
-  assert.match(reassignTask, /causeDiagnostic/);
-  assert.match(reassignTask, /errorCauseName/);
-  assert.doesNotMatch(reassignTask, /console\.log\([^\n]*error\.message/);
+  assert.match(reassignTask, /safeDatabaseErrorDiagnostics\(error\)/);
+  const eventCollection = section("async function handleEventCollection(", "async function handleEventItem(");
+  assert.match(eventCollection, /safeDatabaseErrorDiagnostics\(error\)/);
 });
