@@ -4852,8 +4852,8 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     const current=await env.DB.prepare("SELECT flyer_key FROM event WHERE id=? AND branch_id=?").bind(eventId,branchId).first<{flyer_key:string|null}>();
     if(!current?.flyer_key) return json(200,{ok:true,data:{removed:false}},requestId,origin);
     const now=new Date().toISOString();
-    const result=await env.DB.prepare("UPDATE event SET flyer_key=NULL,flyer_content_type=NULL,flyer_size=NULL,flyer_updated_at=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
-      .bind(now,context.staff.userId,now,eventId,branchId).run();
+    const result=await env.DB.prepare("UPDATE event SET flyer_key=NULL,flyer_content_type=NULL,flyer_size=NULL,flyer_updated_at=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft' AND flyer_key=?")
+      .bind(now,context.staff.userId,now,eventId,branchId,current.flyer_key).run();
     if(!result.success) return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
     // D1's affected-row metadata can be zero even when a conditional update has
     // committed. Confirm the persisted state before reporting a conflict.
