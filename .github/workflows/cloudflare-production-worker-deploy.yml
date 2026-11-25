@@ -383,10 +383,10 @@ jobs:
           import fs from "node:fs";
           const value = JSON.parse(fs.readFileSync("/tmp/pcg-production-secrets.json", "utf8"));
           const names = new Set((Array.isArray(value) ? value : value.result ?? []).map(item => item.name));
-          for (const required of ["BETTER_AUTH_SECRET", "SUPABASE_SERVICE_ROLE_KEY"]) {
+          for (const required of ["BETTER_AUTH_SECRET"]) {
             if (!names.has(required)) throw new Error("Required production Worker secret is missing: " + required);
           }
-          console.log("Required production Worker secret names are present; secret values were not read or printed.");
+          console.log("Required Cloudflare-only production Worker secret names are present; secret values were not read or printed.");
           NODE
 
       - name: Build exact production Worker bundle before touching D1
