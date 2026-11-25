@@ -40,7 +40,6 @@ APP_ENV = "non-production"
 APP_ALLOWED_ORIGINS = "https://migration-cloudflare-auth-co.pcg-missions.pages.dev,https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
 BETTER_AUTH_URL = "https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
 BETTER_AUTH_TRUSTED_ORIGINS = "https://migration-cloudflare-auth-co.pcg-missions.pages.dev,https://pcg-missions-api-preview.pcg-missions-nonprod.workers.dev"
-SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
 
 [[env.preview.kv_namespaces]]
 binding = "EVENT_MEDIA"
@@ -61,7 +60,6 @@ APP_ENV = "production"
 APP_ALLOWED_ORIGINS = "https://pcg-missions.pages.dev"
 BETTER_AUTH_URL = "https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev"
 BETTER_AUTH_TRUSTED_ORIGINS = "https://pcg-missions.pages.dev,https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev"
-SUPABASE_URL = "https://cgwffpxlwgbnlinzwfoj.supabase.co"
 
 [[env.production.kv_namespaces]]
 binding = "EVENT_MEDIA"
