@@ -1,7 +1,7 @@
 # PCG Missions — Production operations runbook
 
 **Applies to:** Cloudflare production  
-**Last verified:** 24 November 2026 (UTC). Production cutover remains gated; this runbook records the current release controls and must not be read as evidence that the current release candidate is live.
+**Last verified:** 25 November 2026 (UTC). Production cutover remains gated; this runbook records the current release controls and must not be read as evidence that the current release candidate is live.
 
 ## 1. Production endpoints and resources
 
@@ -89,8 +89,7 @@ This rehearsal validates the D1 Time Travel mechanism against an isolated schema
 Production Worker secrets are set in Cloudflare Workers & Pages → `pcg-missions-api-production` → Settings → Variables and Secrets. Secret values must never be displayed, copied to logs or committed.
 
 Required production secrets:
-- `BETTER_AUTH_SECRET`
-- `BETTER_AUTH_SECRET` — HMAC signing key for short-lived private event-media URLs (shared with Better Auth).
+- `BETTER_AUTH_SECRET` — Better Auth secret and HMAC signing key for short-lived private event-media URLs.
 
 Required non-secret Worker configuration values include:
 - `APP_ENV=production`
