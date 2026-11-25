@@ -285,7 +285,10 @@ try {
 } finally {
   flyerRemovePayload = await api(adminCookie, `/api/v1/events/${flyerEventId}/flyer/remove`, "POST");
   if (flyerRemovePayload.status !== 200) {
-    throw new Error("Temporary event flyer cleanup failed: " + flyerRemovePayload.status);
+    const flyerEventState = await api(adminCookie, `/api/v1/events/${flyerEventId}`);
+    throw new Error("Temporary event flyer cleanup failed: HTTP " + flyerRemovePayload.status +
+      " response=" + JSON.stringify(flyerRemovePayload.payload) +
+      " event=" + JSON.stringify(flyerEventState.payload));
   }
 }
 const flyerAfterRemoval = await api(adminCookie, `/api/v1/events/${flyerEventId}/flyer`);
