@@ -235,7 +235,10 @@ console.log("BETTER_AUTH_SESSIONS_CREATED");
 if (process.env.PCG_SKIP_EVENT_MEDIA_ACCEPTANCE === "1") {
   console.log("EVENT_MEDIA_STORAGE_LIFECYCLE_SKIPPED: this isolated D1 rehearsal has no configured private media provider; storage is tracked separately.");
 } else {
-  const flyerStart = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+  if (process.env.PCG_SKIP_EVENT_MEDIA_ACCEPTANCE === "1") {
+  console.log("EVENT_MEDIA_ACCEPTANCE_BLOCKED_R2_NOT_ENABLED");
+} else {
+const flyerStart = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
   const flyerEnd = new Date(Date.now() + 25 * 60 * 60_000).toISOString();
   const flyerEventCreate = await api(adminCookie, "/api/v1/events", "POST", {
     title: "Synthetic Event Flyer Storage Acceptance",
@@ -297,6 +300,7 @@ if (process.env.PCG_SKIP_EVENT_MEDIA_ACCEPTANCE === "1") {
     throw new Error("Event flyer upload/read/delete lifecycle did not complete cleanly.");
   }
   console.log("PRIVATE_EVENT_FLYER_STORAGE_LIFECYCLE_PASSED");
+}
   
   
 }
