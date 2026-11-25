@@ -1,6 +1,6 @@
 # PCG Missions — Cloudflare migration status
 
-> **Historical snapshot — 22 November 2026.** This file is retained for migration history and is not the current release status. As of 24 November, the main branch contains the schema-49 release candidate and the scheduled follow-up reminder processor; preview deployment of that candidate is in progress. Production remains on D1 schema 45 and Worker version 20. The latest guarded release rehearsal passed roster preflight but stopped at D1 error 7500 before production mutation. Use [OPERATIONS_RUNBOOK.md](./OPERATIONS_RUNBOOK.md) and [PRODUCTION_CUTOVER_READINESS_2026-11-24.md](../docs/PRODUCTION_CUTOVER_READINESS_2026-11-24.md) for current controls and blockers.
+> **Current checkpoint — 25 November 2026 (UTC):** PR #191 merged the Cloudflare KV event-media replacement into `migration/cloudflare-auth-consolidation`. The private EU namespace `pcg-missions-event-media` is provisioned and its KV data-plane read/write/delete smoke test passed. Preview Worker deployment and health/anonymous-boundary checks passed on commit `7518bbaf88576e9939159ab9273819341cdc787d`; preview D1 is schema 49 with 49 migration records. Production remains untouched at schema 45; no production Worker deployment or migration was made. Production currently has zero event rows, so there are no existing production flyer objects to migrate. Full authenticated event-media acceptance and production cutover gates remain outstanding.\n\n> **Historical snapshot — 22 November 2026.** This file is retained for migration history and is not the current release status. As of 24 November, the main branch contains the schema-49 release candidate and the scheduled follow-up reminder processor; preview deployment of that candidate is in progress. Production remains on D1 schema 45 and Worker version 20. The latest guarded release rehearsal passed roster preflight but stopped at D1 error 7500 before production mutation. Use [OPERATIONS_RUNBOOK.md](./OPERATIONS_RUNBOOK.md) and [PRODUCTION_CUTOVER_READINESS_2026-11-24.md](../docs/PRODUCTION_CUTOVER_READINESS_2026-11-24.md) for current controls and blockers.
 
 
 **Verified:** 22 November 2026 (UTC)  
@@ -13,10 +13,10 @@
 - Cloudflare Pages Functions forwards same-origin `/api/*` requests to the Cloudflare Worker.
 - Cloudflare Worker owns Better Auth, session cookies, authorization and application API routes.
 - Cloudflare D1 is the primary application and identity database.
-- Supabase is retained only for private event-flyer object storage.
+- Event-flyer media now uses the private EU Cloudflare KV namespace `pcg-missions-event-media`.
 - SMS/Arkesel remains disabled.
 
-The browser auth client uses Better Auth through same-origin `/api/auth`. Pages environment configuration contains only the API-origin variable; it does not contain Supabase Auth keys. The Worker uses `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` only for the private event-flyer storage path.
+The browser auth client uses Better Auth through same-origin `/api/auth`. Pages environment configuration contains only the API-origin variable. The Worker uses the `EVENT_MEDIA` KV binding for private event-flyer storage and HMAC-signed 15-minute media URLs. No Supabase credentials or runtime endpoints are required.
 
 ## Merged work and current preview release
 
@@ -93,6 +93,6 @@ The production D1 schema remains at 45. The schema 46 migration has been tested 
 
 - Keep SMS/Arkesel dispatch disabled.
 - Keep public self-registration and public prayer intake disabled.
-- Keep private event-flyer storage credentials Worker-only.
+- Keep the `EVENT_MEDIA` KV namespace private; do not enable public bucket access or expose object keys without signed URLs.
 - Do not send passwords, session cookies, service-role keys or private pastoral records through chat, logs or Git.
 - Do not declare the product fully production-ready based only on green CI, a healthy endpoint or a populated capability catalogue.

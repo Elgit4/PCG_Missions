@@ -1,6 +1,6 @@
 # PCG Missions — Cloudflare Pages and Workers
 
-Cloudflare Pages serves the PWA. A same-origin Pages Function gateway forwards all /api requests to the Cloudflare API Worker. Better Auth owns staff credentials and HttpOnly cookie sessions; Cloudflare D1 owns application data and authorization. The only planned Supabase runtime exception is private event-flyer object storage.
+Cloudflare Pages serves the PWA. A same-origin Pages Function gateway forwards all /api requests to the Cloudflare API Worker. Better Auth owns staff credentials and HttpOnly cookie sessions; Cloudflare D1 owns application data and authorization. The Worker uses a private EU Cloudflare Workers KV namespace for event-flyer media. The application runtime has no Supabase dependency.
 
 ## Runtime architecture
 
@@ -8,7 +8,7 @@ Cloudflare Pages serves the PWA. A same-origin Pages Function gateway forwards a
 - Browser → same-origin /api/v1/* → Cloudflare Worker business API.
 - Pages Function gateway forwards cookies, request bodies, branch context and idempotency keys to the Worker and returns its Set-Cookie headers.
 - Worker → EU Cloudflare D1 for authentication, staff identity, six-role authorization, ministry records, audit, reports, announcements, events and follow-up.
-- Worker → private Supabase Storage only for event-flyer upload and retrieval. Supabase Auth, PostgREST, Edge Functions and Realtime are not application runtime dependencies. Supabase Postgres remains required underneath Storage for bucket/object metadata and authorization; do not stop it while the Storage bucket is retained.
+- Worker → private EU Cloudflare Workers KV for event-flyer upload, signed retrieval, replacement and deletion. KV is accessible only through the Worker binding; no public bucket or public URL is enabled.
 
 ## Pages project settings
 
@@ -28,9 +28,9 @@ For Preview, set PCG_MISSIONS_API_ORIGIN to https://pcg-missions-api-preview.pcg
 
 For Production, set PCG_MISSIONS_API_ORIGIN to the separately provisioned production Worker only after its D1 binding, secrets, health checks, authenticated acceptance and rollback checks pass.
 
-The Worker requires BETTER_AUTH_SECRET (at least 32 random characters), BETTER_AUTH_URL and BETTER_AUTH_TRUSTED_ORIGINS (exact HTTPS origins), APP_ALLOWED_ORIGINS (exact Pages origin allowlist), and SUPABASE_URL plus SUPABASE_SERVICE_ROLE_KEY solely for the existing private event-media bucket.
+The Worker requires BETTER_AUTH_SECRET (at least 32 random characters), BETTER_AUTH_URL and BETTER_AUTH_TRUSTED_ORIGINS (exact HTTPS origins), APP_ALLOWED_ORIGINS (exact Pages origin allowlist), and the `EVENT_MEDIA` KV binding. Event-media links are signed with HMAC and expire after 15 minutes.
 
-Never add the event-storage service key to Pages variables, browser build variables, source control or chat. Do not add Supabase URL or publishable keys to VITE_ variables. SMS remains disabled.
+Do not add storage credentials or secrets to Pages variables or browser build variables. SMS remains disabled.
 
 ## Current guarded release checks
 
@@ -42,7 +42,7 @@ The numbered schema-44 and credential-import steps from the original migration a
 4. Clone production D1 into an isolated EU database, compare manifests and foreign keys, rehearse Time Travel restore, and securely delete the clone/export.
 5. Use only the guarded production release workflow. Capture the production bookmark, apply forward-only migrations, verify the migration ledger and roster reconciliation, then deploy Worker and Pages from the same reviewed commit.
 6. Verify production direct Worker and same-origin Pages health/session/CORS boundaries plus authenticated staff smoke tests. Keep automatic Pages production deployment disabled.
-7. Preserve Supabase Storage only for the private event-media bucket. Retire Supabase Auth/Postgres/Edge Functions only after a complete runtime/configuration audit proves there are no remaining production dependencies.
+7. Keep the event-media KV namespace private and EU-jurisdictioned. Monitor the 1 GB free storage allowance and KV request quotas; KV is eventually consistent, so media read-after-write behaviour must remain covered by acceptance tests.
 
 The 24 November release attempt passed roster preflight. The first Cloudflare API request for `wrangler d1 migrations apply` on the isolated schema-49 rehearsal database was rejected with error 7500 because the account-wide free-tier daily row-write quota was exhausted. No migration was applied to the scratch database; the workflow cleaned it up. Production D1 received zero writes and was not modified. Scheduled follow-up reminders are now implemented on main as a release candidate, but are not operational in production until authenticated D1 acceptance and the guarded deployment pass. SMS remains disabled.
 

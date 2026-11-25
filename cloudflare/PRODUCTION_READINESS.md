@@ -1,6 +1,6 @@
 # PCG Missions — Production readiness baseline
 
-> **Historical snapshot — 22 November 2026.** The infrastructure and workflow statements below describe the earlier initial cutover baseline; they do not establish readiness of the current release candidate. On 24 November, production remains at D1 schema 45 / Worker version 20. The latest schema-49 acceptance rehearsal stopped on Cloudflare D1 error 7500 before production changes. The current main branch has a new scheduled follow-up reminder candidate, but it has not been deployed to production or accepted against real migrated D1. Consult [OPERATIONS_RUNBOOK.md](./OPERATIONS_RUNBOOK.md) and [PRODUCTION_CUTOVER_READINESS_2026-11-24.md](../docs/PRODUCTION_CUTOVER_READINESS_2026-11-24.md) before any release action.
+> **Current checkpoint — 25 November 2026 (UTC):** The Cloudflare-only event-media path is merged and deployed to preview. The private EU Workers KV namespace is verified; CI, preview Worker deployment, schema 49, health and anonymous-boundary checks passed. Production D1 remains schema 45 with zero event records and zero flyer references; production has not been migrated or redeployed. Full authenticated acceptance, production-data restore rehearsal and the explicit `DEPLOY-PRODUCTION` authorization are still required before production cutover.\n\n> **Historical snapshot — 22 November 2026.** The infrastructure and workflow statements below describe the earlier initial cutover baseline; they do not establish readiness of the current release candidate. On 24 November, production remains at D1 schema 45 / Worker version 20. The latest schema-49 acceptance rehearsal stopped on Cloudflare D1 error 7500 before production changes. The current main branch has a new scheduled follow-up reminder candidate, but it has not been deployed to production or accepted against real migrated D1. Consult [OPERATIONS_RUNBOOK.md](./OPERATIONS_RUNBOOK.md) and [PRODUCTION_CUTOVER_READINESS_2026-11-24.md](../docs/PRODUCTION_CUTOVER_READINESS_2026-11-24.md) before any release action.
 
 
 **Verified:** 22 November 2026 (UTC)  
@@ -29,7 +29,7 @@ The latest frontend checks on commit `6359178` passed. Pages deployment `e1d26a7
 ## Release-control and preview update — 22 November 2026
 
 - The Pages project now uses `main` as its production branch and has automatic production deployments disabled until the cutover is explicitly approved. Five queued production deployments from migration-branch commits were removed. The currently serving Pages deployment and production Worker were not redeployed.
-- The Pages project environment contains only `PCG_MISSIONS_API_ORIGIN`; the browser uses Better Auth through same-origin Cloudflare API routes. Supabase is retained only for private event-flyer storage.
+- The Pages project environment contains only `PCG_MISSIONS_API_ORIGIN`; the browser uses Better Auth through same-origin Cloudflare API routes. Private event-flyer storage uses the EU Cloudflare KV namespace.
 - Preview D1 is at schema 46 in the non-production environment, with six roles, 89 active capabilities and 140 role-capability grants. The preview Worker is deployed and passed the preview health and anonymous-boundary checks.
 - The schema 46 preview release includes the canonical report and event capability repair. The positive D1 lifecycle regression covers report submit/review, event registration/check-in and event closeout submit/review.
 - The isolated EU D1 Time Travel restore rehearsal passed: all 46 migrations were applied, a bookmark was captured, a post-bookmark probe was written, restore removed the probe while preserving schema 46 and the 46-row migration ledger, and the scratch database was deleted.
@@ -63,8 +63,8 @@ The production database currently has one branch and no seeded business records 
 - Cloudflare Pages serves the PWA.
 - Cloudflare Workers owns Better Auth, authorization and the application API.
 - Cloudflare D1 is the application and identity database.
-- Supabase is retained only for the private event-flyer object-storage bucket. The deployed Worker source uses `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` only in that storage path; these credentials must remain Worker-only.
-- Supabase Auth, Supabase Postgres and Supabase Edge Functions are not required for the live staff application.
+- Event-flyer storage uses the private EU Workers KV namespace `pcg-missions-event-media` through the `EVENT_MEDIA` binding. The Worker issues 15-minute HMAC-signed URLs; no Supabase runtime credentials are required.
+- The application runtime is Cloudflare-only: Pages, Workers, D1 and private Workers KV. SMS remains disabled.
 - SMS/Arkesel dispatch remains disabled and must not be enabled by routine deployment.
 - Public self-registration, public prayer intake, Transport, offline staff access and unapproved publishing/delivery workflows remain disabled.
 
@@ -90,7 +90,7 @@ The production database currently has one branch and no seeded business records 
 6. **Privacy and governance:** approve the church's privacy notice, data-controller contact, lawful purposes, retention/deletion schedule, pastoral-record access policy and incident-response contact before importing real visitor or sensitive pastoral information.
 7. **Security review:** complete authenticated negative tests across all six roles, branch isolation, team/assignee scope, sensitive prayer/care access, session expiry and rate limiting. Review MFA requirements and require stronger authentication for high-risk administrative access where supported.
 8. **Monitoring:** keep production Pages/Worker health, authentication-boundary checks and release alerts active. Monitor application HTTP errors separately from Worker runtime exceptions.
-9. **External service retirement:** retain private event media until its Cloudflare replacement (if required) is implemented and migrated. Retire any remaining Supabase or Vercel dependency only after confirming no live code path uses it.
+9. **External service retirement:** verify that no production runtime, workflow or Pages configuration depends on Supabase. Historical migration scripts and archived documentation are not runtime dependencies.
 
 A green deployment, healthy endpoint or populated capability catalogue alone is not sufficient to close these gates.
 

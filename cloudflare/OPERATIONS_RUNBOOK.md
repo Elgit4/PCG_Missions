@@ -1,7 +1,7 @@
 # PCG Missions — Production operations runbook
 
 **Applies to:** Cloudflare production  
-**Last verified:** 24 November 2026 (UTC). Production cutover remains gated; this runbook records the current release controls and must not be read as evidence that the current release candidate is live.
+**Last verified:** 25 November 2026 (UTC). Production cutover remains gated; this runbook records the current release controls and must not be read as evidence that the current release candidate is live.
 
 ## 1. Production endpoints and resources
 
@@ -20,7 +20,7 @@ Never put API tokens, database credentials, user passwords, Better Auth secrets,
 
 Pages serves the web application. The Pages Function route `web/functions/api/[[path]].ts` forwards same-origin `/api/*` calls to the production Worker and preserves HttpOnly `Set-Cookie` headers. The Worker verifies the trusted origin, resolves Better Auth sessions, checks staff status, validates the active branch and enforces capabilities in server-side data handlers. D1 stores application data and Better Auth identity/session records.
 
-Supabase is retained only for the private event media bucket `pcg-missions-event-media`. The Worker uses `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` for that bucket. Keep the Supabase project’s Postgres database running while this Storage bucket is in use: Supabase stores bucket/object metadata and Storage authorization state in the project’s Postgres `storage` schema ([Supabase Storage schema](https://supabase.com/docs/guides/storage/schema/design); [Supabase architecture](https://supabase.com/docs/guides/getting-started/architecture)). PCG Missions does not use Supabase Auth, PostgREST, Edge Functions or Realtime as application runtime services. Do not disable the underlying Postgres database while retaining Supabase Storage. Full Supabase project retirement requires first migrating event media to Cloudflare R2 or another object store, verifying upload/read/delete and existing-object migration, then removing the Worker storage bindings and secret. Never move the service-role key into Pages variables or browser build variables.
+Event media is stored in the private EU Workers KV namespace `pcg-missions-event-media`, bound to the Worker as `EVENT_MEDIA`. The Worker writes binary image values with MIME metadata and serves them only through 15-minute HMAC-signed URLs. KV is eventually consistent, has a 25 MiB per-value ceiling and a 1 GB free storage allowance; the current flyer upload limit is 5 MiB. Do not enable public access or expose the namespace directly. Monitor usage and keep the signed-read, replacement and deletion acceptance tests in the release gate. The Cloudflare application runtime does not require Supabase credentials or services.
 
 ## 3. Daily read-only health checks
 
@@ -89,15 +89,14 @@ This rehearsal validates the D1 Time Travel mechanism against an isolated schema
 Production Worker secrets are set in Cloudflare Workers & Pages → `pcg-missions-api-production` → Settings → Variables and Secrets. Secret values must never be displayed, copied to logs or committed.
 
 Required production secrets:
-- `BETTER_AUTH_SECRET`
-- `SUPABASE_SERVICE_ROLE_KEY` — only for the private event media bucket.
+- `BETTER_AUTH_SECRET` — Better Auth secret and HMAC signing key for short-lived private event-media URLs.
 
 Required non-secret Worker configuration values include:
 - `APP_ENV=production`
 - `APP_ALLOWED_ORIGINS=https://pcg-missions.pages.dev`
 - `BETTER_AUTH_URL=https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev`
 - `BETTER_AUTH_TRUSTED_ORIGINS=https://pcg-missions.pages.dev,https://pcg-missions-api-production.pcg-missions-nonprod.workers.dev`
-- `SUPABASE_URL` for private event media only.
+- `EVENT_MEDIA` — private Workers KV namespace binding configured in Wrangler; not a secret.
 
 Do not create a secret in Pages. Never expose a secret through any `VITE_*` variable. Do not delete or rotate an authentication/storage secret without a coordinated migration and verified rollback plan.
 
@@ -147,6 +146,6 @@ Do not create a secret in Pages. Never expose a secret through any `VITE_*` vari
 - [ ] Email sender tested or manual handoff procedure confirmed.
 - [ ] Privacy and retention approval recorded before real ministry data is entered.
 - [ ] Scheduled follow-up reminders pass the authenticated D1 tests for due selection, current assignee/branch scope, duplicate invocation, reschedule, reassignment and inactive/revoked staff exclusion. After production deployment, verify the 15-minute Cron Trigger is present and observe a successful scheduled invocation. Until then, reminders are not live.
-- [ ] Event media acceptance proves Worker-mediated flyer upload, signed readback and object deletion against the private Supabase Storage bucket. Keep the service-role key Worker-only.
+- [ ] Event media acceptance proves Worker-mediated flyer upload, HMAC-signed readback, expiry rejection, replacement and object deletion against the private EU KV namespace.
 - [ ] Announcement drafts remain private; scheduled public announcement publishing is not part of this release and must not be implied by the follow-up reminder Cron.
 - [ ] SMS remains disabled.
