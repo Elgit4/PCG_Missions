@@ -1,5 +1,8 @@
 # PCG Missions — Production readiness baseline
 
+> **Historical snapshot — 22 November 2026.** The infrastructure and workflow statements below describe the earlier initial cutover baseline; they do not establish readiness of the current release candidate. On 24 November, production remains at D1 schema 45 / Worker version 20. The latest schema-49 acceptance rehearsal stopped on Cloudflare D1 error 7500 before production changes. The current main branch has a new scheduled follow-up reminder candidate, but it has not been deployed to production or accepted against real migrated D1. Consult [OPERATIONS_RUNBOOK.md](./OPERATIONS_RUNBOOK.md) and [PRODUCTION_CUTOVER_READINESS_2026-11-24.md](../docs/PRODUCTION_CUTOVER_READINESS_2026-11-24.md) before any release action.
+
+
 **Verified:** 22 November 2026 (UTC)  
 **Status:** Live on Cloudflare; operational hardening and end-user acceptance remain in progress.
 

@@ -3,6 +3,7 @@ name: PCG Missions Cloudflare Auth Preview Release
 on:
   push:
     branches:
+      - main
       - migration/cloudflare-auth-consolidation
     paths:
       - "cloudflare/src/**"
@@ -78,14 +79,14 @@ jobs:
         run: |
           rm -rf dist
           npx wrangler deploy --env preview --dry-run --outdir dist
-          test -s dist/index.js
-          node --check dist/index.js
+          test -s dist/worker.js
+          node --check dist/worker.js
 
       - name: Upload the exact preview bundle
         uses: actions/upload-artifact@v4
         with:
           name: pcg-missions-auth-preview-bundle
-          path: cloudflare/dist/index.js
+          path: cloudflare/dist/worker.js
           if-no-files-found: error
           retention-days: 2
 

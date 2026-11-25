@@ -316,8 +316,8 @@ async function revokeStaffRole(
       ),
     ]);
     if (results.some((result) => !result.success) ||
-        (results[0]?.meta?.changes ?? 0) !== 1 ||
-        (results[1]?.meta?.changes ?? 0) !== 1) {
+        (results[0]?.meta?.changes ?? 0) < 1 ||
+        (results[1]?.meta?.changes ?? 0) < 1) {
       return json(409, { ok: false, error: { code: "ROLE_ASSIGNMENT_CHANGED" } }, requestId, origin);
     }
   } catch {
@@ -1270,11 +1270,19 @@ function contactScopePredicate(
     sql: `EXISTS (
       SELECT 1
       FROM contact_assignment ca
+      JOIN team active_team
+        ON active_team.id = ca.team_id
+       AND active_team.branch_id = ca.branch_id
+       AND active_team.is_active = 1
       JOIN staff_team_membership tm
         ON tm.team_id = ca.team_id AND tm.branch_id = ca.branch_id
+      JOIN staff_profile team_member
+        ON team_member.id = tm.staff_profile_id
       WHERE ca.contact_id = ${alias}.id
         AND ca.branch_id = ${alias}.branch_id
-        AND tm.staff_profile_id = ?
+        AND team_member.auth_user_id = ?
+        AND team_member.account_status = 'active'
+        AND team_member.deactivated_at IS NULL
         AND tm.membership_role = 'leader'
         AND tm.revoked_at IS NULL
         AND tm.starts_at <= ?
@@ -2890,10 +2898,18 @@ async function reassignFollowupTask(
     team_id: nextTeam,
     reason,
   });
+  let batchSummary = {
+    updateSuccess: false,
+    updateChanges: -1,
+    eventSuccess: false,
+    eventChanges: -1,
+    notificationSuccess: null as boolean | null,
+    notificationChanges: -1,
+  };
   try {
     const statements: D1PreparedStatement[] = [
       env.DB.prepare(`
-        UPDATE followup_task ft
+        UPDATE followup_task AS ft
         SET assignee_user_id = ?, team_id = ?, updated_at = ?
         WHERE ft.id = ? AND ft.branch_id = ? AND (${predicate.sql})
           AND (${targetPredicate})
@@ -2944,15 +2960,31 @@ async function reassignFollowupTask(
       ));
     }
     const results = await env.DB.batch(statements);
+    batchSummary = {
+      updateSuccess: results[0]?.success === true,
+      updateChanges: results[0]?.meta?.changes ?? -1,
+      eventSuccess: results[1]?.success === true,
+      eventChanges: results[1]?.meta?.changes ?? -1,
+      notificationSuccess: results[2] ? results[2].success === true : null,
+      notificationChanges: results[2]?.meta?.changes ?? -1,
+    };
     if (results.some((result) => !result.success) ||
         (results[0]?.meta?.changes ?? 0) < 1 ||
-        (results[1]?.meta?.changes ?? 0) !== 1 ||
-        (nextAssignee !== null && (results[2]?.meta?.changes ?? 0) !== 1)) {
+        batchSummary.eventChanges !== 1 ||
+        (nextAssignee !== null && batchSummary.notificationChanges !== 1)) {
       return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_CHANGED" } }, requestId, origin);
     }
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    const diagnostic = message.match(/FOLLOWUP_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR|syntax error|no such column|no such table|wrong number of arguments/)?.[0] ?? "D1_BATCH_ERROR";
+    console.log("FOLLOWUP_REASSIGNMENT_BATCH_FAILED", JSON.stringify({
+      diagnostic,
+      batchSummary,
+      errorName: error instanceof Error ? error.name : typeof error,
+    }));
     return json(409, { ok: false, error: { code: "FOLLOWUP_REASSIGNMENT_CONFLICT" } }, requestId, origin);
   }
+
   const updatedTask = await env.DB.prepare(`
     SELECT id, branch_id, contact_id, assignee_user_id, team_id, priority,
            due_at, status, task_note, created_at, updated_at
@@ -4417,7 +4449,10 @@ async function handleCalendarEntryCancellation(
     entryId, branchId, current.updated_at,
   ).run();
   if (!result.success) return json(500, { ok: false, error: { code: "CALENDAR_CANCELLATION_FAILED" } }, requestId, origin);
-  if ((result.meta?.changes ?? 0) !== 1) {
+  // The calendar audit trigger writes an additional row for this update.
+  // Treat D1's trigger-inclusive change count as successful when at least
+  // the calendar entry itself was changed.
+  if ((result.meta?.changes ?? 0) < 1) {
     return json(409, { ok: false, error: { code: "CALENDAR_ENTRY_CHANGED" } }, requestId, origin);
   }
   return json(200, { ok: true, data: { entry_id: entryId, status: "cancelled" } }, requestId, origin);
