@@ -967,17 +967,26 @@ await d1(
    WHERE r.code='admin_pastor'`,
   [new Date().toISOString()],
 );
+await d1(
+  `INSERT OR IGNORE INTO role_capability(role_id,capability_id,scope_mode,created_at)
+   SELECT r.id,c.id,'explicit_share',?
+   FROM role r
+   JOIN capability c ON c.code='prayer.request.read'
+   WHERE r.code='prayer_intercessor'`,
+  [new Date().toISOString()],
+);
 const prayerTestGrantCount = await d1(
-  `SELECT COUNT(*) AS count
+  `SELECT
+     SUM(CASE WHEN r.code='admin_pastor' AND c.code IN ('prayer.request.create','prayer.request.share') AND rc.scope_mode='branch' THEN 1 ELSE 0 END) AS admin_grants,
+     SUM(CASE WHEN r.code='prayer_intercessor' AND c.code='prayer.request.read' AND rc.scope_mode='explicit_share' THEN 1 ELSE 0 END) AS recipient_grants
    FROM role_capability rc
    JOIN role r ON r.id=rc.role_id
    JOIN capability c ON c.id=rc.capability_id
-   WHERE r.code='admin_pastor'
-     AND c.code IN ('prayer.request.create','prayer.request.share')
-     AND rc.scope_mode='branch'`,
+   WHERE (r.code='admin_pastor' AND c.code IN ('prayer.request.create','prayer.request.share') AND rc.scope_mode='branch')
+      OR (r.code='prayer_intercessor' AND c.code='prayer.request.read' AND rc.scope_mode='explicit_share')`,
 );
-if (Number(prayerTestGrantCount[0]?.count) !== 2) {
-  throw new Error("Disposable prayer acceptance fixture did not receive its two temporary grants.");
+if (Number(prayerTestGrantCount[0]?.admin_grants) !== 2 || Number(prayerTestGrantCount[0]?.recipient_grants) !== 1) {
+  throw new Error("Disposable prayer acceptance fixture did not receive the temporary grantor and explicit-recipient grants.");
 }
 
 // A live explicit share is a narrower, record-specific authorization path.
