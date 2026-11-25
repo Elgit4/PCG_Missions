@@ -967,6 +967,17 @@ await d1(
    WHERE r.code='admin_pastor'`,
   [new Date().toISOString()],
 );
+// The share trigger separately requires the recipient to hold the explicit-share
+// read scope. Grant it only in this disposable acceptance database; the live
+// six-role policy remains assigned-only and is restored away with the fixture.
+await d1(
+  `INSERT OR IGNORE INTO role_capability(role_id,capability_id,scope_mode,created_at)
+   SELECT r.id,c.id,'explicit_share',?
+   FROM role r
+   JOIN capability c ON c.code='prayer.request.read'
+   WHERE r.code='prayer_intercessor'`,
+  [new Date().toISOString()],
+);
 const prayerTestGrantCount = await d1(
   `SELECT COUNT(*) AS count
    FROM role_capability rc
