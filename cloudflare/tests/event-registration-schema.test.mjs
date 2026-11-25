@@ -32,3 +32,20 @@ test("staff event registration INSERT matches the effective D1 schema and actor 
   assert.match(migration, /event_registration_authorize_insert[\s\S]*NEW\.created_by IS NULL/i);
   assert.match(worker.slice(insertMatch.index, insertMatch.index + 500), /context\.staff\.userId/);
 });
+
+test("event creation and mutation persist the authenticated initial modifier", () => {
+  const insertMatch = worker.match(/INSERT INTO event\\(([^)]+)\\)\\s*VALUES\\(/i);
+  assert.ok(insertMatch, "Worker event INSERT must exist");
+  const inserted = insertMatch[1].split(",").map((column) => column.trim());
+  assert.ok(inserted.includes("created_by"));
+  assert.ok(inserted.includes("last_modified_by"));
+  const insertStatement = worker.slice(insertMatch.index, insertMatch.index + 1200);
+  assert.match(insertStatement, /context\\.staff\\.userId,context\\.staff\\.userId,now,now/);
+  assert.match(worker, /assignments\\.push\\("last_modified_by=\\?"\\);values\\.push\\(context\\.staff\\.userId\\)/);
+  for (const statement of [
+    /UPDATE event SET flyer_key=\\?,flyer_content_type=\\?,flyer_size=\\?,flyer_updated_at=\\?,last_modified_by=\\?/,
+    /UPDATE event SET flyer_key=NULL,flyer_content_type=NULL,flyer_size=NULL,flyer_updated_at=\\?,last_modified_by=\\?/,
+    /UPDATE event SET status='cancelled',registration_state='closed',last_modified_by=\\?/,
+    /UPDATE event SET registration_state=\\?,last_modified_by=\\?/,
+  ]) assert.match(worker, statement);
+});
