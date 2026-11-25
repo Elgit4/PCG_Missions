@@ -1221,9 +1221,10 @@ if (scheduledReminderForRevokedAssignee.due_tasks_found !== 0 ||
 }
 
 const inactiveReminderUser = await insertUser("field_worker", "inactive-reminder", admin.profileId);
+const inactiveReminderAt = new Date().toISOString();
 await d1(
-  "UPDATE staff_profile SET account_status='inactive',account_status_changed_by=?,account_status_changed_branch_id=?,account_status_reason=?,updated_at=? WHERE id=?",
-  [admin.profileId, branchId, "Synthetic acceptance deactivates this account to verify reminder suppression.", new Date().toISOString(), inactiveReminderUser.profileId],
+  "UPDATE staff_profile SET account_status='inactive',deactivated_at=?,account_status_changed_by=?,account_status_changed_branch_id=?,account_status_reason=?,updated_at=? WHERE id=?",
+  [inactiveReminderAt, admin.profileId, branchId, "Synthetic acceptance deactivates this account to verify reminder suppression.", inactiveReminderAt, inactiveReminderUser.profileId],
 );
 const inactiveAssigneeTaskCreate = await api(adminCookie, "/api/v1/followup/tasks", "POST", {
   contact_id: contactId,
