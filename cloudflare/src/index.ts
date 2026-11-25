@@ -4854,7 +4854,16 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     const now=new Date().toISOString();
     const result=await env.DB.prepare("UPDATE event SET flyer_key=NULL,flyer_content_type=NULL,flyer_size=NULL,flyer_updated_at=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
       .bind(now,context.staff.userId,now,eventId,branchId).run();
-    if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
+    if(!result.success) return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
+    // D1's affected-row metadata can be zero even when a conditional update has
+    // committed. Confirm the persisted state before reporting a conflict.
+    if((result.meta?.changes??0)!==1){
+      const persisted=await env.DB.prepare("SELECT flyer_key,flyer_content_type,flyer_size FROM event WHERE id=? AND branch_id=? AND status='draft'")
+        .bind(eventId,branchId).first<{flyer_key:string|null;flyer_content_type:string|null;flyer_size:number|null}>();
+      if(!persisted||persisted.flyer_key!==null||persisted.flyer_content_type!==null||persisted.flyer_size!==null){
+        return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
+      }
+    }
     await env.EVENT_MEDIA.delete(current.flyer_key).catch(()=>undefined);
     return json(200,{ok:true,data:{removed:true}},requestId,origin);
   }

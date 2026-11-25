@@ -2186,3 +2186,60 @@ test("Admin/Pastor can create and list private welcome-message drafts in the act
   assert.equal(listed.data.length, 1);
   assert.equal(listed.data[0].title, "Welcome to PCG Missions");
 });
+
+
+test("event flyer removal confirms persisted metadata when D1 reports zero changed rows", async () => {
+  const fixture = authorizedDirectoryEnv("admin_pastor", [["events.manage", "branch"]]);
+  const eventId = "40000000-0000-4000-8000-000000000001";
+  const objectKey = `events/${BRANCH_ID}/${eventId}/synthetic.png`;
+  let persistedFlyerKey = objectKey;
+  const deletedKeys = [];
+  const basePrepare = fixture.env.DB.prepare.bind(fixture.env.DB);
+
+  fixture.env.DB.prepare = (sql) => {
+    if (sql.includes("SELECT flyer_key FROM event")) {
+      return {
+        bind() { return this; },
+        async first() { return { flyer_key: persistedFlyerKey }; },
+      };
+    }
+    if (sql.startsWith("UPDATE event SET flyer_key=NULL")) {
+      return {
+        bind() { return this; },
+        async run() {
+          persistedFlyerKey = null;
+          return { success: true, meta: { changes: 0 } };
+        },
+      };
+    }
+    if (sql.includes("SELECT flyer_key,flyer_content_type,flyer_size FROM event")) {
+      return {
+        bind() { return this; },
+        async first() {
+          return {
+            flyer_key: persistedFlyerKey,
+            flyer_content_type: persistedFlyerKey ? "image/png" : null,
+            flyer_size: persistedFlyerKey ? 24 : null,
+          };
+        },
+      };
+    }
+    return basePrepare(sql);
+  };
+  fixture.env.EVENT_MEDIA = {
+    async delete(key) { deletedKeys.push(key); },
+    async put() {},
+    async getWithMetadata() { return { value: null, metadata: null }; },
+  };
+
+  const response = await worker.fetch(new Request(
+    `https://worker.example/api/v1/events/${eventId}/flyer/remove?branch_id=${BRANCH_ID}`,
+    { method: "POST", headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.removed, true);
+  assert.equal(persistedFlyerKey, null);
+  assert.deepEqual(deletedKeys, [objectKey]);
+});
