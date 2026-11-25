@@ -52,7 +52,7 @@ class SupabaseRuntimeBoundaryTests(unittest.TestCase):
         self.assertIn('crypto.subtle.sign("HMAC"', index)
         self.assertIn('crypto.subtle.verify("HMAC"', index)
         self.assertIn("EVENT_MEDIA_URL_TTL_SECONDS=900", index)
-        self.assertIn("Cache-Control\\\":\\\"private, no-store, max-age=0", index)
+        self.assertIn('"Cache-Control":"private, no-store, max-age=0"', index)
         self.assertIn("async function serveSignedEventMedia", index)
         self.assertIn("async function handleEventFlyer", index)
 
