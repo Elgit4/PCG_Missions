@@ -1159,15 +1159,19 @@ if (scheduledReminderAfterReassignment.due_tasks_found !== 1 ||
   throw new Error("Reassigning a due task did not create one reminder for the new assignee: " + JSON.stringify(scheduledReminderAfterReassignment));
 }
 
-const revokedReminderRole = await api(adminCookie, "/api/v1/staff/roles", "POST", {
-  target_profile_id: unassigned.profileId,
-  role_code: "field_worker",
-  reason: "Synthetic acceptance creates a role assignment that is revoked before due-reminder processing.",
-});
-if (revokedReminderRole.status !== 201 || !revokedReminderRole.payload?.data?.id) {
-  throw new Error("Could not create the revoked-role reminder fixture.");
+const revokedReminderRoleRows = await d1(
+  `SELECT ra.id
+   FROM staff_role_assignment ra
+   JOIN role r ON r.id=ra.role_id
+   WHERE ra.staff_profile_id=? AND ra.branch_id=? AND r.code='field_worker'
+     AND ra.revoked_at IS NULL
+   ORDER BY ra.created_at,ra.id`,
+  [unassigned.profileId, branchId],
+);
+if (revokedReminderRoleRows.length !== 1 || !revokedReminderRoleRows[0]?.id) {
+  throw new Error("Expected exactly one active Field Worker role for the revoked-reminder fixture.");
 }
-const revokedReminderRoleId = revokedReminderRole.payload.data.id;
+const revokedReminderRoleId = revokedReminderRoleRows[0].id;
 const revokedReminderRoleResult = await api(
   adminCookie,
   "/api/v1/staff/roles/" + revokedReminderRoleId,
@@ -1175,7 +1179,14 @@ const revokedReminderRoleResult = await api(
   { reason: "Synthetic acceptance verifies revoked staff cannot receive scheduled reminders." },
 );
 if (revokedReminderRoleResult.status !== 200) {
-  throw new Error("Could not revoke the reminder fixture role before scheduled processing.");
+  throw new Error("Could not revoke the existing reminder fixture role: " + revokedReminderRoleResult.status + " " + JSON.stringify(revokedReminderRoleResult.payload));
+}
+const revokedReminderRoleState = await d1(
+  "SELECT revoked_at,revoked_by FROM staff_role_assignment WHERE id=?",
+  [revokedReminderRoleId],
+);
+if (!revokedReminderRoleState[0]?.revoked_at || revokedReminderRoleState[0]?.revoked_by !== admin.profileId) {
+  throw new Error("The existing Field Worker role was not revoked and audited before scheduled reminder processing.");
 }
 const revokedAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/tasks", "POST", {
   contact_id: contactId,
