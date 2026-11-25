@@ -69,3 +69,9 @@ test("D1 diagnostics expose only safe nested cause codes across handoff and even
   const eventCollection = section("async function handleEventCollection(", "async function handleEventItem(");
   assert.match(eventCollection, /safeDatabaseErrorDiagnostics\(error\)/);
 });
+
+test("event creation sets the initial modifier to the creator required by lifecycle audit", () => {
+  const events = section("async function handleEventCollection(", "async function handleEventItem(");
+  assert.match(events, /created_by,last_modified_by,created_at,updated_at/);
+  assert.match(events, /context\.staff\.userId,context\.staff\.userId,now,now/);
+});
