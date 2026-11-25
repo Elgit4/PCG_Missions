@@ -18,8 +18,12 @@ interface Env extends Omit<StaffEnvironment, "DB"> {
   DB: D1Database;
   APP_ENV?: string;
   APP_ALLOWED_ORIGINS?: string;
-  SUPABASE_URL?: string;
-  SUPABASE_SERVICE_ROLE_KEY?: string;
+  EVENT_MEDIA: {
+    put(key: string, value: ArrayBuffer, options?: { metadata?: { contentType?: string } }): Promise<void>;
+    getWithMetadata<T = unknown, M = unknown>(key: string, options?: { type?: "arrayBuffer" }): Promise<{ value: T | null; metadata: M | null }>;
+    delete(key: string): Promise<void>;
+  };
+  BETTER_AUTH_SECRET: string;
 }
 
 function json(status: number, body: Record<string, unknown>, requestId: string, origin?: string): Response {
@@ -4514,20 +4518,57 @@ async function eventReceiptReplay(env:Env,eventId:string,operation:string,key:st
   if(!bytesEqual(receipt.request_digest,digest)) return json(409,{ok:false,error:{code:"IDEMPOTENCY_KEY_REUSED"}},requestId,origin);
   return receipt;
 }
-async function eventFlyerStorageRequest(env:Env,key:string,method:"GET"|"PUT"|"POST"|"DELETE",body?:BodyInit,contentType?:string):Promise<Response>{
-  if(!env.SUPABASE_URL||!env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("EVENT_MEDIA_STORAGE_NOT_CONFIGURED");
-  const base=new URL(env.SUPABASE_URL);
-  if(base.protocol!=="https:") throw new Error("EVENT_MEDIA_STORAGE_URL_INVALID");
-  const objectPath=key.split("/").map(encodeURIComponent).join("/");
-  const url=new URL("/storage/v1/object/pcg-missions-event-media/"+objectPath,base);
-  const headers=new Headers({
-    apikey:env.SUPABASE_SERVICE_ROLE_KEY,
-    Authorization:"Bearer "+env.SUPABASE_SERVICE_ROLE_KEY,
-  });
-  if(contentType) headers.set("Content-Type",contentType);
-  return fetch(url.toString(),{method,headers,body});
+const EVENT_MEDIA_URL_TTL_SECONDS=900;
+function base64Url(bytes:Uint8Array):string{
+  let binary="";
+  for(const byte of bytes) binary+=String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 }
-
+async function eventMediaHmacKey(env:Env):Promise<CryptoKey>{
+  if(!env.BETTER_AUTH_SECRET||env.BETTER_AUTH_SECRET.length<32) throw new Error("EVENT_MEDIA_SIGNING_UNAVAILABLE");
+  return crypto.subtle.importKey("raw",new TextEncoder().encode(env.BETTER_AUTH_SECRET),{name:"HMAC",hash:"SHA-256"},false,["sign","verify"]);
+}
+async function signedEventMediaUrl(request:Request,env:Env,key:string):Promise<string>{
+  const expires=Math.floor(Date.now()/1000)+EVENT_MEDIA_URL_TTL_SECONDS;
+  const payload=key+"|"+expires;
+  const signature=new Uint8Array(await crypto.subtle.sign("HMAC",await eventMediaHmacKey(env),new TextEncoder().encode(payload)));
+  const url=new URL("/api/v1/event-media/"+encodeURIComponent(key),request.url);
+  url.searchParams.set("expires",String(expires));
+  url.searchParams.set("sig",base64Url(signature));
+  return url.toString();
+}
+async function serveSignedEventMedia(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
+  if(request.method!=="GET"&&request.method!=="HEAD") return json(405,{ok:false,error:{code:"METHOD_NOT_ALLOWED"}},requestId,origin);
+  const url=new URL(request.url);
+  const encodedKey=url.pathname.slice("/api/v1/event-media/".length);
+  let key:string;
+  try{key=decodeURIComponent(encodedKey);}catch{return json(404,{ok:false,error:{code:"EVENT_MEDIA_NOT_FOUND"}},requestId,origin);}
+  const expiresRaw=url.searchParams.get("expires")??"";
+  const signatureRaw=url.searchParams.get("sig")??"";
+  const expires=Number(expiresRaw);
+  if(!/^events\/[A-Za-z0-9-]{1,64}\/[A-Za-z0-9-]{1,64}\/[A-Za-z0-9-]{1,80}\.(png|jpg|webp)$/.test(key)||
+    !Number.isSafeInteger(expires)||expires<=Math.floor(Date.now()/1000)||expires>Math.floor(Date.now()/1000)+EVENT_MEDIA_URL_TTL_SECONDS+30||
+    !/^[A-Za-z0-9_-]{43}$/.test(signatureRaw)||[...url.searchParams.keys()].some(k=>k!=="expires"&&k!=="sig")){
+    return json(403,{ok:false,error:{code:"EVENT_MEDIA_URL_INVALID_OR_EXPIRED"}},requestId,origin);
+  }
+  const signature=Uint8Array.from(atob(signatureRaw.replace(/-/g,"+").replace(/_/g,"/")+"="),c=>c.charCodeAt(0));
+  const valid=await crypto.subtle.verify("HMAC",await eventMediaHmacKey(env),signature,new TextEncoder().encode(key+"|"+expires));
+  if(!valid) return json(403,{ok:false,error:{code:"EVENT_MEDIA_URL_INVALID_OR_EXPIRED"}},requestId,origin);
+  const stored=await env.EVENT_MEDIA.getWithMetadata<ArrayBuffer,{contentType?:string}>(key,{type:"arrayBuffer"});
+  if(!stored.value) return json(404,{ok:false,error:{code:"EVENT_MEDIA_NOT_FOUND"}},requestId,origin);
+  const type=stored.metadata?.contentType;
+  if(type!=="image/png"&&type!=="image/jpeg"&&type!=="image/webp") return json(415,{ok:false,error:{code:"EVENT_MEDIA_TYPE_INVALID"}},requestId,origin);
+  const headers=new Headers({
+    "Content-Type":type,
+    "Content-Length":String(stored.value.byteLength),
+    "Cache-Control":"private, no-store, max-age=0",
+    "X-Content-Type-Options":"nosniff",
+    "Content-Security-Policy":"default-src 'none'; sandbox",
+    "Referrer-Policy":"no-referrer",
+    "Content-Disposition":"inline",
+  });
+  return new Response(request.method==="HEAD"?null:stored.value,{status:200,headers});
+}
 async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:string,context:Extract<Awaited<ReturnType<typeof resolveStaffContext>>,{state:"authenticated"}>,requestId:string,origin?:string):Promise<Response>{
   const event=await env.DB.prepare("SELECT id,branch_id,status,flyer_key,flyer_content_type,flyer_size FROM event WHERE id=? AND branch_id=? LIMIT 1")
     .bind(eventId,branchId).first<{id:string;branch_id:string;status:string;flyer_key:string|null;flyer_content_type:string|null;flyer_size:number|null}>();
@@ -4536,16 +4577,10 @@ async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:
     if(!eventHasScopedGrant(context,"events.read","branch")&&!eventHasScopedGrant(context,"events.manage","branch"))
       return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     if(!event.flyer_key||!event.flyer_content_type) return json(404,{ok:false,error:{code:"EVENT_FLYER_NOT_FOUND"}},requestId,origin);
-    let signed:Response;
-    try{signed=await eventFlyerStorageRequest(env,event.flyer_key,"POST",JSON.stringify({expiresIn:900}),"application/json");}
-    catch{return json(503,{ok:false,error:{code:"EVENT_MEDIA_STORAGE_UNAVAILABLE"}},requestId,origin);}
-    if(!signed.ok) return json(502,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);
-    const signedPayload=await signed.json() as {signedURL?:unknown};
-    if(typeof signedPayload.signedURL!=="string"||!env.SUPABASE_URL) return json(502,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);
-    const signedUrl=signedPayload.signedURL.startsWith("http")
-      ? signedPayload.signedURL
-      : new URL("/storage/v1"+(signedPayload.signedURL.startsWith("/")?signedPayload.signedURL:"/"+signedPayload.signedURL),env.SUPABASE_URL).toString();
-    return json(200,{ok:true,data:{object_path:event.flyer_key,mime_type:event.flyer_content_type,size_bytes:event.flyer_size??0,signed_url:signedUrl,signed_url_expires_in:900}},requestId,origin);
+    try{
+      const signedUrl=await signedEventMediaUrl(request,env,event.flyer_key);
+      return json(200,{ok:true,data:{object_path:event.flyer_key,mime_type:event.flyer_content_type,size_bytes:event.flyer_size??0,signed_url:signedUrl,signed_url_expires_in:EVENT_MEDIA_URL_TTL_SECONDS}},requestId,origin);
+    }catch{return json(503,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
   }
   if(request.method!=="POST") return json(405,{ok:false,error:{code:"METHOD_NOT_ALLOWED"}},requestId,origin);
   if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
@@ -4565,28 +4600,20 @@ async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:
   if(!type||file.type!==type) return json(415,{ok:false,error:{code:"UNSUPPORTED_EVENT_FLYER_TYPE"}},requestId,origin);
   const ext=type==="image/png"?"png":type==="image/jpeg"?"jpg":"webp";
   const key="events/"+branchId+"/"+eventId+"/"+crypto.randomUUID()+"."+ext;
-  let stored:Response;
-  try{stored=await eventFlyerStorageRequest(env,key,"PUT",bytes,type);}
+  try{await env.EVENT_MEDIA.put(key,bytes,{metadata:{contentType:type}});}
   catch{return json(503,{ok:false,error:{code:"EVENT_MEDIA_STORAGE_UNAVAILABLE"}},requestId,origin);}
-  if(!stored.ok) return json(502,{ok:false,error:{code:"EVENT_FLYER_UPLOAD_FAILED"}},requestId,origin);
-  let signed:Response;
-  try{signed=await eventFlyerStorageRequest(env,key,"POST",JSON.stringify({expiresIn:900}),"application/json");}
-  catch{await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);return json(503,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
-  if(!signed.ok){await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);return json(502,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
-  const signedPayload=await signed.json() as {signedURL?:unknown};
-  if(typeof signedPayload.signedURL!=="string"||!env.SUPABASE_URL){await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);return json(502,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
-  const signedUrl=signedPayload.signedURL.startsWith("http")
-    ? signedPayload.signedURL
-    : new URL("/storage/v1"+(signedPayload.signedURL.startsWith("/")?signedPayload.signedURL:"/"+signedPayload.signedURL),env.SUPABASE_URL).toString();
+  let signedUrl:string;
+  try{signedUrl=await signedEventMediaUrl(request,env,key);}
+  catch{await env.EVENT_MEDIA.delete(key).catch(()=>undefined);return json(503,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
   const now=new Date().toISOString();
   const updated=await env.DB.prepare("UPDATE event SET flyer_key=?,flyer_content_type=?,flyer_size=?,flyer_updated_at=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
     .bind(key,type,file.size,now,context.staff.userId,now,eventId,branchId).run();
   if(!updated.success||(updated.meta?.changes??0)<1){
-    await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);
+    await env.EVENT_MEDIA.delete(key).catch(()=>undefined);
     return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
   }
-  if(event.flyer_key) await eventFlyerStorageRequest(env,event.flyer_key,"DELETE").catch(()=>undefined);
-  return json(200,{ok:true,data:{object_path:key,mime_type:type,size_bytes:file.size,signed_url:signedUrl,signed_url_expires_in:900}},requestId,origin);
+  if(event.flyer_key) await env.EVENT_MEDIA.delete(event.flyer_key).catch(()=>undefined);
+  return json(200,{ok:true,data:{object_path:key,mime_type:type,size_bytes:file.size,signed_url:signedUrl,signed_url_expires_in:EVENT_MEDIA_URL_TTL_SECONDS}},requestId,origin);
 }
 
 const EVENT_RESPONSE_COLUMNS="id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,status,visibility,registration_state,transport_enabled,flyer_content_type AS flyer_mime_type,flyer_size AS flyer_size_bytes,flyer_updated_at,created_at,updated_at";
@@ -4828,7 +4855,7 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     const result=await env.DB.prepare("UPDATE event SET flyer_key=NULL,flyer_content_type=NULL,flyer_size=NULL,flyer_updated_at=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
       .bind(now,context.staff.userId,now,eventId,branchId).run();
     if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
-    await eventFlyerStorageRequest(env,current.flyer_key,"DELETE").catch(()=>undefined);
+    await env.EVENT_MEDIA.delete(current.flyer_key).catch(()=>undefined);
     return json(200,{ok:true,data:{removed:true}},requestId,origin);
   }
 
@@ -5245,6 +5272,11 @@ export default {
     if (request.method === "OPTIONS") {
       if (!origin) return new Response(null, { status: 204 });
       return new Response(null, { status: 204, headers: authCorsHeaders(origin) });
+    }
+
+    const eventMediaPrefix="/api/v1/event-media/";
+    if(url.pathname.startsWith(eventMediaPrefix)){
+      return serveSignedEventMedia(request,env,requestId,origin);
     }
 
     if (url.pathname === "/api/v1/public-content") {
