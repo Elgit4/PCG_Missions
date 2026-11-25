@@ -27,13 +27,13 @@ class CloudflareProductionReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("needs.production-data-restore-rehearsal.result == 'success'", self.production)
         self.assertIn("Require active Admin/Pastor owner and verify owner-directed cleanup candidates before restore rehearsal", self.production)
 
-    def test_preview_and_production_health_gates_require_schema_49(self):
-        self.assertIn("schema_version!==49", self.preview)
+    def test_preview_and_production_health_gates_require_schema_50(self):
+        self.assertIn("schema_version!==50", self.preview)
         self.assertIn("schema_version!==49", self.production)
-        self.assertIn("Number(row.schema_version) !== 49", self.production)
-        self.assertIn("Number(row.migration_count) !== 49", self.production)
+        self.assertIn("Number(row.schema_version) !== 50", self.production)
+        self.assertIn("Number(row.migration_count) !== 50", self.production)
 
-    def test_owner_directed_staff_cleanup_runs_after_schema_49_and_before_worker_deploy(self):
+    def test_owner_directed_staff_cleanup_runs_after_schema_50_and_before_worker_deploy(self):
         self.assertIn("owner_directed_orphan_profiles", self.production)
         self.assertIn("owner_directed_stale_assignments", self.production)
         self.assertIn("scripts/reconcile_owner_directed_staff_cleanup.sql", self.production)
