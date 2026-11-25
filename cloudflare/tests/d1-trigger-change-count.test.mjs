@@ -75,3 +75,11 @@ test("event creation sets the initial modifier to the creator required by lifecy
   assert.match(events, /created_by,last_modified_by,created_at,updated_at/);
   assert.match(events, /context\.staff\.userId,context\.staff\.userId,now,now/);
 });
+
+test("role revocation exposes only aggregate D1 batch counts on conflict", () => {
+  const revocation = section("async function revokeStaffRole(", "async function listAdminElevationRequests(");
+  assert.match(revocation, /STAFF_ROLE_REVOCATION_BATCH_MISMATCH/);
+  assert.match(revocation, /updateChanges/);
+  assert.match(revocation, /auditChanges/);
+  assert.doesNotMatch(revocation, /console\.log\([^\n]*staff_profile_id/);
+});
