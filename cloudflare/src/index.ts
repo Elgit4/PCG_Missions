@@ -39,6 +39,30 @@ function json(status: number, body: Record<string, unknown>, requestId: string, 
   return new Response(JSON.stringify({ ...body, request_id: requestId }), { status, headers });
 }
 
+function safeDatabaseErrorDiagnostics(error: unknown): {
+  diagnostic: string;
+  causeDiagnostic: string;
+  errorName: string;
+  errorCauseName: string;
+} {
+  const message = error instanceof Error ? error.message : "";
+  const cause = error instanceof Error ? error.cause : undefined;
+  const causeMessage = cause instanceof Error
+    ? cause.message
+    : typeof cause === "string"
+      ? cause
+      : cause && typeof cause === "object" && "message" in cause && typeof cause.message === "string"
+        ? cause.message
+        : "";
+  const pattern = /EVENT_[A-Z_]+|FOLLOWUP_[A-Z_]+|STAFF_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR|syntax error|no such column|no such table|wrong number of arguments/;
+  return {
+    diagnostic: message.match(pattern)?.[0] ?? "D1_BATCH_ERROR",
+    causeDiagnostic: causeMessage.match(pattern)?.[0] ?? "D1_CAUSE_UNAVAILABLE",
+    errorName: error instanceof Error ? error.name : typeof error,
+    errorCauseName: cause instanceof Error ? cause.name : typeof cause,
+  };
+}
+
 function allowedOrigins(env: Env): Set<string> {
   const values = [env.BETTER_AUTH_URL ?? "", ...(env.BETTER_AUTH_TRUSTED_ORIGINS ?? "").split(","), ...(env.APP_ALLOWED_ORIGINS ?? "").split(",")].map((value) => value.trim()).filter(Boolean);
   const origins = new Set<string>();
@@ -2975,22 +2999,8 @@ async function reassignFollowupTask(
       return json(409, { ok: false, error: { code: "FOLLOWUP_TASK_CHANGED" } }, requestId, origin);
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-    const cause = error instanceof Error ? error.cause : undefined;
-    const causeMessage = cause instanceof Error
-      ? cause.message
-      : typeof cause === "string"
-        ? cause
-        : cause && typeof cause === "object" && "message" in cause && typeof cause.message === "string"
-          ? cause.message
-          : "";
-    const diagnostic = message.match(/FOLLOWUP_[A-Z_]+|STAFF_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR|syntax error|no such column|no such table|wrong number of arguments/)?.[0] ?? "D1_BATCH_ERROR";
-    const causeDiagnostic = causeMessage.match(/FOLLOWUP_[A-Z_]+|STAFF_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR|syntax error|no such column|no such table|wrong number of arguments/)?.[0] ?? "D1_CAUSE_UNAVAILABLE";
     console.log("FOLLOWUP_REASSIGNMENT_BATCH_FAILED", JSON.stringify({
-      diagnostic,
-      causeDiagnostic,
-      errorName: error instanceof Error ? error.name : typeof error,
-      errorCauseName: cause instanceof Error ? cause.name : typeof cause,
+      ...safeDatabaseErrorDiagnostics(error),
       batchSummary,
     }));
     return json(409, { ok: false, error: { code: "FOLLOWUP_REASSIGNMENT_CONFLICT" } }, requestId, origin);
@@ -4653,9 +4663,7 @@ async function handleEventCollection(request:Request,env:Env,requestId:string,or
     await env.DB.prepare("INSERT INTO event(id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,status,visibility,registration_state,transport_enabled,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'draft','private','closed',0,?,?,?)")
       .bind(id,branchId,value.title,value.description??null,value.starts_at,value.ends_at,value.timezone,value.location??null,value.capacity??null,context.staff.userId,now,now).run();
   }catch(error){
-    const message=error instanceof Error?error.message:"";
-    const diagnostic=message.match(/EVENT_[A-Z_]+|SQLITE_CONSTRAINT_[A-Z_]+|FOREIGN KEY constraint failed|UNIQUE constraint failed|CHECK constraint failed|D1_ERROR|no such column|no such table/)?.[0]??"D1_INSERT_ERROR";
-    console.log("EVENT_CREATE_FAILED",JSON.stringify({diagnostic,errorName:error instanceof Error?error.name:typeof error}));
+    console.log("EVENT_CREATE_FAILED",JSON.stringify(safeDatabaseErrorDiagnostics(error)));
     return json(409,{ok:false,error:{code:"EVENT_CREATE_FAILED"}},requestId,origin);
   }
   const event=await env.DB.prepare("SELECT "+EVENT_RESPONSE_COLUMNS+" FROM event WHERE id=? AND branch_id=?").bind(id,branchId).first<Record<string,unknown>>();
