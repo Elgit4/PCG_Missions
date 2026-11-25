@@ -967,50 +967,21 @@ await d1(
    WHERE r.code='admin_pastor'`,
   [new Date().toISOString()],
 );
-await d1(
-  `INSERT OR IGNORE INTO role_capability(role_id,capability_id,scope_mode,created_at)
-   SELECT r.id,c.id,'explicit_share',?
-   FROM role r
-   JOIN capability c ON c.code='prayer.request.read'
-   WHERE r.code='prayer_intercessor'`,
-  [new Date().toISOString()],
-);
 const prayerTestGrantCount = await d1(
   `SELECT
      SUM(CASE WHEN r.code='admin_pastor' AND c.code IN ('prayer.request.create','prayer.request.share') AND rc.scope_mode='branch' THEN 1 ELSE 0 END) AS admin_grants,
-     SUM(CASE WHEN r.code='prayer_intercessor' AND c.code='prayer.request.read' AND rc.scope_mode='explicit_share' THEN 1 ELSE 0 END) AS recipient_grants
+     SUM(CASE WHEN r.code='prayer_intercessor' AND c.code='prayer.request.read.assigned' AND rc.scope_mode='assigned' THEN 1 ELSE 0 END) AS recipient_assigned_grants,
+     SUM(CASE WHEN r.code='prayer_intercessor' AND c.code='prayer.request.read' THEN 1 ELSE 0 END) AS retired_recipient_grants
    FROM role_capability rc
    JOIN role r ON r.id=rc.role_id
    JOIN capability c ON c.id=rc.capability_id
-   WHERE (r.code='admin_pastor' AND c.code IN ('prayer.request.create','prayer.request.share') AND rc.scope_mode='branch')
-      OR (r.code='prayer_intercessor' AND c.code='prayer.request.read' AND rc.scope_mode='explicit_share')`,
+   WHERE r.code IN ('admin_pastor','prayer_intercessor')`,
 );
-if (Number(prayerTestGrantCount[0]?.admin_grants) !== 2 || Number(prayerTestGrantCount[0]?.recipient_grants) !== 1) {
-  throw new Error("Disposable prayer acceptance fixture did not receive the temporary grantor and explicit-recipient grants.");
+if (Number(prayerTestGrantCount[0]?.admin_grants) !== 2 ||
+    Number(prayerTestGrantCount[0]?.recipient_assigned_grants) !== 1 ||
+    Number(prayerTestGrantCount[0]?.retired_recipient_grants) !== 0) {
+  throw new Error("Disposable prayer acceptance fixture did not preserve the approved assigned-only recipient policy.");
 }
-
-// A live explicit share is a narrower, record-specific authorization path.
-// The baseline role has only assigned-inbox access; grant explicit-share read
-// only inside this disposable fixture so the database trigger can validate it.
-const defaultExplicitShareGrant = await d1(
-  `SELECT COUNT(*) AS count
-   FROM role_capability rc
-   JOIN role r ON r.id=rc.role_id
-   JOIN capability c ON c.id=rc.capability_id
-   WHERE r.code='prayer_intercessor'
-     AND c.code='prayer.request.read'
-     AND rc.scope_mode='explicit_share'`,
-);
-if (Number(defaultExplicitShareGrant[0]?.count) !== 0) {
-  throw new Error("Prayer Intercessor unexpectedly has an explicit-share grant in the baseline policy.");
-}
-await d1(
-  `INSERT OR IGNORE INTO role_capability(role_id,capability_id,scope_mode,created_at)
-   SELECT r.id,c.id,'explicit_share',?
-   FROM role r JOIN capability c ON c.code='prayer.request.read'
-   WHERE r.code='prayer_intercessor'`,
-  [new Date().toISOString()],
-);
 
 const prayerRequestId = randomUUID();
 const unassignedPrayerRequestId = randomUUID();
