@@ -1188,7 +1188,7 @@ const revokedReminderRoleResult = await api(
 if (revokedReminderRoleResult.status !== 200) {
   throw new Error("Could not revoke the reminder fixture role before scheduled processing.");
 }
-const revokedAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/tasks", "POST", {
+const revokedAssigneeTaskCreate = await api(adminCookie, "/api/v1/followup/tasks", "POST", {
   contact_id: contactId,
   assignee_user_id: worker.userId,
   priority: 2,
@@ -1196,7 +1196,7 @@ const revokedAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/task
   task_note: "Synthetic revoked-assignee reminder exclusion fixture",
 }, "qa-revoked-reminder-" + runId);
 if (revokedAssigneeTaskCreate.status !== 201 || !revokedAssigneeTaskCreate.payload?.data?.id) {
-  throw new Error("Could not create the revoked-assignee follow-up fixture.");
+  throw new Error("Could not create the revoked-assignee follow-up fixture: " + revokedAssigneeTaskCreate.status + " " + JSON.stringify(revokedAssigneeTaskCreate.payload));
 }
 const revokedAssigneeTaskId = revokedAssigneeTaskCreate.payload.data.id;
 // Seed the otherwise-invalid historical assignment directly in disposable D1.
@@ -1222,7 +1222,7 @@ if (scheduledReminderForRevokedAssignee.due_tasks_found !== 0 ||
 
 const inactiveReminderUser = await insertUser("field_worker", "inactive-reminder", admin.profileId);
 await d1("UPDATE staff_profile SET account_status='inactive' WHERE id=?", [inactiveReminderUser.profileId]);
-const inactiveAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/tasks", "POST", {
+const inactiveAssigneeTaskCreate = await api(adminCookie, "/api/v1/followup/tasks", "POST", {
   contact_id: contactId,
   assignee_user_id: worker.userId,
   priority: 2,
@@ -1230,7 +1230,7 @@ const inactiveAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/tas
   task_note: "Synthetic inactive-assignee reminder exclusion fixture",
 }, "qa-inactive-reminder-" + runId);
 if (inactiveAssigneeTaskCreate.status !== 201 || !inactiveAssigneeTaskCreate.payload?.data?.id) {
-  throw new Error("Could not create the inactive-assignee follow-up fixture.");
+  throw new Error("Could not create the inactive-assignee follow-up fixture: " + inactiveAssigneeTaskCreate.status + " " + JSON.stringify(inactiveAssigneeTaskCreate.payload));
 }
 const inactiveAssigneeTaskId = inactiveAssigneeTaskCreate.payload.data.id;
 await d1(
