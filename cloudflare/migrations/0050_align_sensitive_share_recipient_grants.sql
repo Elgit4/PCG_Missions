@@ -1,7 +1,7 @@
 -- Align sensitive-record share recipient authorization with the approved six-role
 -- catalogue. Prayer Intercessors receive prayer.request.read.assigned at assigned
 -- scope; the retired prayer.request.read/explicit_share capability is not granted.
--- Care shares remain fail-closed until an owner-approved care.read.assigned grant exists.
+-- Care shares remain fail-closed until an owner-approved care.record.read.assigned grant exists.
 
 DROP TRIGGER IF EXISTS staff_record_share_authorize_insert;
 
