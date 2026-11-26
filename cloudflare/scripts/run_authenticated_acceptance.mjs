@@ -933,7 +933,7 @@ const eventNotice = (await d1("SELECT target_type,target_id FROM staff_notificat
 const reportNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='report_reviewed' ORDER BY created_at DESC LIMIT 1", [worker.userId]))[0];
 const followupState = (await d1("SELECT status FROM followup_task WHERE id=?", [followupTaskId]))[0];
 const followupEventCount = (await d1("SELECT COUNT(*) AS count FROM followup_task_event WHERE task_id=?", [followupTaskId]))[0]?.count;
-const followupNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='followup_assigned' ORDER BY created_at DESC LIMIT 1", [worker.userId]))[0];
+const followupNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='followup_assigned' AND target_id=? ORDER BY created_at DESC LIMIT 1", [worker.userId, followupTaskId]))[0];
 
 // The owner-approved six-role policy deliberately grants no staff role the
 // ability to create or share prayer requests. Verify that default before adding
