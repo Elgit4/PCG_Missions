@@ -72,3 +72,18 @@ test("rejects non-Arkesel endpoints to prevent accidental credential exfiltratio
   assert.deepEqual(result, { ok: false, code: "CONFIGURATION_MISSING", retryable: false });
   assert.equal(calls, 0);
 });
+
+test("extracts message id from the documented object-shaped data response", async () => {
+  const result = await sendArkeselSandbox({ ARKESEL_API_KEY: "test-key" }, {
+    sender: "PCGMISSIONS",
+    message: "Synthetic sandbox test",
+    recipients: ["0241234567"],
+  }, async () => Response.json({
+    status: "success",
+    data: { id: "sandbox-object-456", credits_used: 0 },
+  }));
+
+  assert.deepEqual(result, {
+    ok: true, provider: "arkesel", messageIds: ["sandbox-object-456"], sandbox: true,
+  });
+});
