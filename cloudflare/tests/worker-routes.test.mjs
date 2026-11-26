@@ -655,12 +655,15 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           }
           return {
             success: true,
-            // Simulate D1 returning zero change metadata for a content insert
+            // Simulate D1 returning zero change metadata for content inserts/updates
             // even though the persisted row is available to the subsequent read.
             meta: {
               changes: this.sql.includes("UPDATE calendar_entry")
                 ? 2
-                : (this.sql.includes("INSERT INTO sermon") || this.sql.includes("INSERT INTO welcome_message"))
+                : (this.sql.includes("INSERT INTO sermon") ||
+                   this.sql.includes("INSERT INTO welcome_message") ||
+                   this.sql.startsWith("UPDATE sermon SET") ||
+                   this.sql.startsWith("UPDATE welcome_message SET"))
                   ? 0
                   : 1,
             },
@@ -2160,6 +2163,24 @@ test("Admin/Pastor can create a private welcome-message draft when D1 reports ze
   assert.equal(created.data.status, "draft");
   assert.equal(created.data.published_at, null);
   assert.equal("created_by" in created.data, false);
+
+  const update = await worker.fetch(new Request(
+    "https://worker.example/api/v1/content/welcome-messages/" + created.data.id + "?branch_id=" + BRANCH_ID,
+    {
+      method: "PATCH",
+      headers: {
+        Cookie: "better-auth.session_token=verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: "Welcome revised", body: "Updated private welcome-message draft." }),
+    },
+  ), env);
+  const updated = await update.json();
+  assert.equal(update.status, 200);
+  assert.equal(updated.data.title, "Welcome revised");
+  assert.equal(updated.data.body, "Updated private welcome-message draft.");
+  assert.equal(updated.data.status, "draft");
 });
 
 
