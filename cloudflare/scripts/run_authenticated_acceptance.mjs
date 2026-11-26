@@ -1668,13 +1668,22 @@ const sermonCreate = await api(adminCookie, "/api/v1/content/sermons", "POST", {
   public_slug: "qa-acceptance-" + runId,
 });
 if (sermonCreate.status !== 201 || sermonCreate.payload?.data?.status !== "draft") {
-  throw new Error("Sermon draft creation failed.");
+  throw new Error(
+    "Sermon draft creation failed: HTTP " + sermonCreate.status +
+      " code=" + (sermonCreate.payload?.error?.code ?? "unexpected_response") +
+      " data_status=" + (sermonCreate.payload?.data?.status ?? "missing") +
+      " response=" + JSON.stringify(sermonCreate.payload).slice(0, 600),
+  );
 }
 const sermonId = sermonCreate.payload.data.id;
 const sermonList = await api(adminCookie, "/api/v1/content/sermons?branch_id=" + branchId + "&limit=50&offset=0");
 if (sermonList.status !== 200 ||
     !(sermonList.payload?.data ?? []).some((item) => item.id === sermonId && item.status === "draft")) {
-  throw new Error("Created sermon draft did not appear in the authenticated content list.");
+  throw new Error(
+    "Created sermon draft did not appear in the authenticated content list: HTTP " +
+      sermonList.status + " code=" + (sermonList.payload?.error?.code ?? "unexpected_response") +
+      " response=" + JSON.stringify(sermonList.payload).slice(0, 600),
+  );
 }
 const sermonUpdate = await api(
   adminCookie,
@@ -1684,14 +1693,19 @@ const sermonUpdate = await api(
 );
 if (sermonUpdate.status !== 200 || sermonUpdate.payload?.data?.status !== "draft" ||
     sermonUpdate.payload?.data?.title !== "QA sermon draft revised " + runId) {
-  throw new Error("Sermon draft update failed or changed its publication state.");
+  throw new Error(
+    "Sermon draft update failed: HTTP " + sermonUpdate.status +
+      " code=" + (sermonUpdate.payload?.error?.code ?? "unexpected_response") +
+      " data_status=" + (sermonUpdate.payload?.data?.status ?? "missing") +
+      " response=" + JSON.stringify(sermonUpdate.payload).slice(0, 600),
+  );
 }
 const contentState = (await d1(
   "SELECT status,published_at FROM sermon WHERE id=?",
   [sermonId],
 ))[0];
 if (contentState?.status !== "draft" || contentState?.published_at !== null) {
-  throw new Error("Sermon draft was unexpectedly published during draft operations.");
+  throw new Error("Sermon draft was unexpectedly published during draft operations: " + JSON.stringify(contentState));
 }
 console.log("ANNOUNCEMENT_AND_CONTENT_DRAFT_LIFECYCLE_PASSED");
 
