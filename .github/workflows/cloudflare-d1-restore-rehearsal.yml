@@ -1,6 +1,9 @@
 name: Cloudflare D1 Restore and Authenticated API Rehearsal
 
 on:
+  push:
+    branches:
+      - fix/browser-acceptance-visible-overview
   workflow_call:
   workflow_dispatch:
 
