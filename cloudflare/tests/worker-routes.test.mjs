@@ -2130,6 +2130,79 @@ test("Admin/Pastor can create and list only their own private sermon drafts in t
 });
 
 
+test("non-production sermon draft failures expose a safe diagnostic code only", async () => {
+  const { env } = authorizedDirectoryEnv("admin_pastor", [
+    ["content.manage.draft", "branch"],
+    ["content.manage", "branch"],
+  ]);
+  const originalPrepare = env.DB.prepare.bind(env.DB);
+  env.DB.prepare = (sql) => {
+    if (sql.includes("INSERT INTO sermon")) {
+      return {
+        bind() { return this; },
+        async run() { throw new Error("SERMON_CREATE_NOT_AUTHORIZED private-diagnostic-value"); },
+      };
+    }
+    return originalPrepare(sql);
+  };
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/content/sermons", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Faith and Service",
+      body: "A private sermon draft.",
+      public_slug: "faith-and-service",
+    }),
+  }), env);
+  const payload = await response.json();
+  assert.equal(response.status, 500);
+  assert.equal(payload.error.code, "CONTENT_CREATE_FAILED");
+  assert.equal(payload.error.diagnostic_code, "SERMON_CREATE_NOT_AUTHORIZED");
+  assert.doesNotMatch(JSON.stringify(payload), /private-diagnostic-value/);
+});
+
+test("production sermon draft failures remain generic", async () => {
+  const { env } = authorizedDirectoryEnv("admin_pastor", [
+    ["content.manage.draft", "branch"],
+    ["content.manage", "branch"],
+  ]);
+  env.APP_ENV = "production";
+  const originalPrepare = env.DB.prepare.bind(env.DB);
+  env.DB.prepare = (sql) => {
+    if (sql.includes("INSERT INTO sermon")) {
+      return {
+        bind() { return this; },
+        async run() { throw new Error("SERMON_CREATE_NOT_AUTHORIZED private-diagnostic-value"); },
+      };
+    }
+    return originalPrepare(sql);
+  };
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/content/sermons", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Faith and Service",
+      body: "A private sermon draft.",
+      public_slug: "faith-and-service",
+    }),
+  }), env);
+  const payload = await response.json();
+  assert.equal(response.status, 500);
+  assert.equal(payload.error.code, "CONTENT_CREATE_FAILED");
+  assert.equal(payload.error.diagnostic_code, undefined);
+  assert.doesNotMatch(JSON.stringify(payload), /SERMON_CREATE_NOT_AUTHORIZED|private-diagnostic-value/);
+});
+
 test("Coordinator without the draft capability cannot create visitor content", async () => {
   const { env, calls } = authorizedDirectoryEnv("coordinator");
   const response = await worker.fetch(new Request("https://worker.example/api/v1/content/welcome-messages", {
