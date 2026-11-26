@@ -28,6 +28,24 @@ test("rejects invalid sender and recipients before making a request", async () =
   assert.equal(calls, 0);
 });
 
+test("accepts sender IDs with internal spaces up to 11 characters", async () => {
+  let captured;
+  const result = await sendArkeselSandbox({ ARKESEL_API_KEY: "test-key" }, {
+    sender: "PCG Mission", message: "Synthetic sandbox test", recipients: ["0241234567"],
+  }, async (_url, init) => { captured = JSON.parse(init.body); return Response.json({ status: "success", data: { id: "space-sender" } }); });
+  assert.equal(result.ok, true);
+  assert.equal(captured.sender, "PCG Mission");
+});
+
+test("rejects blank and padded sender IDs", async () => {
+  for (const sender of ["           ", " PCG", "PCG "]) {
+    const result = await sendArkeselSandbox({ ARKESEL_API_KEY: "test-key" }, {
+      sender, message: "Test", recipients: ["0241234567"],
+    }, async () => { throw new Error("fetch must not run"); });
+    assert.deepEqual(result, { ok: false, code: "INVALID_REQUEST", retryable: false });
+  }
+});
+
 test("always sends sandbox=true and keeps the API key in the request header", async () => {
   let captured;
   const fetcher = async (url, init) => {
