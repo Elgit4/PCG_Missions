@@ -655,9 +655,15 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           }
           return {
             success: true,
-            // Calendar update triggers append an audit row in addition to
-            // the entry update, so D1 reports two changes.
-            meta: { changes: this.sql.includes("UPDATE calendar_entry") ? 2 : 1 },
+            // Simulate D1 returning zero change metadata for a content insert
+            // even though the persisted row is available to the subsequent read.
+            meta: {
+              changes: this.sql.includes("UPDATE calendar_entry")
+                ? 2
+                : (this.sql.includes("INSERT INTO sermon") || this.sql.includes("INSERT INTO welcome_message"))
+                  ? 0
+                  : 1,
+            },
           };
         },
       };
@@ -2127,6 +2133,33 @@ test("Admin/Pastor can create and list only their own private sermon drafts in t
     { headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
   ), env);
   assert.equal(otherAuthor.status, 404);
+});
+
+
+test("Admin/Pastor can create a private welcome-message draft when D1 reports zero insert changes", async () => {
+  const { env } = authorizedDirectoryEnv("admin_pastor", [
+    ["content.manage.draft", "branch"],
+    ["content.manage", "branch"],
+  ]);
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/content/welcome-messages", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Welcome to the church",
+      body: "A private welcome-message draft.",
+      display_order: 0,
+    }),
+  }), env);
+  const created = await create.json();
+  assert.equal(create.status, 201);
+  assert.equal(created.data.status, "draft");
+  assert.equal(created.data.published_at, null);
+  assert.equal("created_by" in created.data, false);
 });
 
 
