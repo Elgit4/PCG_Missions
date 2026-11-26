@@ -1540,11 +1540,14 @@ if (listedTeams.status !== 200 ||
     !(listedTeams.payload?.data?.teams ?? []).some((team) => team.id === managedTeamId)) {
   throw new Error("Created team did not appear in the authenticated team directory.");
 }
+// The schema-31 trigger requires an active team_leader role assignment
+// before a membership can be promoted from member to leader. Use the
+// already-authorized synthetic Team Leader account for this lifecycle.
 const memberAdd = await api(
   adminCookie,
   "/api/v1/teams/" + managedTeamId + "/members?branch_id=" + branchId,
   "POST",
-  { staff_profile_id: unassigned.profileId, membership_role: "member" },
+  { staff_profile_id: teamLeader.profileId, membership_role: "member" },
 );
 if (memberAdd.status !== 201 || !memberAdd.payload?.data?.id) {
   throw new Error("Admin/Pastor could not add an active branch staff member to a team.");
@@ -1557,7 +1560,10 @@ const memberRoleUpdate = await api(
   { membership_role: "leader" },
 );
 if (memberRoleUpdate.status !== 200 || memberRoleUpdate.payload?.data?.membership_role !== "leader") {
-  throw new Error("Team membership role update did not persist.");
+  throw new Error(
+    "Team membership role update did not persist: HTTP " +
+      memberRoleUpdate.status + " " + JSON.stringify(memberRoleUpdate.payload),
+  );
 }
 const memberRevoke = await api(
   adminCookie,
