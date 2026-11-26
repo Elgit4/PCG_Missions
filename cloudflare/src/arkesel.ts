@@ -25,7 +25,8 @@ export function normalizeGhanaPhoneNumber(input: string): string | null {
 }
 
 function validSender(sender: string): boolean {
-  return /^[A-Za-z0-9]{1,11}$/.test(sender);
+  return typeof sender === "string" && sender.length <= 11 &&
+    sender.trim() === sender && /^(?=.{1,11}$)(?=.*[A-Za-z0-9])[A-Za-z0-9 ]+$/.test(sender);
 }
 
 function extractMessageIds(payload: unknown): string[] {
