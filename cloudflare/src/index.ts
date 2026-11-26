@@ -4080,6 +4080,62 @@ function parseContentDraftInput(
   return { ok: true, value: parsed };
 }
 
+function safeContentDraftDiagnosticCode(error: unknown): string {
+  const messages: string[] = [];
+  if (typeof error === "string") messages.push(error);
+  else if (error instanceof Error) messages.push(error.message);
+  else if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    if (typeof record.code === "string") messages.push(record.code);
+    if (typeof record.message === "string") messages.push(record.message);
+    if (Array.isArray(record.errors)) {
+      for (const item of record.errors) {
+        if (typeof item === "string") messages.push(item);
+        else if (item && typeof item === "object") {
+          const candidate = item as Record<string, unknown>;
+          if (typeof candidate.code === "string") messages.push(candidate.code);
+          if (typeof candidate.message === "string") messages.push(candidate.message);
+        }
+      }
+    }
+  }
+  const normalized = messages.join(" ").toUpperCase();
+  for (const code of [
+    "SERMON_CREATE_NOT_AUTHORIZED",
+    "SERMON_UPDATE_NOT_AUTHORIZED",
+    "SERMON_IMMUTABLE_OWNER",
+    "PUBLIC_CONTENT_AUDIT_APPEND_ONLY",
+    "PUBLIC_CONTENT_CREATE_NOT_AUTHORIZED",
+    "PUBLIC_CONTENT_UPDATE_NOT_AUTHORIZED",
+  ]) {
+    if (normalized.includes(code)) return code;
+  }
+  if (normalized.includes("FOREIGN KEY")) return "FOREIGN_KEY_CONSTRAINT";
+  if (normalized.includes("UNIQUE")) return "UNIQUE_CONSTRAINT";
+  if (normalized.includes("CHECK")) return "CHECK_CONSTRAINT";
+  if (normalized.includes("NOT NULL")) return "NOT_NULL_CONSTRAINT";
+  if (normalized.includes("NO SUCH COLUMN") || normalized.includes("NO SUCH TABLE")) return "SCHEMA_MISMATCH";
+  if (normalized.includes("7500") || normalized.includes("D1_RATE_LIMIT_WRITE_FAILED")) return "D1_WRITE_LIMIT";
+  if (normalized.includes("SQLITE_BUSY") || normalized.includes("LOCKED")) return "D1_BUSY";
+  return "D1_QUERY_ERROR";
+}
+
+function contentDraftFailureResponse(
+  env: Env,
+  requestId: string,
+  origin: string | undefined,
+  diagnosticCode: string,
+): Response {
+  if (env.APP_ENV === "non-production") {
+    console.warn("CONTENT_DRAFT_CREATE_FAILED", diagnosticCode);
+    return json(500, {
+      ok: false,
+      error: { code: "CONTENT_CREATE_FAILED", diagnostic_code: diagnosticCode },
+    }, requestId, origin);
+  }
+  return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
+}
+
 function parseContentListQuery(url: URL, activeBranchId: string):
   | { ok: true; branchId: string; limit: number; offset: number }
   | { ok: false } {
@@ -4159,18 +4215,21 @@ async function handleContentCollection(
       : [id, parsed.value.branch_id, parsed.value.title, parsed.value.body, parsed.value.display_order, access.staff.userId, access.staff.userId, now, now];
     const result = await env.DB.prepare(insertSql).bind(...values).run();
     if (!result.success || (result.meta?.changes ?? 0) !== 1) {
-      return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
+      const diagnosticCode = result.success
+        ? "ZERO_ROW_CHANGES"
+        : safeContentDraftDiagnosticCode(result);
+      return contentDraftFailureResponse(env, requestId, origin, diagnosticCode);
     }
     const row = await env.DB.prepare(
       "SELECT " + columns + " FROM " + table + " WHERE id=? AND branch_id=? AND created_by=? AND status='draft'",
     ).bind(id, access.activeBranch.branchId, access.staff.userId).first<ContentDraftRow>();
-    if (!row) return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
+    if (!row) return contentDraftFailureResponse(env, requestId, origin, "POST_INSERT_ROW_NOT_FOUND");
     return json(201, { ok: true, data: visibleContentDraft(row) }, requestId, origin);
   } catch (error) {
     if (String(error).includes("UNIQUE constraint failed: sermon.public_slug")) {
       return json(409, { ok: false, error: { code: "CONTENT_SLUG_CONFLICT" } }, requestId, origin);
     }
-    return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
+    return contentDraftFailureResponse(env, requestId, origin, safeContentDraftDiagnosticCode(error));
   }
 }
 
