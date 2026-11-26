@@ -102,6 +102,10 @@ jobs:
           database_id = "${DB_ID}"
           migrations_dir = "migrations"
           remote = true
+
+          [[kv_namespaces]]
+          binding = "EVENT_MEDIA"
+          id = "4c1b4d0c6066440ebdabfa75fd935dfe"
           EOF
           cd cloudflare
           set +e
@@ -225,7 +229,7 @@ jobs:
             pkill -P "$WORKER_PID" 2>/dev/null || true
             kill "$WORKER_PID" 2>/dev/null || true
             wait "$WORKER_PID" 2>/dev/null || true
-            rm -f "$PCG_BROWSER_CREDENTIALS_PATH" ../web/.dev.vars
+            rm -f "$PCG_BROWSER_CREDENTIALS_PATH" ../web/.dev.vars .dev.vars
           }
           trap cleanup EXIT
           for attempt in $(seq 1 30); do
@@ -306,7 +310,7 @@ jobs:
             REPORTS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_report_count // empty')"
             EVENTS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_event_count // empty')"
             BUSINESS_ROWS="$(echo "$VERIFY" | jq -r '.[0].results[0].qa_business_rows // empty')"
-            if [ "$SCHEMA" = "48" ] && [ "$ENVIRONMENT" = "non-production" ] && [ "$MIGRATIONS" = "49" ] && [ "$PROBE" = "0" ] && [ "$PROFILES" = "0" ] && [ "$REPORTS" = "0" ] && [ "$EVENTS" = "0" ] && [ "$BUSINESS_ROWS" = "0" ]; then
+            if [ "$SCHEMA" = "49" ] && [ "$ENVIRONMENT" = "non-production" ] && [ "$MIGRATIONS" = "49" ] && [ "$PROBE" = "0" ] && [ "$PROFILES" = "0" ] && [ "$REPORTS" = "0" ] && [ "$EVENTS" = "0" ] && [ "$BUSINESS_ROWS" = "0" ]; then
               echo "RESTORE_REHEARSAL_PASSED: schema 49 and all 49 migration records preserved; all synthetic business/audit rows and the post-bookmark probe removed."
               exit 0
             fi

@@ -71,13 +71,15 @@ async function insertUser(roleCode, label, assignerProfileId, bootstrapAdmin = f
     "INSERT INTO staff_profile(id,auth_user_id,full_name,email,account_status,created_at,updated_at,must_change_password) VALUES(?,?,?,?,'active',?,?,0)",
     [profileId, userId, `PCG QA ${label}`, email, now, now],
   );
-  const roleRows = await d1("SELECT id FROM role WHERE code=? AND is_active=1", [roleCode]);
-  if (roleRows.length !== 1) throw new Error(`Missing active role: ${roleCode}`);
-  const assignedBy = bootstrapAdmin ? profileId : assignerProfileId;
-  await d1(
-    "INSERT INTO staff_role_assignment(id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at) VALUES(?,?,?,?,?,?,?)",
-    [randomUUID(), profileId, roleRows[0].id, targetBranchId, assignedBy, new Date(nowMs - 3600000).toISOString(), now],
-  );
+  if (roleCode) {
+    const roleRows = await d1("SELECT id FROM role WHERE code=? AND is_active=1", [roleCode]);
+    if (roleRows.length !== 1) throw new Error(`Missing active role: ${roleCode}`);
+    const assignedBy = bootstrapAdmin ? profileId : assignerProfileId;
+    await d1(
+      "INSERT INTO staff_role_assignment(id,staff_profile_id,role_id,branch_id,assigned_by,starts_at,created_at) VALUES(?,?,?,?,?,?,?)",
+      [randomUUID(), profileId, roleRows[0].id, targetBranchId, assignedBy, new Date(nowMs - 3600000).toISOString(), now],
+    );
+  }
   return { userId, profileId, email, password };
 }
 
@@ -244,7 +246,7 @@ const flyerEventCreate = await api(adminCookie, "/api/v1/events", "POST", {
   capacity: 5,
 });
 if (flyerEventCreate.status !== 201 || !flyerEventCreate.payload?.data?.id) {
-  throw new Error("Could not create the temporary draft event for flyer-storage acceptance: " + flyerEventCreate.status);
+  throw new Error("Could not create the temporary draft event for flyer-storage acceptance: " + flyerEventCreate.status + " " + JSON.stringify(flyerEventCreate.payload));
 }
 const flyerEventId = flyerEventCreate.payload.data.id;
 const flyerBytes = Buffer.from([
@@ -285,7 +287,10 @@ try {
 } finally {
   flyerRemovePayload = await api(adminCookie, `/api/v1/events/${flyerEventId}/flyer/remove`, "POST");
   if (flyerRemovePayload.status !== 200) {
-    throw new Error("Temporary event flyer cleanup failed: " + flyerRemovePayload.status);
+    const flyerEventState = await api(adminCookie, `/api/v1/events/${flyerEventId}`);
+    throw new Error("Temporary event flyer cleanup failed: HTTP " + flyerRemovePayload.status +
+      " response=" + JSON.stringify(flyerRemovePayload.payload) +
+      " event=" + JSON.stringify(flyerEventState.payload));
   }
 }
 const flyerAfterRemoval = await api(adminCookie, `/api/v1/events/${flyerEventId}/flyer`);
@@ -928,7 +933,7 @@ const eventNotice = (await d1("SELECT target_type,target_id FROM staff_notificat
 const reportNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='report_reviewed' ORDER BY created_at DESC LIMIT 1", [worker.userId]))[0];
 const followupState = (await d1("SELECT status FROM followup_task WHERE id=?", [followupTaskId]))[0];
 const followupEventCount = (await d1("SELECT COUNT(*) AS count FROM followup_task_event WHERE task_id=?", [followupTaskId]))[0]?.count;
-const followupNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='followup_assigned' ORDER BY created_at DESC LIMIT 1", [worker.userId]))[0];
+const followupNotice = (await d1("SELECT target_type,target_id FROM staff_notification WHERE recipient_user_id=? AND category='followup_assigned' AND target_id=? ORDER BY created_at DESC LIMIT 1", [worker.userId, followupTaskId]))[0];
 
 // The owner-approved six-role policy deliberately grants no staff role the
 // ability to create or share prayer requests. Verify that default before adding
@@ -962,6 +967,17 @@ await d1(
    FROM role r
    JOIN capability c ON c.code IN ('prayer.request.create','prayer.request.share')
    WHERE r.code='admin_pastor'`,
+  [new Date().toISOString()],
+);
+// The share trigger separately requires the recipient to hold the explicit-share
+// read scope. Grant it only in this disposable acceptance database; the live
+// six-role policy remains assigned-only and is restored away with the fixture.
+await d1(
+  `INSERT OR IGNORE INTO role_capability(role_id,capability_id,scope_mode,created_at)
+   SELECT r.id,c.id,'explicit_share',?
+   FROM role r
+   JOIN capability c ON c.code='prayer.request.read'
+   WHERE r.code='prayer_intercessor'`,
   [new Date().toISOString()],
 );
 const prayerTestGrantCount = await d1(
@@ -1153,13 +1169,14 @@ if (scheduledReminderAfterReassignment.due_tasks_found !== 1 ||
   throw new Error("Reassigning a due task did not create one reminder for the new assignee: " + JSON.stringify(scheduledReminderAfterReassignment));
 }
 
+const revokedReminderUser = await insertUser(null, "revoked-reminder", admin.profileId);
 const revokedReminderRole = await api(adminCookie, "/api/v1/staff/roles", "POST", {
-  target_profile_id: unassigned.profileId,
+  target_profile_id: revokedReminderUser.profileId,
   role_code: "field_worker",
   reason: "Synthetic acceptance creates a role assignment that is revoked before due-reminder processing.",
 });
 if (revokedReminderRole.status !== 201 || !revokedReminderRole.payload?.data?.id) {
-  throw new Error("Could not create the revoked-role reminder fixture.");
+  throw new Error("Could not create the revoked-role reminder fixture: " + revokedReminderRole.status + " " + JSON.stringify(revokedReminderRole.payload));
 }
 const revokedReminderRoleId = revokedReminderRole.payload.data.id;
 const revokedReminderRoleResult = await api(
@@ -1171,7 +1188,7 @@ const revokedReminderRoleResult = await api(
 if (revokedReminderRoleResult.status !== 200) {
   throw new Error("Could not revoke the reminder fixture role before scheduled processing.");
 }
-const revokedAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/tasks", "POST", {
+const revokedAssigneeTaskCreate = await api(adminCookie, "/api/v1/followup/tasks", "POST", {
   contact_id: contactId,
   assignee_user_id: worker.userId,
   priority: 2,
@@ -1179,7 +1196,7 @@ const revokedAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/task
   task_note: "Synthetic revoked-assignee reminder exclusion fixture",
 }, "qa-revoked-reminder-" + runId);
 if (revokedAssigneeTaskCreate.status !== 201 || !revokedAssigneeTaskCreate.payload?.data?.id) {
-  throw new Error("Could not create the revoked-assignee follow-up fixture.");
+  throw new Error("Could not create the revoked-assignee follow-up fixture: " + revokedAssigneeTaskCreate.status + " " + JSON.stringify(revokedAssigneeTaskCreate.payload));
 }
 const revokedAssigneeTaskId = revokedAssigneeTaskCreate.payload.data.id;
 // Seed the otherwise-invalid historical assignment directly in disposable D1.
@@ -1187,7 +1204,7 @@ const revokedAssigneeTaskId = revokedAssigneeTaskCreate.payload.data.id;
 // own active-role exclusion is tested independently.
 await d1(
   "UPDATE followup_task SET assignee_user_id=? WHERE id=? AND branch_id=?",
-  [unassigned.userId, revokedAssigneeTaskId, branchId],
+  [revokedReminderUser.userId, revokedAssigneeTaskId, branchId],
 );
 const scheduledReminderForRevokedAssignee = await processDueFollowupReminders(
   { DB: scheduledReminderDb },
@@ -1204,8 +1221,12 @@ if (scheduledReminderForRevokedAssignee.due_tasks_found !== 0 ||
 }
 
 const inactiveReminderUser = await insertUser("field_worker", "inactive-reminder", admin.profileId);
-await d1("UPDATE staff_profile SET account_status='inactive' WHERE id=?", [inactiveReminderUser.profileId]);
-const inactiveAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/tasks", "POST", {
+const inactiveReminderAt = new Date().toISOString();
+await d1(
+  "UPDATE staff_profile SET account_status='inactive',deactivated_at=?,account_status_changed_by=?,account_status_changed_branch_id=?,account_status_reason=?,updated_at=? WHERE id=?",
+  [inactiveReminderAt, admin.profileId, branchId, "Synthetic acceptance deactivates this account to verify reminder suppression.", inactiveReminderAt, inactiveReminderUser.profileId],
+);
+const inactiveAssigneeTaskCreate = await api(adminCookie, "/api/v1/followup/tasks", "POST", {
   contact_id: contactId,
   assignee_user_id: worker.userId,
   priority: 2,
@@ -1213,7 +1234,7 @@ const inactiveAssigneeTaskCreate = await api(workerCookie, "/api/v1/followup/tas
   task_note: "Synthetic inactive-assignee reminder exclusion fixture",
 }, "qa-inactive-reminder-" + runId);
 if (inactiveAssigneeTaskCreate.status !== 201 || !inactiveAssigneeTaskCreate.payload?.data?.id) {
-  throw new Error("Could not create the inactive-assignee follow-up fixture.");
+  throw new Error("Could not create the inactive-assignee follow-up fixture: " + inactiveAssigneeTaskCreate.status + " " + JSON.stringify(inactiveAssigneeTaskCreate.payload));
 }
 const inactiveAssigneeTaskId = inactiveAssigneeTaskCreate.payload.data.id;
 await d1(
@@ -1519,11 +1540,14 @@ if (listedTeams.status !== 200 ||
     !(listedTeams.payload?.data?.teams ?? []).some((team) => team.id === managedTeamId)) {
   throw new Error("Created team did not appear in the authenticated team directory.");
 }
+// The schema-31 trigger requires an active team_leader role assignment
+// before a membership can be promoted from member to leader. Use the
+// already-authorized synthetic Team Leader account for this lifecycle.
 const memberAdd = await api(
   adminCookie,
   "/api/v1/teams/" + managedTeamId + "/members?branch_id=" + branchId,
   "POST",
-  { staff_profile_id: unassigned.profileId, membership_role: "member" },
+  { staff_profile_id: teamLeader.profileId, membership_role: "member" },
 );
 if (memberAdd.status !== 201 || !memberAdd.payload?.data?.id) {
   throw new Error("Admin/Pastor could not add an active branch staff member to a team.");
@@ -1536,7 +1560,10 @@ const memberRoleUpdate = await api(
   { membership_role: "leader" },
 );
 if (memberRoleUpdate.status !== 200 || memberRoleUpdate.payload?.data?.membership_role !== "leader") {
-  throw new Error("Team membership role update did not persist.");
+  throw new Error(
+    "Team membership role update did not persist: HTTP " +
+      memberRoleUpdate.status + " " + JSON.stringify(memberRoleUpdate.payload),
+  );
 }
 const memberRevoke = await api(
   adminCookie,
@@ -1641,13 +1668,22 @@ const sermonCreate = await api(adminCookie, "/api/v1/content/sermons", "POST", {
   public_slug: "qa-acceptance-" + runId,
 });
 if (sermonCreate.status !== 201 || sermonCreate.payload?.data?.status !== "draft") {
-  throw new Error("Sermon draft creation failed.");
+  throw new Error(
+    "Sermon draft creation failed: HTTP " + sermonCreate.status +
+      " code=" + (sermonCreate.payload?.error?.code ?? "unexpected_response") +
+      " data_status=" + (sermonCreate.payload?.data?.status ?? "missing") +
+      " response=" + JSON.stringify(sermonCreate.payload).slice(0, 600),
+  );
 }
 const sermonId = sermonCreate.payload.data.id;
 const sermonList = await api(adminCookie, "/api/v1/content/sermons?branch_id=" + branchId + "&limit=50&offset=0");
 if (sermonList.status !== 200 ||
     !(sermonList.payload?.data ?? []).some((item) => item.id === sermonId && item.status === "draft")) {
-  throw new Error("Created sermon draft did not appear in the authenticated content list.");
+  throw new Error(
+    "Created sermon draft did not appear in the authenticated content list: HTTP " +
+      sermonList.status + " code=" + (sermonList.payload?.error?.code ?? "unexpected_response") +
+      " response=" + JSON.stringify(sermonList.payload).slice(0, 600),
+  );
 }
 const sermonUpdate = await api(
   adminCookie,
@@ -1657,14 +1693,19 @@ const sermonUpdate = await api(
 );
 if (sermonUpdate.status !== 200 || sermonUpdate.payload?.data?.status !== "draft" ||
     sermonUpdate.payload?.data?.title !== "QA sermon draft revised " + runId) {
-  throw new Error("Sermon draft update failed or changed its publication state.");
+  throw new Error(
+    "Sermon draft update failed: HTTP " + sermonUpdate.status +
+      " code=" + (sermonUpdate.payload?.error?.code ?? "unexpected_response") +
+      " data_status=" + (sermonUpdate.payload?.data?.status ?? "missing") +
+      " response=" + JSON.stringify(sermonUpdate.payload).slice(0, 600),
+  );
 }
 const contentState = (await d1(
   "SELECT status,published_at FROM sermon WHERE id=?",
   [sermonId],
 ))[0];
 if (contentState?.status !== "draft" || contentState?.published_at !== null) {
-  throw new Error("Sermon draft was unexpectedly published during draft operations.");
+  throw new Error("Sermon draft was unexpectedly published during draft operations: " + JSON.stringify(contentState));
 }
 console.log("ANNOUNCEMENT_AND_CONTENT_DRAFT_LIFECYCLE_PASSED");
 

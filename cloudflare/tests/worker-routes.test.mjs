@@ -655,9 +655,18 @@ function authorizedDirectoryEnv(roleCode, additionalCapabilities = []) {
           }
           return {
             success: true,
-            // Calendar update triggers append an audit row in addition to
-            // the entry update, so D1 reports two changes.
-            meta: { changes: this.sql.includes("UPDATE calendar_entry") ? 2 : 1 },
+            // Simulate D1 returning zero change metadata for content inserts/updates
+            // even though the persisted row is available to the subsequent read.
+            meta: {
+              changes: this.sql.includes("UPDATE calendar_entry")
+                ? 2
+                : (this.sql.includes("INSERT INTO sermon") ||
+                   this.sql.includes("INSERT INTO welcome_message") ||
+                   this.sql.startsWith("UPDATE sermon SET") ||
+                   this.sql.startsWith("UPDATE welcome_message SET"))
+                  ? 0
+                  : 1,
+            },
           };
         },
       };
@@ -2130,6 +2139,124 @@ test("Admin/Pastor can create and list only their own private sermon drafts in t
 });
 
 
+test("Admin/Pastor can create a private welcome-message draft when D1 reports zero insert changes", async () => {
+  const { env } = authorizedDirectoryEnv("admin_pastor", [
+    ["content.manage.draft", "branch"],
+    ["content.manage", "branch"],
+  ]);
+  const create = await worker.fetch(new Request("https://worker.example/api/v1/content/welcome-messages", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Welcome to the church",
+      body: "A private welcome-message draft.",
+      display_order: 0,
+    }),
+  }), env);
+  const created = await create.json();
+  assert.equal(create.status, 201);
+  assert.equal(created.data.status, "draft");
+  assert.equal(created.data.published_at, null);
+  assert.equal("created_by" in created.data, false);
+
+  const update = await worker.fetch(new Request(
+    "https://worker.example/api/v1/content/welcome-messages/" + created.data.id + "?branch_id=" + BRANCH_ID,
+    {
+      method: "PATCH",
+      headers: {
+        Cookie: "better-auth.session_token=verified-test-token",
+        "X-Branch-Id": BRANCH_ID,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ title: "Welcome revised", body: "Updated private welcome-message draft." }),
+    },
+  ), env);
+  const updated = await update.json();
+  assert.equal(update.status, 200);
+  assert.equal(updated.data.title, "Welcome revised");
+  assert.equal(updated.data.body, "Updated private welcome-message draft.");
+  assert.equal(updated.data.status, "draft");
+});
+
+
+test("non-production sermon draft failures expose a safe diagnostic code only", async () => {
+  const { env } = authorizedDirectoryEnv("admin_pastor", [
+    ["content.manage.draft", "branch"],
+    ["content.manage", "branch"],
+  ]);
+  const originalPrepare = env.DB.prepare.bind(env.DB);
+  env.DB.prepare = (sql) => {
+    if (sql.includes("INSERT INTO sermon")) {
+      return {
+        bind() { return this; },
+        async run() { throw new Error("SERMON_CREATE_NOT_AUTHORIZED private-diagnostic-value"); },
+      };
+    }
+    return originalPrepare(sql);
+  };
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/content/sermons", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Faith and Service",
+      body: "A private sermon draft.",
+      public_slug: "faith-and-service",
+    }),
+  }), env);
+  const payload = await response.json();
+  assert.equal(response.status, 500);
+  assert.equal(payload.error.code, "CONTENT_CREATE_FAILED");
+  assert.equal(payload.error.diagnostic_code, "SERMON_CREATE_NOT_AUTHORIZED");
+  assert.doesNotMatch(JSON.stringify(payload), /private-diagnostic-value/);
+});
+
+test("production sermon draft failures remain generic", async () => {
+  const { env } = authorizedDirectoryEnv("admin_pastor", [
+    ["content.manage.draft", "branch"],
+    ["content.manage", "branch"],
+  ]);
+  env.APP_ENV = "production";
+  const originalPrepare = env.DB.prepare.bind(env.DB);
+  env.DB.prepare = (sql) => {
+    if (sql.includes("INSERT INTO sermon")) {
+      return {
+        bind() { return this; },
+        async run() { throw new Error("SERMON_CREATE_NOT_AUTHORIZED private-diagnostic-value"); },
+      };
+    }
+    return originalPrepare(sql);
+  };
+  const response = await worker.fetch(new Request("https://worker.example/api/v1/content/sermons", {
+    method: "POST",
+    headers: {
+      Cookie: "better-auth.session_token=verified-test-token",
+      "X-Branch-Id": BRANCH_ID,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      branch_id: BRANCH_ID,
+      title: "Faith and Service",
+      body: "A private sermon draft.",
+      public_slug: "faith-and-service",
+    }),
+  }), env);
+  const payload = await response.json();
+  assert.equal(response.status, 500);
+  assert.equal(payload.error.code, "CONTENT_CREATE_FAILED");
+  assert.equal(payload.error.diagnostic_code, undefined);
+  assert.doesNotMatch(JSON.stringify(payload), /SERMON_CREATE_NOT_AUTHORIZED|private-diagnostic-value/);
+});
+
 test("Coordinator without the draft capability cannot create visitor content", async () => {
   const { env, calls } = authorizedDirectoryEnv("coordinator");
   const response = await worker.fetch(new Request("https://worker.example/api/v1/content/welcome-messages", {
@@ -2185,4 +2312,113 @@ test("Admin/Pastor can create and list private welcome-message drafts in the act
   assert.equal(list.status, 200);
   assert.equal(listed.data.length, 1);
   assert.equal(listed.data[0].title, "Welcome to PCG Missions");
+});
+
+
+test("event flyer removal confirms persisted metadata when D1 reports zero changed rows", async () => {
+  const fixture = authorizedDirectoryEnv("admin_pastor", [["events.manage", "branch"]]);
+  const eventId = "40000000-0000-4000-8000-000000000001";
+  const objectKey = `events/${BRANCH_ID}/${eventId}/synthetic.png`;
+  let persistedFlyerKey = objectKey;
+  const deletedKeys = [];
+  const basePrepare = fixture.env.DB.prepare.bind(fixture.env.DB);
+
+  fixture.env.DB.prepare = (sql) => {
+    if (sql.includes("SELECT flyer_key FROM event")) {
+      return {
+        bind() { return this; },
+        async first() { return { flyer_key: persistedFlyerKey }; },
+      };
+    }
+    if (sql.startsWith("UPDATE event SET flyer_key=NULL")) {
+      return {
+        bind() { return this; },
+        async run() {
+          persistedFlyerKey = null;
+          return { success: true, meta: { changes: 0 } };
+        },
+      };
+    }
+    if (sql.includes("SELECT flyer_key,flyer_content_type,flyer_size FROM event")) {
+      return {
+        bind() { return this; },
+        async first() {
+          return {
+            flyer_key: persistedFlyerKey,
+            flyer_content_type: persistedFlyerKey ? "image/png" : null,
+            flyer_size: persistedFlyerKey ? 24 : null,
+          };
+        },
+      };
+    }
+    return basePrepare(sql);
+  };
+  fixture.env.EVENT_MEDIA = {
+    async delete(key) { deletedKeys.push(key); },
+    async put() {},
+    async getWithMetadata() { return { value: null, metadata: null }; },
+  };
+
+  const response = await worker.fetch(new Request(
+    `https://worker.example/api/v1/events/${eventId}/flyer/remove?branch_id=${BRANCH_ID}`,
+    { method: "POST", headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(payload.data.removed, true);
+  assert.equal(persistedFlyerKey, null);
+  assert.deepEqual(deletedKeys, [objectKey]);
+});
+
+
+test("event flyer removal preserves a concurrent replacement", async () => {
+  const fixture = authorizedDirectoryEnv("admin_pastor", [["events.manage", "branch"]]);
+  const eventId = "40000000-0000-4000-8000-000000000001";
+  const oldKey = `events/${BRANCH_ID}/${eventId}/old.png`;
+  const replacementKey = `events/${BRANCH_ID}/${eventId}/replacement.png`;
+  let persistedFlyerKey = oldKey;
+  const deletedKeys = [];
+  const basePrepare = fixture.env.DB.prepare.bind(fixture.env.DB);
+
+  fixture.env.DB.prepare = (sql) => {
+    if (sql.includes("SELECT flyer_key FROM event")) {
+      return { bind() { return this; }, async first() { return { flyer_key: oldKey }; } };
+    }
+    if (sql.startsWith("UPDATE event SET flyer_key=NULL")) {
+      return {
+        bind() { return this; },
+        async run() {
+          // A replacement lands after the remove handler reads the old key.
+          persistedFlyerKey = replacementKey;
+          return { success: true, meta: { changes: 0 } };
+        },
+      };
+    }
+    if (sql.includes("SELECT flyer_key,flyer_content_type,flyer_size FROM event")) {
+      return {
+        bind() { return this; },
+        async first() {
+          return { flyer_key: persistedFlyerKey, flyer_content_type: "image/png", flyer_size: 24 };
+        },
+      };
+    }
+    return basePrepare(sql);
+  };
+  fixture.env.EVENT_MEDIA = {
+    async delete(key) { deletedKeys.push(key); },
+    async put() {},
+    async getWithMetadata() { return { value: null, metadata: null }; },
+  };
+
+  const response = await worker.fetch(new Request(
+    `https://worker.example/api/v1/events/${eventId}/flyer/remove?branch_id=${BRANCH_ID}`,
+    { method: "POST", headers: { Cookie: "better-auth.session_token=verified-test-token", "X-Branch-Id": BRANCH_ID } },
+  ), fixture.env);
+  const payload = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(payload.error.code, "EVENT_CHANGED");
+  assert.equal(persistedFlyerKey, replacementKey);
+  assert.deepEqual(deletedKeys, []);
 });

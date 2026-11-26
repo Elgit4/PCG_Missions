@@ -77,7 +77,8 @@ try {
   ]);
   assert(signInResponse.status() === 200, "The browser sign-in request did not succeed.");
   assert(staffSessionResponse.status() === 200, "The browser could not load the authenticated staff session.");
-  await page.getByRole("button", { name: "Sign out" }).first().waitFor({ state: "visible", timeout: 30_000 });
+  // At mobile width, the desktop sidebar sign-out control is intentionally hidden.
+  // Verify authenticated workspace content first; test sign-out after switching to desktop.
   await page.getByText("Overview", { exact: true }).first().waitFor({ state: "visible", timeout: 30_000 });
 
   const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
@@ -105,7 +106,7 @@ try {
   await page.reload({ waitUntil: "domcontentloaded" });
   const refreshResponse = await refreshResponsePromise;
   assert(refreshResponse.status() === 200, "The browser's deferred Better Auth session refresh failed.");
-  await page.getByRole("button", { name: "Sign out" }).first().waitFor({ state: "visible", timeout: 30_000 });
+  await page.getByText("Overview", { exact: true }).first().waitFor({ state: "visible", timeout: 30_000 });
 
   const refreshedRows = await d1("SELECT expiresAt FROM session WHERE id=?", [sessionId]);
   assert(

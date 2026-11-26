@@ -18,8 +18,12 @@ interface Env extends Omit<StaffEnvironment, "DB"> {
   DB: D1Database;
   APP_ENV?: string;
   APP_ALLOWED_ORIGINS?: string;
-  SUPABASE_URL?: string;
-  SUPABASE_SERVICE_ROLE_KEY?: string;
+  EVENT_MEDIA: {
+    put(key: string, value: ArrayBuffer, options?: { metadata?: { contentType?: string } }): Promise<void>;
+    getWithMetadata<T = unknown, M = unknown>(key: string, options?: { type?: "arrayBuffer" }): Promise<{ value: T | null; metadata: M | null }>;
+    delete(key: string): Promise<void>;
+  };
+  BETTER_AUTH_SECRET: string;
 }
 
 function json(status: number, body: Record<string, unknown>, requestId: string, origin?: string): Response {
@@ -4076,6 +4080,62 @@ function parseContentDraftInput(
   return { ok: true, value: parsed };
 }
 
+function safeContentDraftDiagnosticCode(error: unknown): string {
+  const messages: string[] = [];
+  if (typeof error === "string") messages.push(error);
+  else if (error instanceof Error) messages.push(error.message);
+  else if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    if (typeof record.code === "string") messages.push(record.code);
+    if (typeof record.message === "string") messages.push(record.message);
+    if (Array.isArray(record.errors)) {
+      for (const item of record.errors) {
+        if (typeof item === "string") messages.push(item);
+        else if (item && typeof item === "object") {
+          const candidate = item as Record<string, unknown>;
+          if (typeof candidate.code === "string") messages.push(candidate.code);
+          if (typeof candidate.message === "string") messages.push(candidate.message);
+        }
+      }
+    }
+  }
+  const normalized = messages.join(" ").toUpperCase();
+  for (const code of [
+    "SERMON_CREATE_NOT_AUTHORIZED",
+    "SERMON_UPDATE_NOT_AUTHORIZED",
+    "SERMON_IMMUTABLE_OWNER",
+    "PUBLIC_CONTENT_AUDIT_APPEND_ONLY",
+    "PUBLIC_CONTENT_CREATE_NOT_AUTHORIZED",
+    "PUBLIC_CONTENT_UPDATE_NOT_AUTHORIZED",
+  ]) {
+    if (normalized.includes(code)) return code;
+  }
+  if (normalized.includes("FOREIGN KEY")) return "FOREIGN_KEY_CONSTRAINT";
+  if (normalized.includes("UNIQUE")) return "UNIQUE_CONSTRAINT";
+  if (normalized.includes("CHECK")) return "CHECK_CONSTRAINT";
+  if (normalized.includes("NOT NULL")) return "NOT_NULL_CONSTRAINT";
+  if (normalized.includes("NO SUCH COLUMN") || normalized.includes("NO SUCH TABLE")) return "SCHEMA_MISMATCH";
+  if (normalized.includes("7500") || normalized.includes("D1_RATE_LIMIT_WRITE_FAILED")) return "D1_WRITE_LIMIT";
+  if (normalized.includes("SQLITE_BUSY") || normalized.includes("LOCKED")) return "D1_BUSY";
+  return "D1_QUERY_ERROR";
+}
+
+function contentDraftFailureResponse(
+  env: Env,
+  requestId: string,
+  origin: string | undefined,
+  diagnosticCode: string,
+): Response {
+  if (env.APP_ENV === "non-production") {
+    console.warn("CONTENT_DRAFT_CREATE_FAILED", diagnosticCode);
+    return json(500, {
+      ok: false,
+      error: { code: "CONTENT_CREATE_FAILED", diagnostic_code: diagnosticCode },
+    }, requestId, origin);
+  }
+  return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
+}
+
 function parseContentListQuery(url: URL, activeBranchId: string):
   | { ok: true; branchId: string; limit: number; offset: number }
   | { ok: false } {
@@ -4154,19 +4214,19 @@ async function handleContentCollection(
       ? [id, parsed.value.branch_id, parsed.value.title, parsed.value.body, parsed.value.public_slug, access.staff.userId, access.staff.userId, now, now]
       : [id, parsed.value.branch_id, parsed.value.title, parsed.value.body, parsed.value.display_order, access.staff.userId, access.staff.userId, now, now];
     const result = await env.DB.prepare(insertSql).bind(...values).run();
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
-      return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
+    if (!result.success) {
+      return contentDraftFailureResponse(env, requestId, origin, safeContentDraftDiagnosticCode(result));
     }
     const row = await env.DB.prepare(
       "SELECT " + columns + " FROM " + table + " WHERE id=? AND branch_id=? AND created_by=? AND status='draft'",
     ).bind(id, access.activeBranch.branchId, access.staff.userId).first<ContentDraftRow>();
-    if (!row) return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
+    if (!row) return contentDraftFailureResponse(env, requestId, origin, "POST_INSERT_ROW_NOT_FOUND");
     return json(201, { ok: true, data: visibleContentDraft(row) }, requestId, origin);
   } catch (error) {
     if (String(error).includes("UNIQUE constraint failed: sermon.public_slug")) {
       return json(409, { ok: false, error: { code: "CONTENT_SLUG_CONFLICT" } }, requestId, origin);
     }
-    return json(500, { ok: false, error: { code: "CONTENT_CREATE_FAILED" } }, requestId, origin);
+    return contentDraftFailureResponse(env, requestId, origin, safeContentDraftDiagnosticCode(error));
   }
 }
 
@@ -4219,11 +4279,21 @@ async function handleContentItem(
     return json(500, { ok: false, error: { code: "CONTENT_UPDATE_FAILED" } }, requestId, origin);
   }
   if (!result.success) return json(500, { ok: false, error: { code: "CONTENT_UPDATE_FAILED" } }, requestId, origin);
-  if ((result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "CONTENT_NOT_EDITABLE" } }, requestId, origin);
   const updated = await env.DB.prepare(
     "SELECT " + columns + " FROM " + table + " WHERE id=? AND branch_id=? AND created_by=? AND status='draft'",
   ).bind(contentId, branchId, access.staff.userId).first<ContentDraftRow>();
   if (!updated) return json(404, { ok: false, error: { code: "CONTENT_NOT_FOUND" } }, requestId, origin);
+  // D1 change metadata can be zero for a persisted update; the readback is authoritative.
+  const updateMatches = fields.every(([key, value]) => {
+    switch (key) {
+      case "title": return updated.title === value;
+      case "body": return updated.body === value;
+      case "public_slug": return updated.public_slug === value;
+      case "display_order": return updated.display_order === value;
+      default: return false;
+    }
+  });
+  if (!updateMatches) return json(409, { ok: false, error: { code: "CONTENT_NOT_EDITABLE" } }, requestId, origin);
   return json(200, { ok: true, data: visibleContentDraft(updated) }, requestId, origin);
 }
 
@@ -4514,20 +4584,57 @@ async function eventReceiptReplay(env:Env,eventId:string,operation:string,key:st
   if(!bytesEqual(receipt.request_digest,digest)) return json(409,{ok:false,error:{code:"IDEMPOTENCY_KEY_REUSED"}},requestId,origin);
   return receipt;
 }
-async function eventFlyerStorageRequest(env:Env,key:string,method:"GET"|"PUT"|"POST"|"DELETE",body?:BodyInit,contentType?:string):Promise<Response>{
-  if(!env.SUPABASE_URL||!env.SUPABASE_SERVICE_ROLE_KEY) throw new Error("EVENT_MEDIA_STORAGE_NOT_CONFIGURED");
-  const base=new URL(env.SUPABASE_URL);
-  if(base.protocol!=="https:") throw new Error("EVENT_MEDIA_STORAGE_URL_INVALID");
-  const objectPath=key.split("/").map(encodeURIComponent).join("/");
-  const url=new URL("/storage/v1/object/pcg-missions-event-media/"+objectPath,base);
-  const headers=new Headers({
-    apikey:env.SUPABASE_SERVICE_ROLE_KEY,
-    Authorization:"Bearer "+env.SUPABASE_SERVICE_ROLE_KEY,
-  });
-  if(contentType) headers.set("Content-Type",contentType);
-  return fetch(url.toString(),{method,headers,body});
+const EVENT_MEDIA_URL_TTL_SECONDS=900;
+function base64Url(bytes:Uint8Array):string{
+  let binary="";
+  for(const byte of bytes) binary+=String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
 }
-
+async function eventMediaHmacKey(env:Env):Promise<CryptoKey>{
+  if(!env.BETTER_AUTH_SECRET||env.BETTER_AUTH_SECRET.length<32) throw new Error("EVENT_MEDIA_SIGNING_UNAVAILABLE");
+  return crypto.subtle.importKey("raw",new TextEncoder().encode(env.BETTER_AUTH_SECRET),{name:"HMAC",hash:"SHA-256"},false,["sign","verify"]);
+}
+async function signedEventMediaUrl(request:Request,env:Env,key:string):Promise<string>{
+  const expires=Math.floor(Date.now()/1000)+EVENT_MEDIA_URL_TTL_SECONDS;
+  const payload=key+"|"+expires;
+  const signature=new Uint8Array(await crypto.subtle.sign("HMAC",await eventMediaHmacKey(env),new TextEncoder().encode(payload)));
+  const url=new URL("/api/v1/event-media/"+encodeURIComponent(key),request.url);
+  url.searchParams.set("expires",String(expires));
+  url.searchParams.set("sig",base64Url(signature));
+  return url.toString();
+}
+async function serveSignedEventMedia(request:Request,env:Env,requestId:string,origin?:string):Promise<Response>{
+  if(request.method!=="GET"&&request.method!=="HEAD") return json(405,{ok:false,error:{code:"METHOD_NOT_ALLOWED"}},requestId,origin);
+  const url=new URL(request.url);
+  const encodedKey=url.pathname.slice("/api/v1/event-media/".length);
+  let key:string;
+  try{key=decodeURIComponent(encodedKey);}catch{return json(404,{ok:false,error:{code:"EVENT_MEDIA_NOT_FOUND"}},requestId,origin);}
+  const expiresRaw=url.searchParams.get("expires")??"";
+  const signatureRaw=url.searchParams.get("sig")??"";
+  const expires=Number(expiresRaw);
+  if(!/^events\/[A-Za-z0-9-]{1,64}\/[A-Za-z0-9-]{1,64}\/[A-Za-z0-9-]{1,80}\.(png|jpg|webp)$/.test(key)||
+    !Number.isSafeInteger(expires)||expires<=Math.floor(Date.now()/1000)||expires>Math.floor(Date.now()/1000)+EVENT_MEDIA_URL_TTL_SECONDS+30||
+    !/^[A-Za-z0-9_-]{43}$/.test(signatureRaw)||[...url.searchParams.keys()].some(k=>k!=="expires"&&k!=="sig")){
+    return json(403,{ok:false,error:{code:"EVENT_MEDIA_URL_INVALID_OR_EXPIRED"}},requestId,origin);
+  }
+  const signature=Uint8Array.from(atob(signatureRaw.replace(/-/g,"+").replace(/_/g,"/")+"="),c=>c.charCodeAt(0));
+  const valid=await crypto.subtle.verify("HMAC",await eventMediaHmacKey(env),signature,new TextEncoder().encode(key+"|"+expires));
+  if(!valid) return json(403,{ok:false,error:{code:"EVENT_MEDIA_URL_INVALID_OR_EXPIRED"}},requestId,origin);
+  const stored=await env.EVENT_MEDIA.getWithMetadata<ArrayBuffer,{contentType?:string}>(key,{type:"arrayBuffer"});
+  if(!stored.value) return json(404,{ok:false,error:{code:"EVENT_MEDIA_NOT_FOUND"}},requestId,origin);
+  const type=stored.metadata?.contentType;
+  if(type!=="image/png"&&type!=="image/jpeg"&&type!=="image/webp") return json(415,{ok:false,error:{code:"EVENT_MEDIA_TYPE_INVALID"}},requestId,origin);
+  const headers=new Headers({
+    "Content-Type":type,
+    "Content-Length":String(stored.value.byteLength),
+    "Cache-Control":"private, no-store, max-age=0",
+    "X-Content-Type-Options":"nosniff",
+    "Content-Security-Policy":"default-src 'none'; sandbox",
+    "Referrer-Policy":"no-referrer",
+    "Content-Disposition":"inline",
+  });
+  return new Response(request.method==="HEAD"?null:stored.value,{status:200,headers});
+}
 async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:string,context:Extract<Awaited<ReturnType<typeof resolveStaffContext>>,{state:"authenticated"}>,requestId:string,origin?:string):Promise<Response>{
   const event=await env.DB.prepare("SELECT id,branch_id,status,flyer_key,flyer_content_type,flyer_size FROM event WHERE id=? AND branch_id=? LIMIT 1")
     .bind(eventId,branchId).first<{id:string;branch_id:string;status:string;flyer_key:string|null;flyer_content_type:string|null;flyer_size:number|null}>();
@@ -4536,16 +4643,10 @@ async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:
     if(!eventHasScopedGrant(context,"events.read","branch")&&!eventHasScopedGrant(context,"events.manage","branch"))
       return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     if(!event.flyer_key||!event.flyer_content_type) return json(404,{ok:false,error:{code:"EVENT_FLYER_NOT_FOUND"}},requestId,origin);
-    let signed:Response;
-    try{signed=await eventFlyerStorageRequest(env,event.flyer_key,"POST",JSON.stringify({expiresIn:900}),"application/json");}
-    catch{return json(503,{ok:false,error:{code:"EVENT_MEDIA_STORAGE_UNAVAILABLE"}},requestId,origin);}
-    if(!signed.ok) return json(502,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);
-    const signedPayload=await signed.json() as {signedURL?:unknown};
-    if(typeof signedPayload.signedURL!=="string"||!env.SUPABASE_URL) return json(502,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);
-    const signedUrl=signedPayload.signedURL.startsWith("http")
-      ? signedPayload.signedURL
-      : new URL("/storage/v1"+(signedPayload.signedURL.startsWith("/")?signedPayload.signedURL:"/"+signedPayload.signedURL),env.SUPABASE_URL).toString();
-    return json(200,{ok:true,data:{object_path:event.flyer_key,mime_type:event.flyer_content_type,size_bytes:event.flyer_size??0,signed_url:signedUrl,signed_url_expires_in:900}},requestId,origin);
+    try{
+      const signedUrl=await signedEventMediaUrl(request,env,event.flyer_key);
+      return json(200,{ok:true,data:{object_path:event.flyer_key,mime_type:event.flyer_content_type,size_bytes:event.flyer_size??0,signed_url:signedUrl,signed_url_expires_in:EVENT_MEDIA_URL_TTL_SECONDS}},requestId,origin);
+    }catch{return json(503,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
   }
   if(request.method!=="POST") return json(405,{ok:false,error:{code:"METHOD_NOT_ALLOWED"}},requestId,origin);
   if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
@@ -4565,28 +4666,20 @@ async function handleEventFlyer(request:Request,env:Env,eventId:string,branchId:
   if(!type||file.type!==type) return json(415,{ok:false,error:{code:"UNSUPPORTED_EVENT_FLYER_TYPE"}},requestId,origin);
   const ext=type==="image/png"?"png":type==="image/jpeg"?"jpg":"webp";
   const key="events/"+branchId+"/"+eventId+"/"+crypto.randomUUID()+"."+ext;
-  let stored:Response;
-  try{stored=await eventFlyerStorageRequest(env,key,"PUT",bytes,type);}
+  try{await env.EVENT_MEDIA.put(key,bytes,{metadata:{contentType:type}});}
   catch{return json(503,{ok:false,error:{code:"EVENT_MEDIA_STORAGE_UNAVAILABLE"}},requestId,origin);}
-  if(!stored.ok) return json(502,{ok:false,error:{code:"EVENT_FLYER_UPLOAD_FAILED"}},requestId,origin);
-  let signed:Response;
-  try{signed=await eventFlyerStorageRequest(env,key,"POST",JSON.stringify({expiresIn:900}),"application/json");}
-  catch{await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);return json(503,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
-  if(!signed.ok){await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);return json(502,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
-  const signedPayload=await signed.json() as {signedURL?:unknown};
-  if(typeof signedPayload.signedURL!=="string"||!env.SUPABASE_URL){await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);return json(502,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
-  const signedUrl=signedPayload.signedURL.startsWith("http")
-    ? signedPayload.signedURL
-    : new URL("/storage/v1"+(signedPayload.signedURL.startsWith("/")?signedPayload.signedURL:"/"+signedPayload.signedURL),env.SUPABASE_URL).toString();
+  let signedUrl:string;
+  try{signedUrl=await signedEventMediaUrl(request,env,key);}
+  catch{await env.EVENT_MEDIA.delete(key).catch(()=>undefined);return json(503,{ok:false,error:{code:"EVENT_FLYER_SIGNING_FAILED"}},requestId,origin);}
   const now=new Date().toISOString();
-  const updated=await env.DB.prepare("UPDATE event SET flyer_key=?,flyer_content_type=?,flyer_size=?,flyer_updated_at=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
-    .bind(key,type,file.size,now,now,eventId,branchId).run();
+  const updated=await env.DB.prepare("UPDATE event SET flyer_key=?,flyer_content_type=?,flyer_size=?,flyer_updated_at=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
+    .bind(key,type,file.size,now,context.staff.userId,now,eventId,branchId).run();
   if(!updated.success||(updated.meta?.changes??0)<1){
-    await eventFlyerStorageRequest(env,key,"DELETE").catch(()=>undefined);
+    await env.EVENT_MEDIA.delete(key).catch(()=>undefined);
     return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
   }
-  if(event.flyer_key) await eventFlyerStorageRequest(env,event.flyer_key,"DELETE").catch(()=>undefined);
-  return json(200,{ok:true,data:{object_path:key,mime_type:type,size_bytes:file.size,signed_url:signedUrl,signed_url_expires_in:900}},requestId,origin);
+  if(event.flyer_key) await env.EVENT_MEDIA.delete(event.flyer_key).catch(()=>undefined);
+  return json(200,{ok:true,data:{object_path:key,mime_type:type,size_bytes:file.size,signed_url:signedUrl,signed_url_expires_in:EVENT_MEDIA_URL_TTL_SECONDS}},requestId,origin);
 }
 
 const EVENT_RESPONSE_COLUMNS="id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,status,visibility,registration_state,transport_enabled,flyer_content_type AS flyer_mime_type,flyer_size AS flyer_size_bytes,flyer_updated_at,created_at,updated_at";
@@ -4639,9 +4732,12 @@ async function handleEventCollection(request:Request,env:Env,requestId:string,or
   if(Date.parse(String(value.ends_at))<=Date.parse(String(value.starts_at))) return json(400,{ok:false,error:{code:"INVALID_EVENT_TIME_RANGE"}},requestId,origin);
   const id=crypto.randomUUID(),now=new Date().toISOString();
   try{
-    await env.DB.prepare("INSERT INTO event(id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,status,visibility,registration_state,transport_enabled,created_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'draft','private','closed',0,?,?,?)")
-      .bind(id,branchId,value.title,value.description??null,value.starts_at,value.ends_at,value.timezone,value.location??null,value.capacity??null,context.staff.userId,now,now).run();
-  }catch{return json(409,{ok:false,error:{code:"EVENT_CREATE_FAILED"}},requestId,origin);}
+    await env.DB.prepare("INSERT INTO event(id,branch_id,title,description,starts_at,ends_at,timezone,location,capacity,status,visibility,registration_state,transport_enabled,created_by,last_modified_by,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'draft','private','closed',0,?,?,?,?)")
+      .bind(id,branchId,value.title,value.description??null,value.starts_at,value.ends_at,value.timezone,value.location??null,value.capacity??null,context.staff.userId,context.staff.userId,now,now).run();
+  }catch(error){
+    console.error(JSON.stringify({event:"EVENT_CREATE_FAILED",requestId,error:error instanceof Error?error.message:"unknown"}));
+    return json(409,{ok:false,error:{code:"EVENT_CREATE_FAILED"}},requestId,origin);
+  }
   const event=await env.DB.prepare("SELECT "+EVENT_RESPONSE_COLUMNS+" FROM event WHERE id=? AND branch_id=?").bind(id,branchId).first<Record<string,unknown>>();
   if(!event) return json(500,{ok:false,error:{code:"EVENT_CREATE_FAILED"}},requestId,origin);
   return json(201,{ok:true,data:event},requestId,origin);
@@ -4671,6 +4767,7 @@ async function handleEventItem(request:Request,env:Env,eventId:string,requestId:
   const assignments=Object.keys(fields.values).map(key=>key+"=?");
   const values=Object.values(fields.values);
   const now=new Date().toISOString();
+  assignments.push("last_modified_by=?");values.push(context.staff.userId);
   assignments.push("updated_at=?");values.push(now);
   const result=await env.DB.prepare("UPDATE event SET "+assignments.join(",")+" WHERE id=? AND branch_id=? AND status='draft' AND registration_state='closed'")
     .bind(...values,eventId,branchId).run();
@@ -4821,10 +4918,19 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     const current=await env.DB.prepare("SELECT flyer_key FROM event WHERE id=? AND branch_id=?").bind(eventId,branchId).first<{flyer_key:string|null}>();
     if(!current?.flyer_key) return json(200,{ok:true,data:{removed:false}},requestId,origin);
     const now=new Date().toISOString();
-    const result=await env.DB.prepare("UPDATE event SET flyer_key=NULL,flyer_content_type=NULL,flyer_size=NULL,flyer_updated_at=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft'")
-      .bind(now,now,eventId,branchId).run();
-    if(!result.success||(result.meta?.changes??0)!==1) return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
-    await eventFlyerStorageRequest(env,current.flyer_key,"DELETE").catch(()=>undefined);
+    const result=await env.DB.prepare("UPDATE event SET flyer_key=NULL,flyer_content_type=NULL,flyer_size=NULL,flyer_updated_at=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status='draft' AND flyer_key=?")
+      .bind(now,context.staff.userId,now,eventId,branchId,current.flyer_key).run();
+    if(!result.success) return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
+    // D1's affected-row metadata can be zero even when a conditional update has
+    // committed. Confirm the persisted state before reporting a conflict.
+    if((result.meta?.changes??0)!==1){
+      const persisted=await env.DB.prepare("SELECT flyer_key,flyer_content_type,flyer_size FROM event WHERE id=? AND branch_id=? AND status='draft'")
+        .bind(eventId,branchId).first<{flyer_key:string|null;flyer_content_type:string|null;flyer_size:number|null}>();
+      if(!persisted||persisted.flyer_key!==null||persisted.flyer_content_type!==null||persisted.flyer_size!==null){
+        return json(409,{ok:false,error:{code:"EVENT_CHANGED"}},requestId,origin);
+      }
+    }
+    await env.EVENT_MEDIA.delete(current.flyer_key).catch(()=>undefined);
     return json(200,{ok:true,data:{removed:true}},requestId,origin);
   }
 
@@ -4832,8 +4938,8 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     if(!eventHasScopedGrant(context,"events.manage","branch")) return json(403,{ok:false,error:{code:"CAPABILITY_DENIED"}},requestId,origin);
     if(event.status==="completed") return json(409,{ok:false,error:{code:"EVENT_ALREADY_COMPLETED"}},requestId,origin);
     if(event.status==="cancelled") return json(200,{ok:true,data:{event_id:eventId,status:"cancelled"}},requestId,origin);
-    const result=await env.DB.prepare("UPDATE event SET status='cancelled',registration_state='closed',updated_at=? WHERE id=? AND branch_id=? AND status IN ('draft','published')")
-      .bind(now,eventId,branchId).run();
+    const result=await env.DB.prepare("UPDATE event SET status='cancelled',registration_state='closed',last_modified_by=?,updated_at=? WHERE id=? AND branch_id=? AND status IN ('draft','published')")
+      .bind(context.staff.userId,now,eventId,branchId).run();
     if(!result.success||(result.meta?.changes??0)<1) return json(409,{ok:false,error:{code:"EVENT_CANCELLATION_CONFLICT"}},requestId,origin);
     return json(200,{ok:true,data:{event_id:eventId,status:"cancelled"}},requestId,origin);
   }
@@ -4843,8 +4949,8 @@ async function handleEventWorkspaceOperations(request:Request,env:Env,requestId:
     const action=parts[5]==="open"?"open":parts[5]==="close"?"close":null;
     if(!action) return json(404,{ok:false,error:{code:"NOT_FOUND"}},requestId,origin);
     const state=action==="open"?"open":"closed";
-    const result=await env.DB.prepare("UPDATE event SET registration_state=?,updated_at=? WHERE id=? AND branch_id=?")
-      .bind(state,now,eventId,branchId).run();
+    const result=await env.DB.prepare("UPDATE event SET registration_state=?,last_modified_by=?,updated_at=? WHERE id=? AND branch_id=?")
+      .bind(state,context.staff.userId,now,eventId,branchId).run();
     if((result.meta?.changes??0)<1) return json(404,{ok:false,error:{code:"EVENT_NOT_FOUND"}},requestId,origin);
     return json(200,{data:{...event,registration_state:state,updated_at:now}},requestId,origin);
   }
@@ -5241,6 +5347,11 @@ export default {
     if (request.method === "OPTIONS") {
       if (!origin) return new Response(null, { status: 204 });
       return new Response(null, { status: 204, headers: authCorsHeaders(origin) });
+    }
+
+    const eventMediaPrefix="/api/v1/event-media/";
+    if(url.pathname.startsWith(eventMediaPrefix)){
+      return serveSignedEventMedia(request,env,requestId,origin);
     }
 
     if (url.pathname === "/api/v1/public-content") {
