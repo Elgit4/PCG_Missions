@@ -40,6 +40,21 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+async function assertMobileOverviewWorkspace(page) {
+  // Assert the actual workspace heading, not a duplicate desktop navigation label.
+  await page.getByRole("heading", { name: "Overview", exact: true })
+    .waitFor({ state: "visible", timeout: 30_000 });
+
+  const mobileNavigation = page.getByRole("navigation", { name: "Primary navigation" });
+  await mobileNavigation.waitFor({ state: "visible", timeout: 10_000 });
+  const homeButton = mobileNavigation.getByRole("button", { name: "Home", exact: true });
+  await homeButton.waitFor({ state: "visible", timeout: 10_000 });
+  assert(
+    await homeButton.getAttribute("aria-current") === "page",
+    "The mobile navigation did not mark Overview as the current page.",
+  );
+}
+
 const browser = await chromium.launch({
   headless: true,
   args: ["--no-sandbox", "--disable-dev-shm-usage"],
@@ -78,8 +93,8 @@ try {
   assert(signInResponse.status() === 200, "The browser sign-in request did not succeed.");
   assert(staffSessionResponse.status() === 200, "The browser could not load the authenticated staff session.");
   // At mobile width, the desktop sidebar sign-out control is intentionally hidden.
-  // Verify authenticated workspace content first; test sign-out after switching to desktop.
-  await page.getByText("Overview", { exact: true }).first().waitFor({ state: "visible", timeout: 30_000 });
+  // Verify the rendered Overview heading and active mobile Home navigation item.
+  await assertMobileOverviewWorkspace(page);
 
   const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   assert(!mobileOverflow, "The authenticated mobile workspace has horizontal overflow.");
@@ -106,7 +121,7 @@ try {
   await page.reload({ waitUntil: "domcontentloaded" });
   const refreshResponse = await refreshResponsePromise;
   assert(refreshResponse.status() === 200, "The browser's deferred Better Auth session refresh failed.");
-  await page.getByText("Overview", { exact: true }).first().waitFor({ state: "visible", timeout: 30_000 });
+  await assertMobileOverviewWorkspace(page);
 
   const refreshedRows = await d1("SELECT expiresAt FROM session WHERE id=?", [sessionId]);
   assert(
@@ -129,7 +144,15 @@ try {
   );
   await page.getByRole("button", { name: "Sign out" }).first().click();
   const signOutResponse = await signOutResponsePromise;
-  assert(signOutResponse.status() === 200, "The browser sign-out request did not succeed.");
+  const signOutPayload = await signOutResponse.clone().json().catch(() => null);
+  const signOutDiagnostic = signOutPayload?.error?.code ??
+    signOutPayload?.error?.diagnostic_code ??
+    signOutPayload?.code ??
+    "NO_STRUCTURED_ERROR";
+  assert(
+    signOutResponse.status() === 200,
+    `The browser sign-out request returned HTTP ${signOutResponse.status()} (${signOutDiagnostic}).`,
+  );
   await page.getByLabel("Staff email address").waitFor({ state: "visible", timeout: 20_000 });
 
   const cookiesAfterSignOut = await context.cookies(baseUrl);
