@@ -4214,11 +4214,8 @@ async function handleContentCollection(
       ? [id, parsed.value.branch_id, parsed.value.title, parsed.value.body, parsed.value.public_slug, access.staff.userId, access.staff.userId, now, now]
       : [id, parsed.value.branch_id, parsed.value.title, parsed.value.body, parsed.value.display_order, access.staff.userId, access.staff.userId, now, now];
     const result = await env.DB.prepare(insertSql).bind(...values).run();
-    if (!result.success || (result.meta?.changes ?? 0) !== 1) {
-      const diagnosticCode = result.success
-        ? "ZERO_ROW_CHANGES"
-        : safeContentDraftDiagnosticCode(result);
-      return contentDraftFailureResponse(env, requestId, origin, diagnosticCode);
+    if (!result.success) {
+      return contentDraftFailureResponse(env, requestId, origin, safeContentDraftDiagnosticCode(result));
     }
     const row = await env.DB.prepare(
       "SELECT " + columns + " FROM " + table + " WHERE id=? AND branch_id=? AND created_by=? AND status='draft'",
