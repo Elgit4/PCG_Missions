@@ -43,6 +43,10 @@ function extractMessageIds(payload: unknown): string[] {
         if (typeof id === "string" || typeof id === "number") ids.push(String(id));
       }
     }
+  } else if (record.data && typeof record.data === "object") {
+    const data = record.data as Record<string, unknown>;
+    const id = data.message_id ?? data.messageId ?? data.id;
+    if (typeof id === "string" || typeof id === "number") ids.push(String(id));
   }
   return [...new Set(ids)].slice(0, MAX_RECIPIENTS);
 }
