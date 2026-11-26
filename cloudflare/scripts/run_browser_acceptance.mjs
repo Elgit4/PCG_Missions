@@ -144,7 +144,15 @@ try {
   );
   await page.getByRole("button", { name: "Sign out" }).first().click();
   const signOutResponse = await signOutResponsePromise;
-  assert(signOutResponse.status() === 200, "The browser sign-out request did not succeed.");
+  const signOutPayload = await signOutResponse.clone().json().catch(() => null);
+  const signOutDiagnostic = signOutPayload?.error?.code ??
+    signOutPayload?.error?.diagnostic_code ??
+    signOutPayload?.code ??
+    "NO_STRUCTURED_ERROR";
+  assert(
+    signOutResponse.status() === 200,
+    `The browser sign-out request returned HTTP ${signOutResponse.status()} (${signOutDiagnostic}).`,
+  );
   await page.getByLabel("Staff email address").waitFor({ state: "visible", timeout: 20_000 });
 
   const cookiesAfterSignOut = await context.cookies(baseUrl);
