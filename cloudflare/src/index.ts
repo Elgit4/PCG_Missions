@@ -4279,11 +4279,21 @@ async function handleContentItem(
     return json(500, { ok: false, error: { code: "CONTENT_UPDATE_FAILED" } }, requestId, origin);
   }
   if (!result.success) return json(500, { ok: false, error: { code: "CONTENT_UPDATE_FAILED" } }, requestId, origin);
-  if ((result.meta?.changes ?? 0) !== 1) return json(409, { ok: false, error: { code: "CONTENT_NOT_EDITABLE" } }, requestId, origin);
   const updated = await env.DB.prepare(
     "SELECT " + columns + " FROM " + table + " WHERE id=? AND branch_id=? AND created_by=? AND status='draft'",
   ).bind(contentId, branchId, access.staff.userId).first<ContentDraftRow>();
   if (!updated) return json(404, { ok: false, error: { code: "CONTENT_NOT_FOUND" } }, requestId, origin);
+  // D1 change metadata can be zero for a persisted update; the readback is authoritative.
+  const updateMatches = fields.every(([key, value]) => {
+    switch (key) {
+      case "title": return updated.title === value;
+      case "body": return updated.body === value;
+      case "public_slug": return updated.public_slug === value;
+      case "display_order": return updated.display_order === value;
+      default: return false;
+    }
+  });
+  if (!updateMatches) return json(409, { ok: false, error: { code: "CONTENT_NOT_EDITABLE" } }, requestId, origin);
   return json(200, { ok: true, data: visibleContentDraft(updated) }, requestId, origin);
 }
 
